@@ -17,6 +17,7 @@ import {
   type MaterialGraphValueType,
 } from '../material/materialGraphTypes';
 import { UiColorControl, UiNumericInput, UiSelect, UiSlider } from '../ui';
+import { hostAssetReference, type HostAssetReference } from '../services/assetReferences';
 import { TexturePicker, type AssetThumbnailProvider } from './AssetPicker';
 import type { HostEntityId, HostResponse, Vec4 } from './inspectorTypes';
 import { NumberControl } from './InspectorControls';
@@ -44,6 +45,7 @@ type InstanceOverride = {
   kind: MaterialEditorParameterKind;
   value?: number[];
   texture?: string;
+  textureReference?: HostAssetReference;
 };
 
 type DisplayParameter = {
@@ -59,6 +61,7 @@ type DisplayParameter = {
 
 type DisplayFunctionOption = {
   guid: string;
+  typeId?: string;
   path: string;
   name: string;
   document: MaterialFunctionAssetJson;
@@ -79,7 +82,7 @@ type DisplayFunctionSlot = {
 type RuntimeFunctionOverride = {
   kind: 'function';
   slotId: string;
-  function: { guid: string; pathHint: string };
+  function: { guid: string; expectedType?: string; pathHint: string };
 };
 
 type ParameterState =
@@ -361,7 +364,7 @@ export function MaterialParameterSubsection({
                   const source = await window.arc.projects.readText(path, scope);
                   const document = JSON.parse(source.text) as MaterialFunctionAssetJson;
                   if (document.kind !== 'materialFunction' || document.version !== 1 || !asset.guid) return null;
-                  return { guid: asset.guid, path: referencePath, name: document.name, document };
+                  return { guid: asset.guid, typeId: asset.typeId, path: referencePath, name: document.name, document };
                 } catch {
                   return null;
                 }
@@ -567,7 +570,11 @@ export function MaterialParameterSubsection({
         throw new Error(selectedResponse.error || 'Selected entity is unavailable');
       const payload = {
         slotId: slot.id,
-        function: { guid: option.guid, pathHint: option.path },
+        function: {
+          guid: option.guid,
+          ...(option.typeId ? { expectedType: option.typeId } : {}),
+          pathHint: option.path,
+        },
         reset: option.guid === slot.resetGuid,
       };
       const path = `${functionCommandPrefix}${bytesToHex(JSON.stringify(payload))}/0`;
@@ -646,13 +653,14 @@ export function MaterialParameterSubsection({
                               label={parameter.name}
                               thumbnailProvider={thumbnailProvider}
                               value={textureValue}
-                              onChange={(texture) =>
+                              onChange={(texture, asset) =>
                                 void commitOverride(parameter, {
                                   parameterId: parameter.nodeId,
                                   name: parameter.name,
                                   type: parameter.type,
                                   kind: parameter.editorKind,
                                   texture,
+                                  ...(asset ? { textureReference: hostAssetReference(asset) ?? undefined } : {}),
                                 })
                               }
                             />
@@ -791,12 +799,13 @@ export function MaterialParameterSubsection({
                     label={parameter.name}
                     thumbnailProvider={thumbnailProvider}
                     value={textureValue}
-                    onChange={(texture) =>
+                    onChange={(texture, asset) =>
                       void commitOverride(parameter, {
                         name: parameter.name,
                         type: parameter.type,
                         kind: parameter.editorKind,
                         texture,
+                        ...(asset ? { textureReference: hostAssetReference(asset) ?? undefined } : {}),
                       })
                     }
                   />
