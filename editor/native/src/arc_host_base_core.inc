@@ -5278,10 +5278,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
-                const auto resolved_material = resolve_editor_asset(state_->assets, state_->asset_registry.get(),
-                                                                    state_->project.root, payload.path);
+                const auto resolved_material =
+                    payload.asset
+                        ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               *payload.asset)
+                        : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               payload.path);
                 if (!resolved_material || !is_material_asset_path(resolved_material->path))
-                    return fail("Material must be an .arcmat or .arcmatinst project or built-in asset", entity);
+                    return fail("Material must reference an .arcmat or .arcmatinst project or built-in asset", entity);
                 std::string message;
                 for (const auto target : targets)
                 {
@@ -5291,18 +5295,28 @@ host_response arc_host::execute(const host_command_envelope& command)
                         return fail(message.empty() ? "Material assignment failed" : message, target);
                 }
                 ensure_scene_authoring_metadata(state_->scene);
-                const auto registry_path = arc::assets::normalize_asset_path(payload.path);
                 auto material_extension = resolved_material->path.extension().string();
                 std::transform(material_extension.begin(), material_extension.end(), material_extension.begin(),
                                [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
                 const auto expected_material_type = material_extension == ".arcmatinst"
                                                         ? arc::assets::asset_types::material_instance
                                                         : arc::assets::asset_types::material;
-                const auto material =
-                    state_->asset_registry
-                        ? state_->asset_registry->resolve(registry_path, expected_material_type)
-                        : arc::assets::asset_reference{.expected_type = expected_material_type,
-                                                       .path_hint = registry_path};
+                arc::assets::asset_reference material;
+                if (payload.asset)
+                {
+                    const auto parsed = parse_host_asset_reference(*payload.asset);
+                    if (!parsed) return fail("Material asset reference is invalid", entity);
+                    material = *parsed;
+                    if (!material.expected_type.valid()) material.expected_type = expected_material_type;
+                }
+                else
+                {
+                    const auto registry_path = arc::assets::normalize_asset_path(payload.path);
+                    material = state_->asset_registry
+                                   ? state_->asset_registry->resolve(registry_path, expected_material_type)
+                                   : arc::assets::asset_reference{.expected_type = expected_material_type,
+                                                                  .path_hint = registry_path};
+                }
                 for (const auto target : targets)
                 {
                     const auto guid = entity_guid_of(state_->scene, target);
