@@ -580,21 +580,19 @@ bool asset_manager::implementation::open_database(std::string& error)
         error = "Asset registry schema is newer or incompatible";
         return false;
     }
-    if (current_version < 2 &&
-        !execute(database,
-                 "BEGIN;"
-                 "UPDATE registry_meta SET value='2' WHERE key='schema_version';"
-                 "COMMIT;",
-                 &error))
+    if (current_version < 2 && !execute(database,
+                                        "BEGIN;"
+                                        "UPDATE registry_meta SET value='2' WHERE key='schema_version';"
+                                        "COMMIT;",
+                                        &error))
         return false;
-    if (current_version < 3 &&
-        !execute(database,
-                 "BEGIN;"
-                 "ALTER TABLE assets ADD COLUMN settings_version INTEGER NOT NULL DEFAULT 1;"
-                 "ALTER TABLE assets ADD COLUMN canonical_settings TEXT NOT NULL DEFAULT '{}';"
-                 "UPDATE registry_meta SET value='3' WHERE key='schema_version';"
-                 "COMMIT;",
-                 &error))
+    if (current_version < 3 && !execute(database,
+                                        "BEGIN;"
+                                        "ALTER TABLE assets ADD COLUMN settings_version INTEGER NOT NULL DEFAULT 1;"
+                                        "ALTER TABLE assets ADD COLUMN canonical_settings TEXT NOT NULL DEFAULT '{}';"
+                                        "UPDATE registry_meta SET value='3' WHERE key='schema_version';"
+                                        "COMMIT;",
+                                        &error))
         return false;
     return load_database(error);
 }

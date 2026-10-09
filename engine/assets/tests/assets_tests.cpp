@@ -329,11 +329,10 @@ TEST_CASE("asset import settings survive restart without falsely marking ready a
         const auto asset = fixture.manager.find("assets/materials/restart.arcmat");
         REQUIRE(asset);
         guid = asset->guid;
-        const auto loaded =
-            fixture.manager
-                .load<source_asset_data>(
-                    {.reference = {asset->guid, asset_types::material, "assets/materials/restart.arcmat"}})
-                .get();
+        const auto loaded = fixture.manager
+                                .load<source_asset_data>({.reference = {asset->guid, asset_types::material,
+                                                                        "assets/materials/restart.arcmat"}})
+                                .get();
         REQUIRE(loaded.succeeded());
         REQUIRE(fixture.manager.find(guid)->state == asset_state::ready);
     }
