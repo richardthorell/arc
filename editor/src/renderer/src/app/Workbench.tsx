@@ -61,6 +61,7 @@ import { ViewportPanel } from '../viewport/ViewportPanel';
 import { WorldEnvironmentInspector } from '../environment/WorldEnvironmentInspector';
 import type { HostWorldEnvironment } from '../environment/environmentTypes';
 import { InspectorPanel as DataDrivenInspector } from '../inspector/InspectorPanel';
+import type { AssetPickerItem } from '../inspector/AssetPicker';
 import type { HostProjectComponentSchema } from '../inspector/componentSchemas';
 import type { HostEntityId, HostResponse, InspectorEntitySnapshot } from '../inspector/inspectorTypes';
 import {
@@ -1384,7 +1385,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     if (response.succeeded) await refreshWorldEnvironment(hostEntityKey(worldEnvironment.entity));
   };
 
-  const applyWorldEnvironmentHdri = async (path: string, asset?: AssetItem): Promise<boolean> => {
+  const applyWorldEnvironmentHdri = async (path: string, asset?: AssetPickerItem): Promise<boolean> => {
     if (!worldEnvironment) return false;
     if (!startupState?.engineHostConnected) {
       setLastCommand('Native editor host is unavailable');
@@ -2478,7 +2479,7 @@ function WorldSettingsPanel({
   thumbnailProvider: (path: string) => Promise<string | null>;
   onEnvironmentChange: (environment: HostWorldEnvironment) => void;
   onEnvironmentPreset: (preset: string) => void;
-  onEnvironmentHdri: (path: string, asset?: AssetItem) => Promise<boolean> | boolean | void;
+  onEnvironmentHdri: (path: string, asset?: AssetPickerItem) => Promise<boolean> | boolean | void;
 }) {
   return (
     <section className="world-settings-panel">
