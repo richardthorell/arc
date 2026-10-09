@@ -5,8 +5,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
+#include <utility>
 
 namespace arc::assets
 {
@@ -135,8 +137,11 @@ sound_asset_parse_result parse_sound_asset_json(std::string_view source)
         return sound_failure(sound_asset_error_code::unsupported_source,
                              "Sound source must use an asset-root-relative path");
     const auto normalized = source_path.lexically_normal();
+    auto extension = normalized.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
     if (normalized.empty() || normalized.native().starts_with(std::filesystem::path("..").native()) ||
-        normalized.extension() != ".wav")
+        extension != ".wav")
         return sound_failure(sound_asset_error_code::unsupported_source,
                              "Sound source must reference a .wav file inside the asset root");
 
