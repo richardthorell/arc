@@ -277,6 +277,36 @@ TEST_CASE("asset manager scans persists moves and loads source generations")
     REQUIRE(fixture.manager.find("assets/materials/renamed.arcmat")->guid == material->guid);
 }
 
+TEST_CASE("asset references resolve by GUID without redirecting through stale path hints")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    project.write("materials/stone.arcmat", "{}");
+    project.write("materials/other.arcmat", "{}");
+    asset_fixture fixture(project);
+
+    const auto stone = fixture.manager.find("assets/materials/stone.arcmat");
+    const auto other = fixture.manager.find("assets/materials/other.arcmat");
+    REQUIRE(stone);
+    REQUIRE(other);
+
+    const asset_reference stable{stone->guid, asset_types::material, "assets/materials/other.arcmat"};
+    const auto resolved = fixture.manager.find(stable);
+    REQUIRE(resolved);
+    CHECK(resolved->guid == stone->guid);
+
+    const asset_reference missing{generate_asset_guid(), asset_types::material, "assets/materials/other.arcmat"};
+    CHECK_FALSE(fixture.manager.find(missing).has_value());
+
+    const asset_reference legacy{{}, asset_types::material, "assets/materials/other.arcmat"};
+    const auto legacy_resolved = fixture.manager.find(legacy);
+    REQUIRE(legacy_resolved);
+    CHECK(legacy_resolved->guid == other->guid);
+
+    const asset_reference wrong_type{stone->guid, asset_types::texture_2d, "assets/materials/stone.arcmat"};
+    CHECK_FALSE(fixture.manager.find(wrong_type).has_value());
+}
+
 TEST_CASE("asset dependency cycles are rejected and reverse dependencies become stale")
 {
     using namespace arc::assets;
