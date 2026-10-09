@@ -48,6 +48,8 @@ export type AssetItem = {
     | 'material'
     | 'materialInstance'
     | 'materialFunction'
+    | 'sound'
+    | 'audio'
     | 'flow'
     | 'texture'
     | 'environment'

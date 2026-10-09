@@ -7703,6 +7703,8 @@ host_project_assets_snapshot arc_host::project_assets_snapshot() const
             if (type == arc::assets::asset_types::material) return "material";
             if (type == arc::assets::asset_types::material_instance) return "materialInstance";
             if (type == arc::assets::asset_types::material_function) return "materialFunction";
+            if (type == arc::assets::asset_types::sound) return "sound";
+            if (type == arc::assets::asset_types::audio_clip) return "audio";
             if (type == arc::assets::asset_types::shader) return "shader";
             if (type == arc::assets::asset_types::texture_2d) return "texture";
             if (type == arc::assets::asset_types::environment) return "environment";

@@ -1,4 +1,5 @@
 #include "asset_manager_internal.h"
+#include <arc/assets/audio.h>
 
 #include <nlohmann/json.hpp>
 
@@ -179,7 +180,7 @@ std::string column_text(sqlite3_stmt* statement, int column)
 bool uses_asset_root_relative_references(asset_type_id type) noexcept
 {
     return type == asset_types::material || type == asset_types::material_function ||
-           type == asset_types::material_instance;
+           type == asset_types::material_instance || type == asset_types::sound;
 }
 
 asset_reference dependency_from_path(const asset_import_context& context, std::string_view text,
@@ -303,6 +304,52 @@ void collect_shader_dependencies(const asset_import_context& context, std::vecto
     }
 }
 
+class wav_source_importer final : public asset_importer
+{
+public:
+    wav_source_importer()
+    {
+        descriptor_.id = importer_ids::audio;
+        descriptor_.name = "WAV Audio";
+        descriptor_.extensions = {".wav"};
+        descriptor_.output_types = {asset_types::audio_clip};
+    }
+
+    const asset_importer_descriptor& descriptor() const noexcept override
+    {
+        return descriptor_;
+    }
+
+    asset_import_result import(const asset_import_context& context) override
+    {
+        if (context.cancellation.stop_requested())
+            return {.error = {.code = asset_error_code::cancelled,
+                              .guid = context.reference.guid,
+                              .path = context.source_path,
+                              .message = "Audio import was cancelled"}};
+
+        const auto parsed = parse_wav(context.source_bytes);
+        if (!parsed.succeeded())
+            return {.error = {.code = asset_error_code::import_failed,
+                              .guid = context.reference.guid,
+                              .path = context.source_path,
+                              .message = parsed.message}};
+
+        auto data = std::make_shared<wav_source_data>();
+        data->info = parsed.info;
+        data->bytes.assign(context.source_bytes.begin(), context.source_bytes.end());
+
+        asset_import_result result;
+        result.payload =
+            asset_payload::make<wav_source_data>(asset_types::audio_clip, std::move(data), context.source_bytes.size());
+        result.residency = asset_residency::cpu;
+        return result;
+    }
+
+private:
+    asset_importer_descriptor descriptor_;
+};
+
 class source_blob_importer final : public asset_importer
 {
 public:
@@ -330,6 +377,18 @@ public:
                               .path = context.source_path,
                               .message = "Asset import was cancelled"}};
         }
+        if (context.metadata.type == asset_types::sound)
+        {
+            const std::string source(reinterpret_cast<const char*>(context.source_bytes.data()),
+                                     context.source_bytes.size());
+            const auto parsed = parse_sound_asset_json(source);
+            if (!parsed.succeeded())
+                return {.error = {.code = asset_error_code::import_failed,
+                                  .guid = context.reference.guid,
+                                  .path = context.source_path,
+                                  .message = parsed.message}};
+        }
+
         auto data = std::make_shared<source_asset_data>();
         data->source_path = context.source_path;
         data->source_hash = context.source_hash;
@@ -344,7 +403,8 @@ public:
              .residency = asset_residency::derived});
         if (context.metadata.type == asset_types::scene || context.metadata.type == asset_types::prefab ||
             context.metadata.type == asset_types::material || context.metadata.type == asset_types::material_function ||
-            context.metadata.type == asset_types::material_instance || context.source_path.extension() == ".gltf")
+            context.metadata.type == asset_types::material_instance || context.metadata.type == asset_types::sound ||
+            context.source_path.extension() == ".gltf")
         {
             const auto document = nlohmann::json::parse(reinterpret_cast<const char*>(context.source_bytes.data()),
                                                         reinterpret_cast<const char*>(context.source_bytes.data()) +
@@ -400,8 +460,9 @@ std::vector<std::unique_ptr<asset_importer>> default_importers()
                                                             "Collision", std::vector<std::string>{".arccollision"}));
     result.push_back(std::make_unique<source_blob_importer>(importer_ids::navigation, asset_types::navigation,
                                                             "Navigation", std::vector<std::string>{".arcnav"}));
-    result.push_back(std::make_unique<source_blob_importer>(importer_ids::audio, asset_types::audio_clip, "Audio",
-                                                            std::vector<std::string>{".wav", ".ogg", ".mp3", ".flac"}));
+    result.push_back(std::make_unique<source_blob_importer>(importer_ids::sound, asset_types::sound, "ARC Sound",
+                                                            std::vector<std::string>{".arcsound"}));
+    result.push_back(std::make_unique<wav_source_importer>());
     return result;
 }
 
