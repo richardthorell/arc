@@ -22,10 +22,12 @@ const readFunction = (name: string) =>
 describe('built-in Material Functions', () => {
   it('ships the initial reusable color-source library', () => {
     expect(functionFiles()).toEqual([
+      'channel_mask.arcmatfn',
       'checker.arcmatfn',
       'default_base_color.arcmatfn',
       'gradient.arcmatfn',
       'noise.arcmatfn',
+      'unpack_orm.arcmatfn',
       'uv_transform.arcmatfn',
     ]);
   });
@@ -35,11 +37,17 @@ describe('built-in Material Functions', () => {
     expect(asset.kind).toBe('materialFunction');
     expect(asset.version).toBe(1);
     expect(isMaterialGraph(asset.graph)).toBe(true);
-    expect(asset.outputs).toEqual(
-      file === 'uv_transform.arcmatfn'
-        ? [{ id: 'uv', name: 'UV', type: 'vec2' }]
-        : [{ id: 'color', name: 'Color', type: 'vec3' }],
-    );
+    const expectedOutputs: Record<string, Array<{ id: string; name: string; type: string }>> = {
+      channel_mask: [{ id: 'value', name: 'Value', type: 'float' }],
+      unpack_orm: [
+        { id: 'ao', name: 'Ambient Occlusion', type: 'float' },
+        { id: 'roughness', name: 'Roughness', type: 'float' },
+        { id: 'metallic', name: 'Metallic', type: 'float' },
+      ],
+      uv_transform: [{ id: 'uv', name: 'UV', type: 'vec2' }],
+    };
+    const key = file.replace('.arcmatfn', '');
+    expect(asset.outputs).toEqual(expectedOutputs[key] ?? [{ id: 'color', name: 'Color', type: 'vec3' }]);
     expect(asset.graph.nodes.filter((node) => node.type === 'functionOutput')).toHaveLength(1);
     expect(asset.graph.nodes.some((node) => node.type === 'functionSlot')).toBe(false);
   });
