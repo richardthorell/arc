@@ -454,7 +454,7 @@ describe('ViewportPanel', () => {
       configurable: true,
       value: {
         host: {
-          command: vi.fn().mockResolvedValue({ succeeded: true }),
+          command,
           query: vi.fn().mockResolvedValue({
             succeeded: true,
             payload: {
@@ -513,6 +513,16 @@ describe('ViewportPanel', () => {
     expect(selected).toHaveAttribute('aria-checked', 'true');
     expect(selected.querySelector('.arc-viewport-menu-check')).toHaveTextContent('✓');
     expect(within(menu).getByRole('menuitemradio', { name: 'Unlit' })).toHaveAttribute('aria-checked', 'false');
+    const emission = within(menu).getByRole('menuitemradio', { name: 'Emission' });
+    expect(emission).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(emission);
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith(
+        'viewport.setRenderOptions',
+        expect.objectContaining({ renderMode: 'shaded', visualization: 'emission' }),
+      ),
+    );
+    expect(view.getByRole('button', { name: 'Emission' })).toHaveAttribute('aria-haspopup', 'menu');
   });
 
   it('selects texture residency debug visualization modes', async () => {
