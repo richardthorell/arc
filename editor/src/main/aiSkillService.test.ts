@@ -148,8 +148,8 @@ describe('AiSkillService', () => {
     ]);
 
     const materialAuthoring = snapshot.skills.find((skill) => skill.manifest.id === 'material-authoring');
-    expect(materialAuthoring?.manifest.version).toBe('1.1.0');
-    expect(materialAuthoring?.instructions).toContain('Use **Standard Lit** for ordinary opaque');
+    expect(materialAuthoring?.manifest.version).toBe('1.2.0');
+    expect(materialAuthoring?.instructions).toContain('Use **Standard Lit** where its *currently discovered* inputs');
     expect(materialAuthoring?.instructions).toContain('Base Color Texture');
     expect(materialAuthoring?.instructions).toContain('Base Color Tint');
   });
