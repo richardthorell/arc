@@ -161,15 +161,16 @@ TEST_CASE("Texture Coordinate explicitly supports UV0 only")
     CHECK(result.error().message.find("supports UV0 only") != std::string::npos);
 }
 
-TEST_CASE("Material Function Slots specialize compatible functions and reflect replacement defaults")
+TEST_CASE("Material Function Calls select from authored compatible functions and reflect replacement defaults")
 {
     constexpr std::string_view graph = R"({
       "version":1,
       "nodes":[
         {"id":"out","type":"output","values":{}},
         {"id":"base","type":"vector3","values":{"value":[0.2,0.4,0.8]}},
-        {"id":"base-color-source","type":"functionSlot",
-         "values":{"slotId":"base-color-source","name":"Base Color Source","path":"functions/default.arcmatfn"}}
+        {"id":"base-color-source","type":"functionCall",
+         "values":{"slotId":"base-color-source","name":"Base Color Source","path":"functions/default.arcmatfn",
+                   "functions":[{"path":"functions/default.arcmatfn"},{"path":"functions/scaled.arcmatfn"}]}}
       ],
       "connections":[
         {"id":"1","from":{"nodeId":"base","pin":"value"},"to":{"nodeId":"base-color-source","pin":"base"}},
@@ -254,14 +255,15 @@ TEST_CASE("Material Function Slots specialize compatible functions and reflect r
     CHECK(repeated.value().descriptor.function_slots == specialized.value().descriptor.function_slots);
 }
 
-TEST_CASE("Material Function Slots reject incompatible and unknown selections")
+TEST_CASE("Material Function Calls reject incompatible and unknown selections")
 {
     constexpr std::string_view graph = R"({
       "version":1,
       "nodes":[
         {"id":"out","type":"output","values":{}},
-        {"id":"slot","type":"functionSlot",
-         "values":{"slotId":"surface-source","name":"Surface Source","path":"functions/default.arcmatfn"}}
+        {"id":"slot","type":"functionCall",
+         "values":{"slotId":"surface-source","name":"Surface Source","path":"functions/default.arcmatfn",
+                   "functions":[{"path":"functions/default.arcmatfn"},{"path":"functions/bad.arcmatfn"}]}}
       ],
       "connections":[
         {"id":"1","from":{"nodeId":"slot","pin":"result"},"to":{"nodeId":"out","pin":"baseColor"}}
