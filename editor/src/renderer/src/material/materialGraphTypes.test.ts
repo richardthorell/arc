@@ -225,6 +225,23 @@ describe('material graph schema', () => {
     expect(rangeFor('attenuationDistance')).toBeUndefined();
   });
 
+  it('creates Function Calls with stable selector identity and authored function references', () => {
+    const call = createMaterialNode('functionCall', [20, 30], {
+      name: 'Base Color Source',
+      path: 'functions/default.arcmatfn',
+      functions: [{ path: 'functions/default.arcmatfn' }, { path: 'functions/checker.arcmatfn' }],
+      outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+    });
+    expect(call.values.slotId).toMatch(/^slot-functionCall-/);
+    expect(call.values.functions).toEqual([
+      { path: 'functions/default.arcmatfn' },
+      { path: 'functions/checker.arcmatfn' },
+    ]);
+    const definition = materialNodeDefinition(call);
+    expect(definition.title).toBe('Base Color Source');
+    expect(definition.outputs).toEqual([{ id: 'color', label: 'Color', type: 'vec3' }]);
+  });
+
   it('creates Function Slots with stable selector identity and typed function pins', () => {
     const slot = createMaterialNode('functionSlot', [20, 30], {
       name: 'Base Color Source',
