@@ -375,13 +375,13 @@ describe('ViewportPanel', () => {
 
     fireEvent.click(view.getByText('Show'));
     const grid = await view.findByRole('menuitemcheckbox', { name: /Grid/ });
-    expect(grid).toHaveAttribute('aria-checked', 'true');
+    expect(grid).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(grid);
 
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
         'viewport.setRenderOptions',
-        expect.objectContaining({ grid: false, renderMode: 'shaded' }),
+        expect.objectContaining({ grid: true, renderMode: 'shaded' }),
       ),
     );
   });
@@ -488,8 +488,8 @@ describe('ViewportPanel', () => {
         onReconnect={vi.fn().mockResolvedValue(undefined)}
       />,
     );
-    fireEvent.click(view.getAllByText('Lit')[0]);
-    fireEvent.click(await view.findByText('Texture Desired Mip'));
+    fireEvent.click(view.getByRole('button', { name: 'Lit' }));
+    fireEvent.click(await view.findByRole('button', { name: 'Texture Desired Mip' }));
 
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(
@@ -497,6 +497,63 @@ describe('ViewportPanel', () => {
         expect.objectContaining({ renderMode: 'shaded', visualization: 'textureDesiredMip' }),
       ),
     );
+    expect(view.getByRole('button', { name: 'Texture Desired Mip' })).toHaveAttribute('aria-haspopup', 'menu');
+    expect(view.queryByRole('menu', { name: 'Lit menu' })).not.toBeInTheDocument();
+  });
+
+  it('portals viewport menus and dismisses them when focus moves elsewhere', async () => {
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          command: vi.fn().mockResolvedValue({ succeeded: true }),
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 640,
+              height: 480,
+              fps: 60,
+              frameTimeMs: 16.6,
+              drawCalls: 1,
+              frameIndex: 1,
+              submitted: true,
+              renderOptions: {
+                renderMode: 'shaded',
+                visualization: 'standard',
+                shadows: true,
+                grid: false,
+              },
+            },
+          }),
+        },
+        viewport: {
+          attach: vi.fn().mockResolvedValue({ succeeded: true }),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+        },
+      },
+    });
+
+    const view = render(
+      <div>
+        <ViewportPanel
+          project={null}
+          startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'native' }}
+          onCommand={vi.fn()}
+          onReconnect={vi.fn().mockResolvedValue(undefined)}
+        />
+        <button type="button">Outside</button>
+      </div>,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: 'Show' }));
+    const menu = await view.findByRole('menu', { name: 'Show menu' });
+    expect(view.container.contains(menu)).toBe(false);
+    expect(menu).toHaveClass('ui-context-menu-portal', 'arc-viewport-floating-menu');
+
+    fireEvent.focus(view.getByRole('button', { name: 'Outside' }));
+    expect(view.queryByRole('menu', { name: 'Show menu' })).not.toBeInTheDocument();
   });
 
   it('retries an idle native viewport attachment until rendering starts', async () => {
