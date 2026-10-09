@@ -180,6 +180,8 @@ export type MaterialEditorParameter = {
   type: MaterialGraphValueType;
   nodeType: MaterialGraphNodeType;
   editorKind: MaterialEditorParameterKind;
+  group?: string;
+  order?: number;
   range?: { min: number; max: number };
 };
 
@@ -222,6 +224,10 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
         type,
         nodeType: node.type,
         editorKind,
+        ...(node.parameter.group?.trim() ? { group: node.parameter.group.trim() } : {}),
+        ...(typeof node.parameter.order === 'number' && Number.isFinite(node.parameter.order)
+          ? { order: node.parameter.order }
+          : {}),
         ...(range ? { range } : {}),
       },
     ];
