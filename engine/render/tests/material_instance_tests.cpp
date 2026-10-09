@@ -114,9 +114,10 @@ TEST_CASE("material instance applies texture overrides to runtime texture bindin
 {
     material_definition_descriptor parent;
     parent.material.handle = material_handle{29};
-    parent.material.runtime_program = std::make_shared<material_runtime_program>();
-    parent.material.runtime_program->texture_bindings.push_back(
+    auto runtime_program = std::make_shared<material_runtime_program>();
+    runtime_program->texture_bindings.push_back(
         {.slot = 2, .parameter_id = shader_parameter_id{909}, .type = shader_parameter_type::texture_2d});
+    parent.material.runtime_program = std::move(runtime_program);
     parent.material.runtime_textures.resize(3);
     parent.parameter_layout.push_back(
         {.id = shader_parameter_id{909}, .name = "Base Color Texture", .type = shader_parameter_type::texture_2d});
