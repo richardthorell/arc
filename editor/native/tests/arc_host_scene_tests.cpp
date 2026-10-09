@@ -54,6 +54,11 @@ TEST_CASE("arc host executes scene commands and exposes snapshots")
     const auto opened =
         host->open_project({.name = "Host Test", .root = std::filesystem::temp_directory_path()}, assets);
     REQUIRE(opened.succeeded);
+    // The hierarchy starts without an implicit Main Camera (or Floor) selection.
+    REQUIRE_FALSE(host->selected_entity_snapshot().entity.valid());
+    const auto initial_scene = host->scene_snapshot();
+    REQUIRE(std::none_of(initial_scene.entities.begin(), initial_scene.entities.end(),
+                         [](const auto& entity) { return entity.selected; }));
 
     const auto created = host->execute(arc::editor::host_command_envelope{
         .request_id = 1,
