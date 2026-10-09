@@ -38,6 +38,7 @@ type MaterialParameterAsset = {
 
 type InstanceOverride = {
   parameterId?: string;
+  slotId?: string;
   name: string;
   type: MaterialGraphValueType;
   kind: MaterialEditorParameterKind;
@@ -47,6 +48,7 @@ type InstanceOverride = {
 
 type DisplayParameter = {
   nodeId: string;
+  slotId?: string;
   name: string;
   type: MaterialGraphValueType;
   editorKind: MaterialEditorParameterKind;
@@ -393,6 +395,7 @@ export function MaterialParameterSubsection({
             return [
               {
                 nodeId: parameterId,
+                slotId: id,
                 name: pin.name,
                 type: pin.type,
                 editorKind: functionEditorKind(pin),
@@ -452,9 +455,10 @@ export function MaterialParameterSubsection({
       if (!selectedResponse.succeeded || !selectedResponse.payload)
         throw new Error(selectedResponse.error || 'Selected entity is unavailable');
       const payload = next
-        ? { ...next, parameterId: parameter.nodeId }
+        ? { ...next, parameterId: parameter.nodeId, ...(parameter.slotId ? { slotId: parameter.slotId } : {}) }
         : {
             parameterId: parameter.nodeId,
+            ...(parameter.slotId ? { slotId: parameter.slotId } : {}),
             name: parameter.name,
             type: parameter.type,
             kind: parameter.editorKind,
@@ -490,6 +494,7 @@ export function MaterialParameterSubsection({
                       return [
                         {
                           nodeId: materialFunctionSlotParameterId(candidate.id, option.guid, pin.id),
+                          slotId: candidate.id,
                           name: pin.name,
                           type: pin.type,
                           editorKind: functionEditorKind(pin),
