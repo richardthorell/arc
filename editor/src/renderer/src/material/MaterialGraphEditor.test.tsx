@@ -51,6 +51,31 @@ describe('MaterialGraphEditor', () => {
     expect(group).toHaveStyle({ position: 'absolute' });
   });
 
+  it('moves member nodes with a dragged material group', async () => {
+    const graph = createDefaultMaterialGraph();
+    const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness')!;
+    graph.groups = [{ id: 'surface', name: 'Surface', nodeIds: [roughness.id], position: [40, 40], size: [500, 320] }];
+    const onGraphChange = vi.fn();
+
+    render(<MaterialGraphEditor document={document} graph={graph} onGraphChange={onGraphChange} />);
+
+    const origin = [...roughness.position] as [number, number];
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Surface' }), {
+      button: 0,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 160 });
+
+    await waitFor(() => expect(onGraphChange).toHaveBeenCalled());
+    const nextGraph = onGraphChange.mock.calls.at(-1)![0];
+    const nextRoughness = nextGraph.nodes.find((node: { id: string }) => node.id === roughness.id);
+    const nextGroup = nextGraph.groups.find((group: { id: string }) => group.id === 'surface');
+
+    expect(nextRoughness.position[0] - origin[0]).toBe(nextGroup.position[0] - 40);
+    expect(nextRoughness.position[1] - origin[1]).toBe(nextGroup.position[1] - 40);
+  });
+
   it('renders shared diagnostic details and focuses the affected node', () => {
     const graph = createDefaultMaterialGraph();
     const roughness = graph.nodes.find((node) => node.parameter?.name === 'Roughness');
