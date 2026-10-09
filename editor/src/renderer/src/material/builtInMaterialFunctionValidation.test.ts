@@ -26,6 +26,7 @@ describe('built-in Material Functions', () => {
       'default_base_color.arcmatfn',
       'gradient.arcmatfn',
       'noise.arcmatfn',
+      'uv_transform.arcmatfn',
     ]);
   });
 
@@ -34,7 +35,11 @@ describe('built-in Material Functions', () => {
     expect(asset.kind).toBe('materialFunction');
     expect(asset.version).toBe(1);
     expect(isMaterialGraph(asset.graph)).toBe(true);
-    expect(asset.outputs).toEqual([{ id: 'color', name: 'Color', type: 'vec3' }]);
+    expect(asset.outputs).toEqual(
+      file === 'uv_transform.arcmatfn'
+        ? [{ id: 'uv', name: 'UV', type: 'vec2' }]
+        : [{ id: 'color', name: 'Color', type: 'vec3' }],
+    );
     expect(asset.graph.nodes.filter((node) => node.type === 'functionOutput')).toHaveLength(1);
     expect(asset.graph.nodes.some((node) => node.type === 'functionSlot')).toBe(false);
   });
