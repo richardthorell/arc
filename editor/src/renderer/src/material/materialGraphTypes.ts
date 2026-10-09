@@ -675,7 +675,7 @@ export const materialGraphCompileFingerprint = (graph: MaterialGraph): string =>
       id: node.id,
       type: node.type,
       values: node.values,
-      parameter: node.parameter,
+      parameter: node.parameter ? { exposed: node.parameter.exposed, name: node.parameter.name } : undefined,
     })),
     connections: graph.connections,
   });
