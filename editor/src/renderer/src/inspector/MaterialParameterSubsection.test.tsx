@@ -24,7 +24,8 @@ const material = {
 };
 const texture = {
   id: 'albedo',
-  guid: 'albedo-guid',
+  guid: 'aaaaaaaa11111111bbbbbbbb22222222',
+  typeId: 'a7ca55e7000000010000000000000005',
   name: 'albedo.png',
   path: 'assets/textures/albedo.png',
   kind: 'texture',
@@ -283,6 +284,18 @@ describe('MaterialPicker exported parameters', () => {
         path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_parameter__[0-9a-f]+\/0$/),
       }),
     );
+    const parameterPath = command.mock.calls[0]?.[1]?.path as string;
+    const encodedParameter = parameterPath.match(/__arc_material_parameter__([0-9a-f]+)\/0$/)?.[1] ?? '';
+    const decodedParameter = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(encodedParameter.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []),
+      ),
+    );
+    expect(decodedParameter.textureReference).toEqual({
+      guid: 'aaaaaaaa11111111bbbbbbbb22222222',
+      expectedType: 'a7ca55e7000000010000000000000005',
+      pathHint: 'assets/textures/albedo.png',
+    });
   });
 
   it('creates a sparse instance override when a scalar changes', async () => {
