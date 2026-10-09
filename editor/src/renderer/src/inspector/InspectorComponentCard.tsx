@@ -102,7 +102,7 @@ export function InspectorComponentCard<TContext extends object>({
   assets?: ReadonlyArray<AssetPickerItem>;
   thumbnailProvider?: AssetThumbnailProvider;
   onToggle: () => void;
-  onValue: (path: string, value: unknown, settled: boolean) => void;
+  onValue: (path: string, value: unknown, settled: boolean, asset?: AssetPickerItem) => void;
   onAction?: (action: string) => void;
   headerAccessory?: ReactNode;
 }) {
@@ -156,11 +156,11 @@ export function InspectorComponentCard<TContext extends object>({
           showLabel={false}
           thumbnailProvider={thumbnailProvider}
           value={(getPathValue(context, 'meshRenderer.meshPath') as string) || ''}
-          onChange={(path) => {
+          onChange={(path, asset) => {
             const assignment = path.startsWith(primitiveMeshUriPrefix)
               ? `${primitiveAssignmentPrefix}${path.slice(primitiveMeshUriPrefix.length)}`
               : `${meshAssignmentPrefix}${path}`;
-            onValue('meshRenderer.materialPath', assignment, true);
+            onValue('meshRenderer.materialPath', assignment, true, asset);
           }}
         />
       ),
@@ -190,7 +190,7 @@ export function InspectorComponentCard<TContext extends object>({
 
     const linked = field.type === 'vector3' && Boolean(field.linked) && !unlinkedFields.has(field.path);
     const value = getPathValue(context, field.path);
-    const fieldValue = (next: unknown, settled: boolean) => onValue(field.path, next, settled);
+    const fieldValue = (next: unknown, settled: boolean, asset?: AssetPickerItem) => onValue(field.path, next, settled, asset);
     const label =
       field.type === 'number' ? (
         <NumberControlLabel
@@ -611,7 +611,7 @@ function SchemaField<TContext extends object>({
   assets: ReadonlyArray<AssetPickerItem>;
   thumbnailProvider?: AssetThumbnailProvider;
   onToggleLinked: () => void;
-  onValue: (value: unknown, settled: boolean) => void;
+  onValue: (value: unknown, settled: boolean, asset?: AssetPickerItem) => void;
   onAction: (action: string) => void;
 }) {
   const value = getPathValue(context, field.path);
@@ -714,7 +714,7 @@ function SchemaField<TContext extends object>({
           showLabel={false}
           thumbnailProvider={thumbnailProvider}
           value={(value as string) || ''}
-          onChange={(next) => onValue(next, true)}
+          onChange={(next, asset) => onValue(next, true, asset)}
         />
       );
     }
@@ -732,7 +732,7 @@ function SchemaField<TContext extends object>({
             showLabel={false}
             thumbnailProvider={thumbnailProvider}
             value={(value as string) || ''}
-            onChange={(next) => onValue(next, true)}
+            onChange={(next, asset) => onValue(next, true, asset)}
           />
         );
       }
@@ -751,7 +751,7 @@ function SchemaField<TContext extends object>({
           showLabel={false}
           thumbnailProvider={thumbnailProvider}
           value={(value as string) || ''}
-          onChange={(next) => onValue(next, true)}
+          onChange={(next, asset) => onValue(next, true, asset)}
         />
       );
     }
@@ -768,7 +768,7 @@ function SchemaField<TContext extends object>({
           showParameters={false}
           thumbnailProvider={thumbnailProvider}
           value={(value as string) || ''}
-          onChange={(next) => onValue(next, true)}
+          onChange={(next, asset) => onValue(next, true, asset)}
         />
       );
     }
@@ -784,7 +784,7 @@ function SchemaField<TContext extends object>({
         showLabel={false}
         thumbnailProvider={thumbnailProvider}
         value={(value as string) || ''}
-        onChange={(next) => onValue(next, true)}
+        onChange={(next, asset) => onValue(next, true, asset)}
       />
     );
   }
