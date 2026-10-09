@@ -126,3 +126,21 @@ TEST_CASE(".arcsound schema rejects unsafe or non-WAV source references")
     CHECK_FALSE(compressed.succeeded());
     CHECK(compressed.code == arc::assets::sound_asset_error_code::unsupported_source);
 }
+
+
+TEST_CASE("Sound and WAV paths have distinct first-class asset classifications")
+{
+    using namespace arc::assets;
+
+    const auto sound = classify_asset_path("Content/Audio/Footstep.arcsound");
+    REQUIRE(sound);
+    CHECK(sound->first == asset_types::sound);
+    CHECK(sound->second == importer_ids::sound);
+
+    const auto wav = classify_asset_path("Content/Audio/footstep.wav");
+    REQUIRE(wav);
+    CHECK(wav->first == asset_types::audio_clip);
+    CHECK(wav->second == importer_ids::audio);
+
+    CHECK_FALSE(classify_asset_path("Content/Audio/music.ogg"));
+}
