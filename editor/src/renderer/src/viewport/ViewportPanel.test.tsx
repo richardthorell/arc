@@ -449,6 +449,7 @@ describe('ViewportPanel', () => {
   });
 
   it('checks the active camera, projection, and visualization menu choices', async () => {
+    const command = vi.fn().mockResolvedValue({ succeeded: true });
     Object.defineProperty(window, 'arc', {
       configurable: true,
       value: {
