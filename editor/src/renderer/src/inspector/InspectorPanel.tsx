@@ -382,9 +382,10 @@ export function InspectorPanel({
           presetOverrideMask: 0,
         };
       } else if (path === 'water.presetPath') {
+        const presetReference = selectedAsset ? hostAssetReference(selectedAsset) : null;
         normalizedWater = {
           ...normalizedWater,
-          presetGuid: selectedAsset?.guid || selectedAsset?.id || '',
+          presetGuid: presetReference?.guid || '',
           presetOverrideMask: next.water.presetPath
             ? draft?.water?.presetPath
               ? next.water.presetOverrideMask
@@ -404,7 +405,11 @@ export function InspectorPanel({
       const water = {
         ...normalizedWater,
         materialGuid:
-          path === 'water.materialPath' ? selectedAsset?.guid || selectedAsset?.id || '' : normalizedWater.materialGuid,
+          path === 'water.materialPath'
+            ? selectedAsset
+              ? hostAssetReference(selectedAsset)?.guid || ''
+              : ''
+            : normalizedWater.materialGuid,
         absorption: [normalizedWater.absorption.x, normalizedWater.absorption.y, normalizedWater.absorption.z],
         scattering: [normalizedWater.scattering.x, normalizedWater.scattering.y, normalizedWater.scattering.z],
         shapePoints: normalizedWater.shapePoints.map((point) => ({
