@@ -1056,9 +1056,22 @@ export function ViewportPanel({
         </div>
         <div className="arc-viewport-view-options">
           <ViewportDropdown label={cameraSourceLabel} className="viewport-camera-source-menu" width={200}>
-            <button onClick={() => void selectCameraSource('editor')}>Editor Camera</button>
+            <button
+              role="menuitemradio"
+              aria-checked={cameraSourceId === 'editor'}
+              onClick={() => void selectCameraSource('editor')}
+            >
+              <span className="arc-viewport-menu-check">{cameraSourceId === 'editor' ? '✓' : ''}</span>
+              Editor Camera
+            </button>
             {sceneCameras.map((camera) => (
-              <button key={camera.id} onClick={() => void selectCameraSource(camera.id)}>
+              <button
+                key={camera.id}
+                role="menuitemradio"
+                aria-checked={cameraSourceId === camera.id}
+                onClick={() => void selectCameraSource(camera.id)}
+              >
+                <span className="arc-viewport-menu-check">{cameraSourceId === camera.id ? '✓' : ''}</span>
                 {camera.name}
               </button>
             ))}
@@ -1070,27 +1083,63 @@ export function ViewportPanel({
             width={180}
           >
             {['perspective', 'top', 'bottom', 'front', 'back', 'left', 'right'].map((mode) => (
-              <button key={mode} onClick={() => void setProjectionMode(mode)}>
+              <button
+                key={mode}
+                role="menuitemradio"
+                aria-checked={projection === mode}
+                onClick={() => void setProjectionMode(mode)}
+              >
+                <span className="arc-viewport-menu-check">{projection === mode ? '✓' : ''}</span>
                 {mode[0].toUpperCase() + mode.slice(1)}
               </button>
             ))}
           </ViewportDropdown>
           <ViewportDropdown label={viewModeLabel} className="viewport-mode-menu" width={230}>
-            <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'standard' })}>
+            <button
+              role="menuitemradio"
+              aria-checked={
+                renderOptions.renderMode === 'shaded' &&
+                (renderOptions.visualization === 'standard' || renderOptions.visualization === 'none')
+              }
+              onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'standard' })}
+            >
+              <span className="arc-viewport-menu-check">
+                {renderOptions.renderMode === 'shaded' &&
+                (renderOptions.visualization === 'standard' || renderOptions.visualization === 'none')
+                  ? '✓'
+                  : ''}
+              </span>
               Lit
             </button>
-            <button onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'lighting' })}>
+            <button
+              role="menuitemradio"
+              aria-checked={renderOptions.renderMode === 'shaded' && renderOptions.visualization === 'lighting'}
+              onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: 'lighting' })}
+            >
+              <span className="arc-viewport-menu-check">
+                {renderOptions.renderMode === 'shaded' && renderOptions.visualization === 'lighting' ? '✓' : ''}
+              </span>
               Unlit
             </button>
-            <button onClick={() => void updateRenderOptions({ renderMode: 'wireframe', visualization: 'standard' })}>
+            <button
+              role="menuitemradio"
+              aria-checked={renderOptions.renderMode === 'wireframe'}
+              onClick={() => void updateRenderOptions({ renderMode: 'wireframe', visualization: 'standard' })}
+            >
+              <span className="arc-viewport-menu-check">{renderOptions.renderMode === 'wireframe' ? '✓' : ''}</span>
               Wireframe
             </button>
             <hr />
             {viewportVisualizationModes.map(([mode, label]) => (
               <button
                 key={mode}
+                role="menuitemradio"
+                aria-checked={renderOptions.renderMode === 'shaded' && renderOptions.visualization === mode}
                 onClick={() => void updateRenderOptions({ renderMode: 'shaded', visualization: mode })}
               >
+                <span className="arc-viewport-menu-check">
+                  {renderOptions.renderMode === 'shaded' && renderOptions.visualization === mode ? '✓' : ''}
+                </span>
                 {label}
               </button>
             ))}
