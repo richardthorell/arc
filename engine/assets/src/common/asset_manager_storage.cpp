@@ -14,7 +14,7 @@ namespace arc::assets
 namespace manager_detail
 {
 
-constexpr std::uint32_t registry_schema_version = 2;
+constexpr std::uint32_t registry_schema_version = 3;
 
 std::string path_key(std::string value)
 {
@@ -534,6 +534,7 @@ bool asset_manager::implementation::open_database(std::string& error)
         "residency INTEGER NOT NULL,generation INTEGER NOT NULL,revision INTEGER NOT NULL,"
         "importer_version INTEGER NOT NULL,imported_version INTEGER NOT NULL,"
         "source_missing INTEGER NOT NULL,has_last_good INTEGER NOT NULL,"
+        "settings_version INTEGER NOT NULL,canonical_settings TEXT NOT NULL,"
         "modified INTEGER NOT NULL,file_size INTEGER NOT NULL);"
         "CREATE UNIQUE INDEX IF NOT EXISTS assets_path ON assets(source_path COLLATE NOCASE);"
         "CREATE TABLE IF NOT EXISTS dependencies("
@@ -555,7 +556,7 @@ bool asset_manager::implementation::open_database(std::string& error)
         "CREATE TABLE IF NOT EXISTS import_generations("
         "asset_guid TEXT NOT NULL,generation INTEGER NOT NULL,dependency_hash TEXT NOT NULL,"
         "published INTEGER NOT NULL,status INTEGER NOT NULL,PRIMARY KEY(asset_guid,generation));"
-        "INSERT OR IGNORE INTO registry_meta(key,value) VALUES('schema_version','1');"
+        "INSERT OR IGNORE INTO registry_meta(key,value) VALUES('schema_version','3');"
         "COMMIT;";
     if (!execute(database, schema, &error)) return false;
     std::uint32_t current_version{};
@@ -579,12 +580,19 @@ bool asset_manager::implementation::open_database(std::string& error)
         error = "Asset registry schema is newer or incompatible";
         return false;
     }
-    if (current_version < registry_schema_version &&
-        !execute(database,
-                 "BEGIN;"
-                 "UPDATE registry_meta SET value='2' WHERE key='schema_version';"
-                 "COMMIT;",
-                 &error))
+    if (current_version < 2 && !execute(database,
+                                        "BEGIN;"
+                                        "UPDATE registry_meta SET value='2' WHERE key='schema_version';"
+                                        "COMMIT;",
+                                        &error))
+        return false;
+    if (current_version < 3 && !execute(database,
+                                        "BEGIN;"
+                                        "ALTER TABLE assets ADD COLUMN settings_version INTEGER NOT NULL DEFAULT 1;"
+                                        "ALTER TABLE assets ADD COLUMN canonical_settings TEXT NOT NULL DEFAULT '{}';"
+                                        "UPDATE registry_meta SET value='3' WHERE key='schema_version';"
+                                        "COMMIT;",
+                                        &error))
         return false;
     return load_database(error);
 }
@@ -623,7 +631,7 @@ bool asset_manager::implementation::load_database(std::string& error)
     sqlite_statement statement(database,
                                "SELECT guid,type,importer,source_path,source_hash,dependency_hash,state,residency,"
                                "generation,revision,importer_version,imported_version,source_missing,has_last_good,"
-                               "modified,file_size FROM assets;");
+                               "settings_version,canonical_settings,modified,file_size FROM assets;");
     if (!statement)
     {
         error = sqlite3_errmsg(database);
@@ -652,10 +660,15 @@ bool asset_manager::implementation::load_database(std::string& error)
         value.snapshot.imported_version = static_cast<std::uint32_t>(sqlite3_column_int(statement.get(), 11));
         value.snapshot.source_missing = sqlite3_column_int(statement.get(), 12) != 0;
         value.snapshot.has_last_good = sqlite3_column_int(statement.get(), 13) != 0;
+        value.metadata.guid = *guid;
+        value.metadata.type = *type;
+        value.metadata.importer = *importer;
+        value.metadata.settings_version = static_cast<std::uint32_t>(sqlite3_column_int(statement.get(), 14));
+        value.metadata.canonical_settings = column_text(statement.get(), 15);
         value.snapshot.read_only = normalize_asset_path(value.snapshot.source_path).starts_with("builtin/");
         value.modified = std::filesystem::file_time_type(
-            std::filesystem::file_time_type::duration(sqlite3_column_int64(statement.get(), 14)));
-        value.file_size = static_cast<std::uint64_t>(sqlite3_column_int64(statement.get(), 15));
+            std::filesystem::file_time_type::duration(sqlite3_column_int64(statement.get(), 16)));
+        value.file_size = static_cast<std::uint64_t>(sqlite3_column_int64(statement.get(), 17));
         value.absolute_path = config.project_root / value.snapshot.source_path;
         value.slot->requested_guid = *guid;
         value.slot->resolved_guid = *guid;
@@ -755,13 +768,15 @@ bool asset_manager::implementation::persist_record(const record& value)
     sqlite_statement statement(
         database, "INSERT INTO assets(guid,type,importer,source_path,source_hash,dependency_hash,state,"
                   "residency,generation,revision,importer_version,imported_version,source_missing,"
-                  "has_last_good,modified,file_size) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+                  "has_last_good,settings_version,canonical_settings,modified,file_size) "
+                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
                   "ON CONFLICT(guid) DO UPDATE SET type=excluded.type,importer=excluded.importer,"
                   "source_path=excluded.source_path,source_hash=excluded.source_hash,"
                   "dependency_hash=excluded.dependency_hash,state=excluded.state,residency=excluded.residency,"
                   "generation=excluded.generation,revision=excluded.revision,"
                   "importer_version=excluded.importer_version,imported_version=excluded.imported_version,"
                   "source_missing=excluded.source_missing,has_last_good=excluded.has_last_good,"
+                  "settings_version=excluded.settings_version,canonical_settings=excluded.canonical_settings,"
                   "modified=excluded.modified,file_size=excluded.file_size;");
     if (!statement) return false;
     const auto& snapshot = value.snapshot;
@@ -779,8 +794,10 @@ bool asset_manager::implementation::persist_record(const record& value)
     sqlite3_bind_int(statement.get(), 12, static_cast<int>(snapshot.imported_version));
     sqlite3_bind_int(statement.get(), 13, snapshot.source_missing ? 1 : 0);
     sqlite3_bind_int(statement.get(), 14, snapshot.has_last_good ? 1 : 0);
-    sqlite3_bind_int64(statement.get(), 15, file_time_value(value.modified));
-    sqlite3_bind_int64(statement.get(), 16, static_cast<sqlite3_int64>(value.file_size));
+    sqlite3_bind_int(statement.get(), 15, static_cast<int>(value.metadata.settings_version));
+    bind_text(statement.get(), 16, value.metadata.canonical_settings);
+    sqlite3_bind_int64(statement.get(), 17, file_time_value(value.modified));
+    sqlite3_bind_int64(statement.get(), 18, static_cast<sqlite3_int64>(value.file_size));
     if (sqlite3_step(statement.get()) != SQLITE_DONE) return false;
 
     execute(database, "BEGIN;");

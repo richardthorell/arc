@@ -317,6 +317,48 @@ TEST_CASE("missing references report repair candidates without changing identity
     REQUIRE(fixture.manager.snapshot().missing_references.size() == 1);
 }
 
+TEST_CASE("asset import settings survive restart without falsely marking ready assets stale")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    project.write("materials/restart.arcmat", R"({"version":3,"name":"Restart"})");
+
+    asset_guid guid;
+    {
+        asset_fixture fixture(project);
+        const auto asset = fixture.manager.find("assets/materials/restart.arcmat");
+        REQUIRE(asset);
+        guid = asset->guid;
+        const auto loaded = fixture.manager
+                                .load<source_asset_data>({.reference = {asset->guid, asset_types::material,
+                                                                        "assets/materials/restart.arcmat"}})
+                                .get();
+        REQUIRE(loaded.succeeded());
+        REQUIRE(fixture.manager.find(guid)->state == asset_state::ready);
+    }
+
+    {
+        asset_fixture fixture(project);
+        const auto restored = fixture.manager.find(guid);
+        REQUIRE(restored);
+        REQUIRE(restored->state == asset_state::ready);
+    }
+
+    auto metadata_result = load_asset_metadata(project.assets / "materials/restart.arcmat.arcmeta");
+    REQUIRE(metadata_result);
+    auto metadata = metadata_result.value();
+    metadata.settings_version += 1;
+    metadata.canonical_settings = R"({"changed":true})";
+    REQUIRE(save_asset_metadata(project.assets / "materials/restart.arcmat.arcmeta", metadata));
+
+    {
+        asset_fixture fixture(project);
+        const auto changed = fixture.manager.find(guid);
+        REQUIRE(changed);
+        REQUIRE(changed->state == asset_state::stale);
+    }
+}
+
 TEST_CASE("asset registry rebuilds from sidecars after database corruption")
 {
     using namespace arc::assets;
