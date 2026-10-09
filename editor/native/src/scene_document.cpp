@@ -2143,14 +2143,7 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
     }
 
     scene::update_world_transforms(loaded.scene);
-    for (const auto value : loaded.scene.entities())
-    {
-        if (value != loaded.camera_entity && loaded.scene.has<scene::name_component>(value))
-        {
-            select_entity(loaded.scene, value, loaded.selected_entity);
-            break;
-        }
-    }
+    // Opening a scene should leave selection empty until the user selects an entity.
     loaded.active_scene_path = path;
     state = std::move(loaded);
     return {.succeeded = true,

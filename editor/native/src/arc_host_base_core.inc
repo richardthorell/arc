@@ -1835,7 +1835,8 @@ editor_scene_state create_blank_scene(render::renderer& renderer, bool include_f
             floor_mesh.receives_shadows = true;
         }
     }
-    select_entity(state.scene, game_camera, state.selected_entity);
+    // Creating default scene entities must not imply an editor selection.
+    clear_selection(state.scene, state.selected_entity);
     ensure_scene_authoring_metadata(state);
     return state;
 }

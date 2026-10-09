@@ -116,7 +116,7 @@ TEST_CASE("editor play session renders an isolated scene copy and restores the a
     host->poll_events();
 
     const auto selected_before = host->selected_entity_snapshot();
-    REQUIRE(selected_before.entity.valid());
+    REQUIRE_FALSE(selected_before.entity.valid());
     const auto editor_camera = host->scene_state().camera_entity;
     const auto camera_before =
         std::as_const(host->scene_state().scene).get<arc::scene::transform_component>(editor_camera);
