@@ -204,234 +204,234 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
       onDividerKeyDown={onSidebarResizeKeyDown}
       graph={
         <>
-        {customShader ? (
-          <section className="material-custom-shader">
-            <Code2 size={30} />
-            <div>
-              <strong>Custom Material Shader</strong>
-              <p>
-                This material implements the Material ABI with handwritten Slang. ARC owns render-pass entry points and
-                composes this evaluator into the same depth, shadow, G-buffer, forward and motion passes as graph
-                materials.
-              </p>
-              <code>{customShader}</code>
-            </div>
-          </section>
-        ) : (
-          <MaterialGraphWithInteractions
-            document={document}
-            graph={state.graph}
-            loaded={state.loaded}
-            showGrid={state.showGrid}
-            dimUnrelated={state.dimUnrelated}
-            diagnostics={materialGraphDiagnostics(state.compilation.diagnostics)}
-          />
-        )}
+          {customShader ? (
+            <section className="material-custom-shader">
+              <Code2 size={30} />
+              <div>
+                <strong>Custom Material Shader</strong>
+                <p>
+                  This material implements the Material ABI with handwritten Slang. ARC owns render-pass entry points
+                  and composes this evaluator into the same depth, shadow, G-buffer, forward and motion passes as graph
+                  materials.
+                </p>
+                <code>{customShader}</code>
+              </div>
+            </section>
+          ) : (
+            <MaterialGraphWithInteractions
+              document={document}
+              graph={state.graph}
+              loaded={state.loaded}
+              showGrid={state.showGrid}
+              dimUnrelated={state.dimUnrelated}
+              diagnostics={materialGraphDiagnostics(state.compilation.diagnostics)}
+            />
+          )}
 
-        {!customShader && state.showStats && (
-          <div aria-label="Material graph stats" className="material-graph-stats-overlay">
-            <div>
-              <span>Nodes</span>
-              <strong>{materialStats.nodes}</strong>
+          {!customShader && state.showStats && (
+            <div aria-label="Material graph stats" className="material-graph-stats-overlay">
+              <div>
+                <span>Nodes</span>
+                <strong>{materialStats.nodes}</strong>
+              </div>
+              <div>
+                <span>Connections</span>
+                <strong>{materialStats.connections}</strong>
+              </div>
+              <div>
+                <span>Parameters</span>
+                <strong>{materialStats.parameters}</strong>
+              </div>
+              <div>
+                <span>Diagnostics</span>
+                <strong>
+                  {materialStats.errors}E · {materialStats.warnings}W
+                </strong>
+              </div>
             </div>
-            <div>
-              <span>Connections</span>
-              <strong>{materialStats.connections}</strong>
-            </div>
-            <div>
-              <span>Parameters</span>
-              <strong>{materialStats.parameters}</strong>
-            </div>
-            <div>
-              <span>Diagnostics</span>
-              <strong>
-                {materialStats.errors}E · {materialStats.warnings}W
-              </strong>
-            </div>
-          </div>
-        )}
+          )}
 
-        {toast && (
-          <div className="material-editor-message" key={toast.id} role="status">
-            {toast.message}
-          </div>
-        )}
+          {toast && (
+            <div className="material-editor-message" key={toast.id} role="status">
+              {toast.message}
+            </div>
+          )}
         </>
       }
       sidebar={
         <>
-        <AssetPreviewPanel
-          title="Material Preview"
-          showHeader={false}
-          metadata={[
-            {
-              value: (
-                <span className="material-preview-controls">
-                  <span className="material-preview-mesh-toggle" role="group" aria-label="Material preview mesh">
-                    {materialPreviewMeshes.map((mesh) => (
-                      <button
-                        key={mesh}
-                        type="button"
-                        aria-pressed={previewMesh === mesh}
-                        onClick={() => setPreviewMesh(mesh)}
-                      >
-                        {mesh[0].toUpperCase() + mesh.slice(1)}
-                      </button>
-                    ))}
+          <AssetPreviewPanel
+            title="Material Preview"
+            showHeader={false}
+            metadata={[
+              {
+                value: (
+                  <span className="material-preview-controls">
+                    <span className="material-preview-mesh-toggle" role="group" aria-label="Material preview mesh">
+                      {materialPreviewMeshes.map((mesh) => (
+                        <button
+                          key={mesh}
+                          type="button"
+                          aria-pressed={previewMesh === mesh}
+                          onClick={() => setPreviewMesh(mesh)}
+                        >
+                          {mesh[0].toUpperCase() + mesh.slice(1)}
+                        </button>
+                      ))}
+                    </span>
+                    <button
+                      className="material-preview-auto-rotate"
+                      type="button"
+                      aria-pressed={previewAutoRotate}
+                      title="Slowly rotate the preview mesh around Y"
+                      onClick={() => setPreviewAutoRotate((enabled) => !enabled)}
+                    >
+                      Rotate
+                    </button>
                   </span>
-                  <button
-                    className="material-preview-auto-rotate"
-                    type="button"
-                    aria-pressed={previewAutoRotate}
-                    title="Slowly rotate the preview mesh around Y"
-                    onClick={() => setPreviewAutoRotate((enabled) => !enabled)}
-                  >
-                    Rotate
-                  </button>
-                </span>
-              ),
-            },
-          ]}
-        >
-          <AssetPreviewViewport
-            kind="material"
-            assetGuid={document.assetGuid}
-            materialMesh={previewMesh}
-            materialAutoRotate={previewAutoRotate}
-            loading={previewLoading}
-            label={`${document.title} material preview viewport`}
-            fallback={fallbackPreview}
-          />
-        </AssetPreviewPanel>
-
-        <div className="material-settings-region">
-          <UiPanelCard
-            className="material-settings-card"
-            collapsed={materialSettingsCollapsed}
-            contentClassName="material-settings-list"
-            title="Material"
-            onToggle={() => setMaterialSettingsCollapsed((collapsed) => !collapsed)}
+                ),
+              },
+            ]}
           >
-            <UiPanelCardRow label="Domain">
-              <UiSelect
-                ariaLabel="Material domain"
-                disabled={document.readOnly}
-                options={materialDomainOptions}
-                value={materialDomain}
-                onValueChange={(value) => replaceMaterialSettings(document, { domain: value as MaterialDomain })}
-              />
-            </UiPanelCardRow>
-            {isSurfaceMaterial && (
-              <>
-                <UiPanelCardRow label="Blend Mode">
-                  <UiSelect
-                    ariaLabel="Material blend mode"
-                    disabled={document.readOnly}
-                    options={materialBlendModeOptions}
-                    value={materialBlendMode}
-                    onValueChange={(value) =>
-                      replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })
-                    }
-                  />
-                </UiPanelCardRow>
-                <UiPanelCardRow label="Shading Model">
-                  <UiSelect
-                    ariaLabel="Material shading model"
-                    disabled={document.readOnly}
-                    options={materialShadingModelOptions}
-                    value={materialShadingModel}
-                    onValueChange={(value) =>
-                      replaceMaterialSettings(document, { shadingModel: value as MaterialShadingModel })
-                    }
-                  />
-                </UiPanelCardRow>
-              </>
-            )}
-          </UiPanelCard>
+            <AssetPreviewViewport
+              kind="material"
+              assetGuid={document.assetGuid}
+              materialMesh={previewMesh}
+              materialAutoRotate={previewAutoRotate}
+              loading={previewLoading}
+              label={`${document.title} material preview viewport`}
+              fallback={fallbackPreview}
+            />
+          </AssetPreviewPanel>
 
-          {isSurfaceMaterial && (
+          <div className="material-settings-region">
             <UiPanelCard
               className="material-settings-card"
-              collapsed={renderingSettingsCollapsed}
+              collapsed={materialSettingsCollapsed}
               contentClassName="material-settings-list"
-              title="Rendering"
-              onToggle={() => setRenderingSettingsCollapsed((collapsed) => !collapsed)}
+              title="Material"
+              onToggle={() => setMaterialSettingsCollapsed((collapsed) => !collapsed)}
             >
-              <UiPanelCardRow className="material-setting-toggle-row" label="Two Sided">
-                <UiToggleButton
-                  aria-label="Two sided material"
-                  checked={state.asset.doubleSided === true}
+              <UiPanelCardRow label="Domain">
+                <UiSelect
+                  ariaLabel="Material domain"
                   disabled={document.readOnly}
-                  onCheckedChange={(checked) => replaceMaterialSettings(document, { doubleSided: checked })}
+                  options={materialDomainOptions}
+                  value={materialDomain}
+                  onValueChange={(value) => replaceMaterialSettings(document, { domain: value as MaterialDomain })}
                 />
               </UiPanelCardRow>
-              {!isTranslucentMaterial && (
-                <UiPanelCardRow className="material-setting-toggle-row" label="Cast Shadows">
-                  <UiToggleButton
-                    aria-label="Cast shadows"
-                    checked={state.asset.castShadows !== false}
-                    disabled={document.readOnly}
-                    onCheckedChange={(checked) => replaceMaterialSettings(document, { castShadows: checked })}
-                  />
-                </UiPanelCardRow>
+              {isSurfaceMaterial && (
+                <>
+                  <UiPanelCardRow label="Blend Mode">
+                    <UiSelect
+                      ariaLabel="Material blend mode"
+                      disabled={document.readOnly}
+                      options={materialBlendModeOptions}
+                      value={materialBlendMode}
+                      onValueChange={(value) =>
+                        replaceMaterialSettings(document, { blendMode: value as MaterialBlendMode })
+                      }
+                    />
+                  </UiPanelCardRow>
+                  <UiPanelCardRow label="Shading Model">
+                    <UiSelect
+                      ariaLabel="Material shading model"
+                      disabled={document.readOnly}
+                      options={materialShadingModelOptions}
+                      value={materialShadingModel}
+                      onValueChange={(value) =>
+                        replaceMaterialSettings(document, { shadingModel: value as MaterialShadingModel })
+                      }
+                    />
+                  </UiPanelCardRow>
+                </>
               )}
             </UiPanelCard>
-          )}
 
-          {isMaskedMaterial && (
-            <UiPanelCard
-              className="material-settings-card"
-              collapsed={maskingSettingsCollapsed}
-              contentClassName="material-settings-list"
-              title="Masking"
-              onToggle={() => setMaskingSettingsCollapsed((collapsed) => !collapsed)}
-            >
-              <UiPanelCardRow label="Opacity">
-                <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
-              </UiPanelCardRow>
-              <UiPanelCardRow label="Alpha Clip">
-                <span className="material-setting-readonly">{outputSource('alphaClip', '0.5')}</span>
-              </UiPanelCardRow>
-            </UiPanelCard>
-          )}
+            {isSurfaceMaterial && (
+              <UiPanelCard
+                className="material-settings-card"
+                collapsed={renderingSettingsCollapsed}
+                contentClassName="material-settings-list"
+                title="Rendering"
+                onToggle={() => setRenderingSettingsCollapsed((collapsed) => !collapsed)}
+              >
+                <UiPanelCardRow className="material-setting-toggle-row" label="Two Sided">
+                  <UiToggleButton
+                    aria-label="Two sided material"
+                    checked={state.asset.doubleSided === true}
+                    disabled={document.readOnly}
+                    onCheckedChange={(checked) => replaceMaterialSettings(document, { doubleSided: checked })}
+                  />
+                </UiPanelCardRow>
+                {!isTranslucentMaterial && (
+                  <UiPanelCardRow className="material-setting-toggle-row" label="Cast Shadows">
+                    <UiToggleButton
+                      aria-label="Cast shadows"
+                      checked={state.asset.castShadows !== false}
+                      disabled={document.readOnly}
+                      onCheckedChange={(checked) => replaceMaterialSettings(document, { castShadows: checked })}
+                    />
+                  </UiPanelCardRow>
+                )}
+              </UiPanelCard>
+            )}
 
-          {isTranslucentMaterial && (
-            <UiPanelCard
-              className="material-settings-card"
-              collapsed={translucencySettingsCollapsed}
-              contentClassName="material-settings-list"
-              title="Translucency"
-              onToggle={() => setTranslucencySettingsCollapsed((collapsed) => !collapsed)}
-            >
-              <UiPanelCardRow label="Opacity">
-                <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
-              </UiPanelCardRow>
-              <UiPanelCardRow label="Transmission">
-                <span className="material-setting-readonly">{outputSource('transmission', '0.0')}</span>
-              </UiPanelCardRow>
-              <UiPanelCardRow label="Index of Refraction">
-                <span className="material-setting-readonly">{outputSource('indexOfRefraction', '1.5')}</span>
-              </UiPanelCardRow>
-              <UiPanelCardRow label="Thickness">
-                <span className="material-setting-readonly">{outputSource('thickness', '0.0')}</span>
-              </UiPanelCardRow>
-            </UiPanelCard>
-          )}
+            {isMaskedMaterial && (
+              <UiPanelCard
+                className="material-settings-card"
+                collapsed={maskingSettingsCollapsed}
+                contentClassName="material-settings-list"
+                title="Masking"
+                onToggle={() => setMaskingSettingsCollapsed((collapsed) => !collapsed)}
+              >
+                <UiPanelCardRow label="Opacity">
+                  <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
+                </UiPanelCardRow>
+                <UiPanelCardRow label="Alpha Clip">
+                  <span className="material-setting-readonly">{outputSource('alphaClip', '0.5')}</span>
+                </UiPanelCardRow>
+              </UiPanelCard>
+            )}
 
-          {isSurfaceMaterial && (
-            <UiPanelCard
-              className="material-settings-card"
-              collapsed={advancedSettingsCollapsed}
-              contentClassName="material-settings-list"
-              title="Advanced"
-              onToggle={() => setAdvancedSettingsCollapsed((collapsed) => !collapsed)}
-            >
-              <UiPanelCardRow label="Render Path">
-                <span className="material-setting-readonly">{renderPathLabel}</span>
-              </UiPanelCardRow>
-            </UiPanelCard>
-          )}
-        </div>
+            {isTranslucentMaterial && (
+              <UiPanelCard
+                className="material-settings-card"
+                collapsed={translucencySettingsCollapsed}
+                contentClassName="material-settings-list"
+                title="Translucency"
+                onToggle={() => setTranslucencySettingsCollapsed((collapsed) => !collapsed)}
+              >
+                <UiPanelCardRow label="Opacity">
+                  <span className="material-setting-readonly">{outputSource('opacity', '1.0')}</span>
+                </UiPanelCardRow>
+                <UiPanelCardRow label="Transmission">
+                  <span className="material-setting-readonly">{outputSource('transmission', '0.0')}</span>
+                </UiPanelCardRow>
+                <UiPanelCardRow label="Index of Refraction">
+                  <span className="material-setting-readonly">{outputSource('indexOfRefraction', '1.5')}</span>
+                </UiPanelCardRow>
+                <UiPanelCardRow label="Thickness">
+                  <span className="material-setting-readonly">{outputSource('thickness', '0.0')}</span>
+                </UiPanelCardRow>
+              </UiPanelCard>
+            )}
+
+            {isSurfaceMaterial && (
+              <UiPanelCard
+                className="material-settings-card"
+                collapsed={advancedSettingsCollapsed}
+                contentClassName="material-settings-list"
+                title="Advanced"
+                onToggle={() => setAdvancedSettingsCollapsed((collapsed) => !collapsed)}
+              >
+                <UiPanelCardRow label="Render Path">
+                  <span className="material-setting-readonly">{renderPathLabel}</span>
+                </UiPanelCardRow>
+              </UiPanelCard>
+            )}
+          </div>
         </>
       }
     />
