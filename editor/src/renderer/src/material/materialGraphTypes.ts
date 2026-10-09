@@ -76,6 +76,18 @@ export type MaterialGraphPosition = [number, number];
 export type MaterialGraphParameter = {
   exposed: boolean;
   name: string;
+  /** Optional graph/inspector section shared by related parameters. */
+  group?: string;
+  /** Stable ordering within the parameter group. Lower values render first. */
+  order?: number;
+};
+
+export type MaterialGraphGroup = {
+  id: string;
+  name: string;
+  position: MaterialGraphPosition;
+  size: MaterialGraphPosition;
+  order?: number;
 };
 
 export type MaterialGraphNode = {
@@ -107,6 +119,8 @@ export type MaterialGraph = {
   version: 1;
   nodes: MaterialGraphNode[];
   connections: MaterialGraphConnection[];
+  /** Authoring-only comment/group frames. Excluded from shader compilation fingerprints. */
+  groups?: MaterialGraphGroup[];
   viewport?: MaterialGraphViewport;
 };
 
@@ -961,7 +975,23 @@ export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
       const scalar = node.values?.value;
       return typeof scalar === 'number' && Number.isFinite(scalar) && scalar >= min && scalar <= max;
     }) &&
-    Array.isArray(graph.connections)
+    Array.isArray(graph.connections) &&
+    (graph.groups === undefined ||
+      (Array.isArray(graph.groups) &&
+        graph.groups.every(
+          (group) =>
+            Boolean(group) &&
+            typeof group.id === 'string' &&
+            Boolean(group.id.trim()) &&
+            typeof group.name === 'string' &&
+            Array.isArray(group.position) &&
+            group.position.length === 2 &&
+            group.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)) &&
+            Array.isArray(group.size) &&
+            group.size.length === 2 &&
+            group.size.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate) && coordinate > 0) &&
+            (group.order === undefined || (typeof group.order === 'number' && Number.isFinite(group.order))),
+        )))
   );
 };
 
