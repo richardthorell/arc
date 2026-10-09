@@ -172,7 +172,7 @@ const registryEntries = [
   {
     method: 'assets.list',
     description:
-      'List the authoritative project-local asset inventory for reuse decisions and validated scene/material bindings. Inspect this before creating or importing reusable content when the supplied asset context is insufficient.',
+      'Discover the authoritative current project and engine asset inventory, including available materials, textures and Material Functions. For scene construction, surface styling, or appearance changes, inspect this inventory before planning edits; do not assume the project lacks assets or rely on a hardcoded catalog. Use only returned references and distinguish assets from capabilities.',
     schema: empty,
   },
   {
@@ -284,7 +284,7 @@ const registryEntries = [
   {
     method: 'editor.applyBatch',
     description:
-      'Apply multiple validated editor mutations in one active transaction. Use tempId to reference entities created earlier in the same batch. Prefer existing asset bindings and lightweight overrides; include material.create only when no suitable project asset or override can satisfy the request, or when a new reusable asset was explicitly requested.',
+      'Apply multiple validated editor mutations in one active transaction. Use tempId to reference entities created earlier in the same batch. When assigning appearance, inspect assets.list and reuse compatible existing assets before creating a material. Do not claim an appearance change succeeded merely because the batch succeeded: read the resulting entity/material state and verify the rendered output. Create new assets only when existing assets cannot satisfy the request.',
     schema: agentEditorBatchRequestSchema,
     mutating: true,
   },
