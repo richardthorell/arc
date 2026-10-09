@@ -652,9 +652,11 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
             }
         }
         const auto& parameters = specialized_material.runtime_program->parameters;
-        const auto layout = parameter_id != 0u
-                                ? std::ranges::find(parameters, parameter_id, &render::shader_parameter_descriptor::id)
-                                : std::ranges::find(parameters, name, &render::shader_parameter_descriptor::name);
+        const auto layout =
+            parameter_id != 0u
+                ? std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
+                                    &render::shader_parameter_descriptor::id)
+                : std::ranges::find(parameters, name, &render::shader_parameter_descriptor::name);
         if (layout == parameters.end())
         {
             arc::diagnostics::warn("editor.materials", "Ignoring stale material instance parameter '" + name + "'");
