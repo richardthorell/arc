@@ -142,6 +142,8 @@ const assetTypeOptions: Array<{ value: AssetPresentationKind | 'all'; label: str
   { value: 'material', label: 'Material' },
   { value: 'materialInstance', label: 'Material Instance' },
   { value: 'materialFunction', label: 'Material Function' },
+  { value: 'sound', label: 'Sound' },
+  { value: 'audio', label: 'Audio Source' },
   { value: 'flow', label: 'Flow Graph' },
   { value: 'texture', label: 'Texture' },
   { value: 'environment', label: 'Environment' },
