@@ -4983,18 +4983,23 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return fail("Terrain layer assignment requires a valid terrain and layer 0-3", entity);
                 render::texture_handle texture;
                 std::filesystem::path resolved_path;
-                if (!payload.path.empty())
+                if (payload.asset || !payload.path.empty())
                 {
-                    const auto path = resolve_project_asset(state_->assets.root, payload.path);
-                    if (!path || !render::is_supported_texture_asset(*path))
-                        return fail("Terrain layer must reference a supported project texture", entity);
-                    auto loaded = render::load_texture_asset(*path);
+                    const auto resolved =
+                        payload.asset
+                            ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                                   *payload.asset)
+                            : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                                   payload.path);
+                    if (!resolved || !render::is_supported_texture_asset(resolved->path))
+                        return fail("Terrain layer must reference a supported texture asset", entity);
+                    auto loaded = render::load_texture_asset(resolved->path);
                     if (!loaded.succeeded())
                         return fail("Terrain layer texture failed to load: " + loaded.message, entity);
                     texture = state_->renderer->create_texture(std::move(loaded.texture));
                     if (!texture.valid()) return fail("Terrain layer texture could not be uploaded", entity);
                     state_->scene.default_textures.push_back(texture);
-                    resolved_path = *path;
+                    resolved_path = resolved->path;
                 }
                 state_->scene.terrain_material_descriptor.domain = render::material_domain::terrain;
                 state_->scene.terrain_material_descriptor.terrain_layers[payload.layer].base_color_texture = texture;
@@ -5567,7 +5572,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     environment.diffuse_intensity = lighting->diffuse_intensity;
                     state_->renderer->update_environment(lighting->environment, std::move(environment));
                 };
-                if (payload.path.empty())
+                if (!payload.asset && payload.path.empty())
                 {
                     world->hdri_texture = {};
                     lighting->hdri_texture = {};
@@ -5578,15 +5583,20 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return success("{\"entity\":" + to_json(payload.entity) + '}');
                 }
 
-                const auto path = resolve_project_asset(state_->assets.root, payload.path);
-                if (!path || !render::is_supported_texture_asset(*path))
-                    return fail("Environment texture must be a supported project asset", entity);
-                const auto loaded = render::load_texture_asset(*path);
+                const auto resolved =
+                    payload.asset
+                        ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               *payload.asset)
+                        : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                               payload.path);
+                if (!resolved || !render::is_supported_texture_asset(resolved->path))
+                    return fail("Environment texture must reference a supported texture asset", entity);
+                const auto loaded = render::load_texture_asset(resolved->path);
                 if (!loaded.succeeded())
                     return fail(loaded.message.empty() ? "Failed to load environment texture" : loaded.message, entity);
 
                 auto texture = loaded.texture;
-                texture.name = path->filename().string();
+                texture.name = resolved->path.filename().string();
                 if (world->hdri_texture.valid())
                     state_->renderer->update_texture(world->hdri_texture, std::move(texture));
                 else
@@ -5594,8 +5604,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 lighting->hdri_texture = world->hdri_texture;
                 std::error_code relative_error;
                 state_->scene.world_environment_hdri_path =
-                    std::filesystem::relative(*path, state_->assets.root, relative_error);
-                if (relative_error) state_->scene.world_environment_hdri_path = path->filename();
+                    std::filesystem::relative(resolved->path, resolved->asset_root, relative_error);
+                if (relative_error) state_->scene.world_environment_hdri_path = resolved->path.filename();
                 update_environment_resource();
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
                            "World environment HDRI changed", entity);
