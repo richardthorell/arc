@@ -37,10 +37,7 @@ describe('built-in UV Transform material function', () => {
     const { graph } = loadFunction();
     const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
     const input = new Map(
-      graph.connections.map((connection) => [
-        `${connection.to.nodeId}.${connection.to.pin}`,
-        connection.from.nodeId,
-      ]),
+      graph.connections.map((connection) => [`${connection.to.nodeId}.${connection.to.pin}`, connection.from.nodeId]),
     );
 
     expect(nodes.size).toBe(graph.nodes.length);
