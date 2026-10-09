@@ -620,6 +620,32 @@ export function MaterialParameterSubsection({
           ? 'Cook-reflected'
           : '';
 
+  const parameterGroups =
+    state.status === 'ready'
+      ? (() => {
+          const ordered = [...state.parameters].sort(
+            (left, right) =>
+              (left.groupOrder ?? Number.MAX_SAFE_INTEGER) - (right.groupOrder ?? Number.MAX_SAFE_INTEGER) ||
+              (left.groupLabel ?? '').localeCompare(right.groupLabel ?? '') ||
+              (left.order ?? Number.MAX_SAFE_INTEGER) - (right.order ?? Number.MAX_SAFE_INTEGER) ||
+              left.name.localeCompare(right.name),
+          );
+          if (!ordered.some((parameter) => parameter.group)) return [{ id: '', label: '', parameters: ordered }];
+          const groups = new Map<string, { id: string; label: string; parameters: DisplayParameter[] }>();
+          for (const parameter of ordered) {
+            const id = parameter.group || '__ungrouped';
+            const current = groups.get(id) ?? {
+              id,
+              label: parameter.groupLabel || (id === '__ungrouped' ? 'Other' : id),
+              parameters: [],
+            };
+            current.parameters.push(parameter);
+            groups.set(id, current);
+          }
+          return [...groups.values()];
+        })()
+      : [];
+
   return (
     <section className="inspector-subsection inspector-material-parameters" aria-label="Material parameters">
       <header className="inspector-subsection-title">
