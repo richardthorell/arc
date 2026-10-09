@@ -70,6 +70,7 @@ type DisplayFunctionSlot = {
   inputs: MaterialFunctionPin[];
   outputs: MaterialFunctionPin[];
   defaultGuid: string;
+  resetGuid: string;
   selectedGuid: string;
   options: DisplayFunctionOption[];
   parameters: DisplayParameter[];
@@ -437,6 +438,7 @@ export function MaterialParameterSubsection({
               inputs,
               outputs,
               defaultGuid: defaultOption.guid,
+              resetGuid: authored?.guid || defaultOption.guid,
               selectedGuid: selectedOption.guid,
               options: compatible,
               parameters: extraParameters,
@@ -560,7 +562,7 @@ export function MaterialParameterSubsection({
       const payload = {
         slotId: slot.id,
         function: { guid: option.guid, pathHint: option.path },
-        reset: option.guid === slot.defaultGuid,
+        reset: option.guid === slot.resetGuid,
       };
       const path = `${functionCommandPrefix}${bytesToHex(JSON.stringify(payload))}/0`;
       const response = (await window.arc.host.command('entity.setMaterial', {
