@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ContentBrowserPanel } from './ContentBrowserPanel';
@@ -320,7 +320,8 @@ describe('ContentBrowserPanel', () => {
     fireEvent.click(view.getByRole('button', { name: 'Clear' }));
     expect(view.getByRole('checkbox', { name: 'tree.bin' })).not.toBeChecked();
     fireEvent.click(view.getByRole('checkbox', { name: 'textures/bark.png' }));
-    fireEvent.click(view.getByRole('button', { name: 'Import' }));
+    const dialog = view.getByRole('dialog', { name: 'Import tree.gltf' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
 
     await waitFor(() => expect(importModel).toHaveBeenCalledWith(model, 'Content/Props', ['textures/bark.png']));
   });
