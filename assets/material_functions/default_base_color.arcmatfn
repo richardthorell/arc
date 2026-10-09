@@ -1,8 +1,8 @@
 {
   "kind": "materialFunction",
   "version": 1,
-  "name": "Default Base Color",
-  "description": "Default texture-and-tint base color source for Standard Lit.",
+  "name": "Color",
+  "description": "Texture-and-tint color source for material base color.",
   "inputs": [],
   "outputs": [
     {
