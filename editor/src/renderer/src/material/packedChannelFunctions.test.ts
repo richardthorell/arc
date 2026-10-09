@@ -28,9 +28,7 @@ describe('packed channel material functions', () => {
   it('unpacks AO from R, roughness from G, and metallic from B', () => {
     const asset = read('unpack_orm');
     expect(isMaterialGraph(asset.graph)).toBe(true);
-    expect(asset.inputs).toEqual([
-      { id: 'rgba', name: 'Packed ORM RGBA', type: 'vec4', default: [1, 1, 0, 1] },
-    ]);
+    expect(asset.inputs).toEqual([{ id: 'rgba', name: 'Packed ORM RGBA', type: 'vec4', default: [1, 1, 0, 1] }]);
     for (const [channel, output, weights] of [
       ['r', 'ao', [1, 0, 0, 0]],
       ['g', 'roughness', [0, 1, 0, 0]],
