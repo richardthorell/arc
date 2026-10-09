@@ -35,7 +35,7 @@ TEST_CASE("viewport surfaces keep dimensions and render options independent")
                               .viewport_id = "material-preview", .width = 320, .height = 240})
                 .succeeded);
     REQUIRE(host->execute(arc::editor::host_viewport_set_render_options_command{
-                              .viewport_id = "material-preview", .grid = false, .camera_speed = 9.0f})
+                              .viewport_id = "material-preview", .grid = true, .camera_speed = 9.0f})
                 .succeeded);
 
     const auto scene = viewport_state(host, "viewport-1", 1);
@@ -44,13 +44,13 @@ TEST_CASE("viewport surfaces keep dimensions and render options independent")
     CHECK(scene.at("viewportId") == "viewport-1");
     CHECK(scene.at("width") == 1024);
     CHECK(scene.at("height") == 768);
-    CHECK(scene.at("renderOptions").at("grid") == true);
+    CHECK(scene.at("renderOptions").at("grid") == false);
     CHECK(scene.at("renderOptions").at("cameraSpeed") == 4.0f);
 
     CHECK(preview.at("viewportId") == "material-preview");
     CHECK(preview.at("width") == 320);
     CHECK(preview.at("height") == 240);
-    CHECK(preview.at("renderOptions").at("grid") == false);
+    CHECK(preview.at("renderOptions").at("grid") == true);
     CHECK(preview.at("renderOptions").at("cameraSpeed") == 9.0f);
 
     const auto missing =
