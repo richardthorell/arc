@@ -29,6 +29,14 @@
 #include <thread>
 #include <variant>
 
+TEST_CASE("viewport grid defaults to disabled")
+{
+    const arc::editor::host_viewport_set_render_options_command command;
+    const arc::editor::host_viewport_request request;
+    REQUIRE_FALSE(command.grid);
+    REQUIRE_FALSE(request.grid);
+}
+
 TEST_CASE("arc host protocol serializes command and query envelopes")
 {
     const arc::editor::host_entity_id entity{.index = 7, .generation = 3};
