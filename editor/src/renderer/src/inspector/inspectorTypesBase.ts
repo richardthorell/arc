@@ -86,6 +86,7 @@ export type InspectorMeshRenderer = {
   assetBackedMaterial: boolean;
   materialName: string;
   materialPath: string;
+  materialError: string;
 };
 
 export type InspectorTerrain = {
@@ -322,6 +323,7 @@ const hostSelectedEntitySchema = z.object({
       assetBackedMaterial: z.boolean(),
       materialName: z.string(),
       materialPath: z.string(),
+      materialError: z.string().default(''),
     })
     .nullable(),
   terrain: z
