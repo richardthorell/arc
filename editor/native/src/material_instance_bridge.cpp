@@ -458,7 +458,8 @@ const editor_material_record* base_material_record(editor_scene_state& scene, ec
     return nullptr;
 }
 
-std::filesystem::path resolve_texture_path(const editor_material_record& material, std::string_view path)
+std::filesystem::path resolve_texture_path(const editor_scene_state& scene, const editor_material_record& material,
+                                           std::string_view path)
 {
     if (path.empty()) return {};
     std::filesystem::path authored{path};
@@ -466,7 +467,34 @@ std::filesystem::path resolve_texture_path(const editor_material_record& materia
 
     auto authored_text = authored.generic_string();
     if (authored_text.starts_with("builtin/"))
+    {
         authored = std::filesystem::path{authored_text.substr(std::string_view{"builtin/"}.size())};
+    }
+    else
+    {
+        if (!scene.project_root.empty())
+        {
+            const auto candidate = (scene.project_root / authored).lexically_normal();
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec) && !ec) return candidate;
+        }
+        for (const auto& root : scene.project_asset_roots)
+        {
+            const auto candidate = (root / authored).lexically_normal();
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec) && !ec) return candidate;
+
+            const auto root_name = root.filename().generic_string();
+            if (!root_name.empty() && authored.begin() != authored.end() &&
+                (*authored.begin()).generic_string() == root_name)
+            {
+                auto relative = authored.lexically_relative(std::filesystem::path{root_name});
+                const auto rooted_candidate = (root / relative).lexically_normal();
+                ec.clear();
+                if (std::filesystem::exists(rooted_candidate, ec) && !ec) return rooted_candidate;
+            }
+        }
+    }
 
     auto directory = material.path.parent_path();
     for (auto current = directory; !current.empty(); current = current.parent_path())
@@ -484,7 +512,7 @@ render::texture_handle ensure_override_texture(editor_scene_state& scene, render
                                                const editor_material_record& material, std::string_view path)
 {
     if (path.empty()) return {};
-    auto resolved = resolve_texture_path(material, path);
+    auto resolved = resolve_texture_path(scene, material, path);
     std::error_code ec;
     auto key = std::filesystem::absolute(resolved, ec).lexically_normal();
     if (ec) key = resolved.lexically_normal();
@@ -625,7 +653,7 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
         if (parent_hint.empty())
             return material_preview_descriptor_result{.message = "Material Instance parent path is unavailable"};
 
-        source_base.path = resolve_texture_path(base, parent_hint);
+        source_base.path = resolve_texture_path(scene, base, parent_hint);
         source = read_text_file(source_base.path);
         document = json::parse(source, nullptr, false);
         if (source.empty() || document.is_discarded() || !document.is_object() || !document.contains("graph"))
@@ -670,7 +698,7 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
     std::set<std::string> visited;
     for (std::size_t index = 0; index < pending.size(); ++index)
     {
-        const auto source_path = resolve_texture_path(source_base, pending[index]);
+        const auto source_path = resolve_texture_path(scene, source_base, pending[index]);
         auto key = source_path.lexically_normal().generic_string();
         std::transform(key.begin(), key.end(), key.begin(),
                        [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
@@ -751,6 +779,16 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
         return false;
     }
 
+    auto parameter_layout = specialized_material.runtime_program->parameters;
+    for (const auto& binding : specialized_material.runtime_program->texture_bindings)
+    {
+        if (!binding.parameter_id.valid()) continue;
+        if (std::ranges::find(parameter_layout, binding.parameter_id, &render::shader_parameter_descriptor::id) !=
+            parameter_layout.end())
+            continue;
+        parameter_layout.push_back({.id = binding.parameter_id, .name = "Texture", .type = binding.type, .size = 0});
+    }
+
     render::material_instance_descriptor instance;
     instance.parent = base.material;
     instance.name = base.asset.name + " Instance";
@@ -779,10 +817,9 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
                     {
                         continue;
                     }
-                    const auto& parameters = specialized_material.runtime_program->parameters;
-                    const auto layout = std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
+                    const auto layout = std::ranges::find(parameter_layout, render::shader_parameter_id{parameter_id},
                                                           &render::shader_parameter_descriptor::id);
-                    if (layout == parameters.end()) continue;
+                    if (layout == parameter_layout.end()) continue;
                     const auto value = authored_instance_value(scene, renderer, base, *layout, authored["value"]);
                     if (!value) continue;
                     instance.overrides.push_back({.id = layout->id, .name = layout->name, .value = *value});
@@ -808,12 +845,11 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
                 parameter_id = 0u;
             }
         }
-        const auto& parameters = specialized_material.runtime_program->parameters;
         const auto layout = parameter_id != 0u
-                                ? std::ranges::find(parameters, render::shader_parameter_id{parameter_id},
+                                ? std::ranges::find(parameter_layout, render::shader_parameter_id{parameter_id},
                                                     &render::shader_parameter_descriptor::id)
-                                : std::ranges::find(parameters, name, &render::shader_parameter_descriptor::name);
-        if (layout == parameters.end())
+                                : std::ranges::find(parameter_layout, name, &render::shader_parameter_descriptor::name);
+        if (layout == parameter_layout.end())
         {
             arc::diagnostics::warn("editor.materials", "Ignoring stale material instance parameter '" + name + "'");
             continue;
@@ -830,7 +866,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
 
     render::material_definition_descriptor definition;
     definition.material = specialized_material;
-    definition.parameter_layout = specialized_material.runtime_program->parameters;
+    definition.parameter_layout = parameter_layout;
     auto resolved = render::resolve_material_instance(definition, instance);
     if (!resolved)
     {

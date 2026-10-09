@@ -2598,13 +2598,13 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->asset_registry.reset();
     state_->derived_cache.reset();
     state_->asset_files.reset();
+    std::vector<std::filesystem::path> content_roots = command.content_roots;
+    if (content_roots.empty() && !command.root.empty())
+        content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
     if (!command.root.empty())
     {
         const auto cache_root =
             command.cache_root.empty() ? command.root / "Intermediate" / "Cache" : command.cache_root;
-        std::vector<std::filesystem::path> content_roots = command.content_roots;
-        if (content_roots.empty())
-            content_roots.push_back(assets.root.empty() ? command.root / "Content" : assets.root);
         state_->derived_cache = std::make_unique<arc::assets::derived_data_cache>(
             arc::assets::derived_data_cache_config{.root = cache_root});
         state_->asset_files = std::make_unique<io::async_file_service>(state_->simulation.jobs());
@@ -2620,6 +2620,15 @@ host_response arc_host::open_project(const host_open_project_command& command, c
         ::arc::water::register_water_asset_importer(*state_->asset_registry);
         framework::runtime_service_context context(state_->simulation.services());
         state_->asset_registry->on_start(context);
+
+        // The standalone asset manager is intentionally lazy, but an editor project should
+        // complete the first import of newly discovered writable assets. This also repairs
+        // sources copied by older editor builds that were registered as stale but never
+        // produced a last-good generation.
+        for (const auto& asset : state_->asset_registry->search())
+            if (!asset.read_only && asset.state == assets::asset_state::stale && !asset.has_last_good)
+                [[maybe_unused]] const auto initial_import =
+                    state_->asset_registry->reimport(asset.guid, assets::asset_streaming_priority::normal);
     }
     state_->asset_event_cursor = 0;
     // Project opening never synthesizes sample content. Rendering samples are
@@ -2628,6 +2637,8 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->terrain_preview_dirty.clear();
     state_->scene.terrain_render_proxies.clear(*state_->renderer);
     state_->scene = create_blank_scene(*state_->renderer, command.default_scene.empty(), &state_->assets);
+    state_->scene.project_root = command.root;
+    state_->scene.project_asset_roots = content_roots;
     if (state_->asset_registry)
     {
         register_editor_asset_fallbacks(state_->scene, *state_->asset_registry);

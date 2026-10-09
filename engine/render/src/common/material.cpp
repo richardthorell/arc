@@ -204,6 +204,20 @@ material_instance_result resolve_material_instance(const material_definition_des
             *existing = override_value;
     }
     apply_runtime_parameter_overrides(result, instance.overrides);
+
+    if (result.runtime_program)
+    {
+        for (const auto& override_value : instance.overrides)
+        {
+            if (!std::holds_alternative<resource_handle>(override_value.value)) continue;
+            const auto binding = std::ranges::find(result.runtime_program->texture_bindings, override_value.id,
+                                                   &material_runtime_texture_binding::parameter_id);
+            if (binding == result.runtime_program->texture_bindings.end()) continue;
+            if (result.runtime_textures.size() <= binding->slot) result.runtime_textures.resize(binding->slot + 1u);
+            result.runtime_textures[binding->slot] = std::get<resource_handle>(override_value.value);
+        }
+    }
+
     result.render_path = resolve_material_render_path(result);
     return material_instance_result::success(std::move(result));
 }

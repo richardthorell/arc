@@ -289,7 +289,12 @@ export function InspectorComponentCard<TContext extends object>({
           fullWidth: true,
           className: 'inspector-material-parameter-row',
           control: (
-            <MaterialParameterSubsection assets={assets} referenceMode={field.referenceMode} value={materialValue} />
+            <MaterialParameterSubsection
+              assets={assets}
+              referenceMode={field.referenceMode}
+              thumbnailProvider={thumbnailProvider}
+              value={materialValue}
+            />
           ),
         });
       }

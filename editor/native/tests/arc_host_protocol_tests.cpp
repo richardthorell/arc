@@ -506,6 +506,47 @@ TEST_CASE("asset registry host commands reimport rename and validate GUIDs")
     std::filesystem::remove_all(root);
 }
 
+TEST_CASE("editor project queues the first import for newly discovered assets")
+{
+    const auto root = std::filesystem::temp_directory_path() / "arc-editor-initial-asset-import";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "Content");
+    {
+        std::ofstream output(root / "Content" / "fresh.arcmat", std::ios::binary);
+        output << R"({"version":3,"name":"Fresh"})";
+    }
+
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    assets.root = root / "Content";
+    REQUIRE(
+        host->open_project({.name = "Initial Import", .root = root, .content_roots = {assets.root}}, assets).succeeded);
+
+    bool ready = false;
+    for (int attempt = 0; attempt < 200 && !ready; ++attempt)
+    {
+        const auto catalog = host->project_assets_snapshot();
+        const auto fresh = std::find_if(catalog.assets.begin(), catalog.assets.end(),
+                                        [](const auto& asset) { return asset.path == "fresh.arcmat"; });
+        REQUIRE(fresh != catalog.assets.end());
+        ready = fresh->state == "ready";
+        if (!ready) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    REQUIRE(ready);
+
+    const auto catalog = host->project_assets_snapshot();
+    const auto fresh = std::find_if(catalog.assets.begin(), catalog.assets.end(),
+                                    [](const auto& asset) { return asset.path == "fresh.arcmat"; });
+    REQUIRE(fresh != catalog.assets.end());
+    CHECK(fresh->has_last_good);
+    CHECK(fresh->imported);
+
+    host.reset();
+    std::filesystem::remove_all(root);
+}
+
 TEST_CASE("mesh renderer host snapshot edits and material assignment round trip")
 {
     const auto root = std::filesystem::temp_directory_path() / "arc-editor-mesh-material-host";

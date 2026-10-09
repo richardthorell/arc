@@ -22,6 +22,7 @@ import {
   isSupportedTexturePath,
   type ExternalTextureImportResult,
 } from './externalTextureImport';
+import { ensureExternalAssetImported } from './externalAssetImportLifecycle';
 import {
   analyzeExternalModel,
   importExternalModel,
@@ -194,6 +195,7 @@ export type ArcAiGatewayStatus = {
 type ImportedHostAsset = {
   guid: string;
   path: string;
+  sourcePath?: string;
   typeId: string;
   state: 'unknown' | 'queued' | 'importing' | 'ready' | 'stale' | 'failed';
   diagnostic?: string;
@@ -209,13 +211,25 @@ const arcAssetDragMime = 'application/x-arc-asset';
 const normalizedAssetPath = (value: string) => value.replaceAll('\\', '/').toLocaleLowerCase();
 const sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
+const importedAssetLifecycleBridge = {
+  queryAssets: async (): Promise<readonly ImportedHostAsset[]> => {
+    const response = (await ipcRenderer.invoke('host:query', 'project.assets', {})) as
+      ProjectAssetsResponse | undefined;
+    return response?.succeeded && response.payload?.assets ? response.payload.assets : [];
+  },
+  reimportAsset: async (guid: string): Promise<{ succeeded: boolean; error?: string }> =>
+    (await ipcRenderer.invoke('host:command', 'asset.reimport', { guid })) as { succeeded: boolean; error?: string },
+};
+
 const importDroppedTexture = async (file: File, destinationFolder?: string): Promise<ExternalTextureImportResult> => {
   const sourcePath = webUtils.getPathForFile(file);
   if (!sourcePath) throw new Error(`Could not resolve dropped file '${file.name}'`);
   const snapshot = (await ipcRenderer.invoke('project:snapshot')) as ArcProjectBrowserSnapshot | null;
   const project = snapshot?.activeProject;
   if (!project) throw new Error('Open an ARC project before importing textures');
-  return importExternalTexture(sourcePath, project, destinationFolder);
+  const imported = importExternalTexture(sourcePath, project, destinationFolder);
+  await ensureExternalAssetImported(imported.path, 'texture', importedAssetLifecycleBridge);
+  return imported;
 };
 
 const analyzeDroppedModel = (file: File): ExternalModelImportPlan => {
@@ -234,7 +248,9 @@ const importDroppedModel = async (
   const snapshot = (await ipcRenderer.invoke('project:snapshot')) as ArcProjectBrowserSnapshot | null;
   const project = snapshot?.activeProject;
   if (!project) throw new Error('Open an ARC project before importing models');
-  return importExternalModel(sourcePath, project, destinationFolder, selectedDependencies);
+  const imported = importExternalModel(sourcePath, project, destinationFolder, selectedDependencies);
+  await ensureExternalAssetImported(imported.path, 'model', importedAssetLifecycleBridge);
+  return imported;
 };
 
 const waitForImportedAsset = async (relativePath: string, label = 'asset'): Promise<ImportedHostAsset> => {

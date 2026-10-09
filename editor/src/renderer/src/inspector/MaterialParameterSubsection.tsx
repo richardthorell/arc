@@ -17,7 +17,7 @@ import {
   type MaterialGraphValueType,
 } from '../material/materialGraphTypes';
 import { UiColorControl, UiNumericInput, UiSelect, UiSlider } from '../ui';
-import { TexturePicker } from './AssetPicker';
+import { TexturePicker, type AssetThumbnailProvider } from './AssetPicker';
 import type { HostEntityId, HostResponse, Vec4 } from './inspectorTypes';
 import { NumberControl } from './InspectorControls';
 
@@ -225,11 +225,13 @@ export function MaterialParameterSubsection({
   assets,
   mixed = false,
   referenceMode = 'path',
+  thumbnailProvider,
   value,
 }: {
   assets: ReadonlyArray<MaterialParameterAsset>;
   mixed?: boolean;
   referenceMode?: 'path' | 'guid';
+  thumbnailProvider?: AssetThumbnailProvider;
   value: string;
 }) {
   const selected = useMemo(
@@ -642,6 +644,7 @@ export function MaterialParameterSubsection({
                               allowEmpty
                               assets={assets}
                               label={parameter.name}
+                              thumbnailProvider={thumbnailProvider}
                               value={textureValue}
                               onChange={(texture) =>
                                 void commitOverride(parameter, {
@@ -786,6 +789,7 @@ export function MaterialParameterSubsection({
                     allowEmpty
                     assets={assets}
                     label={parameter.name}
+                    thumbnailProvider={thumbnailProvider}
                     value={textureValue}
                     onChange={(texture) =>
                       void commitOverride(parameter, {

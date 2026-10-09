@@ -110,6 +110,29 @@ TEST_CASE("material instance specialization validates its runtime payload", "[re
     REQUIRE(validate_material_instance(instance).valid());
 }
 
+TEST_CASE("material instance applies texture overrides to runtime texture bindings", "[render][material-instance]")
+{
+    material_definition_descriptor parent;
+    parent.material.handle = material_handle{29};
+    auto runtime_program = std::make_shared<material_runtime_program>();
+    runtime_program->texture_bindings.push_back(
+        {.slot = 2, .parameter_id = shader_parameter_id{909}, .type = shader_parameter_type::texture_2d});
+    parent.material.runtime_program = std::move(runtime_program);
+    parent.material.runtime_textures.resize(3);
+    parent.parameter_layout.push_back(
+        {.id = shader_parameter_id{909}, .name = "Base Color Texture", .type = shader_parameter_type::texture_2d});
+
+    material_instance_descriptor instance;
+    instance.parent = material_handle{29};
+    instance.overrides.push_back(
+        {.id = shader_parameter_id{909}, .name = "Base Color Texture", .value = resource_handle{77, 3}});
+
+    const auto resolved = resolve_material_instance(parent, instance);
+    REQUIRE(resolved);
+    REQUIRE(resolved.value().runtime_textures.size() == 3);
+    CHECK(resolved.value().runtime_textures[2] == resource_handle{77, 3});
+}
+
 TEST_CASE("material instance resolves overrides against specialized reflected parameters",
           "[render][material-instance]")
 {
