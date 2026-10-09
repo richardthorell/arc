@@ -199,7 +199,9 @@ const assetString = (asset: Record<string, unknown>, key: string): string =>
   typeof asset[key] === 'string' ? String(asset[key]) : '';
 
 const assetArray = (asset: Record<string, unknown>, key: string): string[] =>
-  Array.isArray(asset[key]) ? (asset[key] as unknown[]).filter((value): value is string => typeof value === 'string') : [];
+  Array.isArray(asset[key])
+    ? (asset[key] as unknown[]).filter((value): value is string => typeof value === 'string')
+    : [];
 
 const assetCapabilities = (kind: string) => ({
   authoredMaterial: kind === 'material',
@@ -683,10 +685,18 @@ export class EditorAgentHarness {
         const snapshot = asObject(this.expect(await this.host.query('project.assets')));
         const sourceAssets = Array.isArray(snapshot.assets) ? snapshot.assets : [];
         const search = typeof params.search === 'string' ? params.search.trim().toLocaleLowerCase() : '';
-        const kinds = new Set(Array.isArray(params.kinds) ? params.kinds.filter((value): value is string => typeof value === 'string') : []);
-        const scopes = new Set(Array.isArray(params.scopes) ? params.scopes.filter((value): value is string => typeof value === 'string') : []);
+        const kinds = new Set(
+          Array.isArray(params.kinds) ? params.kinds.filter((value): value is string => typeof value === 'string') : [],
+        );
+        const scopes = new Set(
+          Array.isArray(params.scopes)
+            ? params.scopes.filter((value): value is string => typeof value === 'string')
+            : [],
+        );
         const statuses = new Set(
-          Array.isArray(params.statuses) ? params.statuses.filter((value): value is string => typeof value === 'string') : [],
+          Array.isArray(params.statuses)
+            ? params.statuses.filter((value): value is string => typeof value === 'string')
+            : [],
         );
         const offset = Number.isSafeInteger(params.offset) ? Math.max(0, Number(params.offset)) : 0;
         const limit = Number.isSafeInteger(params.limit) ? Math.min(200, Math.max(1, Number(params.limit))) : 50;

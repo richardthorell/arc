@@ -177,7 +177,10 @@ const registryEntries = [
       .object({
         search: z.string().max(240).optional(),
         kinds: z.array(z.string().min(1).max(64)).max(16).optional(),
-        scopes: z.array(z.enum(['builtin', 'project', 'user', 'organization', 'procedural'])).max(5).optional(),
+        scopes: z
+          .array(z.enum(['builtin', 'project', 'user', 'organization', 'procedural']))
+          .max(5)
+          .optional(),
         statuses: z.array(z.string().min(1).max(32)).max(12).optional(),
         offset: z.number().int().nonnegative().optional(),
         limit: z.number().int().min(1).max(200).optional(),
