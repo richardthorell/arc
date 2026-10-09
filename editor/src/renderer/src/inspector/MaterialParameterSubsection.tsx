@@ -54,6 +54,10 @@ type DisplayParameter = {
   name: string;
   type: MaterialGraphValueType;
   editorKind: MaterialEditorParameterKind;
+  group?: string;
+  groupLabel?: string;
+  groupOrder?: number;
+  order?: number;
   range?: { min: number; max: number };
   values: number[];
   texture: string;
@@ -154,6 +158,19 @@ const parameterValues = (node: MaterialGraphNode): number[] => {
 
 const parameterTexture = (node: MaterialGraphNode) =>
   typeof node.values.texture === 'string' ? node.values.texture : '';
+
+const parameterGrouping = (
+  graph: ReturnType<typeof materialGraphFromAsset>,
+  groupId: string | undefined,
+  order: number | undefined,
+) => {
+  const group = groupId ? graph.groups?.find((candidate) => candidate.id === groupId) : undefined;
+  return {
+    ...(groupId ? { group: groupId, groupLabel: group?.name || groupId } : {}),
+    ...(group?.order !== undefined ? { groupOrder: group.order } : {}),
+    ...(order !== undefined ? { order } : {}),
+  };
+};
 
 const bytesToHex = (text: string) =>
   Array.from(new TextEncoder().encode(text), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -341,6 +358,7 @@ export function MaterialParameterSubsection({
                 : '';
           return {
             ...parameter,
+            ...parameterGrouping(graph, parameter.group, parameter.order),
             nodeId: materialParameterId(parameter.nodeId),
             values: authoredValues,
             texture: authoredTexture,
@@ -432,6 +450,7 @@ export function MaterialParameterSubsection({
             const parameterId = materialParameterId(`${id}::${parameter.nodeId}`);
             return {
               ...parameter,
+              ...parameterGrouping(selectedOption.document.graph, parameter.group, parameter.order),
               nodeId: parameterId,
               slotId: id,
               values: functionNode ? parameterValues(functionNode) : [],
@@ -532,6 +551,7 @@ export function MaterialParameterSubsection({
                         const functionNode = option.document.graph.nodes.find((node) => node.id === parameter.nodeId);
                         return {
                           ...parameter,
+                          ...parameterGrouping(option.document.graph, parameter.group, parameter.order),
                           nodeId: materialParameterId(`${candidate.id}::${parameter.nodeId}`),
                           slotId: candidate.id,
                           values: functionNode ? parameterValues(functionNode) : [],
