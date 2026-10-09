@@ -166,6 +166,7 @@ const colorValue = (value: unknown): UiColorValue => {
 
 type MaterialFunctionAssetOption = {
   asset: AssetPickerItem;
+  authoringPath: string;
   document: MaterialFunctionAssetJson;
 };
 
@@ -248,6 +249,7 @@ function MaterialFunctionReferenceEditor({
                     name: document.name,
                     title: document.name,
                   },
+                  authoringPath: candidate.authoringPath,
                   document,
                 };
               } catch {
@@ -346,7 +348,7 @@ function MaterialFunctionReferenceEditor({
       : 'Function signature does not match this Function Call';
   };
 
-  const openFunction = (asset?: AssetPickerItem) => {
+  const openFunction = (asset?: AssetPickerItem, authoringPath?: string) => {
     if (!asset || asset.scope === 'procedural') return;
     openAssetEditorDocument({
       id: asset.id,
@@ -354,12 +356,11 @@ function MaterialFunctionReferenceEditor({
       typeId: asset.typeId,
       name: asset.name,
       title: asset.title,
-      path: asset.path,
+      path: authoringPath || asset.sourcePath || asset.path,
       kind: 'materialFunction',
       status: asset.status,
       scope: asset.scope,
-      readOnly: asset.readOnly,
-      ...(asset.scope === 'builtin' ? {} : { sourcePath: asset.sourcePath }),
+      readOnly: asset.scope === 'builtin' || Boolean(asset.readOnly),
     });
   };
 
@@ -488,7 +489,7 @@ function MaterialFunctionReferenceEditor({
                       <button
                         aria-label={`Open ${label} in Material Function Editor`}
                         className="asset-reference-clear"
-                        onClick={() => openFunction(option.asset)}
+                        onClick={() => openFunction(option.asset, option.authoringPath)}
                         title="Open in Material Function Editor"
                         type="button"
                       >
@@ -505,7 +506,12 @@ function MaterialFunctionReferenceEditor({
                   assetTypeLabel="Material Function"
                   assets={rowAssets}
                   label={label}
-                  onOpen={openFunction}
+                  onOpen={(asset) =>
+                    openFunction(
+                      asset,
+                      functions.find((candidate) => candidate.asset.path === asset.path)?.authoringPath,
+                    )
+                  }
                   showLabel={false}
                   value={reference.path}
                   onChange={(path) => replaceFunction(reference.path, path)}
