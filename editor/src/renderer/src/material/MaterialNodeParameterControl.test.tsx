@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MaterialNodeParameterControl } from './MaterialNodeParameterControl';
+
+afterEach(cleanup);
 
 describe('MaterialNodeParameterControl', () => {
   it('uses the shared toggle and text input for parameter authoring', () => {
