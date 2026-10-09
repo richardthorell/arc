@@ -22,7 +22,13 @@ import {
   isSupportedTexturePath,
   type ExternalTextureImportResult,
 } from './externalTextureImport';
-import { importExternalModel, isSupportedModelPath, type ExternalModelImportResult } from './externalModelImport';
+import {
+  analyzeExternalModel,
+  importExternalModel,
+  isSupportedModelPath,
+  type ExternalModelImportPlan,
+  type ExternalModelImportResult,
+} from './externalModelImport';
 
 export type ArcStartupState = {
   appVersion: string;
@@ -212,13 +218,23 @@ const importDroppedTexture = async (file: File, destinationFolder?: string): Pro
   return importExternalTexture(sourcePath, project, destinationFolder);
 };
 
-const importDroppedModel = async (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> => {
+const analyzeDroppedModel = (file: File): ExternalModelImportPlan => {
+  const sourcePath = webUtils.getPathForFile(file);
+  if (!sourcePath) throw new Error(`Could not resolve dropped file '${file.name}'`);
+  return analyzeExternalModel(sourcePath);
+};
+
+const importDroppedModel = async (
+  file: File,
+  destinationFolder?: string,
+  selectedDependencies?: readonly string[],
+): Promise<ExternalModelImportResult> => {
   const sourcePath = webUtils.getPathForFile(file);
   if (!sourcePath) throw new Error(`Could not resolve dropped file '${file.name}'`);
   const snapshot = (await ipcRenderer.invoke('project:snapshot')) as ArcProjectBrowserSnapshot | null;
   const project = snapshot?.activeProject;
   if (!project) throw new Error('Open an ARC project before importing models');
-  return importExternalModel(sourcePath, project, destinationFolder);
+  return importExternalModel(sourcePath, project, destinationFolder, selectedDependencies);
 };
 
 const waitForImportedAsset = async (relativePath: string, label = 'asset'): Promise<ImportedHostAsset> => {
@@ -375,8 +391,12 @@ const arcApi = {
     }> => ipcRenderer.invoke('project:createAsset', request),
     importTexture: (file: File, destinationFolder?: string): Promise<ExternalTextureImportResult> =>
       importDroppedTexture(file, destinationFolder),
-    importModel: (file: File, destinationFolder?: string): Promise<ExternalModelImportResult> =>
-      importDroppedModel(file, destinationFolder),
+    analyzeModelImport: (file: File): Promise<ExternalModelImportPlan> => Promise.resolve(analyzeDroppedModel(file)),
+    importModel: (
+      file: File,
+      destinationFolder?: string,
+      selectedDependencies?: readonly string[],
+    ): Promise<ExternalModelImportResult> => importDroppedModel(file, destinationFolder, selectedDependencies),
   },
   settings: {
     snapshot: (): Promise<EditorSettingsSnapshot | null> => ipcRenderer.invoke('settings:snapshot'),
