@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <functional>
+#include <string_view>
 #include <unordered_set>
 
 namespace arc::render
