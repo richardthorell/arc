@@ -60,6 +60,8 @@ export const assetPresentationLabel = (asset: AssetPresentationSource) => {
   if (kind === 'flow') return 'Flow Graph';
   if (kind === 'materialInstance') return 'Material Instance';
   if (kind === 'materialFunction') return 'Material Function';
+  if (kind === 'sound') return 'Sound';
+  if (kind === 'audio') return 'Audio Source';
   if (kind === 'water') return 'Water Preset';
   if (kind === 'shader' && asset.scope === 'builtin' && asset.readOnly) return 'Engine Shader Source';
   return kind.charAt(0).toLocaleUpperCase() + kind.slice(1);
@@ -93,6 +95,7 @@ export const assetPresentationIcon = (asset: Pick<AssetItem, 'kind' | 'path'>): 
   if (kind === 'flow') return 'script';
   if (kind === 'environment') return 'image';
   if (kind === 'materialInstance' || kind === 'materialFunction') return 'material';
+  if (kind === 'sound' || kind === 'audio') return 'audio';
   if (kind === 'water' || kind === 'unknown') return 'settings';
   return kind;
 };
