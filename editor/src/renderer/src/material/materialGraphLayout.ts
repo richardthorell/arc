@@ -4,6 +4,7 @@ import {
   cloneMaterialGraph,
   isMaterialTextureSampleNodeType,
   type MaterialGraph,
+  type MaterialGraphGroup,
   type MaterialGraphNode,
   type MaterialGraphNodeType,
   type MaterialGraphViewport,
@@ -14,7 +15,7 @@ const headerHeight = 34;
 const pinRowHeight = 25;
 const nodePaddingTop = 9;
 const nodePaddingBottom = 8;
-const parameterEditorHeight = 38;
+const parameterEditorHeight = 70;
 const valueEditorHeight = 38;
 const rangedScalarEditorExtraHeight = 72;
 const textureEditorHeight = 62;
@@ -98,6 +99,34 @@ export type MaterialGraphBounds = {
   height: number;
 };
 
+export type MaterialGraphGroupRect = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+const materialGroupPadding = { left: 34, right: 34, top: 48, bottom: 34 };
+
+export const materialGraphGroupRect = (graph: MaterialGraph, group: MaterialGraphGroup): MaterialGraphGroupRect | null => {
+  const members = (group.nodeIds ?? [])
+    .map((id) => graph.nodes.find((node) => node.id === id))
+    .filter((node): node is MaterialGraphNode => Boolean(node));
+
+  if (members.length > 0) {
+    const left = Math.min(...members.map((node) => node.position[0])) - materialGroupPadding.left;
+    const top = Math.min(...members.map((node) => node.position[1])) - materialGroupPadding.top;
+    const right =
+      Math.max(...members.map((node) => node.position[0] + materialNodeWidth(node.type))) + materialGroupPadding.right;
+    const bottom =
+      Math.max(...members.map((node) => node.position[1] + materialNodeHeight(node))) + materialGroupPadding.bottom;
+    return { left, top, width: right - left, height: bottom - top };
+  }
+
+  if (!group.position || !group.size) return null;
+  return { left: group.position[0], top: group.position[1], width: group.size[0], height: group.size[1] };
+};
+
 export const materialGraphBounds = (graph: MaterialGraph): MaterialGraphBounds | null => {
   if (graph.nodes.length === 0) return null;
 
@@ -111,6 +140,14 @@ export const materialGraphBounds = (graph: MaterialGraph): MaterialGraphBounds |
     top = Math.min(top, node.position[1]);
     right = Math.max(right, node.position[0] + materialNodeWidth(node.type));
     bottom = Math.max(bottom, node.position[1] + materialNodeHeight(node));
+  }
+  for (const group of graph.groups ?? []) {
+    const rect = materialGraphGroupRect(graph, group);
+    if (!rect) continue;
+    left = Math.min(left, rect.left);
+    top = Math.min(top, rect.top);
+    right = Math.max(right, rect.left + rect.width);
+    bottom = Math.max(bottom, rect.top + rect.height);
   }
 
   return {
