@@ -9,7 +9,8 @@
 }
 
 /* Make the floating controls lighter over the rendered scene. */
-.arc-viewport-show-menu > summary {
+.arc-viewport-show-menu > summary,
+.arc-viewport-show-menu > .arc-viewport-menu-trigger {
   border-color: rgba(255, 255, 255, 0.1);
   background: rgba(13, 19, 25, 0.48);
   box-shadow: 0 3px 11px rgba(0, 0, 0, 0.14);
@@ -17,7 +18,9 @@
 }
 
 .arc-viewport-show-menu[open] > summary,
-.arc-viewport-show-menu > summary:hover {
+.arc-viewport-show-menu > summary:hover,
+.arc-viewport-show-menu > .arc-viewport-menu-trigger[aria-expanded='true'],
+.arc-viewport-show-menu > .arc-viewport-menu-trigger:hover {
   border-color: rgba(255, 255, 255, 0.16);
   background: rgba(20, 28, 36, 0.64);
 }
