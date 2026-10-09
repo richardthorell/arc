@@ -129,7 +129,7 @@ describe('MaterialPicker exported parameters', () => {
     expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
   });
 
-  it('shows Function Slots as dropdowns and swaps function-specific parameters', async () => {
+  it('shows authored Function Call choices and swaps function-specific parameters', async () => {
     const defaultFunction = {
       id: 'default-base-color',
       guid: 'default-base-color-guid',
@@ -164,21 +164,18 @@ describe('MaterialPicker exported parameters', () => {
         version: 1,
         nodes: [
           {
-            id: 'base-color',
-            type: 'colorRgba',
-            position: [0, 0],
-            values: { value: [1, 1, 1, 1] },
-            parameter: { exposed: true, name: 'Base Color Tint' },
-          },
-          {
             id: 'base-color-source',
-            type: 'functionSlot',
+            type: 'functionCall',
             position: [100, 0],
             values: {
               slotId: 'base-color-source',
               name: 'Base Color Source',
-              path: 'material_functions/default_base_color.arcmatfn',
-              inputPins: [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }],
+              path: 'assets/material_functions/default_base_color.arcmatfn',
+              functions: [
+                { path: 'assets/material_functions/default_base_color.arcmatfn' },
+                { path: 'assets/material_functions/checker.arcmatfn' },
+              ],
+              inputPins: [],
               outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
             },
           },
@@ -191,12 +188,11 @@ describe('MaterialPicker exported parameters', () => {
     readText.mockImplementation(async (path: string) => {
       if (path.endsWith('default_base_color.arcmatfn'))
         return {
-          text: functionDocument('Default Base Color', [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }]),
+          text: functionDocument('Default Base Color', []),
         };
       if (path.endsWith('checker.arcmatfn'))
         return {
           text: functionDocument('Checker', [
-            { id: 'baseColor', name: 'Base Color', type: 'vec3' },
             { id: 'colorA', name: 'Color A', type: 'vec3', default: [0.8, 0.8, 0.8] },
             { id: 'colorB', name: 'Color B', type: 'vec3', default: [0.2, 0.2, 0.2] },
             { id: 'cellSize', name: 'Cell Size', type: 'float', default: 1 },
