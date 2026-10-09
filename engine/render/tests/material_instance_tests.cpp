@@ -157,3 +157,62 @@ TEST_CASE("material instance resolves overrides against specialized reflected pa
     CHECK(resolved.value().parameters.front().id == shader_parameter_id{701});
     CHECK(std::get<float>(resolved.value().parameters.front().value) == 2.0f);
 }
+
+TEST_CASE("emissive overrides update both compiled and bindless material representations",
+          "[render][material-instance][emissive]")
+{
+    material_definition_descriptor parent;
+    parent.material.handle = material_handle{43};
+    parent.material.name = "Standard Lit";
+    auto runtime_program = std::make_shared<material_runtime_program>();
+    runtime_program->parameter_block_size = 32u;
+    runtime_program->parameter_defaults.resize(32u);
+    runtime_program->parameters = {
+        {.id = shader_parameter_id{801}, .name = "Emissive Color",
+         .type = shader_parameter_type::float4, .offset = 0, .size = 16},
+        {.id = shader_parameter_id{802}, .name = "Emissive Strength",
+         .type = shader_parameter_type::float32, .offset = 16, .size = 4},
+    };
+    const std::array<float, 4> default_color{1.0f, 1.0f, 1.0f, 1.0f};
+    std::memcpy(runtime_program->parameter_defaults.data(), default_color.data(), sizeof(default_color));
+    parent.parameter_layout = runtime_program->parameters;
+    parent.material.runtime_program = std::move(runtime_program);
+
+    material_instance_descriptor instance;
+    instance.parent = parent.material.handle;
+    instance.overrides = {
+        {.id = shader_parameter_id{801}, .name = "Emissive Color",
+         .value = math::vector4f{0.0f, 0.0f, 1.0f, 1.0f}},
+        {.id = shader_parameter_id{802}, .name = "Emissive Strength", .value = 5.557f},
+    };
+    const auto bright = resolve_material_instance(parent, instance);
+    REQUIRE(bright);
+    CHECK(bright.value().emissive_factor[0] == 0.0f);
+    CHECK(bright.value().emissive_factor[1] == 0.0f);
+    CHECK(bright.value().emissive_factor[2] == 1.0f);
+    CHECK(bright.value().emissive_strength == 5.557f);
+    REQUIRE(bright.value().runtime_program);
+    float compiled_intensity{};
+    std::memcpy(&compiled_intensity, bright.value().runtime_program->parameter_defaults.data() + 16,
+                sizeof(compiled_intensity));
+    CHECK(compiled_intensity == 5.557f);
+
+    instance.overrides = {
+        {.id = shader_parameter_id{802}, .name = "Emissive Strength", .value = 5.0f},
+    };
+    const auto strength_only = resolve_material_instance(parent, instance);
+    REQUIRE(strength_only);
+    CHECK(strength_only.value().emissive_factor[0] == 1.0f);
+    CHECK(strength_only.value().emissive_factor[1] == 1.0f);
+    CHECK(strength_only.value().emissive_factor[2] == 1.0f);
+    CHECK(strength_only.value().emissive_strength == 5.0f);
+
+    instance.overrides = {
+        {.id = shader_parameter_id{801}, .name = "Emissive Color",
+         .value = math::vector4f{0.0f, 0.0f, 1.0f, 1.0f}},
+        {.id = shader_parameter_id{802}, .name = "Emissive Strength", .value = 0.0f},
+    };
+    const auto disabled = resolve_material_instance(parent, instance);
+    REQUIRE(disabled);
+    CHECK(disabled.value().emissive_strength == 0.0f);
+}
