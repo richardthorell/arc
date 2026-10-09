@@ -19,12 +19,7 @@ export function MaterialNodeParameterControl({
 }: Props) {
   return (
     <div className="material-node-parameter-toggle">
-      <UiToggleButton
-        checked={enabled}
-        disabled={readOnly}
-        label="Parameter"
-        onCheckedChange={onEnabledChange}
-      />
+      <UiToggleButton checked={enabled} disabled={readOnly} label="Parameter" onCheckedChange={onEnabledChange} />
       <UiTextInput
         aria-label={nameLabel}
         disabled={readOnly || !enabled}

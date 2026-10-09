@@ -33,12 +33,7 @@ describe('MaterialNodeParameterControl', () => {
     const onNameChange = vi.fn();
 
     render(
-      <MaterialNodeParameterControl
-        enabled
-        name="Base Color"
-        onEnabledChange={vi.fn()}
-        onNameChange={onNameChange}
-      />,
+      <MaterialNodeParameterControl enabled name="Base Color" onEnabledChange={vi.fn()} onNameChange={onNameChange} />,
     );
 
     const name = screen.getByRole('textbox', { name: 'Parameter name' });
