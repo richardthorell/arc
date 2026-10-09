@@ -54,6 +54,7 @@ import type { EditorDocument } from '../editors/editorTypes';
 import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
 import { flattenScene } from '../services/editorHostTypes';
+import { hostAssetReference } from '../services/assetReferences';
 import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/editorHostTypes';
 import { UiContextMenu, UiContextMenuItem, UiIconButton, UiPanel, UiTab, UiTabs, UiTreeRow } from '../ui';
 import { ViewportPanel } from '../viewport/ViewportPanel';
@@ -1383,7 +1384,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     if (response.succeeded) await refreshWorldEnvironment(hostEntityKey(worldEnvironment.entity));
   };
 
-  const applyWorldEnvironmentHdri = async (path: string): Promise<boolean> => {
+  const applyWorldEnvironmentHdri = async (path: string, asset?: AssetItem): Promise<boolean> => {
     if (!worldEnvironment) return false;
     if (!startupState?.engineHostConnected) {
       setLastCommand('Native editor host is unavailable');
@@ -1393,6 +1394,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     const response = (await window.arc.host.command('environment.setHdri', {
       entity: worldEnvironment.entity,
       path,
+      ...(asset ? { asset: hostAssetReference(asset) ?? undefined } : {}),
     })) as HostResponse;
     setLastCommand(response.succeeded ? 'Environment HDRI loaded' : response.error || 'HDRI load failed');
     await refreshWorldEnvironment(hostEntityKey(worldEnvironment.entity));
@@ -2476,7 +2478,7 @@ function WorldSettingsPanel({
   thumbnailProvider: (path: string) => Promise<string | null>;
   onEnvironmentChange: (environment: HostWorldEnvironment) => void;
   onEnvironmentPreset: (preset: string) => void;
-  onEnvironmentHdri: (path: string) => Promise<boolean> | boolean | void;
+  onEnvironmentHdri: (path: string, asset?: AssetItem) => Promise<boolean> | boolean | void;
 }) {
   return (
     <section className="world-settings-panel">
