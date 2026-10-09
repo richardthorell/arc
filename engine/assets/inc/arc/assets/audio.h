@@ -47,7 +47,7 @@ enum class wav_error_code : std::uint8_t
     invalid_format
 };
 
-struct wav_parse_result
+struct [[nodiscard]] wav_parse_result
 {
     wav_info info;
     wav_error_code code{wav_error_code::none};
@@ -92,7 +92,7 @@ enum class sound_asset_error_code : std::uint8_t
     invalid_spatial
 };
 
-struct sound_asset_parse_result
+struct [[nodiscard]] sound_asset_parse_result
 {
     sound_asset asset;
     sound_asset_error_code code{sound_asset_error_code::none};
