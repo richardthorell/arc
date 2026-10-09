@@ -41,7 +41,7 @@ export type AssetPickerProps = {
   onCreateNew?: (name: string) => Promise<string>;
   onOpen?: (asset: AssetPickerItem) => void;
   assetCompatibility?: (asset: AssetPickerItem) => string | null;
-  onChange: (path: string) => void;
+  onChange: (value: string, asset?: AssetPickerItem) => void;
   showLabel?: boolean;
   triggerMode?: 'default' | 'add';
 };
@@ -283,7 +283,7 @@ export function AssetPicker({
     if (!candidate) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
-    onChange(valueFor(candidate));
+    onChange(valueFor(candidate), candidate);
   };
 
   const canOpen = Boolean(selected && onOpen && !mixed);
@@ -376,7 +376,7 @@ export function AssetPicker({
           onFilter={setFilter}
           valueFor={valueFor}
           onSelect={(asset) => {
-            onChange(valueFor(asset));
+            onChange(valueFor(asset), asset);
             setOpen(false);
           }}
         />
