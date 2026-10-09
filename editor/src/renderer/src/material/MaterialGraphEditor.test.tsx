@@ -323,6 +323,12 @@ describe('MaterialGraphEditor', () => {
     const callNode = container.querySelector<HTMLElement>(`[data-node-id="${call.id}"]`);
     expect(callNode).not.toBeNull();
 
+    expect(await within(callNode!).findByRole('radio', { name: 'Set Default Base Color as default' })).toBeChecked();
+    expect(within(callNode!).getByRole('button', { name: 'Choose Default Base Color asset' })).toBeEnabled();
+    expect(
+      within(callNode!).getByRole('button', { name: 'Open Default Base Color in Material Function Editor' }),
+    ).toBeEnabled();
+
     const add = await within(callNode!).findByRole('button', { name: 'Add Material Function' });
     fireEvent.click(add);
     fireEvent.click(await screen.findByRole('button', { name: 'Select Checker' }));
