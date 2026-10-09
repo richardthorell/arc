@@ -75,7 +75,10 @@ describe('AssetPicker', () => {
       },
     });
 
-    expect(onChange).toHaveBeenCalledWith('Content/Materials/Hero.arcmat');
+    expect(onChange).toHaveBeenCalledWith(
+      'Content/Materials/Hero.arcmat',
+      expect.objectContaining({ guid: 'hero-material-guid' }),
+    );
   });
 
   it('accepts Content Browser image payloads on texture asset fields', () => {
@@ -110,7 +113,7 @@ describe('AssetPicker', () => {
       },
     });
 
-    expect(onChange).toHaveBeenCalledWith('albedo-guid');
+    expect(onChange).toHaveBeenCalledWith('albedo-guid', expect.objectContaining({ guid: 'albedo-guid' }));
   });
 
   it('uses the authoritative project source path when assigning imported textures', async () => {
@@ -142,7 +145,10 @@ describe('AssetPicker', () => {
     await waitFor(() => expect(thumbnailProvider).toHaveBeenCalledWith('Bricks071_4K_JPG_Color.jpg'));
     await user.click(screen.getByRole('button', { name: 'Select Bricks071_4K_JPG_Color' }));
 
-    expect(onChange).toHaveBeenCalledWith('Content/Bricks071_4K_JPG_Color.jpg');
+    expect(onChange).toHaveBeenCalledWith(
+      'Content/Bricks071_4K_JPG_Color.jpg',
+      expect.objectContaining({ guid: 'bricks-guid', sourcePath: 'Content/Bricks071_4K_JPG_Color.jpg' }),
+    );
   });
 
   it('filters reflected asset types and commits the stable GUID', async () => {
@@ -183,7 +189,7 @@ describe('AssetPicker', () => {
     expect(screen.getByRole('button', { name: 'Select Albedo' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Select Hero Mesh' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Select Albedo' }));
-    expect(onChange).toHaveBeenCalledWith('texture-guid');
+    expect(onChange).toHaveBeenCalledWith('texture-guid', expect.objectContaining({ guid: 'texture-guid' }));
   });
 
   it('shows a friendly material identity and retries a thumbnail when importing becomes ready', async () => {
