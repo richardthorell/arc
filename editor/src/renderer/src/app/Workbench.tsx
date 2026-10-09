@@ -232,10 +232,12 @@ const sceneKindFromHost = (kind: HostSceneEntity['kind']): SceneEntity['kind'] =
   return 'mesh';
 };
 
-const assetKindFromHost = (kind: HostAssetSnapshot['kind']): AssetItem['kind'] => {
+export const assetKindFromHost = (kind: HostAssetSnapshot['kind']): AssetItem['kind'] => {
   if (kind === 'environment') return 'texture';
   if (
     kind === 'material' ||
+    kind === 'materialInstance' ||
+    kind === 'materialFunction' ||
     kind === 'texture' ||
     kind === 'shader' ||
     kind === 'mesh' ||
