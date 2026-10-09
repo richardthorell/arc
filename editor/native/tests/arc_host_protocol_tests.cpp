@@ -521,7 +521,8 @@ TEST_CASE("editor project queues the first import for newly discovered assets")
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
     assets.root = root / "Content";
-    REQUIRE(host->open_project({.name = "Initial Import", .root = root, .content_roots = {assets.root}}, assets).succeeded);
+    REQUIRE(
+        host->open_project({.name = "Initial Import", .root = root, .content_roots = {assets.root}}, assets).succeeded);
 
     bool ready = false;
     for (int attempt = 0; attempt < 200 && !ready; ++attempt)

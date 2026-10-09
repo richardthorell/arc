@@ -58,9 +58,9 @@ describe('external asset import lifecycle', () => {
 
   it('does not reimport an asset that became ready before discovery polling observed it', async () => {
     const reimportAsset = vi.fn();
-    const queryAssets = vi.fn().mockResolvedValue([
-      { guid: 'texture-guid', path: 'Content/Ready.png', state: 'ready' as const },
-    ]);
+    const queryAssets = vi
+      .fn()
+      .mockResolvedValue([{ guid: 'texture-guid', path: 'Content/Ready.png', state: 'ready' as const }]);
 
     await ensureExternalAssetImported(
       'content\\ready.png',

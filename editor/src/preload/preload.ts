@@ -213,7 +213,8 @@ const sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeou
 
 const importedAssetLifecycleBridge = {
   queryAssets: async (): Promise<readonly ImportedHostAsset[]> => {
-    const response = (await ipcRenderer.invoke('host:query', 'project.assets', {})) as ProjectAssetsResponse | undefined;
+    const response = (await ipcRenderer.invoke('host:query', 'project.assets', {})) as
+      ProjectAssetsResponse | undefined;
     return response?.succeeded && response.payload?.assets ? response.payload.assets : [];
   },
   reimportAsset: async (guid: string): Promise<{ succeeded: boolean; error?: string }> =>
