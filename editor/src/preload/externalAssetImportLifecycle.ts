@@ -3,6 +3,7 @@ export type ExternalImportedAssetState = 'unknown' | 'queued' | 'importing' | 'r
 export type ExternalImportedAsset = {
   guid: string;
   path: string;
+  sourcePath?: string;
   state: ExternalImportedAssetState;
   diagnostic?: string;
 };
@@ -40,7 +41,11 @@ export const ensureExternalAssetImported = async (
 
   while (Date.now() < deadline) {
     const assets = await bridge.queryAssets();
-    const asset = assets.find((candidate) => normalizedAssetPath(candidate.path) === normalized);
+    const asset = assets.find(
+      (candidate) =>
+        normalizedAssetPath(candidate.path) === normalized ||
+        (candidate.sourcePath !== undefined && normalizedAssetPath(candidate.sourcePath) === normalized),
+    );
     if (asset) {
       if (asset.state === 'failed') throw failedImportError(asset, label);
       if (asset.state === 'ready') return asset;
