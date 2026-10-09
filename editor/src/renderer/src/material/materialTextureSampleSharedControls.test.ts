@@ -8,8 +8,7 @@ describe('material texture sample shared control migration', () => {
   it('keeps the texture sample editor on shared controls', () => {
     const source = readFileSync(new URL('MaterialTextureSampleEditor.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain('UiToggleButton');
-    expect(source).toContain('UiTextInput');
+    expect(source).toContain('MaterialNodeParameterControl');
     expect(source).not.toMatch(nativeControlPattern);
   });
 

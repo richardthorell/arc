@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { AssetPreviewPanel, AssetPreviewPlaceholder } from '../assetPreview/AssetPreviewPanel';
 import type { EditorDocument } from '../editors/editorTypes';
 import { MaterialGraphEditor } from '../material/MaterialGraphEditor';
+import { MaterialNodeParameterControl } from '../material/MaterialNodeParameterControl';
 import type { MaterialGraph } from '../material/materialGraphTypes';
 import { UiColorControl, UiNodeCard, type UiColorValue } from '../ui';
 
@@ -58,33 +59,6 @@ const materialGraph: MaterialGraph = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 
-function ParameterControl({
-  enabled,
-  name,
-  onEnabledChange,
-  onNameChange,
-  nameLabel,
-}: {
-  enabled: boolean;
-  name: string;
-  onEnabledChange: (enabled: boolean) => void;
-  onNameChange: (name: string) => void;
-  nameLabel: string;
-}) {
-  return (
-    <label className="material-node-parameter-toggle">
-      <input checked={enabled} type="checkbox" onChange={(event) => onEnabledChange(event.target.checked)} />
-      <span>Parameter</span>
-      <input
-        aria-label={nameLabel}
-        disabled={!enabled}
-        value={name}
-        onChange={(event) => onNameChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
 export function UiLabMaterialNodeCard() {
   const [color, setColor] = useState<UiColorValue>({ x: 0.42, y: 0.24, z: 0.12, w: 1 });
   const [parameter, setParameter] = useState(true);
@@ -106,7 +80,7 @@ export function UiLabMaterialNodeCard() {
       <div className="material-node-value-area">
         <UiColorControl label="Color" value={color} onCommit={setColor} />
       </div>
-      <ParameterControl
+      <MaterialNodeParameterControl
         enabled={parameter}
         name={parameterName}
         nameLabel="Material node parameter name"
@@ -154,7 +128,7 @@ export function UiLabTextureSampleNodeCard() {
           </span>
         </button>
       </div>
-      <ParameterControl
+      <MaterialNodeParameterControl
         enabled={parameter}
         name={parameterName}
         nameLabel="Texture parameter name"
@@ -193,7 +167,7 @@ export function UiLabConstantNodeCard() {
           />
         </label>
       </div>
-      <ParameterControl
+      <MaterialNodeParameterControl
         enabled={parameter}
         name={parameterName}
         nameLabel="Constant parameter name"
