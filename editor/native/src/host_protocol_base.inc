@@ -1782,7 +1782,8 @@ std::string to_json(const host_command_envelope& envelope)
             }
             else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"layer\":" + std::to_string(payload.layer) +
-                       ",\"path\":" + quote(payload.path.generic_string()) + '}';
+                       ",\"path\":" + quote(payload.path.generic_string()) +
+                       (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
             else if constexpr (std::is_same_v<type, host_create_terrain_command>)
                 return "{\"size\":" + std::to_string(payload.size) +
                        ",\"minimumElevation\":" + std::to_string(payload.minimum_elevation) +
@@ -1832,7 +1833,7 @@ std::string to_json(const host_command_envelope& envelope)
                        ",\"y\":" + std::to_string(payload.y) + ",\"clear\":" + bool_json(payload.clear) + '}';
             else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
-                       '}';
+                       (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
             else if constexpr (std::is_same_v<type, host_component_operation_command>)
                 return "{\"component\":" + quote(payload.component) + '}';
             else if constexpr (std::is_same_v<type, host_patch_project_component_command>)
@@ -1845,7 +1846,7 @@ std::string to_json(const host_command_envelope& envelope)
                        '}';
             else if constexpr (std::is_same_v<type, host_set_environment_hdri_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
-                       '}';
+                       (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
             else if constexpr (std::is_same_v<type, host_set_camera_projection_command>)
                 return "{\"projection\":" + quote(to_string(payload.projection)) + '}';
             else if constexpr (std::is_same_v<type, host_viewport_attach_command>)
@@ -3043,10 +3044,18 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     {
         host_set_terrain_layer_command command;
         std::string path;
-        if (!entity_field_value(payload, "entity", command.entity) || !number_value(payload, "layer", command.layer) ||
-            !string_value(payload, "path", path))
+        string_value(payload, "path", path);
+        std::string_view asset_json;
+        if (object_value(payload, "asset", asset_json))
         {
-            error = "Terrain layer assignment requires entity, layer, and path";
+            host_asset_reference asset;
+            if (!from_json(asset_json, asset, error)) return false;
+            command.asset = std::move(asset);
+        }
+        if (!entity_field_value(payload, "entity", command.entity) || !number_value(payload, "layer", command.layer) ||
+            (path.empty() && !command.asset))
+        {
+            error = "Terrain layer assignment requires entity, layer, and an asset reference";
             return false;
         }
         command.path = std::move(path);
@@ -3056,10 +3065,17 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     {
         host_set_entity_material_command command;
         std::string path;
-        if (!entity_field_value(payload, "entity", command.entity) || !string_value(payload, "path", path) ||
-            path.empty())
+        string_value(payload, "path", path);
+        std::string_view asset_json;
+        if (object_value(payload, "asset", asset_json))
         {
-            error = "Material assignment requires entity and material path";
+            host_asset_reference asset;
+            if (!from_json(asset_json, asset, error)) return false;
+            command.asset = std::move(asset);
+        }
+        if (!entity_field_value(payload, "entity", command.entity) || (path.empty() && !command.asset))
+        {
+            error = "Material assignment requires entity and an asset reference or legacy path";
             return false;
         }
         command.path = std::move(path);
@@ -3125,9 +3141,17 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
     {
         host_set_environment_hdri_command command;
         std::string path;
-        if (!entity_field_value(payload, "entity", command.entity) || !string_value(payload, "path", path))
+        string_value(payload, "path", path);
+        std::string_view asset_json;
+        if (object_value(payload, "asset", asset_json))
         {
-            error = "Environment HDRI assignment requires entity and path";
+            host_asset_reference asset;
+            if (!from_json(asset_json, asset, error)) return false;
+            command.asset = std::move(asset);
+        }
+        if (!entity_field_value(payload, "entity", command.entity))
+        {
+            error = "Environment HDRI assignment requires entity";
             return false;
         }
         command.path = path;
