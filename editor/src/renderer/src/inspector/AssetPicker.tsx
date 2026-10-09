@@ -44,6 +44,7 @@ export type AssetPickerProps = {
   onChange: (value: string, asset?: AssetPickerItem) => void;
   showLabel?: boolean;
   triggerMode?: 'default' | 'add';
+  disabled?: boolean;
 };
 
 const thumbnailCaches = new WeakMap<AssetThumbnailProvider, Map<string, Promise<string | null>>>();
@@ -243,6 +244,7 @@ export function AssetPicker({
   onChange,
   showLabel = true,
   triggerMode = 'default',
+  disabled = false,
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -271,6 +273,7 @@ export function AssetPicker({
     (createAssetKind ? (name: string) => createProjectAsset(createAssetKind, name, assets, assetTypeLabel) : undefined);
 
   const acceptDrop = (event: React.DragEvent) => {
+    if (disabled) return;
     const dropped = readArcAssetDragPayload(event.dataTransfer);
     if (!dropped) return;
     const candidate = candidates.find(
@@ -287,7 +290,7 @@ export function AssetPicker({
   };
 
   const canOpen = Boolean(selected && onOpen && !mixed);
-  const canClear = Boolean(allowEmpty && value && !mixed);
+  const canClear = Boolean(!disabled && allowEmpty && value && !mixed);
 
   const control = (
     <>
@@ -296,6 +299,7 @@ export function AssetPicker({
           aria-expanded={open}
           aria-label={triggerMode === 'add' ? `Add ${label}` : `Choose ${label} asset`}
           className={`asset-reference-main${triggerMode === 'add' ? ' asset-reference-add' : ''}`}
+          disabled={disabled}
           onClick={() => setOpen((current) => !current)}
           ref={anchorRef}
           type="button"
@@ -466,6 +470,35 @@ export function MaterialPicker({
         />
       )}
     </>
+  );
+}
+
+export function MaterialFunctionPicker(
+  props: Omit<AssetPickerProps, 'assetKinds' | 'assetTypeLabel' | 'onOpen'>,
+) {
+  const openMaterialFunction = (asset: AssetPickerItem) => {
+    if (asset.kind !== 'materialFunction' || asset.scope === 'procedural') return;
+    openAssetEditorDocument({
+      id: asset.id,
+      guid: asset.guid,
+      typeId: asset.typeId,
+      name: asset.name,
+      title: asset.title,
+      path: asset.sourcePath || asset.path,
+      kind: 'materialFunction',
+      status: asset.status,
+      scope: asset.scope,
+      readOnly: asset.readOnly,
+    });
+  };
+
+  return (
+    <AssetPicker
+      {...props}
+      assetKinds={['materialFunction']}
+      assetTypeLabel="Material Function"
+      onOpen={openMaterialFunction}
+    />
   );
 }
 
