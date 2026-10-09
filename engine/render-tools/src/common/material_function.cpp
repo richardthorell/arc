@@ -398,6 +398,27 @@ slot_specialization_result specialize_function_slots(json graph,
                 validation_error("Material Function Slot overrides contain an invalid or duplicate slot id"));
     }
 
+    std::set<std::string> declared_slots;
+    if (graph.contains("nodes") && graph["nodes"].is_array())
+    {
+        for (const auto& node : graph["nodes"])
+        {
+            if (!node.is_object()) continue;
+            const auto type = node.value("type", "");
+            if (type != "functionSlot" && type != "functionCall") continue;
+            const auto values = node.value("values", json::object());
+            const auto slot_id = values.value("slotId", "");
+            if (!slot_id.empty()) declared_slots.insert(slot_id);
+        }
+    }
+    for (const auto& [slot_id, selection] : selections)
+    {
+        static_cast<void>(selection);
+        if (!declared_slots.contains(slot_id))
+            return slot_specialization_result::failure(
+                validation_error("Material Function Slot override references unknown slot '" + slot_id + "'"));
+    }
+
     std::set<std::string> authored_slots;
     std::vector<material_function_slot_descriptor> descriptors;
     json extra_nodes = json::array();
@@ -504,14 +525,6 @@ slot_specialization_result specialize_function_slots(json graph,
         node["type"] = "functionCall";
         node["values"] = std::move(values);
         descriptors.push_back(std::move(descriptor));
-    }
-
-    for (const auto& [slot_id, selection] : selections)
-    {
-        static_cast<void>(selection);
-        if (!authored_slots.contains(slot_id))
-            return slot_specialization_result::failure(
-                validation_error("Material Function Slot override references unknown slot '" + slot_id + "'"));
     }
 
     for (auto& node : extra_nodes)
