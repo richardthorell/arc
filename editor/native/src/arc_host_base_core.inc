@@ -2677,6 +2677,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     state_->terrain_preview_dirty.clear();
     state_->scene.terrain_render_proxies.clear(*state_->renderer);
     state_->scene = create_blank_scene(*state_->renderer, command.default_scene.empty(), &state_->assets);
+    state_->scene.asset_registry = state_->asset_registry.get();
     state_->scene.project_root = command.root;
     state_->scene.project_asset_roots = content_roots;
     if (state_->asset_registry)
