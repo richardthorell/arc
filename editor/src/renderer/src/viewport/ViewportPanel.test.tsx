@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ViewportPanel } from './ViewportPanel';
@@ -448,6 +448,72 @@ describe('ViewportPanel', () => {
     );
   });
 
+  it('checks the active camera, projection, and visualization menu choices', async () => {
+    Object.defineProperty(window, 'arc', {
+      configurable: true,
+      value: {
+        host: {
+          command: vi.fn().mockResolvedValue({ succeeded: true }),
+          query: vi.fn().mockResolvedValue({
+            succeeded: true,
+            payload: {
+              width: 640,
+              height: 480,
+              fps: 60,
+              frameTimeMs: 16.6,
+              drawCalls: 1,
+              frameIndex: 1,
+              submitted: true,
+              renderOptions: {
+                renderMode: 'shaded',
+                visualization: 'standard',
+                shadows: true,
+                grid: false,
+              },
+            },
+          }),
+        },
+        viewport: {
+          attach: vi.fn().mockResolvedValue({ succeeded: true }),
+          resize: vi.fn().mockResolvedValue({ succeeded: true }),
+          detach: vi.fn().mockResolvedValue({ succeeded: true }),
+          cameraInput: vi.fn().mockResolvedValue({ succeeded: true }),
+        },
+      },
+    });
+
+    const view = render(
+      <ViewportPanel
+        project={null}
+        startupState={{ appVersion: '0.1.0', engineHostConnected: true, viewportMode: 'native' }}
+        onCommand={vi.fn()}
+        onReconnect={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+
+    fireEvent.click(view.getByRole('button', { name: 'Show' }));
+    expect(await view.findByRole('menuitemcheckbox', { name: /Grid/ })).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(view.getByRole('button', { name: 'Editor Camera' }));
+    let menu = await view.findByRole('menu', { name: 'Editor Camera menu' });
+    let selected = within(menu).getByRole('menuitemradio', { name: 'Editor Camera' });
+    expect(selected).toHaveAttribute('aria-checked', 'true');
+    expect(selected.querySelector('.arc-viewport-menu-check')).toHaveTextContent('✓');
+
+    fireEvent.click(view.getByRole('button', { name: 'Perspective' }));
+    menu = await view.findByRole('menu', { name: 'Perspective menu' });
+    selected = within(menu).getByRole('menuitemradio', { name: 'Perspective' });
+    expect(selected).toHaveAttribute('aria-checked', 'true');
+    expect(selected.querySelector('.arc-viewport-menu-check')).toHaveTextContent('✓');
+
+    fireEvent.click(view.getByRole('button', { name: 'Lit' }));
+    menu = await view.findByRole('menu', { name: 'Lit menu' });
+    selected = within(menu).getByRole('menuitemradio', { name: 'Lit' });
+    expect(selected).toHaveAttribute('aria-checked', 'true');
+    expect(selected.querySelector('.arc-viewport-menu-check')).toHaveTextContent('✓');
+    expect(within(menu).getByRole('menuitemradio', { name: 'Unlit' })).toHaveAttribute('aria-checked', 'false');
+  });
+
   it('selects texture residency debug visualization modes', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     Object.defineProperty(window, 'arc', {
@@ -494,7 +560,7 @@ describe('ViewportPanel', () => {
       />,
     );
     fireEvent.click(view.getByRole('button', { name: 'Lit' }));
-    fireEvent.click(await view.findByRole('button', { name: 'Texture Desired Mip' }));
+    fireEvent.click(await view.findByRole('menuitemradio', { name: 'Texture Desired Mip' }));
 
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith(

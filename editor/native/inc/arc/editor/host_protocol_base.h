@@ -1491,7 +1491,7 @@ struct host_viewport_set_render_options_command
     bool component_gizmos{true};
     bool selection_hierarchy{};
     bool shadows{true};
-    bool grid{true};
+    bool grid{};
     host_vec3 grid_color{0.2f, 0.21568628f, 0.23921569f};
     bool skeletons{};
     bool realtime{true};
@@ -1815,7 +1815,7 @@ struct host_viewport_request
     bool component_gizmos{true};
     bool selection_hierarchy{};
     bool shadows{true};
-    bool grid{true};
+    bool grid{};
     host_vec3 grid_color{0.2f, 0.21568628f, 0.23921569f};
     bool skeletons{};
     bool realtime{true};
