@@ -24,6 +24,38 @@ describe('external asset import lifecycle', () => {
     expect(reimportAsset).toHaveBeenCalledWith('texture-guid');
   });
 
+  it('matches project-relative imports against the host source path', async () => {
+    const reimportAsset = vi.fn().mockResolvedValue({ succeeded: true });
+    const queryAssets = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          guid: 'texture-guid',
+          path: 'Bricks.jpg',
+          sourcePath: 'Content/Bricks.jpg',
+          state: 'stale' as const,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          guid: 'texture-guid',
+          path: 'Bricks.jpg',
+          sourcePath: 'Content/Bricks.jpg',
+          state: 'ready' as const,
+        },
+      ]);
+
+    const asset = await ensureExternalAssetImported(
+      'Content/Bricks.jpg',
+      'texture',
+      { queryAssets, reimportAsset },
+      { sleep: async () => undefined },
+    );
+
+    expect(asset.state).toBe('ready');
+    expect(reimportAsset).toHaveBeenCalledWith('texture-guid');
+  });
+
   it('does not reimport an asset that became ready before discovery polling observed it', async () => {
     const reimportAsset = vi.fn();
     const queryAssets = vi.fn().mockResolvedValue([
