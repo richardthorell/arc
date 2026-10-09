@@ -349,11 +349,12 @@ export function MaterialParameterSubsection({
                 try {
                   const scope = asset.scope === 'builtin' ? 'builtin' : 'project';
                   const authoringPath = scope === 'builtin' ? asset.path : asset.sourcePath || asset.path;
+                  const referencePath = asset.sourcePath || asset.path;
                   const path = await projectRelativeMaterialPath(authoringPath, scope);
                   const source = await window.arc.projects.readText(path, scope);
                   const document = JSON.parse(source.text) as MaterialFunctionAssetJson;
                   if (document.kind !== 'materialFunction' || document.version !== 1 || !asset.guid) return null;
-                  return { guid: asset.guid, path: authoringPath, name: document.name, document };
+                  return { guid: asset.guid, path: referencePath, name: document.name, document };
                 } catch {
                   return null;
                 }
@@ -362,7 +363,16 @@ export function MaterialParameterSubsection({
         ).filter((option): option is DisplayFunctionOption => option !== null);
 
         const functionSlots = graph.nodes.flatMap((node): DisplayFunctionSlot[] => {
-          if (node.type !== 'functionSlot') return [];
+          const authoredReferences =
+            node.type === 'functionCall' && Array.isArray(node.values.functions)
+              ? node.values.functions.flatMap((reference) => {
+                  if (!reference || typeof reference !== 'object') return [];
+                  const path = (reference as { path?: unknown }).path;
+                  return typeof path === 'string' && path.trim() ? [path] : [];
+                })
+              : [];
+          const selectableCall = node.type === 'functionCall' && authoredReferences.length > 0;
+          if (node.type !== 'functionSlot' && !selectableCall) return [];
           const id = typeof node.values.slotId === 'string' ? node.values.slotId.trim() : '';
           const name =
             typeof node.values.name === 'string' && node.values.name.trim() ? node.values.name.trim() : 'Function';
@@ -372,8 +382,10 @@ export function MaterialParameterSubsection({
             ? (node.values.outputPins as MaterialFunctionPin[])
             : [];
           if (!id || !defaultPath) return [];
-          const compatible = functionOptions.filter((option) =>
-            materialFunctionCompatibleWithSlot(inputs, outputs, option.document),
+          const compatible = functionOptions.filter(
+            (option) =>
+              materialFunctionCompatibleWithSlot(inputs, outputs, option.document) &&
+              (!selectableCall || authoredReferences.some((reference) => pathMatches(option.path, reference))),
           );
           const defaultOption = compatible.find((option) => pathMatches(option.path, defaultPath));
           if (!defaultOption) return [];
@@ -384,7 +396,7 @@ export function MaterialParameterSubsection({
           const selectedOption = compatible.find((option) => option.guid === selectedGuid) ?? defaultOption;
           const authoredInputs = new Map((authored?.inputOverrides ?? []).map((entry) => [entry.pinId, entry.value]));
           const baseInputs = new Set(inputs.map((input) => input.id));
-          const extraParameters = selectedOption.document.inputs.flatMap((pin): DisplayParameter[] => {
+          const inputParameters = selectedOption.document.inputs.flatMap((pin): DisplayParameter[] => {
             if (baseInputs.has(pin.id) || pin.default === undefined) return [];
             const parameterId = materialFunctionSlotParameterId(id, selectedOption.guid, pin.id);
             const runtimeOverride = overridesFromMaterialName(runtimeMaterialName).find(
@@ -403,6 +415,20 @@ export function MaterialParameterSubsection({
               },
             ];
           });
+          const graphParameters = materialEditorParameters(selectedOption.document.graph).map((parameter) => {
+            const functionNode = selectedOption.document.graph.nodes.find(
+              (candidate) => candidate.id === parameter.nodeId,
+            );
+            const parameterId = materialParameterId(`${id}::${parameter.nodeId}`);
+            return {
+              ...parameter,
+              nodeId: parameterId,
+              slotId: id,
+              values: functionNode ? parameterValues(functionNode) : [],
+              texture: functionNode ? parameterTexture(functionNode) : '',
+            };
+          });
+          const extraParameters = [...graphParameters, ...inputParameters];
 
           return [
             {
@@ -490,20 +516,33 @@ export function MaterialParameterSubsection({
                 : {
                     ...candidate,
                     selectedGuid: option.guid,
-                    parameters: option.document.inputs.flatMap((pin): DisplayParameter[] => {
-                      if (candidate.inputs.some((input) => input.id === pin.id) || pin.default === undefined) return [];
-                      return [
-                        {
-                          nodeId: materialFunctionSlotParameterId(candidate.id, option.guid, pin.id),
+                    parameters: [
+                      ...materialEditorParameters(option.document.graph).map((parameter) => {
+                        const functionNode = option.document.graph.nodes.find((node) => node.id === parameter.nodeId);
+                        return {
+                          ...parameter,
+                          nodeId: materialParameterId(`${candidate.id}::${parameter.nodeId}`),
                           slotId: candidate.id,
-                          name: pin.name,
-                          type: pin.type,
-                          editorKind: functionEditorKind(pin),
-                          values: functionParameterValues(pin.default),
-                          texture: '',
-                        },
-                      ];
-                    }),
+                          values: functionNode ? parameterValues(functionNode) : [],
+                          texture: functionNode ? parameterTexture(functionNode) : '',
+                        };
+                      }),
+                      ...option.document.inputs.flatMap((pin): DisplayParameter[] => {
+                        if (candidate.inputs.some((input) => input.id === pin.id) || pin.default === undefined)
+                          return [];
+                        return [
+                          {
+                            nodeId: materialFunctionSlotParameterId(candidate.id, option.guid, pin.id),
+                            slotId: candidate.id,
+                            name: pin.name,
+                            type: pin.type,
+                            editorKind: functionEditorKind(pin),
+                            values: functionParameterValues(pin.default),
+                            texture: '',
+                          },
+                        ];
+                      }),
+                    ],
                   },
             ),
           },
