@@ -1,0 +1,134 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Channel Mask",
+  "description": "Extract a selected or blended channel from an RGBA value. A one-hot mask chooses R, G, B or A, with R selected by default.",
+  "inputs": [
+    {
+      "id": "rgba",
+      "name": "RGBA",
+      "type": "vec4",
+      "default": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "id": "mask",
+      "name": "Channel Weights (RGBA)",
+      "type": "vec4",
+      "default": [
+        1,
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "id": "value",
+      "name": "Value",
+      "type": "float"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "in-rgba",
+        "type": "functionInput",
+        "position": [
+          40,
+          100
+        ],
+        "values": {
+          "input": "rgba",
+          "name": "RGBA",
+          "valueType": "vec4"
+        }
+      },
+      {
+        "id": "in-mask",
+        "type": "functionInput",
+        "position": [
+          40,
+          280
+        ],
+        "values": {
+          "input": "mask",
+          "name": "Channel Weights (RGBA)",
+          "valueType": "vec4"
+        }
+      },
+      {
+        "id": "dot",
+        "type": "dot",
+        "position": [
+          350,
+          190
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          600,
+          190
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "value",
+              "name": "Value",
+              "type": "float"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "in-rgba-dot-a",
+        "from": {
+          "nodeId": "in-rgba",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "in-mask-dot-b",
+        "from": {
+          "nodeId": "in-mask",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "dot-out-value",
+        "from": {
+          "nodeId": "dot",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "value"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 10,
+      "y": 10,
+      "zoom": 0.9
+    }
+  }
+}
