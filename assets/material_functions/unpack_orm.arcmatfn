@@ -1,0 +1,262 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Unpack ORM",
+  "description": "Decode packed AO/Roughness/Metallic from an ORM texture sample in R/G/B channels. Supply a sampled RGBA pixel, not a texture path.",
+  "inputs": [
+    {
+      "id": "rgba",
+      "name": "Packed ORM RGBA",
+      "type": "vec4",
+      "default": [
+        1,
+        1,
+        0,
+        1
+      ]
+    }
+  ],
+  "outputs": [
+    {
+      "id": "ao",
+      "name": "Ambient Occlusion",
+      "type": "float"
+    },
+    {
+      "id": "roughness",
+      "name": "Roughness",
+      "type": "float"
+    },
+    {
+      "id": "metallic",
+      "name": "Metallic",
+      "type": "float"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "in-rgba",
+        "type": "functionInput",
+        "position": [
+          40,
+          200
+        ],
+        "values": {
+          "input": "rgba",
+          "name": "Packed ORM RGBA",
+          "valueType": "vec4"
+        }
+      },
+      {
+        "id": "mask-r",
+        "type": "vector4",
+        "position": [
+          260,
+          80
+        ],
+        "values": {
+          "value": [
+            1,
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "id": "mask-g",
+        "type": "vector4",
+        "position": [
+          260,
+          240
+        ],
+        "values": {
+          "value": [
+            0,
+            1,
+            0,
+            0
+          ]
+        }
+      },
+      {
+        "id": "mask-b",
+        "type": "vector4",
+        "position": [
+          260,
+          400
+        ],
+        "values": {
+          "value": [
+            0,
+            0,
+            1,
+            0
+          ]
+        }
+      },
+      {
+        "id": "dot-r",
+        "type": "dot",
+        "position": [
+          470,
+          80
+        ],
+        "values": {}
+      },
+      {
+        "id": "dot-g",
+        "type": "dot",
+        "position": [
+          470,
+          240
+        ],
+        "values": {}
+      },
+      {
+        "id": "dot-b",
+        "type": "dot",
+        "position": [
+          470,
+          400
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          730,
+          220
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "ao",
+              "name": "Ambient Occlusion",
+              "type": "float"
+            },
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            },
+            {
+              "id": "metallic",
+              "name": "Metallic",
+              "type": "float"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "in-rgba-dot-r-a",
+        "from": {
+          "nodeId": "in-rgba",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot-r",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "mask-r-dot-r-b",
+        "from": {
+          "nodeId": "mask-r",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot-r",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "dot-r-out-ao",
+        "from": {
+          "nodeId": "dot-r",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "ao"
+        }
+      },
+      {
+        "id": "in-rgba-dot-g-a",
+        "from": {
+          "nodeId": "in-rgba",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot-g",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "mask-g-dot-g-b",
+        "from": {
+          "nodeId": "mask-g",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot-g",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "dot-g-out-roughness",
+        "from": {
+          "nodeId": "dot-g",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "roughness"
+        }
+      },
+      {
+        "id": "in-rgba-dot-b-a",
+        "from": {
+          "nodeId": "in-rgba",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot-b",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "mask-b-dot-b-b",
+        "from": {
+          "nodeId": "mask-b",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "dot-b",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "dot-b-out-metallic",
+        "from": {
+          "nodeId": "dot-b",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "metallic"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 10,
+      "y": 10,
+      "zoom": 0.8
+    }
+  }
+}
