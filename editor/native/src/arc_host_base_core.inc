@@ -533,10 +533,7 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
     return std::nullopt;
 }
 
-std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
-                                                          const assets::asset_manager* registry,
-                                                          const std::filesystem::path& project_root,
-                                                          const host_asset_reference& host_reference)
+std::optional<assets::asset_reference> parse_host_asset_reference(const host_asset_reference& host_reference)
 {
     assets::asset_reference reference{.path_hint = host_reference.path_hint};
     if (!host_reference.guid.empty())
@@ -551,18 +548,29 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
         if (!type) return std::nullopt;
         reference.expected_type = *type;
     }
+    if (!reference.guid.valid() && reference.path_hint.empty()) return std::nullopt;
+    return reference;
+}
+
+std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_state& asset_state,
+                                                          const assets::asset_manager* registry,
+                                                          const std::filesystem::path& project_root,
+                                                          const host_asset_reference& host_reference)
+{
+    const auto reference = parse_host_asset_reference(host_reference);
+    if (!reference) return std::nullopt;
 
     if (registry)
     {
-        const auto snapshot = registry->find(reference);
+        const auto snapshot = registry->find(*reference);
         if (!snapshot) return std::nullopt;
         return resolve_editor_asset(asset_state, registry, project_root, snapshot->source_path);
     }
 
     // A GUID cannot be safely resolved without the asset registry. Retain path
     // fallback only for legacy path-only references during the migration.
-    if (reference.guid.valid() || reference.path_hint.empty()) return std::nullopt;
-    return resolve_editor_asset(asset_state, registry, project_root, reference.path_hint);
+    if (reference->guid.valid() || reference->path_hint.empty()) return std::nullopt;
+    return resolve_editor_asset(asset_state, registry, project_root, reference->path_hint);
 }
 
 std::optional<std::filesystem::path> resolve_project_document(const std::filesystem::path& project_root,
