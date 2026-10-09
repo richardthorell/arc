@@ -1,1 +1,646 @@
-{"version":4,"name":"Standard Lit","domain":"surface","blendMode":"opaque","shadingModel":"standard","doubleSided":false,"graph":{"version":1,"nodes":[{"id":"material-output","type":"output","position":[1040,760],"values":{}},{"id":"base-color-source","type":"functionCall","position":[400,160],"values":{"slotId":"base-color-source","path":"material_functions/default_base_color.arcmatfn","name":"Base Color Source","inputPins":[],"outputPins":[{"id":"color","name":"Color","type":"vec3"}],"functions":[{"path":"material_functions/default_base_color.arcmatfn"},{"path":"material_functions/checker.arcmatfn"},{"path":"material_functions/gradient.arcmatfn"},{"path":"material_functions/noise.arcmatfn"}]}},{"id":"metallic","type":"constant","position":[40,440],"values":{"value":0,"min":0,"max":1},"parameter":{"exposed":true,"name":"Metallic"}},{"id":"roughness","type":"constant","position":[40,570],"values":{"value":0.62,"min":0,"max":1},"parameter":{"exposed":true,"name":"Roughness"}},{"id":"metallic-roughness-texture","type":"textureSample2D","position":[40,700],"values":{"texture":"","dimension":"2d"},"parameter":{"exposed":true,"name":"Metallic Roughness Texture"}},{"id":"metallic-multiply","type":"multiply","position":[400,460],"values":{}},{"id":"roughness-multiply","type":"multiply","position":[400,610],"values":{}},{"id":"ambient-occlusion-texture","type":"textureSample2D","position":[40,860],"values":{"texture":"","dimension":"2d"},"parameter":{"exposed":true,"name":"Ambient Occlusion Texture"}},{"id":"normal-texture","type":"textureSample2D","position":[40,1020],"values":{"texture":"","dimension":"2d","semantic":"normal"},"parameter":{"exposed":true,"name":"Normal Texture"}},{"id":"normal-map","type":"normalMap","position":[400,1020],"values":{"strength":1}},{"id":"clear-coat","type":"constant","position":[40,1200],"values":{"value":0,"min":0,"max":1},"parameter":{"exposed":true,"name":"Clear Coat"}},{"id":"clear-coat-roughness","type":"constant","position":[40,1330],"values":{"value":0.1,"min":0,"max":1},"parameter":{"exposed":true,"name":"Clear Coat Roughness"}},{"id":"clear-coat-texture","type":"textureSample2D","position":[40,1460],"values":{"texture":"","dimension":"2d","semantic":"clear_coat"},"parameter":{"exposed":true,"name":"Clear Coat Texture"}},{"id":"clear-coat-multiply","type":"multiply","position":[400,1210],"values":{}},{"id":"clear-coat-roughness-multiply","type":"multiply","position":[400,1360],"values":{}},{"id":"emissive-color","type":"colorRgba","position":[40,1640],"values":{"value":[1,1,1,1]},"parameter":{"exposed":true,"name":"Emissive Color"}},{"id":"emissive-texture","type":"textureSample2D","position":[40,1800],"values":{"texture":"","dimension":"2d"},"parameter":{"exposed":true,"name":"Emissive Texture"}},{"id":"emissive-strength","type":"constant","position":[40,1960],"values":{"value":0},"parameter":{"exposed":true,"name":"Emissive Strength"}},{"id":"emissive-color-multiply","type":"multiply","position":[400,1720],"values":{}},{"id":"emissive-strength-multiply","type":"multiply","position":[600,1720],"values":{}}],"connections":[{"id":"metallic-value-out","from":{"nodeId":"metallic","pin":"value"},"to":{"nodeId":"metallic-multiply","pin":"a"}},{"id":"metallic-texture-out","from":{"nodeId":"metallic-roughness-texture","pin":"b"},"to":{"nodeId":"metallic-multiply","pin":"b"}},{"id":"metallic-out","from":{"nodeId":"metallic-multiply","pin":"result"},"to":{"nodeId":"material-output","pin":"metallic"}},{"id":"roughness-value-out","from":{"nodeId":"roughness","pin":"value"},"to":{"nodeId":"roughness-multiply","pin":"a"}},{"id":"roughness-texture-out","from":{"nodeId":"metallic-roughness-texture","pin":"g"},"to":{"nodeId":"roughness-multiply","pin":"b"}},{"id":"roughness-out","from":{"nodeId":"roughness-multiply","pin":"result"},"to":{"nodeId":"material-output","pin":"roughness"}},{"id":"ambient-occlusion-out","from":{"nodeId":"ambient-occlusion-texture","pin":"r"},"to":{"nodeId":"material-output","pin":"ao"}},{"id":"normal-texture-out","from":{"nodeId":"normal-texture","pin":"rgb"},"to":{"nodeId":"normal-map","pin":"texture"}},{"id":"normal-out","from":{"nodeId":"normal-map","pin":"normal"},"to":{"nodeId":"material-output","pin":"normal"}},{"id":"clear-coat-value-out","from":{"nodeId":"clear-coat","pin":"value"},"to":{"nodeId":"clear-coat-multiply","pin":"a"}},{"id":"clear-coat-texture-out","from":{"nodeId":"clear-coat-texture","pin":"r"},"to":{"nodeId":"clear-coat-multiply","pin":"b"}},{"id":"clear-coat-out","from":{"nodeId":"clear-coat-multiply","pin":"result"},"to":{"nodeId":"material-output","pin":"clearCoat"}},{"id":"clear-coat-roughness-value-out","from":{"nodeId":"clear-coat-roughness","pin":"value"},"to":{"nodeId":"clear-coat-roughness-multiply","pin":"a"}},{"id":"clear-coat-roughness-texture-out","from":{"nodeId":"clear-coat-texture","pin":"g"},"to":{"nodeId":"clear-coat-roughness-multiply","pin":"b"}},{"id":"clear-coat-roughness-out","from":{"nodeId":"clear-coat-roughness-multiply","pin":"result"},"to":{"nodeId":"material-output","pin":"clearCoatRoughness"}},{"id":"emissive-color-out","from":{"nodeId":"emissive-color","pin":"rgb"},"to":{"nodeId":"emissive-color-multiply","pin":"a"}},{"id":"emissive-texture-out","from":{"nodeId":"emissive-texture","pin":"rgb"},"to":{"nodeId":"emissive-color-multiply","pin":"b"}},{"id":"emissive-color-product","from":{"nodeId":"emissive-color-multiply","pin":"result"},"to":{"nodeId":"emissive-strength-multiply","pin":"a"}},{"id":"emissive-strength-out","from":{"nodeId":"emissive-strength","pin":"value"},"to":{"nodeId":"emissive-strength-multiply","pin":"b"}},{"id":"emissive-out","from":{"nodeId":"emissive-strength-multiply","pin":"result"},"to":{"nodeId":"material-output","pin":"emissive"}},{"id":"base-color-out","from":{"nodeId":"base-color-source","pin":"color"},"to":{"nodeId":"material-output","pin":"baseColor"}}],"viewport":{"x":24,"y":24,"zoom":0.78}}}
+{
+  "version": 4,
+  "name": "Standard Lit",
+  "domain": "surface",
+  "blendMode": "opaque",
+  "shadingModel": "standard",
+  "doubleSided": false,
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "material-output",
+        "type": "output",
+        "position": [
+          1040,
+          760
+        ],
+        "values": {}
+      },
+      {
+        "id": "base-color-source",
+        "type": "functionCall",
+        "position": [
+          400,
+          160
+        ],
+        "values": {
+          "slotId": "base-color-source",
+          "path": "material_functions/default_base_color.arcmatfn",
+          "name": "Base Color Source",
+          "inputPins": [],
+          "outputPins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ],
+          "functions": [
+            {
+              "path": "material_functions/default_base_color.arcmatfn"
+            },
+            {
+              "path": "material_functions/checker.arcmatfn"
+            },
+            {
+              "path": "material_functions/gradient.arcmatfn"
+            },
+            {
+              "path": "material_functions/noise.arcmatfn"
+            }
+          ]
+        }
+      },
+      {
+        "id": "metallic",
+        "type": "constant",
+        "position": [
+          40,
+          440
+        ],
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Metallic"
+        }
+      },
+      {
+        "id": "roughness",
+        "type": "constant",
+        "position": [
+          40,
+          570
+        ],
+        "values": {
+          "value": 0.62,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness"
+        }
+      },
+      {
+        "id": "metallic-roughness-texture",
+        "type": "textureSample2D",
+        "position": [
+          40,
+          700
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Metallic Roughness Texture"
+        }
+      },
+      {
+        "id": "metallic-multiply",
+        "type": "multiply",
+        "position": [
+          400,
+          460
+        ],
+        "values": {}
+      },
+      {
+        "id": "roughness-multiply",
+        "type": "multiply",
+        "position": [
+          400,
+          610
+        ],
+        "values": {}
+      },
+      {
+        "id": "ambient-occlusion-texture",
+        "type": "textureSample2D",
+        "position": [
+          40,
+          860
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Ambient Occlusion Texture"
+        }
+      },
+      {
+        "id": "normal-texture",
+        "type": "textureSample2D",
+        "position": [
+          40,
+          1020
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d",
+          "semantic": "normal"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Normal Texture"
+        }
+      },
+      {
+        "id": "normal-map",
+        "type": "normalMap",
+        "position": [
+          400,
+          1020
+        ],
+        "values": {
+          "strength": 1
+        }
+      },
+      {
+        "id": "clear-coat",
+        "type": "constant",
+        "position": [
+          40,
+          1200
+        ],
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat"
+        }
+      },
+      {
+        "id": "clear-coat-roughness",
+        "type": "constant",
+        "position": [
+          40,
+          1330
+        ],
+        "values": {
+          "value": 0.1,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat Roughness"
+        }
+      },
+      {
+        "id": "clear-coat-texture",
+        "type": "textureSample2D",
+        "position": [
+          40,
+          1460
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d",
+          "semantic": "clear_coat"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat Texture"
+        }
+      },
+      {
+        "id": "clear-coat-multiply",
+        "type": "multiply",
+        "position": [
+          400,
+          1210
+        ],
+        "values": {}
+      },
+      {
+        "id": "clear-coat-roughness-multiply",
+        "type": "multiply",
+        "position": [
+          400,
+          1360
+        ],
+        "values": {}
+      },
+      {
+        "id": "emissive-color",
+        "type": "colorRgba",
+        "position": [
+          40,
+          1640
+        ],
+        "values": {
+          "value": [
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Emissive Color"
+        }
+      },
+      {
+        "id": "emissive-texture",
+        "type": "textureSample2D",
+        "position": [
+          40,
+          1800
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Emissive Texture"
+        }
+      },
+      {
+        "id": "emissive-strength",
+        "type": "constant",
+        "position": [
+          40,
+          1960
+        ],
+        "values": {
+          "value": 0
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Emissive Strength"
+        }
+      },
+      {
+        "id": "emissive-color-multiply",
+        "type": "multiply",
+        "position": [
+          400,
+          1720
+        ],
+        "values": {}
+      },
+      {
+        "id": "emissive-strength-multiply",
+        "type": "multiply",
+        "position": [
+          600,
+          1720
+        ],
+        "values": {}
+      },
+      {
+        "id": "orm-unpack",
+        "type": "functionCall",
+        "position": [
+          385,
+          745
+        ],
+        "values": {
+          "slotId": "orm-unpack",
+          "path": "material_functions/unpack_orm.arcmatfn",
+          "name": "Unpack ORM",
+          "inputPins": [
+            {
+              "id": "rgba",
+              "name": "Packed ORM RGBA",
+              "type": "vec4"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "ao",
+              "name": "Ambient Occlusion",
+              "type": "float"
+            },
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            },
+            {
+              "id": "metallic",
+              "name": "Metallic",
+              "type": "float"
+            }
+          ],
+          "functions": [
+            {
+              "path": "material_functions/unpack_orm.arcmatfn"
+            }
+          ]
+        }
+      },
+      {
+        "id": "ao-channel-mask",
+        "type": "functionCall",
+        "position": [
+          395,
+          890
+        ],
+        "values": {
+          "slotId": "ao-channel-mask",
+          "path": "material_functions/channel_mask.arcmatfn",
+          "name": "Channel Mask",
+          "inputPins": [
+            {
+              "id": "rgba",
+              "name": "RGBA",
+              "type": "vec4"
+            },
+            {
+              "id": "mask",
+              "name": "Channel Weights (RGBA)",
+              "type": "vec4"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "value",
+              "name": "Value",
+              "type": "float"
+            }
+          ],
+          "functions": [
+            {
+              "path": "material_functions/channel_mask.arcmatfn"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "metallic-value-out",
+        "from": {
+          "nodeId": "metallic",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "metallic-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "metallic-texture-out",
+        "from": {
+          "nodeId": "orm-unpack",
+          "pin": "metallic"
+        },
+        "to": {
+          "nodeId": "metallic-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "metallic-out",
+        "from": {
+          "nodeId": "metallic-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "metallic"
+        }
+      },
+      {
+        "id": "roughness-value-out",
+        "from": {
+          "nodeId": "roughness",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "roughness-texture-out",
+        "from": {
+          "nodeId": "orm-unpack",
+          "pin": "roughness"
+        },
+        "to": {
+          "nodeId": "roughness-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "roughness-out",
+        "from": {
+          "nodeId": "roughness-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "roughness"
+        }
+      },
+      {
+        "id": "ambient-occlusion-out",
+        "from": {
+          "nodeId": "ao-channel-mask",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "ao"
+        }
+      },
+      {
+        "id": "normal-texture-out",
+        "from": {
+          "nodeId": "normal-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "normal-map",
+          "pin": "texture"
+        }
+      },
+      {
+        "id": "normal-out",
+        "from": {
+          "nodeId": "normal-map",
+          "pin": "normal"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "normal"
+        }
+      },
+      {
+        "id": "clear-coat-value-out",
+        "from": {
+          "nodeId": "clear-coat",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clear-coat-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "clear-coat-texture-out",
+        "from": {
+          "nodeId": "clear-coat-texture",
+          "pin": "r"
+        },
+        "to": {
+          "nodeId": "clear-coat-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "clear-coat-out",
+        "from": {
+          "nodeId": "clear-coat-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "clearCoat"
+        }
+      },
+      {
+        "id": "clear-coat-roughness-value-out",
+        "from": {
+          "nodeId": "clear-coat-roughness",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clear-coat-roughness-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "clear-coat-roughness-texture-out",
+        "from": {
+          "nodeId": "clear-coat-texture",
+          "pin": "g"
+        },
+        "to": {
+          "nodeId": "clear-coat-roughness-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "clear-coat-roughness-out",
+        "from": {
+          "nodeId": "clear-coat-roughness-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "clearCoatRoughness"
+        }
+      },
+      {
+        "id": "emissive-color-out",
+        "from": {
+          "nodeId": "emissive-color",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "emissive-color-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "emissive-texture-out",
+        "from": {
+          "nodeId": "emissive-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "emissive-color-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "emissive-color-product",
+        "from": {
+          "nodeId": "emissive-color-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "emissive-strength-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "emissive-strength-out",
+        "from": {
+          "nodeId": "emissive-strength",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "emissive-strength-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "emissive-out",
+        "from": {
+          "nodeId": "emissive-strength-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "emissive"
+        }
+      },
+      {
+        "id": "base-color-out",
+        "from": {
+          "nodeId": "base-color-source",
+          "pin": "color"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "baseColor"
+        }
+      },
+      {
+        "id": "packed-orm-to-unpack",
+        "from": {
+          "nodeId": "metallic-roughness-texture",
+          "pin": "rgba"
+        },
+        "to": {
+          "nodeId": "orm-unpack",
+          "pin": "rgba"
+        }
+      },
+      {
+        "id": "ao-texture-to-channel-mask",
+        "from": {
+          "nodeId": "ambient-occlusion-texture",
+          "pin": "rgba"
+        },
+        "to": {
+          "nodeId": "ao-channel-mask",
+          "pin": "rgba"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 24,
+      "y": 24,
+      "zoom": 0.78
+    }
+  }
+}
