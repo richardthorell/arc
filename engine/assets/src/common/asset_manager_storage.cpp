@@ -377,6 +377,17 @@ public:
                               .path = context.source_path,
                               .message = "Asset import was cancelled"}};
         }
+        if (context.metadata.type == asset_types::sound)
+        {
+            const std::string source(reinterpret_cast<const char*>(context.source_bytes.data()), context.source_bytes.size());
+            const auto parsed = parse_sound_asset_json(source);
+            if (!parsed.succeeded())
+                return {.error = {.code = asset_error_code::import_failed,
+                                  .guid = context.reference.guid,
+                                  .path = context.source_path,
+                                  .message = parsed.message}};
+        }
+
         auto data = std::make_shared<source_asset_data>();
         data->source_path = context.source_path;
         data->source_hash = context.source_hash;
