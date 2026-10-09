@@ -37,7 +37,7 @@ Inspect the target entity, component schema, and the live asset inventory (`asse
 
 Choose from the materials and functions actually reported by the engine/project. Prefer an existing reusable material over creating a new graph when it already represents the requested surface behavior. Inspect the chosen material's exposed parameters and selectable function sources before deciding how to style each surface. A built-in function (such as Checker, Gradient, or Noise), a texture already in the project, or an existing glass/transmission material may suit a surface without new graph authoring. These are examples, not a fixed mapping from object types to materials.
 
-Use **Standard Lit** where its *currently discovered* inputs and features support the intended opaque PBR surface. Do not presume every project material or function shares Standard Lit's authoring contract.
+Use **Standard Lit** where its _currently discovered_ inputs and features support the intended opaque PBR surface. Do not presume every project material or function shares Standard Lit's authoring contract.
 
 Use specialized material families or systems only when the requested rendering behavior requires them, such as Unlit, Water, Terrain, Transmission/Glass, or Subsurface. Foliage should use the existing Standard Lit, Transmission, or Subsurface capabilities unless ARC gains dedicated foliage rendering behavior.
 
