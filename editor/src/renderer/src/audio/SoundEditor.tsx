@@ -58,7 +58,10 @@ export function SoundEditor({ document }: { document: EditorDocument }) {
     };
   }, []);
 
-  const sourceName = useMemo(() => (state.asset.source ? basename(state.asset.source) : 'No WAV source'), [state.asset.source]);
+  const sourceName = useMemo(
+    () => (state.asset.source ? basename(state.asset.source) : 'No WAV source'),
+    [state.asset.source],
+  );
 
   return (
     <section className="sound-editor-workspace">

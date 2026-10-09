@@ -49,7 +49,10 @@ describe('Sound editor registration', () => {
   });
 
   it('also recognizes authored .arcsound paths while registry metadata catches up', () => {
-    const target = createEditorDocumentForAsset({ ...sound, kind: 'unknown', path: 'Audio/New Sound.arcsound' }, registry);
+    const target = createEditorDocumentForAsset(
+      { ...sound, kind: 'unknown', path: 'Audio/New Sound.arcsound' },
+      registry,
+    );
     expect(target?.registration.kind).toBe('sound');
   });
 });

@@ -106,12 +106,7 @@ export const loadSoundDocument = async (document: EditorDocument, force = false)
   }
 };
 
-export const setSoundDocumentValue = (
-  document: EditorDocument,
-  path: string,
-  value: unknown,
-  settled = true,
-) => {
+export const setSoundDocumentValue = (document: EditorDocument, path: string, value: unknown, settled = true) => {
   const current = ensureState(document);
   if (current.readOnly || document.readOnly) return;
   const next = setPathValue(current.asset, path, value);
