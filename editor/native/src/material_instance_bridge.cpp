@@ -735,10 +735,14 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
         if (!entry.is_object() || entry.value("kind", std::string{}) != "function") continue;
         const auto slot_id = entry.value("slotId", std::string{});
         const auto function = entry.value("function", json::object());
-        const auto guid = function.value("guid", std::string{});
-        const auto path = function.value("pathHint", std::string{});
-        if (slot_id.empty() || guid.empty() || path.empty()) continue;
-        selections[slot_id] = {.guid = guid, .path = path};
+        const auto reference = asset_reference_from_json(function);
+        if (slot_id.empty() || !reference) continue;
+        const auto source_path = resolve_asset_reference_path(scene, base, *reference);
+        if (source_path.empty()) continue;
+        selections[slot_id] = {
+            .guid = reference->guid.valid() ? assets::to_string(reference->guid) : source_path.generic_string(),
+            .path = source_path.generic_string(),
+        };
     }
     if (selections.empty()) return std::nullopt;
 
@@ -774,10 +778,16 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
                 if (!authored.is_object()) continue;
                 const auto slot_id = authored.value("slotId", std::string{});
                 const auto function = authored.value("function", json::object());
-                const auto guid = function.value("guid", std::string{});
-                const auto path = function.value("pathHint", std::string{});
-                if (slot_id.empty() || guid.empty() || path.empty()) continue;
-                if (!selections.contains(slot_id)) selections[slot_id] = {.guid = guid, .path = path};
+                const auto reference = asset_reference_from_json(function);
+                if (slot_id.empty() || !reference) continue;
+                const auto source_path = resolve_asset_reference_path(scene, source_base, *reference);
+                if (source_path.empty()) continue;
+                if (!selections.contains(slot_id))
+                    selections[slot_id] = {
+                        .guid = reference->guid.valid() ? assets::to_string(reference->guid)
+                                                       : source_path.generic_string(),
+                        .path = source_path.generic_string(),
+                    };
             }
         }
     }
