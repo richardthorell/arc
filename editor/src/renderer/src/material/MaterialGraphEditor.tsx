@@ -313,10 +313,13 @@ function MaterialFunctionReferenceEditor({
     );
   }
 
-  const referenced = references.flatMap((reference) => {
-    const option = functions.find((candidate) => candidate.asset.path === reference.path);
-    return option ? [{ reference, option }] : [{ reference, option: null }];
-  });
+  const referenced: Array<{
+    reference: { path: string };
+    option: MaterialFunctionAssetOption | null;
+  }> = references.map((reference) => ({
+    reference,
+    option: functions.find((candidate) => candidate.asset.path === reference.path) ?? null,
+  }));
   const referencedPaths = new Set(references.map((reference) => reference.path));
   const pickerAssets = functions
     .filter((option) => !referencedPaths.has(option.asset.path))
