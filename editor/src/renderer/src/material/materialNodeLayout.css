@@ -161,3 +161,95 @@
   width: 100%;
   min-width: 0;
 }
+
+
+.material-graph-node > .material-function-call-editor {
+  min-width: 0;
+  grid-column: 2;
+  grid-row: 3;
+  display: grid;
+  gap: 6px;
+  box-sizing: border-box;
+  margin: 7px 0 6px;
+  padding-inline: var(--material-node-control-inset);
+}
+
+.material-function-call-list {
+  display: grid;
+  gap: 3px;
+}
+
+.material-function-call-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  border: 1px solid rgba(104, 132, 145, 0.18);
+  border-radius: 4px;
+  background: rgba(13, 20, 25, 0.5);
+}
+
+.material-function-call-entry.is-active {
+  border-color: rgba(96, 164, 205, 0.62);
+  background: rgba(42, 83, 108, 0.24);
+}
+
+.material-function-call-select {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 5px 6px;
+  color: inherit;
+  text-align: left;
+}
+
+.material-function-call-select > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.material-function-call-select:disabled {
+  cursor: default;
+}
+
+.material-function-call-radio {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border: 1px solid #607783;
+  border-radius: 50%;
+}
+
+.material-function-call-entry.is-active .material-function-call-radio {
+  border-color: #8dc6e6;
+  background: #8dc6e6;
+  box-shadow: inset 0 0 0 2px #17232b;
+}
+
+.material-function-call-entry > .ui-icon-button {
+  width: 24px;
+  height: 24px;
+  margin-right: 2px;
+}
+
+.material-function-call-add {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.material-function-call-add .asset-reference-control {
+  width: auto;
+}
+
+.material-function-call-add .asset-reference-main.asset-reference-add {
+  width: 26px;
+  min-width: 26px;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+}
