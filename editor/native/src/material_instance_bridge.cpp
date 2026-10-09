@@ -46,6 +46,7 @@ enum class material_parameter_edit_kind : std::uint8_t
 struct material_parameter_edit
 {
     std::uint64_t parameter_id{};
+    std::string slot_id;
     std::string name;
     render::shader_parameter_type type{render::shader_parameter_type::float32};
     material_parameter_edit_kind kind{material_parameter_edit_kind::scalar};
@@ -226,6 +227,7 @@ std::optional<material_parameter_edit> parse_material_parameter(std::string_view
             return std::nullopt;
         }
     }
+    edit.slot_id = payload.value("slotId", std::string{});
     edit.name = payload["name"].get<std::string>();
     edit.type = typed_type;
     edit.kind = typed_kind;
@@ -326,6 +328,7 @@ json edit_to_json(const material_parameter_edit& edit)
                   {"type", std::string(material_parameter_type_name(edit.type))},
                   {"kind", std::string(material_parameter_kind_name(edit.kind))}};
     if (edit.parameter_id != 0u) value["parameterId"] = std::to_string(edit.parameter_id);
+    if (!edit.slot_id.empty()) value["slotId"] = edit.slot_id;
     if (!edit.value.empty()) value["value"] = edit.value;
     if (edit.kind == material_parameter_edit_kind::texture) value["texture"] = edit.texture;
     return value;
@@ -355,8 +358,9 @@ json apply_function_edit(json overrides, const material_function_edit& edit)
         std::remove_if(overrides.begin(), overrides.end(),
                        [&](const json& entry)
                        {
-                           return entry.is_object() && entry.value("kind", std::string{}) == "function" &&
-                                  entry.value("slotId", std::string{}) == edit.slot_id;
+                           if (!entry.is_object() || entry.value("slotId", std::string{}) != edit.slot_id) return false;
+                           return entry.value("kind", std::string{}) == "function" ||
+                                  !entry.value("parameterId", std::string{}).empty();
                        }),
         overrides.end());
     if (!edit.reset)
