@@ -43,6 +43,7 @@ export type AssetPickerProps = {
   assetCompatibility?: (asset: AssetPickerItem) => string | null;
   onChange: (path: string) => void;
   showLabel?: boolean;
+  triggerMode?: 'default' | 'add';
 };
 
 const thumbnailCaches = new WeakMap<AssetThumbnailProvider, Map<string, Promise<string | null>>>();
@@ -241,6 +242,7 @@ export function AssetPicker({
   assetCompatibility,
   onChange,
   showLabel = true,
+  triggerMode = 'default',
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -286,26 +288,32 @@ export function AssetPicker({
       <div className="asset-reference-control" onDragOver={(event) => event.preventDefault()} onDrop={acceptDrop}>
         <button
           aria-expanded={open}
-          aria-label={`Choose ${label} asset`}
-          className="asset-reference-main"
+          aria-label={triggerMode === 'add' ? `Add ${label}` : `Choose ${label} asset`}
+          className={`asset-reference-main${triggerMode === 'add' ? ' asset-reference-add' : ''}`}
           onClick={() => setOpen((current) => !current)}
           ref={anchorRef}
           type="button"
         >
-          <AssetThumbnail asset={selected} path={mixed ? '' : value} provider={thumbnailProvider} />
-          <span className="asset-reference-copy">
-            <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : 'None'}</strong>
-            <small>
-              {mixed
-                ? 'Choose an asset to replace all values'
-                : selected
-                  ? sourceLabelOf(selected, assetTypeLabel)
-                  : value
-                    ? assetTypeLabel
-                    : `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
-            </small>
-          </span>
-          <ChevronDown size={13} />
+          {triggerMode === 'add' ? (
+            <Plus size={14} />
+          ) : (
+            <>
+              <AssetThumbnail asset={selected} path={mixed ? '' : value} provider={thumbnailProvider} />
+              <span className="asset-reference-copy">
+                <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : 'None'}</strong>
+                <small>
+                  {mixed
+                    ? 'Choose an asset to replace all values'
+                    : selected
+                      ? sourceLabelOf(selected, assetTypeLabel)
+                      : value
+                        ? assetTypeLabel
+                        : `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
+                </small>
+              </span>
+              <ChevronDown size={13} />
+            </>
+          )}
         </button>
         {(canOpen || canClear) && (
           <span style={{ display: 'flex', alignItems: 'center' }}>
