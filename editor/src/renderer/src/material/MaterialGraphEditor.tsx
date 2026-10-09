@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronRight, Copy, ExternalLink, Magnet, Minus, Plus, RotateCcw, Scan, Search, Trash2, WandSparkles } from 'lucide-react';
 
+import { openAssetEditorDocument } from '../editors/editorRegistry';
 import type { EditorDocument } from '../editors/editorTypes';
 import { AssetPicker, AssetThumbnail, type AssetPickerItem } from '../inspector/AssetPicker';
 import {
@@ -347,19 +348,18 @@ function MaterialFunctionReferenceEditor({
 
   const openFunction = (asset?: AssetPickerItem) => {
     if (!asset || asset.scope === 'procedural') return;
-    void import('../editors/editorRegistry').then(({ openAssetEditorDocument }) => {
-      openAssetEditorDocument({
-        id: asset.id,
-        guid: asset.guid,
-        typeId: asset.typeId,
-        name: asset.name,
-        title: asset.title,
-        path: asset.sourcePath || asset.path,
-        kind: 'materialFunction',
-        status: asset.status,
-        scope: asset.scope,
-        readOnly: asset.readOnly,
-      });
+    openAssetEditorDocument({
+      id: asset.id,
+      guid: asset.guid,
+      typeId: asset.typeId,
+      name: asset.name,
+      title: asset.title,
+      path: asset.path,
+      kind: 'materialFunction',
+      status: asset.status,
+      scope: asset.scope,
+      readOnly: asset.readOnly,
+      ...(asset.scope === 'builtin' ? {} : { sourcePath: asset.sourcePath }),
     });
   };
 
