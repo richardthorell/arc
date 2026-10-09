@@ -75,12 +75,12 @@ describe('core built-in material families', () => {
       values: {
         slotId: 'base-color-source',
         name: 'Base Color Source',
-        path: 'assets/material_functions/default_base_color.arcmatfn',
+        path: 'material_functions/default_base_color.arcmatfn',
         functions: [
-          { path: 'assets/material_functions/default_base_color.arcmatfn' },
-          { path: 'assets/material_functions/checker.arcmatfn' },
-          { path: 'assets/material_functions/gradient.arcmatfn' },
-          { path: 'assets/material_functions/noise.arcmatfn' },
+          { path: 'material_functions/default_base_color.arcmatfn' },
+          { path: 'material_functions/checker.arcmatfn' },
+          { path: 'material_functions/gradient.arcmatfn' },
+          { path: 'material_functions/noise.arcmatfn' },
         ],
         inputPins: [],
         outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
