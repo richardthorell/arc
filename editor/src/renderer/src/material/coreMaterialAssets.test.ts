@@ -33,8 +33,6 @@ describe('core built-in material families', () => {
     const graph = materialGraphFromAsset(asset);
     const editorParameters = materialEditorParameters(graph);
     expect(editorParameters.map((parameter) => parameter.name)).toEqual([
-      'Base Color Tint',
-      'Base Color Texture',
       'Metallic',
       'Roughness',
       'Metallic Roughness Texture',
@@ -73,24 +71,24 @@ describe('core built-in material families', () => {
 
     const baseColorSource = graph.nodes.find((node) => node.id === 'base-color-source');
     expect(baseColorSource).toMatchObject({
-      type: 'functionSlot',
+      type: 'functionCall',
       values: {
         slotId: 'base-color-source',
         name: 'Base Color Source',
         path: 'assets/material_functions/default_base_color.arcmatfn',
-        inputPins: [{ id: 'baseColor', name: 'Base Color', type: 'vec3' }],
+        functions: [
+          { path: 'assets/material_functions/default_base_color.arcmatfn' },
+          { path: 'assets/material_functions/checker.arcmatfn' },
+          { path: 'assets/material_functions/gradient.arcmatfn' },
+          { path: 'assets/material_functions/noise.arcmatfn' },
+        ],
+        inputPins: [],
         outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
       },
     });
-    expect(
-      graph.connections.some(
-        (connection) =>
-          connection.from.nodeId === 'base-color-multiply' &&
-          connection.from.pin === 'result' &&
-          connection.to.nodeId === 'base-color-source' &&
-          connection.to.pin === 'baseColor',
-      ),
-    ).toBe(true);
+    expect(graph.nodes.some((node) => node.id === 'base-color-multiply')).toBe(false);
+    expect(graph.nodes.some((node) => node.id === 'base-color-tint')).toBe(false);
+    expect(graph.nodes.some((node) => node.id === 'base-color-texture')).toBe(false);
     expect(
       graph.connections.some(
         (connection) =>
@@ -110,8 +108,12 @@ describe('core built-in material families', () => {
     ).toBe(false);
 
     const defaultBaseColor = readBuiltInFunction('default_base_color.arcmatfn');
-    expect(defaultBaseColor.inputs).toEqual([{ id: 'baseColor', name: 'Base Color', type: 'vec3' }]);
+    expect(defaultBaseColor.inputs).toEqual([]);
     expect(defaultBaseColor.outputs).toEqual([{ id: 'color', name: 'Color', type: 'vec3' }]);
+    expect(materialEditorParameters(defaultBaseColor.graph).map((parameter) => parameter.name)).toEqual([
+      'Base Color Tint',
+      'Base Color Texture',
+    ]);
 
     const slotInputs = baseColorSource?.values.inputPins as MaterialFunctionAssetJson['inputs'];
     const slotOutputs = baseColorSource?.values.outputPins as MaterialFunctionAssetJson['outputs'];
