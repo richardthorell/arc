@@ -491,6 +491,9 @@ describe('ViewportPanel', () => {
       />,
     );
 
+    fireEvent.click(view.getByRole('button', { name: 'Show' }));
+    expect(await view.findByRole('menuitemcheckbox', { name: /Grid/ })).toHaveAttribute('aria-checked', 'false');
+
     fireEvent.click(view.getByRole('button', { name: 'Editor Camera' }));
     let menu = await view.findByRole('menu', { name: 'Editor Camera menu' });
     let selected = within(menu).getByRole('menuitemradio', { name: 'Editor Camera' });
