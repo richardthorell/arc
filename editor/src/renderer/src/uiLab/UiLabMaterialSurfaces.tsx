@@ -59,7 +59,6 @@ const materialGraph: MaterialGraph = {
   viewport: { x: 0, y: 0, zoom: 1 },
 };
 
-
 export function UiLabMaterialNodeCard() {
   const [color, setColor] = useState<UiColorValue>({ x: 0.42, y: 0.24, z: 0.12, w: 1 });
   const [parameter, setParameter] = useState(true);
