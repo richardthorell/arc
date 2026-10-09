@@ -276,7 +276,8 @@ export function AssetPicker({
     const candidate = candidates.find(
       (asset) =>
         (dropped.guid && (asset.guid === dropped.guid || asset.id === dropped.guid)) ||
-        normalizedPath(asset.path) === normalizedPath(dropped.pathHint),
+        normalizedPath(asset.path) === normalizedPath(dropped.pathHint) ||
+        Boolean(asset.sourcePath && normalizedPath(asset.sourcePath) === normalizedPath(dropped.pathHint)),
     );
     if (candidate && assetCompatibility?.(candidate)) return;
     if (!candidate) return;
@@ -303,7 +304,7 @@ export function AssetPicker({
             <Plus size={14} />
           ) : (
             <>
-              <AssetThumbnail asset={selected} path={mixed ? '' : value} provider={thumbnailProvider} />
+              <AssetThumbnail asset={selected} path={mixed ? '' : selected?.path || value} provider={thumbnailProvider} />
               <span className="asset-reference-copy">
                 <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : 'None'}</strong>
                 <small>
