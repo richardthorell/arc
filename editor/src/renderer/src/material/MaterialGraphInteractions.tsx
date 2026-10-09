@@ -173,6 +173,10 @@ export function MaterialGraphWithInteractions({
   showGrid = true,
   dimUnrelated = false,
   diagnostics = [],
+  onGraphChange,
+  onViewportChange,
+  onUndo,
+  onRedo,
 }: {
   document: EditorDocument;
   graph: MaterialGraph;
@@ -180,6 +184,10 @@ export function MaterialGraphWithInteractions({
   showGrid?: boolean;
   dimUnrelated?: boolean;
   diagnostics?: GraphDiagnostic[];
+  onGraphChange?: (graph: MaterialGraph, options?: { recordHistory?: boolean; message?: string }) => void;
+  onViewportChange?: (viewport: NonNullable<MaterialGraph['viewport']>) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [wires, setWires] = useState<MaterialWireOverlay[]>([]);
@@ -196,9 +204,13 @@ export function MaterialGraphWithInteractions({
         showGrid={showGrid}
         dimUnrelated={dimUnrelated}
         diagnostics={diagnostics}
+        onGraphChange={onGraphChange}
+        onViewportChange={onViewportChange}
+        onUndo={onUndo}
+        onRedo={onRedo}
       />
     ),
-    [diagnostics, dimUnrelated, document, graph, loaded, showGrid],
+    [diagnostics, dimUnrelated, document, graph, loaded, onGraphChange, onRedo, onUndo, onViewportChange, showGrid],
   );
 
   const pinMetadata = useMemo(() => {
