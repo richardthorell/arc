@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import type { ArcAssetSourceDescriptor } from '../../../common/assetSourceTypes';
+import type { ExternalModelImportPlan } from '../../../preload/externalModelImport';
 import type { CommandId } from '../app/workbenchTypes';
 import { openAssetEditorDocument, openSkeletonEditorDocument } from '../editors/editorRegistry';
 import { materialAssetReference } from '../material/materialInstanceAuthoring';
@@ -29,6 +30,7 @@ import {
 } from './assetCreation';
 import { AssetMetadataDialog } from './AssetMetadataDialog';
 import { ContentAssetCard } from './ContentAssetCard';
+import { ModelDependencyImportDialog } from './ModelDependencyImportDialog';
 import { searchAssetLibrary } from './assetLibrarySearch';
 import { buildAssetMetadataFacets } from './assetMetadataFacets';
 import {
@@ -91,6 +93,11 @@ type FolderTreeNode = {
   name: string;
   path: string;
   children: FolderTreeNode[];
+};
+type PendingModelImport = {
+  file: File;
+  destination: string;
+  plan: ExternalModelImportPlan;
 };
 
 const cleanPath = (path: string) =>
@@ -355,6 +362,7 @@ export function ContentBrowserPanel({
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
   const [expandedModels, setExpandedModels] = useState<Set<string>>(() => new Set());
+  const [pendingModelImports, setPendingModelImports] = useState<PendingModelImport[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -563,10 +571,23 @@ export function ContentBrowserPanel({
     event.preventDefault();
     event.stopPropagation();
     const destination = projectFolderPath(destinationFolder);
-    void Promise.all([
-      ...models.map((file) => window.arc.projects.importModel(file, destination)),
-      ...textures.map((file) => window.arc.projects.importTexture(file, destination)),
-    ]).catch((error) => console.error('[ARC] Asset import failed', error));
+    void (async () => {
+      try {
+        await Promise.all(textures.map((file) => window.arc.projects.importTexture(file, destination)));
+        const review: PendingModelImport[] = [];
+        for (const file of models) {
+          const plan = await window.arc.projects.analyzeModelImport(file);
+          if (plan.dependencies.length === 0) {
+            await window.arc.projects.importModel(file, destination);
+          } else {
+            review.push({ file, destination, plan });
+          }
+        }
+        if (review.length > 0) setPendingModelImports((current) => [...current, ...review]);
+      } catch (error) {
+        console.error('[ARC] Asset import failed', error);
+      }
+    })();
   };
   const metadataAsset = metadataAssetId ? (assets.find((asset) => asset.id === metadataAssetId) ?? null) : null;
 
@@ -1254,6 +1275,21 @@ export function ContentBrowserPanel({
             </div>
           </div>
         </>
+      )}
+      {pendingModelImports[0] && (
+        <ModelDependencyImportDialog
+          plan={pendingModelImports[0].plan}
+          destination={pendingModelImports[0].destination}
+          onCancel={() => setPendingModelImports((current) => current.slice(1))}
+          onImport={(selectedDependencies) => {
+            const pending = pendingModelImports[0];
+            if (!pending) return;
+            void window.arc.projects
+              .importModel(pending.file, pending.destination, selectedDependencies)
+              .catch((error) => console.error('[ARC] Model dependency import failed', error))
+              .finally(() => setPendingModelImports((current) => current.slice(1)));
+          }}
+        />
       )}
       {metadataAsset && (
         <AssetMetadataDialog
