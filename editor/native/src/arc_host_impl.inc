@@ -1470,7 +1470,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     state_->scene = std::move(*before);
                 }
-                return fail("Renderer could not update the procedural mesh", target);
+                const auto& material_error = last_material_instance_bridge_error();
+                return fail(material_error.empty() ? "Renderer could not update the procedural mesh" : material_error,
+                            target);
             }
             persist_procedural_mesh_component(state_->scene, target);
         }
