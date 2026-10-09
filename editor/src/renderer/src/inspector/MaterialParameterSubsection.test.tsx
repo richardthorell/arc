@@ -135,6 +135,7 @@ describe('MaterialPicker exported parameters', () => {
       guid: 'default-base-color-guid',
       name: 'default_base_color.arcmatfn',
       path: 'material_functions/default_base_color.arcmatfn',
+      sourcePath: 'assets/material_functions/default_base_color.arcmatfn',
       kind: 'materialFunction',
       status: 'ready' as const,
       scope: 'builtin' as const,
@@ -144,6 +145,7 @@ describe('MaterialPicker exported parameters', () => {
       guid: 'checker-guid',
       name: 'checker.arcmatfn',
       path: 'material_functions/checker.arcmatfn',
+      sourcePath: 'assets/material_functions/checker.arcmatfn',
       kind: 'materialFunction',
       status: 'ready' as const,
       scope: 'builtin' as const,
@@ -155,7 +157,34 @@ describe('MaterialPicker exported parameters', () => {
         name,
         inputs,
         outputs: [{ id: 'color', name: 'Color', type: 'vec3' }],
-        graph: { version: 1, nodes: [], connections: [] },
+        graph:
+          name === 'Color'
+            ? {
+                version: 1,
+                nodes: [
+                  {
+                    id: 'base-color-texture',
+                    type: 'textureSample2D',
+                    position: [0, 0],
+                    values: { texture: '', dimension: '2d' },
+                    parameter: { exposed: true, name: 'Base Color Texture' },
+                  },
+                  {
+                    id: 'function-output',
+                    type: 'functionOutput',
+                    position: [300, 0],
+                    values: { pins: [{ id: 'color', name: 'Color', type: 'vec3' }] },
+                  },
+                ],
+                connections: [
+                  {
+                    id: 'texture-out',
+                    from: { nodeId: 'base-color-texture', pin: 'rgb' },
+                    to: { nodeId: 'function-output', pin: 'color' },
+                  },
+                ],
+              }
+            : { version: 1, nodes: [], connections: [] },
       });
     const materialWithSlot = JSON.stringify({
       version: 4,
@@ -213,6 +242,7 @@ describe('MaterialPicker exported parameters', () => {
     const selector = await screen.findByRole('combobox', { name: 'Base Color Source function' });
     expect(selector).toHaveTextContent('Color');
     expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose Base Color Texture asset' })).toBeVisible();
 
     fireEvent.click(selector);
     fireEvent.click(await screen.findByRole('option', { name: 'Checker' }));
@@ -224,6 +254,14 @@ describe('MaterialPicker exported parameters', () => {
         path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_function__[0-9a-f]+\/0$/),
       }),
     );
+    const functionPath = command.mock.calls[0]?.[1]?.path as string;
+    const encodedFunction = functionPath.match(/__arc_material_function__([0-9a-f]+)\/0$/)?.[1] ?? '';
+    const decodedFunction = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(encodedFunction.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []),
+      ),
+    );
+    expect(decodedFunction.function.pathHint).toBe('material_functions/checker.arcmatfn');
     expect(await screen.findByRole('button', { name: 'Open Color A color picker' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Open Color B color picker' })).toBeVisible();
     expect(screen.getByLabelText('Cell Size')).toHaveValue('1.000');
