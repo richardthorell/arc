@@ -30,7 +30,14 @@ describe('Standard Lit shared channel functions', () => {
     expect(connected('orm-unpack', 'roughness', 'roughness-multiply', 'b')).toBe(true);
     expect(connected('ambient-occlusion-texture', 'rgba', 'ao-channel-mask', 'rgba')).toBe(true);
     expect(connected('ao-channel-mask', 'value', 'material-output', 'ao')).toBe(true);
-    expect(graph.nodes.filter((node) => node.parameter?.exposed === true).map((node) => node.parameter?.name)).toEqual([
+    expect(byId.get('base-color-source')?.parameter?.exposed).toBe(true);
+    expect(byId.get('orm-unpack')?.parameter?.exposed).toBe(false);
+    expect(byId.get('ao-channel-mask')?.parameter?.exposed).toBe(false);
+    expect(
+      graph.nodes
+        .filter((node) => node.parameter?.exposed === true && node.type !== 'functionCall')
+        .map((node) => node.parameter?.name),
+    ).toEqual([
       'Metallic',
       'Roughness',
       'Metallic Roughness Texture',
