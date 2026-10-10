@@ -276,9 +276,6 @@ struct directional_light_component
 {
     math::vector3f color = math::vector3f::one;
     float intensity{100000.0f};
-    /** Angular diameter of the directional emitter in radians (Source Angle). Zero is an ideal sun/directional source.
-     */
-    float source_angle{0.0f};
     bool casts_shadows{false};
     bool enabled{true};
     bool use_color_temperature{};
@@ -287,6 +284,8 @@ struct directional_light_component
     render::texture_handle cookie_texture{};
     render::shadow_settings shadow{};
     render::directional_shadow_settings cascades{};
+    /** Angular diameter of the directional emitter in radians (Source Angle). Zero is an ideal sun/directional source. */
+    float source_angle{0.0f};
 };
 
 /**
@@ -297,8 +296,6 @@ struct point_light_component
     math::vector3f color = math::vector3f::one;
     float intensity{800.0f};
     float range{10.0f};
-    float source_radius{0.0f};
-    float source_length{0.0f};
     bool casts_shadows{false};
     bool enabled{true};
     bool use_color_temperature{};
@@ -306,6 +303,10 @@ struct point_light_component
     render::light_intensity_unit intensity_unit{render::light_intensity_unit::lumen};
     render::texture_handle cookie_texture{};
     render::shadow_settings shadow{.enabled = false};
+    /** Radius of the physical emitter in metres. Zero preserves punctual behavior. */
+    float source_radius{0.0f};
+    /** Optional emitter length in metres for elongated source semantics. */
+    float source_length{0.0f};
 };
 
 /**
@@ -318,8 +319,6 @@ struct spot_light_component
     float range{10.0f};
     float inner_angle{0.35f};
     float outer_angle{0.75f};
-    float source_radius{0.0f};
-    float source_length{0.0f};
     bool casts_shadows{false};
     bool enabled{true};
     bool use_color_temperature{};
@@ -327,6 +326,10 @@ struct spot_light_component
     render::light_intensity_unit intensity_unit{render::light_intensity_unit::lumen};
     render::texture_handle cookie_texture{};
     render::shadow_settings shadow{.enabled = false};
+    /** Radius of the physical emitter in metres. Zero preserves punctual behavior. */
+    float source_radius{0.0f};
+    /** Optional emitter length in metres for elongated source semantics. */
+    float source_length{0.0f};
 };
 
 /**
