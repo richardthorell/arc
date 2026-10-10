@@ -68,6 +68,10 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
             static_cast<std::uint32_t>(arc::render::directional_shadow_representation::none));
     STATIC_REQUIRE(sizeof(arc::render::directional_light_data) == 96);
     STATIC_REQUIRE(alignof(arc::render::directional_light_data) == 16);
+    STATIC_REQUIRE(offsetof(arc::render::directional_light_data, source_shape) == 32);
+    STATIC_REQUIRE(offsetof(arc::render::directional_light_data, shadow_identity) == 48);
+    STATIC_REQUIRE(offsetof(arc::render::directional_light_data, shadow_routing) == 64);
+    STATIC_REQUIRE(offsetof(arc::render::directional_light_data, shadow_parameters) == 80);
     REQUIRE(data.point_count == 2);
     REQUIRE(data.point_lights[0].color_intensity[3] == Catch::Approx(80.0f / (4.0f * arc::math::pi<float>)));
     REQUIRE(data.point_lights[0].object_id_shadow[0] == Catch::Approx(17.0f));

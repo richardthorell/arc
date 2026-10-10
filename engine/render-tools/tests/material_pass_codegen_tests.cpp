@@ -240,9 +240,12 @@ TEST_CASE("canonical forward pass evaluates generic PBR transmission from the Ma
     REQUIRE(source.find("arc_virtual_directional_shadow_visibility(light, worldPosition") != std::string::npos);
     REQUIRE(source.find("address_space.identityTopology.x != light.shadow_identity.w") != std::string::npos);
     REQUIRE(source.find("sampled += min(static_visibility, dynamic_visibility)") != std::string::npos);
-    REQUIRE(source.find("float4 directionIntensity;\n    float4 colorFlags;\n"
+    REQUIRE(source.find("float4 directionIntensity;\n    float4 colorFlags;\n    float4 sourceShape;\n"
                         "    uint4 shadowIdentity;\n    uint4 shadowRouting;\n    float4 shadowParameters;") !=
             std::string::npos);
+    REQUIRE(source.find("float4 shadowParameters;\n    float4 sourceShape;") != std::string::npos);
+    REQUIRE(source.find("float4 configuration;\n    float4 sourceShape;") != std::string::npos);
+    REQUIRE(source.find("0.5 * arcForwardShadows.sourceShape.x") != std::string::npos);
     REQUIRE(source.find("lighting.directionalLights[index].shadowRouting.x != 0u") != std::string::npos);
     REQUIRE(source.find("float shadow = index == 0u") == std::string::npos);
     REQUIRE(source.find("arcForwardLocalShadowAtlas") != std::string::npos);

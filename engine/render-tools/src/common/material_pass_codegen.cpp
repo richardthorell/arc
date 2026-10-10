@@ -184,6 +184,7 @@ void append_forward_lighting_library(std::ostringstream& source)
 {
     float4 directionIntensity;
     float4 colorFlags;
+    float4 sourceShape;
     uint4 shadowIdentity;
     uint4 shadowRouting;
     float4 shadowParameters;
@@ -195,6 +196,7 @@ struct ArcForwardPointLight
     float4 colorIntensity;
     float4 objectIdShadow;
     float4 shadowParameters;
+    float4 sourceShape;
 };
 
 struct ArcForwardSpotLight
@@ -205,6 +207,7 @@ struct ArcForwardSpotLight
     float4 params;
     float4 objectIdShadow;
     float4 shadowParameters;
+    float4 sourceShape;
 };
 
 struct ArcForwardAreaLight
@@ -253,6 +256,7 @@ struct ArcForwardShadowData
     float4 cascadeTexelSize;
     float4 cascadeBlendStarts;
     float4 configuration;
+    float4 sourceShape;
 };
 
 struct ArcForwardSceneData
@@ -463,11 +467,12 @@ float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, floa
     int radius = filterMode == 0 ? 0 : (filterMode >= 2 ? 2 : 1);
     uint width, height, layers;
     arcForwardDirectionalShadowMap.GetDimensions(width, height, layers);
+    float sourceScale = 1.0 + clamp(0.5 * arcForwardShadows.sourceShape.x, 0.0, 0.25) * 48.0;
     float visibility = 0.0;
     for (int y = -radius; y <= radius; ++y)
         for (int x = -radius; x <= radius; ++x)
         {
-            float2 sampleUv = uv + float2(x, y) / float(width);
+            float2 sampleUv = uv + float2(x, y) * sourceScale / float(width);
             visibility += min(
                 arcForwardDirectionalShadowMap.SampleCmpLevelZero(
                     arcForwardDirectionalShadowSampler, float3(sampleUv, float(cascade)), compareDepth),

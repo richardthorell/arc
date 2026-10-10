@@ -57,7 +57,9 @@ The canonical compiled Slang forward/transparent and Water passes bind the same 
 depth atlases as deferred lighting. The lookup is embedded into the pass composer at build time, not loaded from a
 runtime source-tree path. Empty descriptor layouts replace unused legacy material sets in the forward pipeline.
 Directional VSM routing requires the common scene resources and caster pipeline to be initialized successfully.
-The engine-owned compiled material pass contract is v3 and code generation is v8. Old compiled programs must be
+The engine-owned compiled material pass contract is v4 and code generation is v9. The 96-byte directional light
+record preserves physical source-shape fields alongside VSM routing. Forward point/spot and cascade records also
+preserve the shared source-shape fields, including conventional PCF widening. Old compiled programs must be
 rebuilt rather than interpreted with the new lighting-buffer stride; authoring and package container schemas are unchanged.
 
 Preview compilation and cooking emit both conventional-only and VSM forward permutations, including transparent

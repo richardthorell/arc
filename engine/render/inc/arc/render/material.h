@@ -355,7 +355,7 @@ struct material_runtime_texture_binding
 };
 
 /** @brief Engine-owned pass/resource ABI; v2 adds per-light directional shadow routing. */
-inline constexpr std::uint32_t material_pass_contract_version = 3;
+inline constexpr std::uint32_t material_pass_contract_version = 4;
 
 struct material_runtime_program
 {
