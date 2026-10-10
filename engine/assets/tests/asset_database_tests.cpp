@@ -103,10 +103,9 @@ TEST_CASE("asset database classifies built-in authoring providers")
         output << R"({"version":4,"name":"Builtin"})";
     }
     const auto builtin_guid = generate_asset_guid();
-    REQUIRE(save_asset_metadata(metadata_path_for(source_path),
-                                {.guid = builtin_guid,
-                                 .type = asset_types::material,
-                                 .importer = importer_ids::material}));
+    REQUIRE(
+        save_asset_metadata(metadata_path_for(source_path),
+                            {.guid = builtin_guid, .type = asset_types::material, .importer = importer_ids::material}));
 
     arc::memory::memory_system memory;
     arc::jobs::job_system jobs(
@@ -138,8 +137,8 @@ TEST_CASE("asset database classifies virtual built-in providers")
     temporary_database_project project;
     database_fixture fixture(project);
     const auto guid = generate_asset_guid();
-    auto payload = asset_payload::make(
-        asset_types::binary_blob, std::make_shared<const source_asset_data>(source_asset_data{}));
+    auto payload =
+        asset_payload::make(asset_types::binary_blob, std::make_shared<const source_asset_data>(source_asset_data{}));
     REQUIRE(fixture.manager.register_virtual_asset(guid, asset_types::binary_blob, std::move(payload), "test"));
 
     const auto record = fixture.manager.database().query(guid, asset_types::binary_blob);
