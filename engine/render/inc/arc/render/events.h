@@ -374,6 +374,8 @@ struct directional_light_event
     math::vector3f direction{0.0f, -1.0f, 0.0f};
     math::vector3f color = math::vector3f::one;
     float intensity{1.0f};
+    /** Angular radius of the emitter in radians. Zero preserves an ideal directional source. */
+    float source_angle{0.0f};
     bool casts_shadows{};
     bool enabled{true};
     bool use_color_temperature{};
@@ -396,6 +398,10 @@ struct point_light_event
     math::vector3f color = math::vector3f::one;
     float intensity{1.0f};
     float range{10.0f};
+    /** Radius of the spherical emitter in metres. Zero preserves a punctual point light. */
+    float source_radius{0.0f};
+    /** Optional emitter length in metres reserved for line/tube source semantics. */
+    float source_length{0.0f};
     bool casts_shadows{};
     bool enabled{true};
     bool use_color_temperature{};
@@ -420,6 +426,10 @@ struct spot_light_event
     float range{10.0f};
     float inner_angle{0.35f};
     float outer_angle{0.75f};
+    /** Radius of the spherical emitter in metres. Zero preserves a punctual spotlight. */
+    float source_radius{0.0f};
+    /** Optional emitter length in metres reserved for line/tube source semantics. */
+    float source_length{0.0f};
     bool casts_shadows{};
     bool enabled{true};
     bool use_color_temperature{};
