@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <functional>
+#include <sstream>
 
 namespace arc::render
 {
@@ -29,6 +31,161 @@ template <class Light> std::vector<Light> sorted_by_contribution(std::vector<Lig
 }
 
 } // namespace
+
+photometric_profile_parse_result parse_ies_profile(std::string_view source)
+{
+    photometric_profile_parse_result result{};
+    auto& out = result.profile;
+    auto& error = result.error;
+
+    const auto tilt_position = source.find("TILT=");
+    if (tilt_position == std::string_view::npos)
+    {
+        error = "IES profile is missing TILT= declaration";
+        return result;
+    }
+    const auto tilt_end = source.find_first_of("\r\n", tilt_position);
+    const auto tilt =
+        source.substr(tilt_position + 5u,
+                      tilt_end == std::string_view::npos ? std::string_view::npos : tilt_end - (tilt_position + 5u));
+    if (tilt != "NONE")
+    {
+        error = "IES TILT data is not supported yet; use TILT=NONE";
+        return result;
+    }
+
+    const auto numeric_start = tilt_end == std::string_view::npos ? source.size() : tilt_end + 1u;
+    std::istringstream stream(std::string{source.substr(numeric_start)});
+    std::uint32_t lamp_count{};
+    float lumens_per_lamp{};
+    float candela_multiplier{};
+    std::uint32_t vertical_count{};
+    std::uint32_t horizontal_count{};
+    std::uint32_t photometric_type{};
+    std::uint32_t units_type{};
+    float width{}, length{}, height{}, ballast_factor{}, future_use{}, input_watts{};
+    if (!(stream >> lamp_count >> lumens_per_lamp >> candela_multiplier >> vertical_count >> horizontal_count >>
+          photometric_type >> units_type >> width >> length >> height >> ballast_factor >> future_use >> input_watts))
+    {
+        error = "IES photometric header is incomplete";
+        return result;
+    }
+    (void)units_type;
+    (void)width;
+    (void)length;
+    (void)height;
+    (void)ballast_factor;
+    (void)future_use;
+    (void)input_watts;
+    if (lamp_count == 0u || vertical_count < 2u || horizontal_count == 0u || photometric_type < 1u ||
+        photometric_type > 3u || !std::isfinite(lumens_per_lamp) || !std::isfinite(candela_multiplier) ||
+        candela_multiplier <= 0.0f)
+    {
+        error = "IES photometric header contains invalid counts or scaling";
+        return result;
+    }
+
+    out.vertical_angles_degrees.resize(vertical_count);
+    out.horizontal_angles_degrees.resize(horizontal_count);
+    for (auto& angle : out.vertical_angles_degrees)
+        if (!(stream >> angle) || !std::isfinite(angle))
+        {
+            error = "IES vertical angle table is incomplete";
+            out = {};
+            return result;
+        }
+    for (auto& angle : out.horizontal_angles_degrees)
+        if (!(stream >> angle) || !std::isfinite(angle))
+        {
+            error = "IES horizontal angle table is incomplete";
+            out = {};
+            return result;
+        }
+
+    const auto strictly_non_decreasing = [](const std::vector<float>& values)
+    { return std::adjacent_find(values.begin(), values.end(), std::greater<float>{}) == values.end(); };
+    if (!strictly_non_decreasing(out.vertical_angles_degrees) ||
+        !strictly_non_decreasing(out.horizontal_angles_degrees))
+    {
+        error = "IES angle tables must be monotonically increasing";
+        out = {};
+        return result;
+    }
+
+    out.normalized_candela.resize(static_cast<std::size_t>(vertical_count) * horizontal_count);
+    float peak{};
+    for (auto& value : out.normalized_candela)
+    {
+        if (!(stream >> value) || !std::isfinite(value) || value < 0.0f)
+        {
+            error = "IES candela table is incomplete or contains invalid values";
+            out = {};
+            return result;
+        }
+        value *= candela_multiplier;
+        peak = std::max(peak, value);
+    }
+    if (!(peak > 0.0f))
+    {
+        error = "IES candela distribution has no positive intensity";
+        out = {};
+        return result;
+    }
+
+    for (auto& value : out.normalized_candela)
+        value /= peak;
+    out.peak_candela = peak;
+    out.declared_lumens = static_cast<float>(lamp_count) * std::max(lumens_per_lamp, 0.0f);
+    out.photometric_type = photometric_type;
+    return result;
+}
+
+float sample_photometric_profile(const photometric_profile& profile, float vertical_angle_radians,
+                                 float horizontal_angle_radians) noexcept
+{
+    if (profile.vertical_angles_degrees.empty() || profile.horizontal_angles_degrees.empty() ||
+        profile.normalized_candela.size() !=
+            profile.vertical_angles_degrees.size() * profile.horizontal_angles_degrees.size())
+        return 1.0f;
+
+    const float radians_to_degrees = 180.0f / math::pi<float>;
+    float vertical = std::clamp(std::abs(vertical_angle_radians) * radians_to_degrees,
+                                profile.vertical_angles_degrees.front(), profile.vertical_angles_degrees.back());
+    float horizontal = std::fmod(horizontal_angle_radians * radians_to_degrees, 360.0f);
+    if (horizontal < 0.0f) horizontal += 360.0f;
+
+    const float horizontal_max = profile.horizontal_angles_degrees.back();
+    if (profile.horizontal_angles_degrees.size() == 1u)
+        horizontal = profile.horizontal_angles_degrees.front();
+    else if (horizontal_max <= 90.0001f)
+    {
+        if (horizontal > 180.0f) horizontal = 360.0f - horizontal;
+        if (horizontal > 90.0f) horizontal = 180.0f - horizontal;
+    }
+    else if (horizontal_max <= 180.0001f && horizontal > 180.0f)
+        horizontal = 360.0f - horizontal;
+    horizontal = std::clamp(horizontal, profile.horizontal_angles_degrees.front(), horizontal_max);
+
+    const auto bracket = [](const std::vector<float>& values, float value)
+    {
+        const auto upper = std::lower_bound(values.begin(), values.end(), value);
+        if (upper == values.begin()) return std::pair<std::size_t, std::size_t>{0u, 0u};
+        if (upper == values.end()) return std::pair<std::size_t, std::size_t>{values.size() - 1u, values.size() - 1u};
+        const auto high = static_cast<std::size_t>(std::distance(values.begin(), upper));
+        return std::pair<std::size_t, std::size_t>{high - 1u, high};
+    };
+    const auto [v0, v1] = bracket(profile.vertical_angles_degrees, vertical);
+    const auto [h0, h1] = bracket(profile.horizontal_angles_degrees, horizontal);
+    const auto fraction = [](float value, float low, float high)
+    { return high > low ? std::clamp((value - low) / (high - low), 0.0f, 1.0f) : 0.0f; };
+    const float tv = fraction(vertical, profile.vertical_angles_degrees[v0], profile.vertical_angles_degrees[v1]);
+    const float th = fraction(horizontal, profile.horizontal_angles_degrees[h0], profile.horizontal_angles_degrees[h1]);
+    const auto sample = [&](std::size_t h, std::size_t v)
+    { return profile.normalized_candela[h * profile.vertical_angles_degrees.size() + v]; };
+    const float low = sample(h0, v0) + (sample(h0, v1) - sample(h0, v0)) * tv;
+    const float high = sample(h1, v0) + (sample(h1, v1) - sample(h1, v0)) * tv;
+    return std::clamp(low + (high - low) * th, 0.0f, 1.0f);
+}
 
 math::vector3f color_temperature_rgb(float kelvin) noexcept
 {

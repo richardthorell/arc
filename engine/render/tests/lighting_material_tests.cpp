@@ -120,6 +120,59 @@ TEST_CASE("clustered local-light grid is screen/depth aware and bounded")
     }
 }
 
+TEST_CASE("IES photometric profiles parse, normalize, and sample deterministically")
+{
+    constexpr std::string_view ies = R"(IESNA:LM-63-2002
+[TEST] ARC deterministic fixture
+TILT=NONE
+1 1000 2 3 2 1 1 0.1 0.1 0.1 1 0 10
+0 45 90
+0 180
+10 20 40
+5 10 20
+)";
+
+    const auto parsed = arc::render::parse_ies_profile(ies);
+    REQUIRE(parsed);
+    REQUIRE(parsed.error.empty());
+    const auto& profile = parsed.profile;
+    REQUIRE(profile.photometric_type == 1u);
+    REQUIRE(profile.vertical_angles_degrees.size() == 3u);
+    REQUIRE(profile.horizontal_angles_degrees.size() == 2u);
+    REQUIRE(profile.normalized_candela.size() == 6u);
+    REQUIRE(profile.peak_candela == Catch::Approx(80.0f));
+    REQUIRE(profile.declared_lumens == Catch::Approx(1000.0f));
+    REQUIRE(profile.normalized_candela[2] == Catch::Approx(1.0f));
+    REQUIRE(profile.normalized_candela[5] == Catch::Approx(0.5f));
+
+    const float axis = arc::render::sample_photometric_profile(profile, 0.0f, 0.0f);
+    const float vertical_mid = arc::render::sample_photometric_profile(profile, arc::math::pi<float> * 0.25f, 0.0f);
+    const float horizontal_mid =
+        arc::render::sample_photometric_profile(profile, arc::math::pi<float> * 0.5f, arc::math::pi<float> * 0.5f);
+    REQUIRE(axis == Catch::Approx(0.25f));
+    REQUIRE(vertical_mid == Catch::Approx(0.5f));
+    REQUIRE(horizontal_mid == Catch::Approx(0.75f));
+
+    // 0..180 photometry mirrors deterministically into the rear hemisphere.
+    REQUIRE(arc::render::sample_photometric_profile(profile, arc::math::pi<float> * 0.5f,
+                                                    arc::math::pi<float> * 1.5f) == Catch::Approx(horizontal_mid));
+
+    arc::render::photometric_profile empty;
+    REQUIRE(arc::render::sample_photometric_profile(empty, 0.5f, 0.5f) == Catch::Approx(1.0f));
+}
+
+TEST_CASE("IES parser rejects unsupported tilt and malformed distributions")
+{
+    const auto tilted = arc::render::parse_ies_profile("IESNA:LM-63-2002\nTILT=INCLUDE\n");
+    REQUIRE_FALSE(tilted);
+    REQUIRE(tilted.error.find("TILT") != std::string::npos);
+
+    const auto dark =
+        arc::render::parse_ies_profile("IESNA:LM-63-2002\nTILT=NONE\n1 1000 1 2 1 1 1 1 1 1 1 0 10\n0 90\n0\n0 0\n");
+    REQUIRE_FALSE(dark);
+    REQUIRE(dark.error.find("positive intensity") != std::string::npos);
+}
+
 TEST_CASE("light unit and temperature helpers provide stable defaults")
 {
     REQUIRE(arc::render::light_intensity_scale(arc::render::light_intensity_unit::unitless, 2.0f, 4.0f) ==
