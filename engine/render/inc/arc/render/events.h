@@ -374,7 +374,7 @@ struct directional_light_event
     math::vector3f direction{0.0f, -1.0f, 0.0f};
     math::vector3f color = math::vector3f::one;
     float intensity{1.0f};
-    /** Angular radius of the emitter in radians. Zero preserves an ideal directional source. */
+    /** Angular diameter of the emitter in radians (Source Angle). Zero preserves an ideal directional source. */
     float source_angle{0.0f};
     bool casts_shadows{};
     bool enabled{true};
