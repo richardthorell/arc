@@ -28,8 +28,8 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
         directional.push_back({.direction = {0.0f, -1.0f, 0.0f},
                                .color = {1.0f, 1.0f, 1.0f},
                                .intensity = static_cast<float>(index + 1),
-                               .source_angle = 0.00465f,
-                               .label = "sun"});
+                               .label = "sun",
+                               .source_angle = 0.00465f});
     }
 
     std::vector<arc::render::point_light_event> points{
@@ -38,9 +38,9 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
          .color = {1.0f, 0.5f, 0.25f},
          .intensity = 80.0f,
          .range = 4.0f,
+         .intensity_unit = arc::render::light_intensity_unit::lumen,
          .source_radius = 0.2f,
-         .source_length = 0.5f,
-         .intensity_unit = arc::render::light_intensity_unit::lumen},
+         .source_length = 0.5f},
         {.position = {0.0f, 0.0f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}, .intensity = 2.0f, .range = 8.0f}};
     std::vector<arc::render::spot_light_event> spots{{.position = {0.0f, 1.0f, 0.0f},
                                                       .direction = {0.0f, -1.0f, 0.0f},
