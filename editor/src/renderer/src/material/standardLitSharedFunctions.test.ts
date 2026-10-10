@@ -49,6 +49,10 @@ describe('Standard Lit shared channel functions', () => {
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
+      'UV Tiling',
+      'UV Offset',
+      'UV Pivot',
+      'UV Rotation (radians)',
     ]);
   });
 });
