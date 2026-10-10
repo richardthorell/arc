@@ -58,7 +58,7 @@ TEST_CASE("host asset references serialize as GUID-authoritative protocol values
     CHECK_FALSE(arc::editor::from_json(R"({"guid":"","expectedType":"","pathHint":""})", parsed, error));
 }
 
-TEST_CASE("asset assignment commands round trip GUID references")
+TEST_CASE("asset assignment commands round trip GUID references without duplicate storage paths")
 {
     const auto reference = arc::editor::host_asset_reference{
         .guid = "00112233445566778899aabbccddeeff",
@@ -67,13 +67,13 @@ TEST_CASE("asset assignment commands round trip GUID references")
     };
     const arc::editor::host_command_envelope source{
         .request_id = 41,
-        .payload = arc::editor::host_set_environment_hdri_command{.entity = {.index = 4, .generation = 2},
-                                                                  .path = "legacy.hdr",
-                                                                  .asset = reference},
+        .payload = arc::editor::host_set_environment_hdri_command{
+            .entity = {.index = 4, .generation = 2}, .asset = reference},
     };
 
     const auto json = arc::editor::to_json(source);
     CHECK(json.find("\"asset\":{\"guid\":\"00112233445566778899aabbccddeeff\"") != std::string::npos);
+    CHECK(json.find("\"path\":") == std::string::npos);
 
     arc::editor::host_command_envelope parsed;
     std::string error;
@@ -82,7 +82,43 @@ TEST_CASE("asset assignment commands round trip GUID references")
     REQUIRE(command);
     REQUIRE(command->asset);
     CHECK(*command->asset == reference);
-    CHECK(command->path == "legacy.hdr");
+    CHECK(command->path.empty());
+
+    arc::editor::host_command_envelope legacy;
+    REQUIRE(arc::editor::from_json(
+        R"({"requestId":42,"type":"environment.setHdri","payload":{"entity":{"index":4,"generation":2},"path":"legacy.hdr"}})",
+        legacy, error));
+    const auto* legacy_command = std::get_if<arc::editor::host_set_environment_hdri_command>(&legacy.payload);
+    REQUIRE(legacy_command);
+    CHECK_FALSE(legacy_command->asset.has_value());
+    CHECK(legacy_command->path == "legacy.hdr");
+}
+
+TEST_CASE("Flow assignment prefers the common asset reference contract")
+{
+    const auto reference = arc::editor::host_asset_reference{
+        .guid = "00112233445566778899aabbccddeeff",
+        .expected_type = "a7ca55e700000001000000000000000b",
+        .path_hint = "Content/Logic/Player.arcflow",
+    };
+    const arc::editor::host_command_envelope source{
+        .request_id = 43,
+        .payload = arc::editor::host_set_flow_command{
+            .entity = {.index = 7, .generation = 1}, .asset = reference, .enabled = true},
+    };
+
+    const auto json = arc::editor::to_json(source);
+    CHECK(json.find("\"asset\":") != std::string::npos);
+    CHECK(json.find("\"graphGuid\":") == std::string::npos);
+    CHECK(json.find("\"graphPathHint\":") == std::string::npos);
+
+    arc::editor::host_command_envelope parsed;
+    std::string error;
+    REQUIRE(arc::editor::from_json(json, parsed, error));
+    const auto* command = std::get_if<arc::editor::host_set_flow_command>(&parsed.payload);
+    REQUIRE(command);
+    REQUIRE(command->asset);
+    CHECK(*command->asset == reference);
 }
 
 TEST_CASE("arc host protocol serializes command and query envelopes")
