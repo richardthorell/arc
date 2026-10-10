@@ -417,7 +417,7 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         min: 0,
         max: 45,
         unit: '°',
-        tooltip: 'Angular radius of the emitter. 0° is an ideal directional source; larger values broaden highlights and shadow penumbrae.',
+        tooltip: 'Angular diameter of the emitter. 0° is an ideal directional source; the sun is about 0.53°. Larger values broaden highlights and shadow penumbrae.',
       },
       {
         id: 'cascadeCount',
