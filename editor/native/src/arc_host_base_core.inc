@@ -4008,7 +4008,16 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (targets.empty()) return fail("Cannot edit a missing or unselected entity", entity);
                 assets::asset_reference graph{.expected_type = assets::asset_types::flow_graph,
                                               .path_hint = payload.graph_path_hint};
-                if (!payload.graph_guid.empty())
+                if (payload.asset)
+                {
+                    const auto parsed = parse_host_asset_reference(*payload.asset);
+                    if (!parsed) return fail("Flow asset reference is invalid", entity);
+                    graph = *parsed;
+                    if (!graph.expected_type.valid()) graph.expected_type = assets::asset_types::flow_graph;
+                    if (graph.expected_type != assets::asset_types::flow_graph)
+                        return fail("Flow asset reference has the wrong asset type", entity);
+                }
+                else if (!payload.graph_guid.empty())
                 {
                     const auto parsed = assets::parse_asset_guid(payload.graph_guid);
                     if (!parsed) return fail("Flow graph GUID is invalid", entity);
@@ -4018,9 +4027,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     if (graph.guid.valid())
                     {
-                        const auto asset = state_->asset_registry->find(graph.guid);
-                        if (!asset || asset->type != assets::asset_types::flow_graph)
-                            return fail("Flow graph GUID does not identify a registered Flow asset", entity);
+                        const auto asset = state_->asset_registry->find(graph);
+                        if (!asset) return fail("Flow graph GUID does not identify a registered Flow asset", entity);
+                        graph.guid = asset->guid;
+                        graph.expected_type = assets::asset_types::flow_graph;
                         graph.path_hint = assets::normalize_asset_path(asset->source_path);
                     }
                     else if (!graph.path_hint.empty())
