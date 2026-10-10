@@ -1,0 +1,44 @@
+name: Temporary Regenerate Built-in Shaders
+
+on:
+  push:
+    branches:
+      - render/dl0-2-physical-light-shapes
+    paths:
+      - assets/shaders/**
+      - .github/workflows/temp-regenerate-915-shaders.yml
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: render/dl0-2-physical-light-shapes
+      - name: Set Up Vulkan SDK 1.4.350.0
+        uses: ./.github/actions/setup-vulkan
+      - name: Regenerate built-in shaders
+        run: |
+          mkdir -p out/generated/shaders
+          python3 tools/compile_builtin_shaders.py \
+            --source-root assets/shaders \
+            --output-dir out/generated/shaders \
+            --header engine/render-vulkan/src/builtin_shaders.h \
+            --glslc glslc \
+            --spirv-val spirv-val \
+            --write
+      - name: Commit generated header
+        run: |
+          if git diff --quiet -- engine/render-vulkan/src/builtin_shaders.h; then
+            echo "builtin_shaders.h already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engine/render-vulkan/src/builtin_shaders.h
+          git commit -m "Shaders: regenerate built-in Vulkan bundle"
+          git push origin HEAD:render/dl0-2-physical-light-shapes
