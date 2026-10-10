@@ -276,7 +276,7 @@ struct directional_light_component
 {
     math::vector3f color = math::vector3f::one;
     float intensity{100000.0f};
-    /** Angular radius of the directional emitter in radians. Zero is an ideal sun/directional source. */
+    /** Angular diameter of the directional emitter in radians (Source Angle). Zero is an ideal sun/directional source. */
     float source_angle{0.0f};
     bool casts_shadows{false};
     bool enabled{true};
