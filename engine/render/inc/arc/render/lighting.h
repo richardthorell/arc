@@ -85,6 +85,8 @@ struct directional_light_data
 {
     math::vector4f direction_intensity{0.0f, -1.0f, 0.0f, 0.0f};
     math::vector4f color_flags{1.0f, 1.0f, 1.0f, 0.0f};
+    /** x = angular source radius in radians; remaining lanes reserved for source-shape evolution. */
+    math::vector4f source_shape{};
 };
 
 /**
@@ -96,6 +98,8 @@ struct point_light_data
     math::vector4f color_intensity{1.0f, 1.0f, 1.0f, 0.0f};
     math::vector4f object_id_shadow{0.0f, 0.0f, -1.0f, 0.0f};
     math::vector4f shadow_parameters{-1.0f, 0.0f, 0.0f, 0.0f};
+    /** x = source radius metres, y = source length metres. */
+    math::vector4f source_shape{};
 };
 
 /**
@@ -109,6 +113,8 @@ struct spot_light_data
     math::vector4f params{0.75f, 0.0f, 0.0f, 0.0f};
     math::vector4f object_id_shadow{0.0f, 0.0f, -1.0f, 0.0f};
     math::vector4f shadow_parameters{-1.0f, 0.0f, 0.0f, 0.0f};
+    /** x = source radius metres, y = source length metres. */
+    math::vector4f source_shape{};
 };
 
 /** @brief One point face or spotlight projection packed for local-shadow sampling. */
