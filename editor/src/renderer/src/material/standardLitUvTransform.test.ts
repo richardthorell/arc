@@ -17,10 +17,7 @@ describe('Standard Lit shared UV Transform', () => {
     const connected = (from: string, output: string, to: string, input: string) =>
       graph.connections.some(
         (edge) =>
-          edge.from.nodeId === from &&
-          edge.from.pin === output &&
-          edge.to.nodeId === to &&
-          edge.to.pin === input,
+          edge.from.nodeId === from && edge.from.pin === output && edge.to.nodeId === to && edge.to.pin === input,
       );
 
     expect(nodes.get('shared-uv-transform')?.values.path).toBe('material_functions/uv_transform.arcmatfn');
