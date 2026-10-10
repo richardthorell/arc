@@ -61,8 +61,17 @@ struct photometric_profile
     std::uint32_t photometric_type{1u};
 };
 
+/** @brief Result of parsing one LM-63 IES document. */
+struct [[nodiscard]] photometric_profile_parse_result
+{
+    photometric_profile profile;
+    std::string error;
+
+    [[nodiscard]] explicit operator bool() const noexcept { return error.empty(); }
+};
+
 /** @brief Parse an LM-63 IES document. v1 supports TILT=NONE and photometric types C/B/A. */
-[[nodiscard]] bool parse_ies_profile(std::string_view source, photometric_profile& out, std::string& error);
+[[nodiscard]] photometric_profile_parse_result parse_ies_profile(std::string_view source);
 
 /**
  * @brief Sample a normalized IES profile using photometric vertical/horizontal angles in radians.
