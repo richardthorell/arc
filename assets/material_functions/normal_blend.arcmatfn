@@ -1,0 +1,265 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Normal Blend",
+  "description": "Blend two world-space normals with normalized linear interpolation. Both inputs must already be world-space; do not supply encoded normal-texture RGB.",
+  "inputs": [
+    {
+      "id": "base",
+      "name": "Base World Normal",
+      "type": "vec3"
+    },
+    {
+      "id": "detail",
+      "name": "Detail World Normal",
+      "type": "vec3"
+    },
+    {
+      "id": "weight",
+      "name": "Blend Weight",
+      "type": "float",
+      "default": 0
+    }
+  ],
+  "outputs": [
+    {
+      "id": "normal",
+      "name": "World Normal",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-base",
+        "type": "functionInput",
+        "position": [
+          40,
+          100
+        ],
+        "values": {
+          "input": "base",
+          "name": "Base World Normal",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-detail",
+        "type": "functionInput",
+        "position": [
+          40,
+          290
+        ],
+        "values": {
+          "input": "detail",
+          "name": "Detail World Normal",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "input-weight",
+        "type": "functionInput",
+        "position": [
+          40,
+          480
+        ],
+        "values": {
+          "input": "weight",
+          "name": "Blend Weight",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "clamped-weight",
+        "type": "saturate",
+        "position": [
+          300,
+          480
+        ],
+        "values": {}
+      },
+      {
+        "id": "blend",
+        "type": "lerp",
+        "position": [
+          520,
+          220
+        ],
+        "values": {}
+      },
+      {
+        "id": "normal-length",
+        "type": "length",
+        "position": [
+          695,
+          380
+        ],
+        "values": {}
+      },
+      {
+        "id": "safe-length",
+        "type": "max",
+        "position": [
+          820,
+          380
+        ],
+        "values": {}
+      },
+      {
+        "id": "epsilon",
+        "type": "constant",
+        "position": [
+          660,
+          540
+        ],
+        "values": {
+          "value": 0.00001
+        }
+      },
+      {
+        "id": "normalized",
+        "type": "divide",
+        "position": [
+          980,
+          220
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          1200,
+          220
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "normal",
+              "name": "World Normal",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "weight",
+        "from": {
+          "nodeId": "input-weight",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clamped-weight",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "base",
+        "from": {
+          "nodeId": "input-base",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "blend",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "detail",
+        "from": {
+          "nodeId": "input-detail",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "blend",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "t",
+        "from": {
+          "nodeId": "clamped-weight",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "blend",
+          "pin": "t"
+        }
+      },
+      {
+        "id": "length",
+        "from": {
+          "nodeId": "blend",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "normal-length",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "len",
+        "from": {
+          "nodeId": "normal-length",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "safe-length",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "eps",
+        "from": {
+          "nodeId": "epsilon",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "safe-length",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "num",
+        "from": {
+          "nodeId": "blend",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "normalized",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "den",
+        "from": {
+          "nodeId": "safe-length",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "normalized",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "normalized",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "normal"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.76
+    }
+  }
+}
