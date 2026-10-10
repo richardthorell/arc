@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <algorithm>
 #include <string>
 #include <string_view>
 
@@ -80,9 +81,70 @@ void require_compiles(arc::render::tools::slang_shader_compiler& compiler,
     REQUIRE_FALSE(result.value().bytecode.empty());
     REQUIRE(result.value().reflection.passes.size() == 1);
     REQUIRE(result.value().reflection.passes.front().pass == pass);
+    if (pass == arc::render::material_pass::forward)
+    {
+        constexpr std::array<std::string_view, 6> names{"arcVirtualShadowAddresses",    "arcVirtualShadowViews",
+                                                        "arcVirtualShadowPages",        "arcVirtualShadowStaticAtlas",
+                                                        "arcVirtualShadowDynamicAtlas", "arcVirtualShadowSampler"};
+        const auto& resources = result.value().reflection.resources;
+        if (!generated.virtual_shadow_sampling)
+        {
+            CHECK(std::ranges::none_of(resources, [](const auto& resource)
+                                       { return resource.set == 2u && resource.binding >= 10u; }));
+            CHECK(std::ranges::count_if(resources,
+                                        [](const auto& resource) {
+                                            return resource.set == 2u &&
+                                                   resource.kind ==
+                                                       arc::render::shader_resource_kind::structured_buffer;
+                                        }) <= 2);
+        }
+        for (std::uint32_t index = 0; index < names.size(); ++index)
+        {
+            const auto found =
+                std::ranges::find(resources, names[index], &arc::render::shader_resource_descriptor::name);
+            if (!generated.virtual_shadow_sampling)
+            {
+                REQUIRE(found == resources.end());
+                continue;
+            }
+            REQUIRE(found != resources.end());
+            CHECK(found->set == 2u);
+            CHECK(found->binding == 10u + index);
+            CHECK_FALSE(found->writable);
+            const auto expected = index < 3u   ? arc::render::shader_resource_kind::structured_buffer
+                                  : index < 5u ? arc::render::shader_resource_kind::sampled_texture
+                                               : arc::render::shader_resource_kind::sampler;
+            CHECK(found->kind == expected);
+        }
+    }
 }
 
 } // namespace
+
+TEST_CASE("forward shadow variants have distinct identities and conventional shaders omit VSM resources")
+{
+    using namespace arc::render;
+    using namespace arc::render::tools;
+    const auto evaluator = make_custom_material_evaluator(transmission_material_shader);
+    REQUIRE(evaluator);
+    material_descriptor material;
+    material.alpha_mode = material_alpha_mode::blend;
+    const auto conventional =
+        generate_material_pass_slang(evaluator.value(), material, material_pass::forward, 0, false, false);
+    const auto virtualized =
+        generate_material_pass_slang(evaluator.value(), material, material_pass::forward, 0, false, true);
+    REQUIRE(conventional);
+    REQUIRE(virtualized);
+    CHECK(conventional.value().permutation != virtualized.value().permutation);
+    CHECK_FALSE(conventional.value().virtual_shadow_sampling);
+    CHECK(virtualized.value().virtual_shadow_sampling);
+    slang_shader_compiler compiler;
+    if (compiler.available())
+    {
+        require_compiles(compiler, conventional.value(), material_pass::forward);
+        require_compiles(compiler, virtualized.value(), material_pass::forward);
+    }
+}
 
 TEST_CASE("Material IR composes deterministic engine-owned pass shaders")
 {
@@ -173,6 +235,19 @@ TEST_CASE("canonical forward pass evaluates generic PBR transmission from the Ma
     REQUIRE(source.find("StructuredBuffer<ArcForwardLightingData> arcForwardLighting : register(t0, space2)") !=
             std::string::npos);
     REQUIRE(source.find("arcForwardDirectionalShadowMap") != std::string::npos);
+    REQUIRE(source.find("arcVirtualShadowAddresses : register(t10, space2)") != std::string::npos);
+    REQUIRE(source.find("arcVirtualShadowSampler : register(s15, space2)") != std::string::npos);
+    REQUIRE(source.find("arc_virtual_directional_shadow_visibility(light, worldPosition") != std::string::npos);
+    REQUIRE(source.find("address_space.identityTopology.x != light.shadow_identity.w") != std::string::npos);
+    REQUIRE(source.find("sampled += min(static_visibility, dynamic_visibility)") != std::string::npos);
+    REQUIRE(source.find("float4 directionIntensity;\n    float4 colorFlags;\n    float4 sourceShape;\n"
+                        "    uint4 shadowIdentity;\n    uint4 shadowRouting;\n    float4 shadowParameters;") !=
+            std::string::npos);
+    REQUIRE(source.find("float4 shadowParameters;\n    float4 sourceShape;") != std::string::npos);
+    REQUIRE(source.find("float4 configuration;\n    float4 sourceShape;") != std::string::npos);
+    REQUIRE(source.find("0.5 * arcForwardShadows.sourceShape.x") != std::string::npos);
+    REQUIRE(source.find("lighting.directionalLights[index].shadowRouting.x != 0u") != std::string::npos);
+    REQUIRE(source.find("float shadow = index == 0u") == std::string::npos);
     REQUIRE(source.find("arcForwardLocalShadowAtlas") != std::string::npos);
     REQUIRE(source.find("arcForwardSceneColor") != std::string::npos);
     REQUIRE(source.find("arcForwardShadows") != std::string::npos);

@@ -18,7 +18,7 @@ namespace arc::render::tools
 {
 
 /** @brief Version of the engine material/pass Slang composition layer. */
-inline constexpr std::uint32_t material_pass_codegen_version = 4;
+inline constexpr std::uint32_t material_pass_codegen_version = 9;
 /** @brief Version of the handwritten Material Shader evaluator contract. */
 inline constexpr std::uint32_t custom_material_shader_version = 1;
 
@@ -50,6 +50,7 @@ struct material_pass_shader_source
     std::unordered_map<std::uint32_t, std::string> generated_line_nodes;
     std::vector<shader_parameter_descriptor> parameters;
     std::vector<shader_diagnostic> diagnostics;
+    bool virtual_shadow_sampling{};
 };
 
 using material_pass_codegen_result = core::result<material_pass_shader_source, shader_compile_error>;
@@ -71,7 +72,8 @@ using material_pass_codegen_result = core::result<material_pass_shader_source, s
 [[nodiscard]] material_pass_codegen_result generate_material_pass_slang(const material_evaluator_source& evaluator,
                                                                         const material_descriptor& material,
                                                                         material_pass pass, std::uint8_t debug_view = 0,
-                                                                        bool wireframe = false);
+                                                                        bool wireframe = false,
+                                                                        bool virtual_shadow_sampling = true);
 
 /**
  * @brief Compatibility overload for graph-generated materials.
@@ -82,6 +84,7 @@ using material_pass_codegen_result = core::result<material_pass_shader_source, s
 [[nodiscard]] material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
                                                                         const material_descriptor& material,
                                                                         material_pass pass, std::uint8_t debug_view = 0,
-                                                                        bool wireframe = false);
+                                                                        bool wireframe = false,
+                                                                        bool virtual_shadow_sampling = true);
 
 } // namespace arc::render::tools

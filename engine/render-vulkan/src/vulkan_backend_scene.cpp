@@ -5,6 +5,9 @@ namespace arc::render::vulkan::backend_detail
 render_submit_result vulkan_render_backend::submit(const render_frame_packet& packet,
                                                    const compiled_render_graph& graph)
 {
+    // M4 uses shared VSM tables and atlases. Finish their prior consumers before
+    // changing CPU-visible table storage or retiring published physical tiles.
+    if (resolved_config_.features.virtual_shadow_maps) wait_for_in_flight_frames();
     last_profile_.frame_index = packet.frame_index;
     last_profile_.gpu_scene = {};
     apply_gpu_visibility_statistics(completed_gpu_visibility_statistics_);
@@ -405,6 +408,21 @@ void vulkan_render_backend::update_shadow_profile(std::uint64_t frame_index)
         profile.local_atlas_resolution = 0;
         profile.fallback_reason = "Shadows disabled by the viewport";
         return;
+    }
+    if (const auto* directional = active_directional_shadow_light(); directional != nullptr)
+    {
+        for (std::uint32_t index = 0; index < frame_lighting_.directional_count; ++index)
+        {
+            auto& packed = frame_lighting_.directional_lights[index];
+            if (packed.shadow_identity[0] != directional->object_id.index ||
+                packed.shadow_identity[1] != directional->object_id.generation)
+                continue;
+            packed.shadow_routing[0] = static_cast<std::uint32_t>(directional_shadow_representation::conventional);
+            // Cascades remain available as the correctness fallback even when
+            // the light is primarily routed through virtual pages.
+            packed.shadow_routing[2] = 0u;
+            break;
+        }
     }
     const auto detect_moved_static = [&](draw_mesh_event& draw)
     {

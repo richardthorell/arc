@@ -103,14 +103,15 @@ bool material_pass_evaluates_surface(material_pass pass, material_alpha_mode alp
 
 material_pass_permutation_key make_material_pass_permutation_key(const material_descriptor& material,
                                                                  material_pass pass, std::uint8_t debug_view,
-                                                                 bool wireframe) noexcept
+                                                                 bool wireframe, bool virtual_shadow_sampling) noexcept
 {
     return {.pass = pass,
             .render_path = resolve_material_render_path(material),
             .shading_model = material.shading_model,
             .material = make_shader_permutation_key(material, debug_view, wireframe),
             .evaluates_material = material_pass_evaluates_surface(pass, material.alpha_mode),
-            .writes_motion = pass == material_pass::motion || pass == material_pass::gbuffer};
+            .writes_motion = pass == material_pass::motion || pass == material_pass::gbuffer,
+            .virtual_shadow_sampling = pass == material_pass::forward && virtual_shadow_sampling};
 }
 
 std::uint64_t hash_material_pass_permutation_key(const material_pass_permutation_key& key) noexcept
@@ -124,6 +125,7 @@ std::uint64_t hash_material_pass_permutation_key(const material_pass_permutation
     hash_material_features(hash, key.material);
     hash_integral(hash, static_cast<std::uint8_t>(key.evaluates_material));
     hash_integral(hash, static_cast<std::uint8_t>(key.writes_motion));
+    hash_integral(hash, static_cast<std::uint8_t>(key.virtual_shadow_sampling));
     return hash;
 }
 
@@ -133,11 +135,29 @@ shader_permutation_id make_material_pass_permutation_id(const material_pass_perm
     return {hash == 0 ? std::uint64_t{1} : hash};
 }
 
-const material_pass_binding* find_material_pass_binding(const material_compiled_program& program,
-                                                        material_pass pass) noexcept
+const material_pass_binding* find_material_pass_binding(const material_compiled_program& program, material_pass pass,
+                                                        shader_permutation_id permutation) noexcept
 {
-    const auto found = std::ranges::find(program.passes, pass, &material_pass_binding::pass);
+    const auto found = std::ranges::find_if(
+        program.passes, [&](const auto& binding)
+        { return binding.pass == pass && (!permutation.valid() || binding.permutation == permutation); });
     return found == program.passes.end() ? nullptr : &*found;
+}
+
+const material_runtime_pass* find_material_runtime_pass(const material_runtime_program& program, material_pass pass,
+                                                        bool virtual_shadow_sampling) noexcept
+{
+    if (!material_runtime_program_compatible(program)) return nullptr;
+    const material_runtime_pass* conventional{};
+    for (const auto& candidate : program.passes)
+    {
+        if (candidate.pass != pass) continue;
+        if (!candidate.virtual_shadow_sampling)
+            conventional = &candidate;
+        else if (pass == material_pass::forward && virtual_shadow_sampling)
+            return &candidate;
+    }
+    return conventional;
 }
 
 } // namespace arc::render

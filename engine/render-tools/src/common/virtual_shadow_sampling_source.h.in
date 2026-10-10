@@ -1,0 +1,8 @@
+#pragma once
+
+// Embedded at configure time; editor/cooker compilation needs no source-tree paths.
+namespace arc::render::tools
+{
+inline constexpr char virtual_shadow_sampling_adapter[] = R"arc(@ARC_VSM_SLANG_ADAPTER@)arc";
+inline constexpr char virtual_shadow_sampling_lookup[] = R"arc(@ARC_VSM_SHARED_LOOKUP@)arc";
+}

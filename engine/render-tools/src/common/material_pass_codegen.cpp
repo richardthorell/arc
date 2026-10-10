@@ -1,5 +1,7 @@
 #include <arc/render_tools/material_pass_codegen.h>
 
+#include "virtual_shadow_sampling_source.h"
+
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -182,6 +184,10 @@ void append_forward_lighting_library(std::ostringstream& source)
 {
     float4 directionIntensity;
     float4 colorFlags;
+    float4 sourceShape;
+    uint4 shadowIdentity;
+    uint4 shadowRouting;
+    float4 shadowParameters;
 };
 
 struct ArcForwardPointLight
@@ -190,6 +196,7 @@ struct ArcForwardPointLight
     float4 colorIntensity;
     float4 objectIdShadow;
     float4 shadowParameters;
+    float4 sourceShape;
 };
 
 struct ArcForwardSpotLight
@@ -200,6 +207,7 @@ struct ArcForwardSpotLight
     float4 params;
     float4 objectIdShadow;
     float4 shadowParameters;
+    float4 sourceShape;
 };
 
 struct ArcForwardAreaLight
@@ -248,6 +256,7 @@ struct ArcForwardShadowData
     float4 cascadeTexelSize;
     float4 cascadeBlendStarts;
     float4 configuration;
+    float4 sourceShape;
 };
 
 struct ArcForwardSceneData
@@ -424,7 +433,27 @@ int arcForwardShadowCascade(float cameraDistance)
 }
 
 )";
-    source << R"(float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
+    source << "#if ARC_VIRTUAL_SHADOW_SAMPLING\n" << virtual_shadow_sampling_adapter << virtual_shadow_sampling_lookup;
+    source << R"(
+#undef vec2
+#undef vec3
+#undef vec4
+#undef uvec2
+#undef ivec2
+#undef mix
+#undef fract
+#undef lessThan
+#undef greaterThanEqual
+#undef arc_virtual_shadow_addresses
+#undef arc_virtual_shadow_views
+#undef arc_virtual_shadow_page_table
+#undef directional_light_data
+#undef shadow_identity
+#undef shadow_parameters
+#undef shadow_routing
+#endif
+
+float arcForwardSampleDirectionalCascade(int cascade, float3 worldPosition, float3 surfaceNormal,
                                          float3 lightDirection)
 {
     float4 lightClip = mul(arcForwardShadows.lightViewProjection[cascade], float4(worldPosition, 1.0));
@@ -434,15 +463,38 @@ int arcForwardShadowCascade(float cameraDistance)
     float normalBias = arcForwardShadows.params.z *
                        saturate(1.0 - dot(normalize(surfaceNormal), normalize(lightDirection)));
     float compareDepth = projected.z - arcForwardShadows.params.y - normalBias;
-    return min(
-        arcForwardDirectionalShadowMap.SampleCmpLevelZero(
-            arcForwardDirectionalShadowSampler, float3(uv, float(cascade)), compareDepth),
-        arcForwardDirectionalShadowMap.SampleCmpLevelZero(
-            arcForwardDirectionalShadowSampler, float3(uv, float(cascade + 4)), compareDepth));
+    int filterMode = int(arcForwardShadows.params.w + 0.5);
+    int radius = filterMode == 0 ? 0 : (filterMode >= 2 ? 2 : 1);
+    uint width, height, layers;
+    arcForwardDirectionalShadowMap.GetDimensions(width, height, layers);
+    float sourceScale = 1.0 + clamp(0.5 * arcForwardShadows.sourceShape.x, 0.0, 0.25) * 48.0;
+    float visibility = 0.0;
+    for (int y = -radius; y <= radius; ++y)
+        for (int x = -radius; x <= radius; ++x)
+        {
+            float2 sampleUv = uv + float2(x, y) * sourceScale / float(width);
+            visibility += min(
+                arcForwardDirectionalShadowMap.SampleCmpLevelZero(
+                    arcForwardDirectionalShadowSampler, float3(sampleUv, float(cascade)), compareDepth),
+                arcForwardDirectionalShadowMap.SampleCmpLevelZero(
+                    arcForwardDirectionalShadowSampler, float3(sampleUv, float(cascade + 4)), compareDepth));
+        }
+    return visibility / float((radius * 2 + 1) * (radius * 2 + 1));
 }
 
-float arcForwardDirectionalShadow(float3 worldPosition, float3 surfaceNormal, float3 lightDirection)
+float arcForwardDirectionalShadow(ArcForwardDirectionalLight light, float3 worldPosition,
+                                  float3 surfaceNormal, float3 lightDirection)
 {
+    if (light.shadowRouting.x == 0u) return 1.0;
+#if ARC_VIRTUAL_SHADOW_SAMPLING
+    if (light.shadowRouting.x == 2u)
+    {
+        float virtualVisibility = 1.0;
+        if (arc_virtual_directional_shadow_visibility(light, worldPosition, surfaceNormal,
+                                                       lightDirection, virtualVisibility))
+            return virtualVisibility;
+    }
+#endif
     if (arcForwardShadows.params.x <= 0.0 || arcForwardShadows.configuration.x < 0.5) return 1.0;
     float3 cameraPosition = arcForwardScene.cameraPositionViewportWidth.xyz;
     float3 cameraForward = normalize(arcForwardShadows.configuration.yzw);
@@ -477,8 +529,9 @@ float3 arcEvaluateForwardSurface(ArcSurfaceData surface, ArcSurfaceInput input, 
         float3 lightWS = normalize(-lighting.directionalLights[index].directionIntensity.xyz);
         float3 radiance = lighting.directionalLights[index].colorFlags.rgb *
                           lighting.directionalLights[index].directionIntensity.w;
-        float shadow = index == 0u
-                           ? arcForwardDirectionalShadow(input.positionWS, surface.normalWS, lightWS)
+        float shadow = lighting.directionalLights[index].shadowRouting.x != 0u
+                           ? arcForwardDirectionalShadow(lighting.directionalLights[index], input.positionWS,
+                                                           surface.normalWS, lightWS)
                            : 1.0;
         direct += arcForwardEvaluateLight(surface, viewWS, lightWS, radiance, shadow);
     }
@@ -688,7 +741,8 @@ material_evaluator_result make_custom_material_evaluator(std::string_view source
 
 material_pass_codegen_result generate_material_pass_slang(const material_evaluator_source& evaluator,
                                                           const material_descriptor& material, material_pass pass,
-                                                          std::uint8_t debug_view, bool wireframe)
+                                                          std::uint8_t debug_view, bool wireframe,
+                                                          bool virtual_shadow_sampling)
 {
     if (!material_supports_pass(material, pass))
         return material_pass_codegen_result::failure(
@@ -697,10 +751,12 @@ material_pass_codegen_result generate_material_pass_slang(const material_evaluat
     if (pass == material_pass::ray_hit)
         return material_pass_codegen_result::failure(
             {.code = shader_compile_error_code::validation_failed,
-             .message = "ray-hit material composition is not implemented by material pass contract v1"});
+             .message = "ray-hit material composition is not implemented by the current material pass contract"});
 
     std::ostringstream pass_source;
     pass_source << evaluator.source;
+    pass_source << "\n#define ARC_VIRTUAL_SHADOW_SAMPLING "
+                << (pass == material_pass::forward && virtual_shadow_sampling ? 1 : 0) << '\n';
     pass_source << "// ARC engine material pass contract v" << material_pass_contract_version << "; codegen v"
                 << material_pass_codegen_version << ".\n";
     append_pass_input(pass_source);
@@ -730,22 +786,25 @@ material_pass_codegen_result generate_material_pass_slang(const material_evaluat
             break;
     }
 
-    const auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe);
+    const auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe, virtual_shadow_sampling);
     return material_pass_codegen_result::success({.pass = pass,
                                                   .permutation = make_material_pass_permutation_id(key),
                                                   .source = std::move(pass_source).str(),
                                                   .generated_line_nodes = evaluator.generated_line_nodes,
                                                   .parameters = evaluator.parameters,
-                                                  .diagnostics = evaluator.diagnostics});
+                                                  .diagnostics = evaluator.diagnostics,
+                                                  .virtual_shadow_sampling = key.virtual_shadow_sampling});
 }
 
 material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
                                                           const material_descriptor& material, material_pass pass,
-                                                          std::uint8_t debug_view, bool wireframe)
+                                                          std::uint8_t debug_view, bool wireframe,
+                                                          bool virtual_shadow_sampling)
 {
     auto evaluator = make_graph_material_evaluator(compilation);
     if (!evaluator) return material_pass_codegen_result::failure(evaluator.error());
-    return generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe);
+    return generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe,
+                                        virtual_shadow_sampling);
 }
 
 } // namespace arc::render::tools

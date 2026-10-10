@@ -2,6 +2,21 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+TEST_CASE("runtime forward selection respects shadow capability and retains conventional fallback")
+{
+    using namespace arc::render;
+    material_runtime_program program;
+    program.passes.push_back({.pass = material_pass::forward, .permutation = {1}, .virtual_shadow_sampling = true});
+    REQUIRE(find_material_runtime_pass(program, material_pass::forward, false) == nullptr);
+    program.passes.push_back({.pass = material_pass::forward, .permutation = {2}});
+    CHECK(find_material_runtime_pass(program, material_pass::forward, true) == &program.passes[0]);
+    CHECK(find_material_runtime_pass(program, material_pass::forward, false) == &program.passes[1]);
+    program.passes.erase(program.passes.begin());
+    CHECK(find_material_runtime_pass(program, material_pass::forward, true) == &program.passes[0]);
+    program.contract_version = material_pass_contract_version - 1;
+    CHECK(find_material_runtime_pass(program, material_pass::forward, false) == nullptr);
+}
+
 TEST_CASE("material pass permutations are stable and pass-specific")
 {
     arc::render::material_descriptor material;
@@ -83,6 +98,8 @@ TEST_CASE("compiled material programs never silently fall back when a pass is un
 
     program.contract_version = arc::render::material_pass_contract_version + 1;
     REQUIRE_FALSE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
+    program.contract_version = 1;
+    REQUIRE_FALSE(arc::render::material_program_supports_pass(program, arc::render::material_pass::gbuffer));
 }
 
 TEST_CASE("compiled routing accepts every raster material pass produced by the cooker")
@@ -120,6 +137,10 @@ TEST_CASE("runtime material compatibility follows the current pass contract and 
     REQUIRE(program.contract_version == arc::render::material_pass_contract_version);
     REQUIRE(program.material_abi == arc::render::material_abi_version);
     REQUIRE(arc::render::material_runtime_program_compatible(program));
+
+    program.contract_version = 1;
+    REQUIRE_FALSE(arc::render::material_runtime_program_compatible(program));
+    program.contract_version = arc::render::material_pass_contract_version;
 
     ++program.material_abi;
     REQUIRE_FALSE(arc::render::material_runtime_program_compatible(program));

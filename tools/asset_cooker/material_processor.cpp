@@ -23,10 +23,11 @@ namespace
 {
 using json = nlohmann::json;
 
-constexpr std::array material_passes{render::material_pass::depth,    render::material_pass::shadow,
-                                     render::material_pass::gbuffer,  render::material_pass::forward,
-                                     render::material_pass::motion,   render::material_pass::object_id,
-                                     render::material_pass::selection};
+constexpr std::array material_passes{
+    std::pair{render::material_pass::depth, false},     std::pair{render::material_pass::shadow, false},
+    std::pair{render::material_pass::gbuffer, false},   std::pair{render::material_pass::forward, false},
+    std::pair{render::material_pass::forward, true},    std::pair{render::material_pass::motion, false},
+    std::pair{render::material_pass::object_id, false}, std::pair{render::material_pass::selection, false}};
 
 std::string_view pass_name(render::material_pass pass) noexcept
 {
@@ -420,8 +421,12 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-instance-cooker/1;arc-material-instance/1;arc-material-package/4;"
-               "arc-material-function/1;arc-material-pass-codegen/2;" +
+        return "arc.material-instance-cooker/" + std::to_string(descriptor_.version) + ";arc-material-instance/" +
+               std::to_string(render::tools::material_instance_package_version) + ";arc-material-package/" +
+               std::to_string(render::tools::material_package_version) + ";arc-material-function/" +
+               std::to_string(render::tools::material_function_version) + ";arc-material-pass-contract/" +
+               std::to_string(render::material_pass_contract_version) + ";arc-material-pass-codegen/" +
+               std::to_string(render::tools::material_pass_codegen_version) + ";" +
                std::string(compiler_.fingerprint());
     }
 
@@ -489,14 +494,15 @@ public:
         render::material_compiled_program program;
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
-        for (const auto pass : material_passes)
+        for (const auto& [pass, virtual_shadows] : material_passes)
         {
             if (!render::material_supports_pass(pass_material, pass)) continue;
 
-            auto generated = render::tools::generate_material_pass_slang(evaluator.value(), pass_material, pass);
+            auto generated = render::tools::generate_material_pass_slang(evaluator.value(), pass_material, pass, 0,
+                                                                         false, virtual_shadows);
             if (!generated) return failure(context, generated.error().message);
 
-            const std::string pass_label{pass_name(pass)};
+            const std::string pass_label = std::string{pass_name(pass)} + (virtual_shadows ? ".vsm" : "");
             render::shader_compile_request request{
                 .source_path = context.source.source_path.string() + "." + pass_label + ".generated.slang",
                 .source_override = generated.value().source,
@@ -674,9 +680,15 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-cooker/13;arc-material-package/4;arc-material-authoring/5;arc-material-ir/1;"
-               "arc-material-codegen/3;arc-material-function/1;arc-material-pass-contract/1;"
-               "arc-material-pass-codegen/2;arc-custom-material-shader/1;" +
+        return "arc.material-cooker/" + std::to_string(descriptor_.version) + ";arc-material-package/" +
+               std::to_string(render::tools::material_package_version) + ";arc-material-authoring/" +
+               std::to_string(render::tools::material_authoring_version) + ";arc-material-ir/" +
+               std::to_string(render::tools::material_ir_version) + ";arc-material-codegen/" +
+               std::to_string(render::tools::material_shader_codegen_version) + ";arc-material-function/" +
+               std::to_string(render::tools::material_function_version) + ";arc-material-pass-contract/" +
+               std::to_string(render::material_pass_contract_version) + ";arc-material-pass-codegen/" +
+               std::to_string(render::tools::material_pass_codegen_version) + ";arc-custom-material-shader/" +
+               std::to_string(render::tools::custom_material_shader_version) + ";" +
                std::string(compiler_.fingerprint());
     }
 
@@ -765,18 +777,19 @@ public:
 
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
-        for (const auto pass : material_passes)
+        for (const auto& [pass, virtual_shadows] : material_passes)
         {
             if (!render::material_supports_pass(pass_material, pass)) continue;
 
-            auto generated = render::tools::generate_material_pass_slang(evaluator, pass_material, pass);
+            auto generated =
+                render::tools::generate_material_pass_slang(evaluator, pass_material, pass, 0, false, virtual_shadows);
             if (!generated)
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
                                   .path = context.source.source_path,
                                   .message = generated.error().message}};
 
-            const std::string pass_label{pass_name(pass)};
+            const std::string pass_label = std::string(pass_name(pass)) + (virtual_shadows ? ".vsm" : "");
             render::shader_compile_request request{
                 .source_path = handwritten
                                    ? custom_shader_path.generic_string()

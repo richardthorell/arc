@@ -13,6 +13,9 @@ struct directional_light_data
     vec4 direction_intensity;
     vec4 color_flags;
     vec4 source_shape;
+    uvec4 shadow_identity;
+    uvec4 shadow_routing;
+    vec4 shadow_parameters;
 };
 
 struct point_light_data
@@ -166,7 +169,7 @@ vec3 arc_evaluate_scene_lights(
     arc_surface_data surface,
     vec3 view_direction,
     vec3 world_position,
-    float primary_directional_visibility)
+    vec4 directional_visibility)
 {
     vec3 direct = vec3(0.0);
     for (uint index = 0u; index < min(lights.directional_count, 4u); ++index)
@@ -180,7 +183,7 @@ vec3 arc_evaluate_scene_lights(
             view_direction,
             direction_to_light,
             radiance,
-            index == 0u ? primary_directional_visibility : 1.0);
+            directional_visibility[index]);
     }
     for (uint index = 0u; index < min(lights.point_count, 64u); ++index)
     {

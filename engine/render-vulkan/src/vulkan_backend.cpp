@@ -340,13 +340,24 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
     capabilities.virtual_shadow_depth_formats = {
         .d16_unorm = supports_attachment(VK_FORMAT_D16_UNORM, virtual_shadow_depth_features),
         .d32_float = supports_attachment(VK_FORMAT_D32_SFLOAT, virtual_shadow_depth_features)};
-    // Allocation and receiver feedback are executable, but normal profile selection
-    // remains disabled until caster rendering and sampling complete the path.
+    // Directional VSM is executable when allocation, receiver feedback, bounded
+    // indirect caster rasterization, and sampled depth are all available.
     capabilities.virtual_shadow_allocation =
         capabilities.compute_shaders && capabilities.storage_buffers && capabilities.virtual_shadow_depth_formats.any();
     capabilities.virtual_shadow_feedback = capabilities.virtual_shadow_allocation && capabilities.hzb_occlusion;
-    capabilities.virtual_shadow_rendering = false;
-    capabilities.virtual_shadow_sampling = false;
+    capabilities.virtual_shadow_rendering =
+        capabilities.virtual_shadow_allocation && capabilities.graphics_queue && capabilities.draw_indirect &&
+        capabilities.multi_draw_indirect && capabilities.draw_indirect_first_instance &&
+        capabilities.shader_draw_parameters && dynamic_rendering.dynamicRendering == VK_TRUE;
+    // Preserve the conventional descriptor layout on minimum-limit adapters.
+    capabilities.virtual_shadow_sampling =
+        capabilities.virtual_shadow_allocation && properties.limits.maxPerStageDescriptorSamplers >= 18u &&
+        properties.limits.maxPerStageDescriptorSampledImages >= 18u &&
+        properties.limits.maxDescriptorSetSamplers >= 18u && properties.limits.maxDescriptorSetSampledImages >= 18u &&
+        properties.limits.maxPerStageDescriptorStorageBuffers >= 5u &&
+        properties.limits.maxDescriptorSetStorageBuffers >= 9u && properties.limits.maxPerStageResources >= 25u;
+    capabilities.virtual_shadow_lights.point = false;
+    capabilities.virtual_shadow_lights.spot = false;
     capabilities.virtual_shadow_virtual_geometry = false;
     capabilities.screen_space_contact_shadows = false;
     capabilities.sampler_anisotropy = features.features.samplerAnisotropy == VK_TRUE;
@@ -373,6 +384,12 @@ render_capabilities query_capabilities(VkPhysicalDevice physical_device, VkSurfa
                                             capabilities.storage_buffers && capabilities.storage_images;
     capabilities.bindless_geometry_tables =
         complete_descriptor_indexing && capabilities.gpu_scene_indirect_count && capabilities.shader_draw_parameters;
+    capabilities.virtual_shadow_rendering = capabilities.virtual_shadow_rendering &&
+                                            capabilities.bindless_geometry_tables &&
+                                            capabilities.bindless_material_tables;
+    capabilities.virtual_shadow_lights.directional = capabilities.virtual_shadow_feedback &&
+                                                     capabilities.virtual_shadow_rendering &&
+                                                     capabilities.virtual_shadow_sampling;
     const bool complete_virtual_geometry_compute =
         capabilities.bindless_material_tables && capabilities.hzb_occlusion && capabilities.transfer_queue &&
         supports_storage_sampled(VK_FORMAT_R16G16B16A16_SFLOAT) && supports_storage_sampled(VK_FORMAT_R16G16_SFLOAT) &&

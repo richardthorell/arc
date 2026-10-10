@@ -7,6 +7,11 @@
 #include "include/arc_lighting.glsl"
 #define ARC_SHADOW_TEXTURE_BINDING 9
 #define ARC_SHADOW_DATA_BINDING 10
+#define ARC_VIRTUAL_SHADOW_ADDRESS_BINDING 13
+#define ARC_VIRTUAL_SHADOW_VIEW_BINDING 14
+#define ARC_VIRTUAL_SHADOW_PAGE_TABLE_BINDING 15
+#define ARC_VIRTUAL_SHADOW_STATIC_BINDING 16
+#define ARC_VIRTUAL_SHADOW_DYNAMIC_BINDING 17
 #include "include/arc_shadows.glsl"
 
 layout(std430, set = 0, binding = 12) readonly buffer arc_clustered_light_buffer
@@ -122,15 +127,14 @@ void main()
     surface.anisotropy = 0.0;
 
     int shadow_cascade = -1;
-    float shadow = lights.directional_count > 0u &&
+    vec4 shadow = lights.directional_count > 0u &&
         constants.light_direction_intensity.w > 0.5
-        ? arc_directional_shadow_visibility(
+        ? arc_scene_directional_shadow_visibility(
             world_position,
             surface.normal,
             constants.camera_position.xyz,
-            normalize(-lights.directional_lights[0].direction_intensity.xyz),
             shadow_cascade)
-        : 1.0;
+        : vec4(1.0);
     vec3 direct = vec3(0.0);
     for (uint index = 0u; index < min(lights.directional_count, 4u); ++index)
     {
@@ -142,7 +146,7 @@ void main()
             view_direction,
             light_direction,
             radiance,
-            index == 0u ? shadow : 1.0);
+            shadow[index]);
     }
     uint cluster = arc_cluster_index(in_uv, world_position);
     uint maximum_references = max(clustered_lights.words[4], 1u);
@@ -292,7 +296,7 @@ void main()
                 shadow_cascade == 2 ? 1.0 : 0.0)
             : vec3(1.0);
     else if (mode == 12)
-        color = vec3(shadow);
+        color = vec3(min(min(shadow.x, shadow.y), min(shadow.z, shadow.w)));
     else if (mode >= 48 && mode <= 51)
         color = albedo.rgb;
 

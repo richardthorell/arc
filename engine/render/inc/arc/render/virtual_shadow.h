@@ -362,6 +362,20 @@ struct virtual_shadow_gpu_snapshot
     std::uint64_t page_table_revision{};
 };
 
+/** @brief Reference directional lookup matching the shared lighting shader. */
+struct virtual_shadow_sample_location
+{
+    gpu_virtual_shadow_physical_mapping mapping{};
+    math::vector2f atlas_uv{};
+    float depth{};
+    std::uint32_t level{};
+};
+
+[[nodiscard]] std::optional<virtual_shadow_sample_location> resolve_directional_virtual_shadow_sample(
+    const virtual_shadow_gpu_snapshot& snapshot, virtual_shadow_address_space_handle address,
+    const math::vector3f& world_position, virtual_shadow_page_layer layer,
+    const virtual_shadow_physical_pool_layout& pool, math::vector2f tap_offset = {}) noexcept;
+
 /** @brief Complete construction contract for a backend-neutral VSM cache. */
 struct virtual_shadow_cache_config
 {
@@ -400,6 +414,8 @@ struct virtual_shadow_page_mapping
     bool resident{};
     bool pinned{};
     bool in_flight{};
+    /** Previous published tile retained while a replacement is rasterized. */
+    virtual_shadow_physical_page_handle retained_physical_page{};
 
     [[nodiscard]] constexpr bool dirty() const noexcept
     {
@@ -428,6 +444,17 @@ make_virtual_shadow_page_render_token(const virtual_shadow_page_mapping& mapping
 /** @brief Build the page-local clip projection used by culling and depth rasterization. */
 [[nodiscard]] math::matrix4f virtual_shadow_page_view_projection(const virtual_shadow_view_descriptor& view,
                                                                  virtual_shadow_page_coordinate coordinate) noexcept;
+
+/**
+ * @brief Expand a logical page projection to cover the guarded physical tile.
+ *
+ * The central 128x128 texels retain the logical page projection while the
+ * surrounding texels cover the neighbouring receiver footprint needed by
+ * filtered sampling. Culling and rasterization must consume this same matrix.
+ */
+[[nodiscard]] math::matrix4f
+virtual_shadow_guarded_page_view_projection(const virtual_shadow_view_descriptor& view,
+                                            virtual_shadow_page_coordinate coordinate) noexcept;
 
 /** @brief Encode one scheduled page into the shared GPU culling/raster ABI. */
 [[nodiscard]] gpu_virtual_shadow_render_page_record
@@ -521,6 +548,9 @@ public:
     [[nodiscard]] bool publish(const virtual_shadow_page_key& key, std::uint64_t content_revision) noexcept;
     /** @brief Complete an asynchronously rendered page only when every captured identity still matches. */
     [[nodiscard]] bool complete_render(const virtual_shadow_page_render_token& token, bool succeeded) noexcept;
+    /** Both rasterization and guard preparation must finish before publication. */
+    [[nodiscard]] bool complete_render(const virtual_shadow_page_render_token& token, bool raster_ready,
+                                       bool guards_ready) noexcept;
     [[nodiscard]] bool set_in_flight(const virtual_shadow_page_key& key, bool in_flight) noexcept;
     std::uint32_t invalidate(virtual_shadow_address_space_handle handle, virtual_shadow_invalidation_reason reason,
                              std::optional<virtual_shadow_page_coordinate> coordinate = std::nullopt) noexcept;
@@ -540,6 +570,7 @@ private:
 
     [[nodiscard]] virtual_shadow_page_mapping* find_mutable(const virtual_shadow_page_key& key) noexcept;
     [[nodiscard]] std::optional<virtual_shadow_physical_page_handle> allocate_physical_page(std::uint64_t frame_index);
+    void release_physical_page(virtual_shadow_physical_page_handle handle) noexcept;
     [[nodiscard]] std::optional<std::uint32_t> eviction_candidate(std::uint64_t frame_index) const noexcept;
     void release_mapping(const virtual_shadow_page_key& key) noexcept;
     [[nodiscard]] std::optional<std::uint32_t> allocate_range(std::vector<free_range>& ranges,

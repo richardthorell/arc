@@ -12,7 +12,7 @@ stale mapping. Local-light ancestors divide the page coordinate by two; directio
 receiver through the selected coarser clip view.
 
 `shadow_map_method::auto_select` uses virtual maps only when the renderer's resolved Ultra profile reports the entire
-allocation, feedback, caster-rendering, sampling, and contact-shadow path as executable. `virtualized` requests follow
+allocation, feedback, caster-rendering, and sampling path as executable. `virtualized` requests follow
 the same safety rule. An unavailable or failed virtual path resolves to conventional cascades or the local shadow atlas;
 it never resolves to an unshadowed light.
 
@@ -34,9 +34,40 @@ bounded page viewport and scissor, but it never submits individual casters.
 
 Static and dynamic page passes clear and rasterize only their scheduled guarded atlas tiles through the shared
 bindless depth-material path. Page work counters are copied to per-frame readback storage. A page becomes resident
-only after the submitting frame's fence has signaled and the exact render token still matches; overflow, unsupported
+only after raster and guard readiness are confirmed, the submitting frame's fence has signaled, and the exact render token still matches; overflow, unsupported
 casters, failed raster setup, and stale completions leave the page dirty for retry. Partial depth is never published.
 Virtual-geometry casters remain deferred to the shared traversal work in issue #482.
+
+M4 expands each logical page projection by four texels on each side and rasterizes the complete 136 by 136 tile.
+The central 128 by 128 pixels retain the logical projection. The guard-preparation graph boundary makes the completed
+depth readable before publication; it does not replicate an unrelated physical neighbour. Refreshes use a replacement
+tile while retaining the previously published tile. Failed or overflowed work cannot damage the old depth, and a full
+pool defers replacement rather than overwriting it. Changed projection records conservatively invalidate old mappings
+and render tokens until M5 introduces scrolling/overlap reuse.
+
+Directional lights carry stable object identity, resolved representation, VSM address identity, filter mode, strength,
+and biases. The existing single shadow-producing directional-light limit remains; sorting the lighting array does not
+change which light owns the shadow. Deferred, terrain forward, compiled forward, transparent, and Water lighting
+use one shared GLSL/Slang lookup. Each required
+static/dynamic layer independently reprojects through coarser directional clips. Missing layers use conventional
+cascades. Layer comparisons are combined before averaging bounded 1/9/25-tap filters; PCSS currently uses the 25-tap
+kernel. Atlas coordinates are clamped to the selected physical tile.
+
+The canonical compiled Slang forward/transparent and Water passes bind the same address/view/page records and
+depth atlases as deferred lighting. The lookup is embedded into the pass composer at build time, not loaded from a
+runtime source-tree path. Empty descriptor layouts replace unused legacy material sets in the forward pipeline.
+Directional VSM routing requires the common scene resources and caster pipeline to be initialized successfully.
+The engine-owned compiled material pass contract is v4 and code generation is v9. The 96-byte directional light
+record preserves physical source-shape fields alongside VSM routing. Forward point/spot and cascade records also
+preserve the shared source-shape fields, including conventional PCF widening. Old compiled programs must be
+rebuilt rather than interpreted with the new lighting-buffer stride; authoring and package container schemas are unchanged.
+
+Preview compilation and cooking emit both conventional-only and VSM forward permutations, including transparent
+and Water materials. Conventional compilation removes VSM resource declarations, not merely their runtime branch.
+The backend selects the VSM permutation only when its immutable sampling capability supports the larger layout;
+otherwise it selects the conventional permutation and the ten-binding scene layout. A missing VSM permutation may
+fall back to a conventional program, never the reverse. Cooked pass entries are keyed by `(pass, permutation)` and
+serialized in deterministic order; exact duplicates remain invalid.
 
 The resolved renderer configuration owns the physical-pool contract. It selects D16 when depth attachment and sampled
 image support are both available, otherwise D32, and derives one square atlas extent from the memory budget and
@@ -44,17 +75,28 @@ adapter image limit. The CPU cache, render graph, and backend consume that exact
 not independently recalculate the pool.
 
 Vulkan realizes the shared static/dynamic depth atlases, page table, request buffers, and feedback buffers through
-render-graph passes. Resources are retired after frame completion and ordinary rendering never waits for device idle.
+render-graph passes. Resources are retired after frame completion. M4 waits for prior frame fences before mutating its
+shared CPU-visible tables; it does not call device-idle. Per-frame upload storage and finer cache reuse remain optimization work.
 Allocation and receiver-feedback capability facts can be reported independently, but VSM light-kind support remains
 disabled until caster rendering and sampling are initialized successfully. Executable support is tracked independently
 for directional, point, and spot lights so an incomplete local-light path cannot disable or accidentally enable another
 topology.
 
-M3 supplies caster culling and physical-page depth, but does not make VSM selectable. Guard replication, directional
-page lookup, resident-ancestor sampling, and lighting integration are the M4 boundary; normal profile resolution keeps
-all executable VSM light capabilities disabled until that end-to-end path is complete.
+Directional VSM requires bindless conventional caster tables, indirect-count drawing, HZB feedback, sampled depth,
+and sufficient lighting descriptor limits. Lower-limit adapters retain conventional-only shader/layout variants.
+Per-light routing remains conventional until the scene tables, caster pipeline, and VSM table uploads are ready.
+Point/spot VSM and virtual-geometry casters remain unavailable. Allocation failure clears the enabled VSM feature set
+and records a conventional-shadow fallback diagnostic.
 
 The Lighting panel exposes address-space count, page capacity and residency, rendered/reused pages, evictions, parent
 fallbacks, failed requests, receiver samples, raw/compacted/duplicate/stale/overflow requests, and physical memory.
 It also reports accepted and rejected casters, indirect draws, overflowed pages, and stale render completions. These
 values describe executed work rather than requested features.
+
+## Dynamic-lighting roadmap boundary
+
+M4 (#656 / #393) owns directional direct-light visibility, guarded page publication, and conventional fallback.
+It supplies the visibility semantics consumed by #905's later Surface Cache relighting (#930); it does not implement
+another Lighting Scene, GI material evaluator, or Water-specific lighting system. Local-light list construction
+belongs to #913, source-shape/soft-shadow extensions to #915, and GI/reflection integration for Water/Terrain/VG to
+#937. These remain separate work; the directional-light array and local-light selection policy are unchanged here.

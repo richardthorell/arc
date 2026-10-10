@@ -12,6 +12,21 @@
 #ifndef ARC_SHADOW_DATA_BINDING
 #define ARC_SHADOW_DATA_BINDING 6
 #endif
+#ifndef ARC_VIRTUAL_SHADOW_ADDRESS_BINDING
+#define ARC_VIRTUAL_SHADOW_ADDRESS_BINDING 18
+#endif
+#ifndef ARC_VIRTUAL_SHADOW_VIEW_BINDING
+#define ARC_VIRTUAL_SHADOW_VIEW_BINDING 19
+#endif
+#ifndef ARC_VIRTUAL_SHADOW_PAGE_TABLE_BINDING
+#define ARC_VIRTUAL_SHADOW_PAGE_TABLE_BINDING 20
+#endif
+#ifndef ARC_VIRTUAL_SHADOW_STATIC_BINDING
+#define ARC_VIRTUAL_SHADOW_STATIC_BINDING 21
+#endif
+#ifndef ARC_VIRTUAL_SHADOW_DYNAMIC_BINDING
+#define ARC_VIRTUAL_SHADOW_DYNAMIC_BINDING 22
+#endif
 
 layout(set = ARC_SHADOW_SET, binding = ARC_SHADOW_TEXTURE_BINDING)
 uniform sampler2DArrayShadow arc_directional_shadow_map;
@@ -26,6 +41,35 @@ layout(set = ARC_SHADOW_SET, binding = ARC_SHADOW_DATA_BINDING) uniform arc_shad
     vec4 configuration;
     vec4 source_shape;
 } arc_shadows;
+
+#ifndef ARC_DISABLE_VIRTUAL_SHADOW_SAMPLING
+layout(std430, set = ARC_SHADOW_SET, binding = ARC_VIRTUAL_SHADOW_ADDRESS_BINDING) readonly buffer
+arc_virtual_shadow_address_buffer
+{
+    ArcVirtualShadowAddressSpace arc_virtual_shadow_addresses[];
+};
+
+layout(std430, set = ARC_SHADOW_SET, binding = ARC_VIRTUAL_SHADOW_VIEW_BINDING) readonly buffer
+arc_virtual_shadow_view_buffer
+{
+    ArcVirtualShadowView arc_virtual_shadow_views[];
+};
+
+layout(std430, set = ARC_SHADOW_SET, binding = ARC_VIRTUAL_SHADOW_PAGE_TABLE_BINDING) readonly buffer
+arc_virtual_shadow_page_table_buffer
+{
+    ArcVirtualShadowPageTableEntry arc_virtual_shadow_page_table[];
+};
+
+layout(set = ARC_SHADOW_SET, binding = ARC_VIRTUAL_SHADOW_STATIC_BINDING)
+uniform sampler2DShadow arc_virtual_shadow_static_atlas;
+layout(set = ARC_SHADOW_SET, binding = ARC_VIRTUAL_SHADOW_DYNAMIC_BINDING)
+uniform sampler2DShadow arc_virtual_shadow_dynamic_atlas;
+#endif
+
+const uint ARC_DIRECTIONAL_SHADOW_NONE = 0u;
+const uint ARC_DIRECTIONAL_SHADOW_CONVENTIONAL = 1u;
+const uint ARC_DIRECTIONAL_SHADOW_VIRTUALIZED = 2u;
 
 int arc_shadow_cascade(float camera_distance)
 {
@@ -119,6 +163,61 @@ float arc_directional_shadow_visibility(
                 blend);
     }
     return mix(1.0 - arc_shadows.params.x, 1.0, visibility);
+}
+
+#ifndef ARC_DISABLE_VIRTUAL_SHADOW_SAMPLING
+ivec2 arc_virtual_shadow_atlas_extent() { return textureSize(arc_virtual_shadow_static_atlas, 0); }
+uint arc_virtual_shadow_view_count() { return uint(arc_virtual_shadow_views.length()); }
+uint arc_virtual_shadow_page_count() { return uint(arc_virtual_shadow_page_table.length()); }
+uint arc_virtual_shadow_address_count() { return uint(arc_virtual_shadow_addresses.length()); }
+float arc_virtual_shadow_compare(bool dynamic_layer, vec2 uv, float depth)
+{
+    return dynamic_layer ? texture(arc_virtual_shadow_dynamic_atlas, vec3(uv, depth))
+                         : texture(arc_virtual_shadow_static_atlas, vec3(uv, depth));
+}
+#include "arc_virtual_shadow_sampling.shared"
+
+#endif
+
+float arc_directional_light_shadow_visibility(
+    directional_light_data light,
+    vec3 world_position,
+    vec3 surface_normal,
+    vec3 camera_position,
+    vec3 light_direction,
+    out int resolved_cascade)
+{
+    resolved_cascade = -1;
+    if (light.shadow_routing.x == ARC_DIRECTIONAL_SHADOW_NONE)
+        return 1.0;
+#ifndef ARC_DISABLE_VIRTUAL_SHADOW_SAMPLING
+    if (light.shadow_routing.x == ARC_DIRECTIONAL_SHADOW_VIRTUALIZED)
+    {
+        float virtual_visibility = 1.0;
+        if (arc_virtual_directional_shadow_visibility(
+                light, world_position, surface_normal, light_direction, virtual_visibility))
+            return virtual_visibility;
+    }
+#endif
+    return arc_directional_shadow_visibility(
+        world_position, surface_normal, camera_position, light_direction, resolved_cascade);
+}
+
+vec4 arc_scene_directional_shadow_visibility(
+    vec3 world_position, vec3 normal, vec3 camera_position, out int resolved_cascade)
+{
+    vec4 visibility = vec4(1.0);
+    resolved_cascade = -1;
+    for (uint index = 0u; index < min(lights.directional_count, 4u); ++index)
+    {
+        directional_light_data light = lights.directional_lights[index];
+        if (light.shadow_routing.x == ARC_DIRECTIONAL_SHADOW_NONE)
+            continue;
+        visibility[index] = arc_directional_light_shadow_visibility(
+            light, world_position, normal, camera_position,
+            normalize(-light.direction_intensity.xyz), resolved_cascade);
+    }
+    return visibility;
 }
 
 #endif

@@ -156,6 +156,20 @@ math::matrix4f virtual_shadow_page_view_projection(const virtual_shadow_view_des
     return result;
 }
 
+math::matrix4f virtual_shadow_guarded_page_view_projection(const virtual_shadow_view_descriptor& view,
+                                                           virtual_shadow_page_coordinate coordinate) noexcept
+{
+    auto result = virtual_shadow_page_view_projection(view, coordinate);
+    constexpr float logical_to_physical =
+        static_cast<float>(virtual_shadow_page_texels) / static_cast<float>(virtual_shadow_physical_page_texels);
+    for (std::uint32_t column = 0; column < 4u; ++column)
+    {
+        result(0, column) *= logical_to_physical;
+        result(1, column) *= logical_to_physical;
+    }
+    return result;
+}
+
 gpu_virtual_shadow_render_page_record
 encode_virtual_shadow_render_page(const virtual_shadow_page_mapping& mapping,
                                   const virtual_shadow_view_descriptor& view, std::uint32_t view_index,
@@ -163,7 +177,7 @@ encode_virtual_shadow_render_page(const virtual_shadow_page_mapping& mapping,
                                   std::uint32_t work_capacity, std::uint64_t frame_index) noexcept
 {
     gpu_virtual_shadow_render_page_record result{};
-    const auto page_projection = virtual_shadow_page_view_projection(view, mapping.key.coordinate);
+    const auto page_projection = virtual_shadow_guarded_page_view_projection(view, mapping.key.coordinate);
     for (std::uint32_t row = 0; row < 4u; ++row)
         for (std::uint32_t column = 0; column < 4u; ++column)
             result.world_to_page_clip[row * 4u + column] = page_projection(row, column);
@@ -434,6 +448,69 @@ void virtual_shadow_cache::rebuild_gpu_address_space(std::uint32_t index) noexce
     output.priority = slot.descriptor.priority;
 }
 
+std::optional<virtual_shadow_sample_location> resolve_directional_virtual_shadow_sample(
+    const virtual_shadow_gpu_snapshot& snapshot, virtual_shadow_address_space_handle handle,
+    const math::vector3f& world_position, virtual_shadow_page_layer layer,
+    const virtual_shadow_physical_pool_layout& pool, math::vector2f tap_offset) noexcept
+{
+    if (!pool.valid() || handle.index >= snapshot.address_spaces.size()) return std::nullopt;
+    const auto& address = snapshot.address_spaces[handle.index];
+    if (address.generation != handle.generation ||
+        address.light_kind != static_cast<std::uint32_t>(shadow_light_kind::directional))
+        return std::nullopt;
+    const auto levels = std::min(address.topology & 0xffffu, address.view_count);
+    for (std::uint32_t level = 0; level < levels; ++level)
+    {
+        const auto view_index = static_cast<std::uint64_t>(address.view_base) + level;
+        if (view_index >= snapshot.views.size()) break;
+        const auto& view = snapshot.views[view_index];
+        if (view.pages_per_axis == 0 || view.face != 0 || view.level != level) continue;
+        math::vector4f clip{};
+        for (std::uint32_t row = 0; row < 4; ++row)
+            clip[row] = view.world_to_shadow_clip[row * 4] * world_position[0] +
+                        view.world_to_shadow_clip[row * 4 + 1] * world_position[1] +
+                        view.world_to_shadow_clip[row * 4 + 2] * world_position[2] +
+                        view.world_to_shadow_clip[row * 4 + 3];
+        if (!std::isfinite(clip[3]) || std::abs(clip[3]) <= 1.0e-6f) continue;
+        const float u = clip[0] / clip[3] * 0.5f + 0.5f;
+        const float v = clip[1] / clip[3] * 0.5f + 0.5f;
+        const float depth = clip[2] / clip[3];
+        if (!std::isfinite(u) || !std::isfinite(v) || !std::isfinite(depth) || u < 0 || v < 0 || u >= 1 || v >= 1 ||
+            depth < 0 || depth > 1)
+            continue;
+        const float page_x = u * static_cast<float>(view.pages_per_axis);
+        const float page_y = v * static_cast<float>(view.pages_per_axis);
+        const auto x = static_cast<std::uint32_t>(page_x);
+        const auto y = static_cast<std::uint32_t>(page_y);
+        const auto local = static_cast<std::uint64_t>(view.page_table_offset) +
+                           static_cast<std::uint64_t>(y) * view.pages_per_axis + x;
+        const auto dense = static_cast<std::uint64_t>(address.page_table_base) + local;
+        if (local >= address.page_table_count || dense >= snapshot.page_table.size()) continue;
+        const auto& entry = snapshot.page_table[dense];
+        const auto& mapping =
+            layer == virtual_shadow_page_layer::static_depth ? entry.static_depth : entry.dynamic_depth;
+        if (mapping.physical_generation == 0 || mapping.physical_page >= pool.physical_page_capacity) continue;
+        const std::uint32_t tile_x = mapping.physical_page % pool.pages_per_axis;
+        const std::uint32_t tile_y = mapping.physical_page / pool.pages_per_axis;
+        const auto atlas_coordinate = [&](std::uint32_t tile, float page, float tap)
+        {
+            const float origin = static_cast<float>(tile * virtual_shadow_physical_page_texels);
+            const float pixel = origin + static_cast<float>(virtual_shadow_page_guard_texels) +
+                                (page - std::floor(page)) * static_cast<float>(virtual_shadow_page_texels) +
+                                (std::isfinite(tap) ? tap : 0.0f);
+            return std::clamp(pixel, origin + 0.5f,
+                              origin + static_cast<float>(virtual_shadow_physical_page_texels) - 0.5f) /
+                   static_cast<float>(pool.atlas_extent);
+        };
+        return virtual_shadow_sample_location{
+            mapping,
+            {atlas_coordinate(tile_x, page_x, tap_offset[0]), atlas_coordinate(tile_y, page_y, tap_offset[1])},
+            depth,
+            level};
+    }
+    return std::nullopt;
+}
+
 bool virtual_shadow_cache::update_address_space_views(virtual_shadow_address_space_handle handle,
                                                       std::span<const virtual_shadow_view_descriptor> views) noexcept
 {
@@ -477,6 +554,20 @@ bool virtual_shadow_cache::update_address_space_views(virtual_shadow_address_spa
     }
     const auto* current = gpu_views_.data() + slot.view_base;
     if (std::memcmp(packed.data(), current, packed.size() * sizeof(gpu_virtual_shadow_view_record)) == 0) return true;
+    // Until clipmap scrolling can preserve overlap, no depth produced with an
+    // older projection may be sampled or published under the new view records.
+    for (auto& mapping : mappings_)
+    {
+        if (mapping.key.address_space != handle) continue;
+        clear_gpu_mapping(mapping.key);
+        mapping.resident = false;
+        mapping.dirty_reason = virtual_shadow_invalidation_reason::caster_transform;
+        mapping.work_revision = next_work_revision_++;
+        mapping.in_flight = false;
+        release_physical_page(mapping.retained_physical_page);
+        mapping.retained_physical_page = {};
+    }
+    ++page_table_revision_;
     std::copy(packed.begin(), packed.end(), gpu_views_.begin() + slot.view_base);
     ++view_revision_;
     return true;
@@ -602,7 +693,14 @@ void virtual_shadow_cache::release_mapping(const virtual_shadow_page_key& key) n
                                            const virtual_shadow_page_key& value) { return mapping.key < value; });
     if (found == mappings_.end() || found->key != key) return;
     clear_gpu_mapping(key);
-    const auto physical = found->physical_page;
+    release_physical_page(found->physical_page);
+    release_physical_page(found->retained_physical_page);
+    mappings_.erase(found);
+    ++page_table_revision_;
+}
+
+void virtual_shadow_cache::release_physical_page(virtual_shadow_physical_page_handle physical) noexcept
+{
     if (physical.valid() && physical.index < physical_pages_.size())
     {
         auto& slot = physical_pages_[physical.index];
@@ -613,8 +711,6 @@ void virtual_shadow_cache::release_mapping(const virtual_shadow_page_key& key) n
             free_physical_pages_.push_back(physical.index);
         }
     }
-    mappings_.erase(found);
-    ++page_table_revision_;
 }
 
 void virtual_shadow_cache::clear_gpu_mapping(const virtual_shadow_page_key& key) noexcept
@@ -676,14 +772,38 @@ virtual_shadow_cache::resolve_requests(std::span<const virtual_shadow_page_reque
         {
             mapping->last_used_frame = frame_index;
             mapping->pinned = mapping->pinned || request.coarse_page;
-            if (mapping->content_revision != request.content_revision)
+            // Keep the scheduled generation intact until its asynchronous
+            // completion arrives. Repeated dynamic demand must not perpetually
+            // cancel work; explicit invalidation still rejects stale tokens.
+            if (mapping->content_revision != request.content_revision && !mapping->in_flight)
             {
                 mapping->content_revision = request.content_revision;
                 mapping->dirty_reason = virtual_shadow_invalidation_reason::geometry;
                 mapping->work_revision = next_work_revision_++;
                 mapping->in_flight = false;
             }
-            if (mapping->dirty() && !mapping->in_flight) result.render_pages.push_back(*mapping);
+            if (mapping->dirty() && !mapping->in_flight)
+            {
+                if (mapping->resident && !mapping->retained_physical_page.valid())
+                {
+                    // Never clear or partially overwrite a tile visible to lighting.
+                    // Allocation may evict another mapping, invalidating vector pointers.
+                    const bool pinned = mapping->pinned;
+                    mapping->pinned = true;
+                    const auto replacement = allocate_physical_page(frame_index);
+                    mapping = find_mutable(request.key);
+                    mapping->pinned = pinned;
+                    if (!replacement)
+                    {
+                        ++result.failed_requests;
+                        ++cumulative_.failed_requests;
+                        continue;
+                    }
+                    mapping->retained_physical_page = mapping->physical_page;
+                    mapping->physical_page = *replacement;
+                }
+                result.render_pages.push_back(*mapping);
+            }
             ++result.cache_hits;
             ++cumulative_.cache_hits;
             continue;
@@ -834,21 +954,32 @@ bool virtual_shadow_cache::publish(const virtual_shadow_page_key& key, std::uint
     mapping->content_revision = content_revision;
     mapping->dirty_reason = virtual_shadow_invalidation_reason::none;
     publish_gpu_mapping(*mapping);
+    release_physical_page(mapping->retained_physical_page);
+    mapping->retained_physical_page = {};
     ++page_table_revision_;
     return true;
 }
 
 bool virtual_shadow_cache::complete_render(const virtual_shadow_page_render_token& token, bool succeeded) noexcept
 {
+    return complete_render(token, succeeded, succeeded);
+}
+
+bool virtual_shadow_cache::complete_render(const virtual_shadow_page_render_token& token, bool raster_ready,
+                                           bool guards_ready) noexcept
+{
     auto* mapping = find_mutable(token.key);
     if (!mapping || mapping->physical_page != token.physical_page ||
-        mapping->content_revision != token.content_revision || mapping->work_revision != token.work_revision)
+        mapping->content_revision != token.content_revision || mapping->work_revision != token.work_revision ||
+        !mapping->in_flight)
         return false;
     mapping->in_flight = false;
-    if (!succeeded) return true;
+    if (!raster_ready || !guards_ready) return true;
     mapping->resident = true;
     mapping->dirty_reason = virtual_shadow_invalidation_reason::none;
     publish_gpu_mapping(*mapping);
+    release_physical_page(mapping->retained_physical_page);
+    mapping->retained_physical_page = {};
     ++page_table_revision_;
     return true;
 }

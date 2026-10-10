@@ -369,7 +369,11 @@ std::vector<std::byte> serialize_material_package_v4(const material_package_v4& 
     append_value(output, package.compiled.package.low);
 
     auto passes = package.compiled.passes;
-    std::ranges::sort(passes, {}, &material_pass_binding::pass);
+    std::ranges::sort(passes,
+                      [](const auto& a, const auto& b) {
+                          return a.pass != b.pass ? a.pass < b.pass
+                                                  : a.permutation.representation() < b.permutation.representation();
+                      });
     append_value(output, static_cast<std::uint32_t>(passes.size()));
     for (const auto& pass : passes)
     {
@@ -425,7 +429,7 @@ material_package_v4_result deserialize_material_package_v4(std::span<const std::
         binding.permutation = {permutation};
         binding.entry_point = {entry_point};
         if (!binding.permutation.valid() || !binding.entry_point.valid() ||
-            find_material_pass_binding(package.compiled, binding.pass) != nullptr)
+            find_material_pass_binding(package.compiled, binding.pass, binding.permutation) != nullptr)
             return material_package_v4_result::failure(
                 {.code = material_asset_error_code::corrupt_package,
                  .message = "Material package contains an invalid or duplicate pass binding"});

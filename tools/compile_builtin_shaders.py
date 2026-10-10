@@ -15,6 +15,9 @@ import sys
 
 STAGE_EXTENSIONS = {".vert", ".frag", ".comp", ".mesh", ".task"}
 INCLUDE_PATTERN = re.compile(r'^\s*#include\s+["<]([^">]+)[">]', re.MULTILINE)
+CONVENTIONAL_SHADOW_VARIANTS = {
+    "deferred_lighting.frag", "terrain_surface_forward.frag"
+}
 
 
 def discover_sources(root: pathlib.Path) -> list[pathlib.Path]:
@@ -105,8 +108,13 @@ def main() -> int:
     compiled: list[tuple[str, bytes]] = []
     manifest: list[dict[str, object]] = []
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    jobs = []
     for source in sources:
-        name = shader_name(source, source_root)
+        jobs.append((source, shader_name(source, source_root), []))
+        if source.relative_to(source_root).as_posix() in CONVENTIONAL_SHADOW_VARIANTS:
+            variant_path = source.with_name(source.stem + "_conventional" + source.suffix)
+            jobs.append((source, shader_name(variant_path, source_root), ["ARC_DISABLE_VIRTUAL_SHADOW_SAMPLING"]))
+    for source, name, defines in jobs:
         if name in names:
             raise RuntimeError(f"Duplicate generated shader name: {name}")
         names.add(name)
@@ -119,6 +127,7 @@ def main() -> int:
                 "--target-env=vulkan1.2",
                 f"-I{source_root}",
                 f"-I{source_root / 'include'}",
+                *(f"-D{define}" for define in defines),
                 str(source),
                 "-o",
                 str(temporary),
@@ -130,6 +139,8 @@ def main() -> int:
         compiled.append((name, data))
         digest = hashlib.sha256()
         digest.update(source.read_bytes())
+        for define in defines:
+            digest.update(define.encode("utf-8"))
         for dependency in closure:
             digest.update(dependency.relative_to(source_root).as_posix().encode("utf-8"))
             digest.update(dependency.read_bytes())
@@ -137,6 +148,7 @@ def main() -> int:
             {
                 "source": source.relative_to(source_root).as_posix(),
                 "output": published.name,
+                "defines": defines,
                 "sourceClosureHash": digest.hexdigest(),
                 "spirvHash": hashlib.sha256(data).hexdigest(),
                 "size": len(data),

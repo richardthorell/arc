@@ -415,14 +415,17 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
                                              .dimension_slot = texture.dimension_slot,
                                              .semantic = texture.semantic});
 
-    const std::array candidate_passes{render::material_pass::gbuffer, render::material_pass::forward};
+    const std::array candidate_passes{std::pair{render::material_pass::gbuffer, false},
+                                      std::pair{render::material_pass::forward, false},
+                                      std::pair{render::material_pass::forward, true}};
     bool parameter_layout_initialized{};
-    for (const auto pass : candidate_passes)
+    for (const auto& [pass, virtual_shadows] : candidate_passes)
     {
         if (!render::material_supports_pass(material, pass)) continue;
 
         const auto pass_name = pass == render::material_pass::gbuffer ? "gbuffer" : "forward";
-        auto generated = render::tools::generate_material_pass_slang(evaluator.value(), material, pass);
+        auto generated =
+            render::tools::generate_material_pass_slang(evaluator.value(), material, pass, 0, false, virtual_shadows);
         if (!generated)
         {
             diagnostics.push_back("Compiled Material ABI " + std::string(pass_name) +
@@ -497,8 +500,10 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
             }
         }
 
-        program->passes.push_back(
-            {.pass = pass, .permutation = generated.value().permutation, .compiled = std::move(compiled).value()});
+        program->passes.push_back({.pass = pass,
+                                   .permutation = generated.value().permutation,
+                                   .compiled = std::move(compiled).value(),
+                                   .virtual_shadow_sampling = generated.value().virtual_shadow_sampling});
     }
 
     if (program->passes.empty())
