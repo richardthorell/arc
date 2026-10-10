@@ -174,7 +174,7 @@ vec3 arc_evaluate_scene_lights(
         vec3 direction_to_light = normalize(-lights.directional_lights[index].direction_intensity.xyz);
         vec3 radiance = lights.directional_lights[index].color_flags.rgb *
             lights.directional_lights[index].direction_intensity.w;
-        float source_angle = max(lights.directional_lights[index].source_shape.x, 0.0);
+        float source_angle = 0.5 * max(lights.directional_lights[index].source_shape.x, 0.0);
         direct += arc_evaluate_surface_light(
             arc_surface_for_extended_source(surface, source_angle),
             view_direction,
