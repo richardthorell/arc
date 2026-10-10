@@ -3,7 +3,13 @@
   "version": 1,
   "name": "Color",
   "description": "Texture-and-tint color source for material base color.",
-  "inputs": [],
+  "inputs": [
+    {
+      "id": "uv",
+      "name": "UV",
+      "type": "vec2"
+    }
+  ],
   "outputs": [
     {
       "id": "color",
@@ -75,6 +81,19 @@
             }
           ]
         }
+      },
+      {
+        "id": "input-uv",
+        "type": "functionInput",
+        "position": [
+          40,
+          640
+        ],
+        "values": {
+          "input": "uv",
+          "name": "UV",
+          "valueType": "vec2"
+        }
       }
     ],
     "connections": [
@@ -109,6 +128,17 @@
         "to": {
           "nodeId": "function-output",
           "pin": "color"
+        }
+      },
+      {
+        "id": "base-uv",
+        "from": {
+          "nodeId": "input-uv",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "base-color-texture",
+          "pin": "uv"
         }
       }
     ],
