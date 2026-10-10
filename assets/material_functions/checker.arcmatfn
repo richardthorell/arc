@@ -29,6 +29,11 @@
       "name": "Cell Size",
       "type": "float",
       "default": 1
+    },
+    {
+      "id": "uv",
+      "name": "UV",
+      "type": "vec2"
     }
   ],
   "outputs": [

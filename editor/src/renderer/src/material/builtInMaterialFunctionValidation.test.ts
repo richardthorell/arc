@@ -54,7 +54,7 @@ describe('built-in Material Functions', () => {
 
   it('lets the default base-color function own its tint and texture parameters', () => {
     const baseColor = readFunction('default_base_color.arcmatfn');
-    expect(baseColor.inputs).toEqual([]);
+    expect(baseColor.inputs).toEqual([{ id: 'uv', name: 'UV', type: 'vec2' }]);
     expect(
       baseColor.graph.nodes.filter((node) => node.parameter?.exposed === true).map((node) => node.parameter?.name),
     ).toEqual(['Base Color Tint', 'Base Color Texture']);
@@ -85,7 +85,7 @@ describe('built-in Material Functions', () => {
       .filter((connection) => connection.from.nodeId === worldPosition?.id)
       .map((connection) => connection.from.pin);
     expect(sourcePins).toEqual(expect.arrayContaining(['x', 'z']));
-    expect(checker.inputs.map((input) => input.id)).toEqual(['colorA', 'colorB', 'cellSize']);
+    expect(checker.inputs.map((input) => input.id)).toEqual(['colorA', 'colorB', 'cellSize', 'uv']);
   });
 
   it('authors Gradient and Noise from backend-neutral world-space graph operations', () => {
@@ -100,6 +100,7 @@ describe('built-in Material Functions', () => {
       'direction',
       'scale',
       'offset',
+      'uv',
     ]);
     expect(readFunction('noise.arcmatfn').inputs.map((input) => input.id)).toEqual([
       'scale',
@@ -107,6 +108,7 @@ describe('built-in Material Functions', () => {
       'contrast',
       'colorA',
       'colorB',
+      'uv',
     ]);
   });
 });

@@ -86,7 +86,7 @@ describe('core built-in material families', () => {
           { path: 'material_functions/gradient.arcmatfn' },
           { path: 'material_functions/noise.arcmatfn' },
         ],
-        inputPins: [],
+        inputPins: [{ id: 'uv', name: 'UV', type: 'vec2' }],
         outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
       },
     });
@@ -112,7 +112,7 @@ describe('core built-in material families', () => {
     ).toBe(false);
 
     const defaultBaseColor = readBuiltInFunction('default_base_color.arcmatfn');
-    expect(defaultBaseColor.inputs).toEqual([]);
+    expect(defaultBaseColor.inputs).toEqual([{ id: 'uv', name: 'UV', type: 'vec2' }]);
     expect(defaultBaseColor.outputs).toEqual([{ id: 'color', name: 'Color', type: 'vec3' }]);
     expect(materialEditorParameters(defaultBaseColor.graph).map((parameter) => parameter.name)).toEqual([
       'Base Color Tint',

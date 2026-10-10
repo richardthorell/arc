@@ -21,6 +21,8 @@ describe('Standard Lit shared UV Transform', () => {
       );
 
     expect(nodes.get('shared-uv-transform')?.values.path).toBe('material_functions/uv_transform.arcmatfn');
+    expect(connected('shared-uv-transform', 'uv', 'base-color-source', 'uv')).toBe(true);
+    expect(nodes.get('base-color-source')?.values.inputPins).toEqual([{ id: 'uv', name: 'UV', type: 'vec2' }]);
     expect(nodes.get('shared-uv-transform')?.parameter?.exposed).toBe(false);
     for (const [node, pin] of [
       ['uv-tiling', 'tiling'],
