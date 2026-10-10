@@ -96,7 +96,7 @@ public:
     query(asset_guid guid, asset_type_id expected_type = {}) const = 0;
     [[nodiscard]] virtual std::vector<asset_guid> dependencies(asset_guid guid) const = 0;
     [[nodiscard]] virtual std::vector<asset_guid> reverse_dependencies(asset_guid guid) const = 0;
-    [[nodiscard]] virtual std::uint64_t revision() const noexcept = 0;
+    [[nodiscard]] virtual std::uint64_t revision() const = 0;
 
     [[nodiscard]] std::optional<asset_database_record> query(const asset_reference& reference) const
     {
@@ -121,7 +121,7 @@ public:
     query(asset_guid guid, asset_type_id expected_type = {}) const override;
     [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override;
     [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const override;
-    [[nodiscard]] std::uint64_t revision() const noexcept override;
+    [[nodiscard]] std::uint64_t revision() const override;
 
 private:
     const asset_manager* manager_{};
