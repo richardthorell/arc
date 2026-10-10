@@ -66,7 +66,7 @@ float arc_sample_shadow_cascade(
     // Conventional CSM approximates a finite directional emitter by widening
     // its PCF footprint. source_shape.x is the shared angular-radius contract
     // consumed by both conventional shadows and future VSM filtering.
-    float source_scale = 1.0 + clamp(arc_shadows.source_shape.x, 0.0, 0.25) * 48.0;
+    float source_scale = 1.0 + clamp(0.5 * arc_shadows.source_shape.x, 0.0, 0.25) * 48.0;
     vec2 texel = vec2(1.0 / float(textureSize(arc_directional_shadow_map, 0).x)) * source_scale;
     float visibility = 0.0;
     float sample_count = 0.0;
