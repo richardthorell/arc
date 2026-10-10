@@ -28,7 +28,13 @@
           "slotId": "base-color-source",
           "path": "material_functions/default_base_color.arcmatfn",
           "name": "Base Color Source",
-          "inputPins": [],
+          "inputPins": [
+            {
+              "id": "uv",
+              "name": "UV",
+              "type": "vec2"
+            }
+          ],
           "outputPins": [
             {
               "id": "color",
@@ -894,6 +900,17 @@
         },
         "to": {
           "nodeId": "emissive-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-base-color",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "base-color-source",
           "pin": "uv"
         }
       }
