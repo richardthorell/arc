@@ -1,0 +1,122 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Tint RGB",
+  "description": "Multiply sampled texture RGB by a tint RGB without owning texture or tint parameters. Suitable for stable parameter identities in calling materials.",
+  "inputs": [
+    {
+      "id": "color",
+      "name": "Sampled RGB",
+      "type": "vec3"
+    },
+    {
+      "id": "tint",
+      "name": "Tint RGB",
+      "type": "vec3"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "color",
+      "name": "Color",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "sampled",
+        "type": "functionInput",
+        "position": [
+          40,
+          100
+        ],
+        "values": {
+          "input": "color",
+          "name": "Sampled RGB",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "tint",
+        "type": "functionInput",
+        "position": [
+          40,
+          260
+        ],
+        "values": {
+          "input": "tint",
+          "name": "Tint RGB",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "multiply",
+        "type": "multiply",
+        "position": [
+          300,
+          180
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          580,
+          180
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "color",
+        "from": {
+          "nodeId": "sampled",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "tint",
+        "from": {
+          "nodeId": "tint",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "color"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.9
+    }
+  }
+}
