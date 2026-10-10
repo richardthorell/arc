@@ -45,10 +45,14 @@ describe('MaterialGraphEditor', () => {
 
     const { container } = render(<MaterialGraphEditor document={document} graph={graph} />);
 
-    const group = container.querySelector('.material-graph-group');
+    const group = container.querySelector<HTMLElement>('.material-graph-group');
     expect(group).not.toBeNull();
     expect(group).toHaveTextContent('Surface');
-    expect(group).toHaveStyle({ position: 'absolute' });
+    expect(group).toHaveClass('material-graph-group');
+    expect(group?.style.left).not.toBe('');
+    expect(group?.style.top).not.toBe('');
+    expect(group?.style.width).not.toBe('');
+    expect(group?.style.height).not.toBe('');
   });
 
   it('moves member nodes with a dragged material group', async () => {
