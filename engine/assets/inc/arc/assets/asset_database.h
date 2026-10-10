@@ -117,6 +117,8 @@ class asset_manager_database final : public asset_database
 public:
     explicit asset_manager_database(const asset_manager& manager) noexcept : manager_(&manager) {}
 
+    using asset_database::query;
+
     [[nodiscard]] std::optional<asset_database_record> query(asset_guid guid,
                                                              asset_type_id expected_type = {}) const override;
     [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override;
