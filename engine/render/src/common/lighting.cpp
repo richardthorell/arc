@@ -33,16 +33,17 @@ template <class Light> std::vector<Light> sorted_by_contribution(std::vector<Lig
 } // namespace
 
 
-bool parse_ies_profile(std::string_view source, photometric_profile& out, std::string& error)
+photometric_profile_parse_result parse_ies_profile(std::string_view source)
 {
-    out = {};
-    error.clear();
+    photometric_profile_parse_result result{};
+    auto& out = result.profile;
+    auto& error = result.error;
 
     const auto tilt_position = source.find("TILT=");
     if (tilt_position == std::string_view::npos)
     {
         error = "IES profile is missing TILT= declaration";
-        return false;
+        return result;
     }
     const auto tilt_end = source.find_first_of("\r\n", tilt_position);
     const auto tilt = source.substr(tilt_position + 5u, tilt_end == std::string_view::npos
@@ -51,7 +52,7 @@ bool parse_ies_profile(std::string_view source, photometric_profile& out, std::s
     if (tilt != "NONE")
     {
         error = "IES TILT data is not supported yet; use TILT=NONE";
-        return false;
+        return result;
     }
 
     const auto numeric_start = tilt_end == std::string_view::npos ? source.size() : tilt_end + 1u;
@@ -68,7 +69,7 @@ bool parse_ies_profile(std::string_view source, photometric_profile& out, std::s
           photometric_type >> units_type >> width >> length >> height >> ballast_factor >> future_use >> input_watts))
     {
         error = "IES photometric header is incomplete";
-        return false;
+        return result;
     }
     (void)units_type;
     (void)width;
@@ -82,7 +83,7 @@ bool parse_ies_profile(std::string_view source, photometric_profile& out, std::s
         candela_multiplier <= 0.0f)
     {
         error = "IES photometric header contains invalid counts or scaling";
-        return false;
+        return result;
     }
 
     out.vertical_angles_degrees.resize(vertical_count);
@@ -92,14 +93,14 @@ bool parse_ies_profile(std::string_view source, photometric_profile& out, std::s
         {
             error = "IES vertical angle table is incomplete";
             out = {};
-            return false;
+            return result;
         }
     for (auto& angle : out.horizontal_angles_degrees)
         if (!(stream >> angle) || !std::isfinite(angle))
         {
             error = "IES horizontal angle table is incomplete";
             out = {};
-            return false;
+            return result;
         }
 
     const auto strictly_non_decreasing = [](const std::vector<float>& values)
@@ -111,7 +112,7 @@ bool parse_ies_profile(std::string_view source, photometric_profile& out, std::s
     {
         error = "IES angle tables must be monotonically increasing";
         out = {};
-        return false;
+        return result;
     }
 
     out.normalized_candela.resize(static_cast<std::size_t>(vertical_count) * horizontal_count);
@@ -122,7 +123,7 @@ bool parse_ies_profile(std::string_view source, photometric_profile& out, std::s
         {
             error = "IES candela table is incomplete or contains invalid values";
             out = {};
-            return false;
+            return result;
         }
         value *= candela_multiplier;
         peak = std::max(peak, value);
@@ -131,14 +132,14 @@ bool parse_ies_profile(std::string_view source, photometric_profile& out, std::s
     {
         error = "IES candela distribution has no positive intensity";
         out = {};
-        return false;
+        return result;
     }
 
     for (auto& value : out.normalized_candela) value /= peak;
     out.peak_candela = peak;
     out.declared_lumens = static_cast<float>(lamp_count) * std::max(lumens_per_lamp, 0.0f);
     out.photometric_type = photometric_type;
-    return true;
+    return result;
 }
 
 float sample_photometric_profile(const photometric_profile& profile, float vertical_angle_radians,
