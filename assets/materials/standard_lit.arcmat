@@ -414,6 +414,134 @@
           "exposed": false,
           "name": "Channel Mask"
         }
+      },
+      {
+        "id": "uv-tiling",
+        "type": "vector2",
+        "position": [
+          90,
+          650
+        ],
+        "values": {
+          "value": [
+            1,
+            1
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Tiling",
+          "group": "surface",
+          "order": 15
+        }
+      },
+      {
+        "id": "uv-offset",
+        "type": "vector2",
+        "position": [
+          90,
+          760
+        ],
+        "values": {
+          "value": [
+            0,
+            0
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Offset",
+          "group": "surface",
+          "order": 16
+        }
+      },
+      {
+        "id": "uv-pivot",
+        "type": "vector2",
+        "position": [
+          90,
+          870
+        ],
+        "values": {
+          "value": [
+            0.5,
+            0.5
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Pivot",
+          "group": "surface",
+          "order": 17
+        }
+      },
+      {
+        "id": "uv-rotation",
+        "type": "constant",
+        "position": [
+          90,
+          980
+        ],
+        "values": {
+          "value": 0
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Rotation (radians)",
+          "group": "surface",
+          "order": 18
+        }
+      },
+      {
+        "id": "shared-uv-transform",
+        "type": "functionCall",
+        "position": [
+          570,
+          760
+        ],
+        "parameter": {
+          "exposed": false,
+          "name": "UV Transform"
+        },
+        "values": {
+          "slotId": "shared-uv-transform",
+          "path": "material_functions/uv_transform.arcmatfn",
+          "name": "UV Transform",
+          "functions": [
+            {
+              "path": "material_functions/uv_transform.arcmatfn"
+            }
+          ],
+          "inputPins": [
+            {
+              "id": "tiling",
+              "name": "Tiling",
+              "type": "vec2"
+            },
+            {
+              "id": "offset",
+              "name": "Offset",
+              "type": "vec2"
+            },
+            {
+              "id": "pivot",
+              "name": "Pivot",
+              "type": "vec2"
+            },
+            {
+              "id": "rotation",
+              "name": "Rotation (radians)",
+              "type": "float"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "uv",
+              "name": "UV",
+              "type": "vec2"
+            }
+          ]
+        }
       }
     ],
     "connections": [
@@ -669,6 +797,105 @@
           "nodeId": "ao-channel-mask",
           "pin": "rgba"
         }
+      },
+      {
+        "id": "shared-uv-tiling",
+        "from": {
+          "nodeId": "uv-tiling",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "tiling"
+        }
+      },
+      {
+        "id": "shared-uv-offset",
+        "from": {
+          "nodeId": "uv-offset",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "offset"
+        }
+      },
+      {
+        "id": "shared-uv-pivot",
+        "from": {
+          "nodeId": "uv-pivot",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "pivot"
+        }
+      },
+      {
+        "id": "shared-uv-rotation",
+        "from": {
+          "nodeId": "uv-rotation",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "rotation"
+        }
+      },
+      {
+        "id": "shared-uv-to-metallic-roughness-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "metallic-roughness-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-ambient-occlusion-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "ambient-occlusion-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-normal-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "normal-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-clear-coat-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "clear-coat-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-emissive-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "emissive-texture",
+          "pin": "uv"
+        }
       }
     ],
     "viewport": {
@@ -704,7 +931,12 @@
           "roughness-multiply",
           "ambient-occlusion-texture",
           "orm-unpack",
-          "ao-channel-mask"
+          "ao-channel-mask",
+          "uv-tiling",
+          "uv-offset",
+          "uv-pivot",
+          "uv-rotation",
+          "shared-uv-transform"
         ],
         "position": [
           40,
