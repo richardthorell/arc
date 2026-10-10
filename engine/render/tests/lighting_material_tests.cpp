@@ -132,10 +132,10 @@ TILT=NONE
 5 10 20
 )";
 
-    arc::render::photometric_profile profile;
-    std::string error;
-    REQUIRE(arc::render::parse_ies_profile(ies, profile, error));
-    REQUIRE(error.empty());
+    const auto parsed = arc::render::parse_ies_profile(ies);
+    REQUIRE(parsed);
+    REQUIRE(parsed.error.empty());
+    const auto& profile = parsed.profile;
     REQUIRE(profile.photometric_type == 1u);
     REQUIRE(profile.vertical_angles_degrees.size() == 3u);
     REQUIRE(profile.horizontal_angles_degrees.size() == 2u);
@@ -167,15 +167,14 @@ TILT=NONE
 
 TEST_CASE("IES parser rejects unsupported tilt and malformed distributions")
 {
-    arc::render::photometric_profile profile;
-    std::string error;
-    REQUIRE_FALSE(arc::render::parse_ies_profile("IESNA:LM-63-2002\nTILT=INCLUDE\n", profile, error));
-    REQUIRE(error.find("TILT") != std::string::npos);
+    const auto tilted = arc::render::parse_ies_profile("IESNA:LM-63-2002\nTILT=INCLUDE\n");
+    REQUIRE_FALSE(tilted);
+    REQUIRE(tilted.error.find("TILT") != std::string::npos);
 
-    REQUIRE_FALSE(arc::render::parse_ies_profile(
-        "IESNA:LM-63-2002\nTILT=NONE\n1 1000 1 2 1 1 1 1 1 1 1 0 10\n0 90\n0\n0 0\n",
-        profile, error));
-    REQUIRE(error.find("positive intensity") != std::string::npos);
+    const auto dark = arc::render::parse_ies_profile(
+        "IESNA:LM-63-2002\nTILT=NONE\n1 1000 1 2 1 1 1 1 1 1 1 0 10\n0 90\n0\n0 0\n");
+    REQUIRE_FALSE(dark);
+    REQUIRE(dark.error.find("positive intensity") != std::string::npos);
 }
 
 TEST_CASE("light unit and temperature helpers provide stable defaults")
