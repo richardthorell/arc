@@ -27,6 +27,7 @@ describe('built-in Material Functions', () => {
       'default_base_color.arcmatfn',
       'gradient.arcmatfn',
       'noise.arcmatfn',
+      'texture_tint.arcmatfn',
       'unpack_orm.arcmatfn',
       'uv_transform.arcmatfn',
     ]);
