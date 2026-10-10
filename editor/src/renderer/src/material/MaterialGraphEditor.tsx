@@ -902,10 +902,7 @@ export function MaterialGraphEditor({
         mutate((next) => {
           const group = next.groups?.find((candidate) => candidate.id === groupDrag.groupId);
           if (!group) return;
-          const rawPosition: GraphPoint = [
-            groupDrag.groupPosition[0] + deltaX,
-            groupDrag.groupPosition[1] + deltaY,
-          ];
+          const rawPosition: GraphPoint = [groupDrag.groupPosition[0] + deltaX, groupDrag.groupPosition[1] + deltaY];
           group.position = snapEnabled ? snapMaterialGraphPoint(rawPosition) : rawPosition;
           group.size = groupDrag.groupSize;
           const movedDeltaX = group.position[0] - groupDrag.groupPosition[0];
@@ -1299,9 +1296,7 @@ export function MaterialGraphEditor({
           disabled={document.readOnly}
           onClick={() => {
             const rect = canvasRef.current?.getBoundingClientRect();
-            const center = rect
-              ? graphPoint(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5)
-              : pointerGraph;
+            const center = rect ? graphPoint(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5) : pointerGraph;
             addGroup(center);
           }}
           title={selectedNodes.size ? 'Group selected nodes' : 'Add an empty material graph group'}

@@ -108,7 +108,10 @@ export type MaterialGraphGroupRect = {
 
 const materialGroupPadding = { left: 34, right: 34, top: 48, bottom: 34 };
 
-export const materialGraphGroupRect = (graph: MaterialGraph, group: MaterialGraphGroup): MaterialGraphGroupRect | null => {
+export const materialGraphGroupRect = (
+  graph: MaterialGraph,
+  group: MaterialGraphGroup,
+): MaterialGraphGroupRect | null => {
   if (group.position && group.size)
     return { left: group.position[0], top: group.position[1], width: group.size[0], height: group.size[1] };
 
