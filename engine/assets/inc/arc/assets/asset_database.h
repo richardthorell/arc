@@ -92,8 +92,8 @@ class asset_database
 public:
     virtual ~asset_database() = default;
 
-    [[nodiscard]] virtual std::optional<asset_database_record>
-    query(asset_guid guid, asset_type_id expected_type = {}) const = 0;
+    [[nodiscard]] virtual std::optional<asset_database_record> query(asset_guid guid,
+                                                                     asset_type_id expected_type = {}) const = 0;
     [[nodiscard]] virtual std::vector<asset_guid> dependencies(asset_guid guid) const = 0;
     [[nodiscard]] virtual std::vector<asset_guid> reverse_dependencies(asset_guid guid) const = 0;
     [[nodiscard]] virtual std::uint64_t revision() const = 0;
@@ -117,8 +117,8 @@ class asset_manager_database final : public asset_database
 public:
     explicit asset_manager_database(const asset_manager& manager) noexcept : manager_(&manager) {}
 
-    [[nodiscard]] std::optional<asset_database_record>
-    query(asset_guid guid, asset_type_id expected_type = {}) const override;
+    [[nodiscard]] std::optional<asset_database_record> query(asset_guid guid,
+                                                             asset_type_id expected_type = {}) const override;
     [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override;
     [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const override;
     [[nodiscard]] std::uint64_t revision() const override;
