@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, sharedTexture, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, screen, sharedTexture, shell } from 'electron';
+import type { WebFrameMain } from 'electron';
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
@@ -55,6 +56,40 @@ let shutdownComplete = false;
 let fatalHostExitPending = false;
 
 const activeWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+
+const rendererFrameForWindow = (target: BrowserWindow): WebFrameMain | null => {
+  try {
+    if (target.isDestroyed() || target.webContents.isDestroyed()) return null;
+    const frame = target.webContents.mainFrame;
+    return frame && !frame.isDestroyed() ? frame : null;
+  } catch {
+    // Electron can dispose WebFrameMain between lifecycle callbacks. Treat the
+    // renderer as temporarily unavailable instead of surfacing an exception.
+    return null;
+  }
+};
+
+const sendToRenderer = (target: BrowserWindow, channel: string, ...args: unknown[]): boolean => {
+  try {
+    if (!rendererFrameForWindow(target)) return false;
+    target.webContents.send(channel, ...args);
+    return true;
+  } catch {
+    // webContents.send resolves through the current main frame and can race a
+    // renderer teardown even after the readiness check above.
+    return false;
+  }
+};
+
+const sendToActiveRenderer = (channel: string, ...args: unknown[]): boolean => {
+  const target = activeWindow();
+  return target ? sendToRenderer(target, channel, ...args) : false;
+};
+
+const isDisposedRendererError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /render frame was disposed|webframemain|object has been destroyed/i.test(message);
+};
 
 const describeHostExit = (code: number | null, signal: NodeJS.Signals | null): string => {
   if (process.platform === 'win32' && code !== null) {
@@ -176,6 +211,32 @@ const sharedViewportPresented = new Set<string>();
 const sharedViewportFailures = new Map<string, string>();
 const sharedViewportPresentationTails = new Map<string, Promise<void>>();
 
+const setWindowSharedViewportsVisible = (target: BrowserWindow, visible: boolean): void => {
+  if (!hostClient || target.isDestroyed()) return;
+  const webContentsId = target.webContents.id;
+  for (const [viewportId, targetWebContentsId] of sharedViewportTargets) {
+    if (targetWebContentsId !== webContentsId) continue;
+    void hostClient.command('viewport.setVisibility', { viewportId, visible }).catch(() => undefined);
+  }
+};
+
+const setAllSharedViewportsVisible = (visible: boolean): void => {
+  if (!hostClient) return;
+  for (const viewportId of sharedViewportTargets.keys())
+    void hostClient.command('viewport.setVisibility', { viewportId, visible }).catch(() => undefined);
+};
+
+const forgetSharedViewportsForWindow = (target: BrowserWindow): void => {
+  const webContentsId = target.webContents.id;
+  for (const [viewportId, targetWebContentsId] of [...sharedViewportTargets]) {
+    if (targetWebContentsId !== webContentsId) continue;
+    sharedViewportTargets.delete(viewportId);
+    sharedViewportPresented.delete(viewportId);
+    sharedViewportFailures.delete(viewportId);
+    sharedViewportPresentationTails.delete(viewportId);
+  }
+};
+
 const sharedViewportWindow = (viewportId: string): BrowserWindow | null => {
   const webContentsId = sharedViewportTargets.get(viewportId);
   if (webContentsId === undefined) return activeWindow();
@@ -186,20 +247,18 @@ const sharedViewportWindow = (viewportId: string): BrowserWindow | null => {
 };
 
 const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
-  const frame = event.payload as Partial<SharedViewportFrame>;
-  const target = typeof frame.viewportId === 'string' ? sharedViewportWindow(frame.viewportId) : null;
+  const candidate = event.payload as Partial<SharedViewportFrame>;
   if (
-    !target ||
-    target.isDestroyed() ||
-    typeof frame.viewportId !== 'string' ||
-    typeof frame.handle !== 'string' ||
-    typeof frame.frameId !== 'number' ||
-    typeof frame.generation !== 'number' ||
-    typeof frame.width !== 'number' ||
-    typeof frame.height !== 'number'
+    typeof candidate.viewportId !== 'string' ||
+    typeof candidate.handle !== 'string' ||
+    typeof candidate.frameId !== 'number' ||
+    typeof candidate.generation !== 'number' ||
+    typeof candidate.width !== 'number' ||
+    typeof candidate.height !== 'number'
   )
     return;
 
+  const frame = candidate as SharedViewportFrame;
   let released = false;
   const release = () => {
     if (released) return;
@@ -213,6 +272,21 @@ const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
       })
       .catch(() => undefined);
   };
+
+  const target = sharedViewportWindow(frame.viewportId);
+  if (
+    !target ||
+    target.isDestroyed() ||
+    target.isMinimized() ||
+    !target.isVisible() ||
+    !rendererFrameForWindow(target)
+  ) {
+    // Producer slots must always be returned, even while Chromium has no live
+    // renderer frame (minimize, reload, sleep, crash, or window teardown).
+    release();
+    return;
+  }
+
   try {
     const nativeHandle = BigInt(frame.handle);
     const handle = Buffer.alloc(8);
@@ -227,8 +301,15 @@ const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
       allReferencesReleased: release,
     });
     try {
+      // Re-read the frame immediately before delivery because navigation or a
+      // display/power transition may dispose it after the earlier guard.
+      const rendererFrame = rendererFrameForWindow(target);
+      if (!rendererFrame) {
+        release();
+        return;
+      }
       await sharedTexture.sendSharedTexture(
-        { frame: target.webContents.mainFrame, importedSharedTexture: imported },
+        { frame: rendererFrame, importedSharedTexture: imported },
         {
           viewportId: frame.viewportId,
           frameId: frame.frameId,
@@ -250,6 +331,13 @@ const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
     }
   } catch (error) {
     release();
+    if (isDisposedRendererError(error)) {
+      // This is an expected lifecycle race during minimize, reload, suspend,
+      // renderer restart, or display sleep. Do not recursively report it to the
+      // renderer that has just disappeared.
+      sharedViewportPresented.delete(frame.viewportId);
+      return;
+    }
     sendHostLog({
       level: 'error',
       source: 'viewport.sharedTexture',
@@ -306,7 +394,7 @@ const sendHostLog = (event: Omit<HostLogEvent, 'timestamp'>): void => {
     timestamp: hostLogTimestamp(),
   } satisfies HostLogEvent;
   agentHarness?.recordHostLog(timestamped);
-  activeWindow()?.webContents.send('host:log', timestamped);
+  sendToActiveRenderer('host:log', timestamped);
 };
 
 const normalizeHostLogLevel = (level: string): HostLogLevel => {
@@ -677,11 +765,11 @@ export class ArcHostClient {
             this.runtimeTickScheduled = false;
             const latest = this.pendingRuntimeTick;
             this.pendingRuntimeTick = null;
-            if (latest) activeWindow()?.webContents.send('host:event', latest);
+            if (latest) sendToActiveRenderer('host:event', latest);
           });
         }
       } else {
-        activeWindow()?.webContents.send('host:event', event);
+        sendToActiveRenderer('host:event', event);
       }
       return;
     }
@@ -750,7 +838,8 @@ const saveSceneWithDialog = async (target: BrowserWindow, activeScenePath = ''):
 const requestWindowCloseChoice = (target: BrowserWindow, sceneName: string): Promise<'save' | 'discard' | 'cancel'> =>
   new Promise((resolve) => {
     closeChoiceResolve = resolve;
-    target.webContents.send('nativeWindow:closeRequested', { sceneName: sceneName || 'Untitled' });
+    if (!sendToRenderer(target, 'nativeWindow:closeRequested', { sceneName: sceneName || 'Untitled' }))
+      resolve('cancel');
   });
 
 const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
@@ -865,8 +954,41 @@ const createMainWindow = (): void => {
     child.setMenuBarVisibility(false);
   });
 
-  mainWindow.on('maximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', true));
-  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('nativeWindow:maximizedChanged', false));
+  const rendererWindow = mainWindow;
+  rendererWindow.webContents.on('did-start-loading', () => {
+    setWindowSharedViewportsVisible(rendererWindow, false);
+    sharedViewportPresented.clear();
+  });
+  rendererWindow.webContents.on('did-finish-load', () => {
+    setWindowSharedViewportsVisible(
+      rendererWindow,
+      !rendererWindow.isDestroyed() && !rendererWindow.isMinimized() && rendererWindow.isVisible(),
+    );
+  });
+  rendererWindow.webContents.on('render-process-gone', (_event, details) => {
+    sharedViewportPresented.clear();
+    setWindowSharedViewportsVisible(rendererWindow, false);
+    console.error(`[renderer] process exited: ${details.reason} (code ${details.exitCode})`);
+    if (isCiSmoke || shutdownPending || shutdownComplete || details.reason === 'clean-exit') return;
+    // A dead renderer otherwise leaves the frameless BrowserWindow permanently
+    // black. Reloading recreates Chromium UI state while the native scene/host
+    // remains authoritative and alive.
+    setTimeout(() => {
+      if (rendererWindow.isDestroyed() || rendererWindow.webContents.isDestroyed()) return;
+      rendererWindow.webContents.reload();
+    }, 250);
+  });
+
+  rendererWindow.on('minimize', () => setWindowSharedViewportsVisible(rendererWindow, false));
+  rendererWindow.on('restore', () => setWindowSharedViewportsVisible(rendererWindow, true));
+  rendererWindow.on('hide', () => setWindowSharedViewportsVisible(rendererWindow, false));
+  rendererWindow.on('show', () => {
+    if (!rendererWindow.isMinimized()) setWindowSharedViewportsVisible(rendererWindow, true);
+  });
+  rendererWindow.on('closed', () => forgetSharedViewportsForWindow(rendererWindow));
+
+  mainWindow.on('maximize', () => sendToActiveRenderer('nativeWindow:maximizedChanged', true));
+  mainWindow.on('unmaximize', () => sendToActiveRenderer('nativeWindow:maximizedChanged', false));
   mainWindow.on('close', (event) => {
     if (isCiSmoke) return;
     if (allowWindowClose) return;
@@ -929,7 +1051,7 @@ void app.whenReady().then(async () => {
     () => projectService?.active() ?? null,
     () => projectService?.projectTool() ?? '',
     hostClient,
-    (snapshot) => activeWindow()?.webContents.send('build:state', snapshot),
+    (snapshot) => sendToActiveRenderer('build:state', snapshot),
   );
   settingsService = new SettingsService(
     path.join(app.getPath('userData'), 'editor-settings.v1.json'),
@@ -1007,7 +1129,7 @@ void app.whenReady().then(async () => {
     });
     aiGateway = new AiGatewayServer(harness, {
       appDataPath: app.getPath('userData'),
-      onStatus: (status) => activeWindow()?.webContents.send('ai-gateway:status', status),
+      onStatus: (status) => sendToActiveRenderer('ai-gateway:status', status),
     });
     try {
       await performanceDiagnostics.measure('AI gateway startup', () => aiGateway!.start());
@@ -1542,6 +1664,16 @@ void app.whenReady().then(async () => {
   ipcMain.handle('nativeWindow:isMaximized', () => activeWindow()?.isMaximized() ?? false);
 
   createMainWindow();
+
+  powerMonitor.on('suspend', () => setAllSharedViewportsVisible(false));
+  powerMonitor.on('lock-screen', () => setAllSharedViewportsVisible(false));
+  const restoreViewportVisibility = () => {
+    const target = activeWindow();
+    if (!target || target.isMinimized() || !target.isVisible()) return;
+    setWindowSharedViewportsVisible(target, true);
+  };
+  powerMonitor.on('resume', restoreViewportVisibility);
+  powerMonitor.on('unlock-screen', restoreViewportVisibility);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
