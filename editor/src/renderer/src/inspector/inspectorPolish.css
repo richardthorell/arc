@@ -97,6 +97,26 @@
   min-width: 0;
 }
 
+.inspector-material-parameter-group {
+  display: grid;
+  min-width: 0;
+}
+
+.inspector-material-parameter-group + .inspector-material-parameter-group {
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px solid var(--inspector-border-soft);
+}
+
+.inspector-material-parameter-group-title {
+  margin: 2px 0 3px;
+  color: var(--inspector-text-muted);
+  font-size: var(--arc-text-xxs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .inspector-material-parameter {
   display: grid;
   grid-template-columns: var(--inspector-row-label) minmax(0, 1fr) auto;

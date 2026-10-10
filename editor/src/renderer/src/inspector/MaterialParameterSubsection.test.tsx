@@ -88,6 +88,7 @@ beforeEach(() => {
             id: 'fixed-utility',
             type: 'functionCall',
             position: [100, 120],
+            parameter: { exposed: false, name: 'Fixed Utility' },
             values: {
               slotId: 'fixed-utility',
               name: 'Fixed Utility',
@@ -141,6 +142,58 @@ describe('MaterialPicker exported parameters', () => {
     expect(screen.getByLabelText('Roughness')).toHaveValue('0.620');
     expect(screen.getByRole('slider', { name: 'Roughness slider' })).toHaveValue('0.62');
     expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
+  });
+
+  it('groups exposed parameters using material graph group metadata', async () => {
+    readText.mockResolvedValue({
+      text: JSON.stringify({
+        version: 4,
+        name: 'Grouped',
+        graph: {
+          version: 1,
+          groups: [
+            { id: 'surface', name: 'Surface', nodeIds: ['roughness'], order: 10 },
+            { id: 'emission', name: 'Emission', nodeIds: ['emissive'], order: 20 },
+          ],
+          nodes: [
+            {
+              id: 'roughness',
+              type: 'constant',
+              position: [0, 0],
+              values: { value: 0.5, min: 0, max: 1 },
+              parameter: { exposed: true, name: 'Roughness', group: 'surface', order: 10 },
+            },
+            {
+              id: 'emissive',
+              type: 'colorRgba',
+              position: [0, 200],
+              values: { value: [1, 1, 1, 1] },
+              parameter: { exposed: true, name: 'Emissive Color', group: 'emission', order: 10 },
+            },
+            { id: 'material-output', type: 'output', position: [400, 0], values: {} },
+          ],
+          connections: [
+            {
+              id: 'roughness-out',
+              from: { nodeId: 'roughness', pin: 'value' },
+              to: { nodeId: 'material-output', pin: 'roughness' },
+            },
+            {
+              id: 'emissive-out',
+              from: { nodeId: 'emissive', pin: 'rgb' },
+              to: { nodeId: 'material-output', pin: 'emissive' },
+            },
+          ],
+        },
+      }),
+    });
+
+    render(<MaterialPicker assets={[material]} label="Material" value={material.path} onChange={() => undefined} />);
+
+    expect(await screen.findByText('Surface')).toBeVisible();
+    expect(screen.getByText('Emission')).toBeVisible();
+    expect(screen.getByLabelText('Roughness')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open Emissive Color color picker' })).toBeVisible();
   });
 
   it('shows authored Function Call choices and swaps function-specific parameters', async () => {
@@ -210,6 +263,7 @@ describe('MaterialPicker exported parameters', () => {
             id: 'base-color-source',
             type: 'functionCall',
             position: [100, 0],
+            parameter: { exposed: true, name: 'Base Color Source' },
             values: {
               slotId: 'base-color-source',
               name: 'Base Color Source',

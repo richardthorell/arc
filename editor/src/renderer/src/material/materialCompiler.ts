@@ -87,8 +87,11 @@ export const materialGraphDiagnostics = (diagnostics: readonly MaterialCompileDi
 
 export type MaterialGraphEditImpact = 'none' | 'parameter-values' | 'shader';
 
+const shaderParameterMetadata = (node: MaterialGraphNode) =>
+  node.parameter ? { exposed: node.parameter.exposed, name: node.parameter.name } : null;
+
 const sameParameterMetadata = (before: MaterialGraphNode, after: MaterialGraphNode): boolean =>
-  JSON.stringify(before.parameter ?? null) === JSON.stringify(after.parameter ?? null);
+  JSON.stringify(shaderParameterMetadata(before)) === JSON.stringify(shaderParameterMetadata(after));
 
 const parameterNodeTypes = new Set<MaterialGraphNodeType>([
   'constant',
@@ -180,6 +183,8 @@ export type MaterialEditorParameter = {
   type: MaterialGraphValueType;
   nodeType: MaterialGraphNodeType;
   editorKind: MaterialEditorParameterKind;
+  group?: string;
+  order?: number;
   range?: { min: number; max: number };
 };
 
@@ -222,6 +227,10 @@ export const materialEditorParameters = (graph: MaterialGraph): MaterialEditorPa
         type,
         nodeType: node.type,
         editorKind,
+        ...(node.parameter.group?.trim() ? { group: node.parameter.group.trim() } : {}),
+        ...(typeof node.parameter.order === 'number' && Number.isFinite(node.parameter.order)
+          ? { order: node.parameter.order }
+          : {}),
         ...(range ? { range } : {}),
       },
     ];

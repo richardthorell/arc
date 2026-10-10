@@ -65,6 +65,7 @@ import {
 import {
   autoArrangeMaterialGraph,
   frameMaterialGraphViewport,
+  materialGraphGroupRect,
   materialNodeHeight,
   materialNodeWidth,
   snapMaterialGraphPoint,
@@ -674,6 +675,14 @@ export function MaterialGraphEditor({
   const [pointerGraph, setPointerGraph] = useState<GraphPoint>([0, 0]);
   const [pinPositions, setPinPositions] = useState<Map<string, GraphPoint>>(() => new Map());
   const [drag, setDrag] = useState<{ start: GraphPoint; nodes: Map<string, GraphPoint> } | null>(null);
+  const [groupDrag, setGroupDrag] = useState<{
+    start: GraphPoint;
+    groupId: string;
+    groupPosition: GraphPoint;
+    groupSize: GraphPoint;
+    nodes: Map<string, GraphPoint>;
+  } | null>(null);
+  const [groupResize, setGroupResize] = useState<{ start: GraphPoint; groupId: string; size: GraphPoint } | null>(null);
   const [pan, setPan] = useState<{ start: GraphPoint; viewport: GraphPoint } | null>(null);
   const [box, setBox] = useState<GraphSelection | null>(null);
   const [addMenu, setAddMenu] = useState<{ screen: GraphPoint; graph: GraphPoint } | null>(null);
@@ -871,7 +880,7 @@ export function MaterialGraphEditor({
   }, [document.id, frameAll, graph.nodes.length, loaded]);
 
   useEffect(() => {
-    if (!drag && !pan && !box) return;
+    if (!drag && !groupDrag && !groupResize && !pan && !box) return;
     const move = (event: PointerEvent) => {
       const point = graphPoint(event.clientX, event.clientY);
       setPointerGraph(point);
@@ -887,6 +896,34 @@ export function MaterialGraphEditor({
             }
           }
         }, false);
+      } else if (groupDrag) {
+        const deltaX = point[0] - groupDrag.start[0];
+        const deltaY = point[1] - groupDrag.start[1];
+        mutate((next) => {
+          const group = next.groups?.find((candidate) => candidate.id === groupDrag.groupId);
+          if (!group) return;
+          const rawPosition: GraphPoint = [groupDrag.groupPosition[0] + deltaX, groupDrag.groupPosition[1] + deltaY];
+          group.position = snapEnabled ? snapMaterialGraphPoint(rawPosition) : rawPosition;
+          group.size = groupDrag.groupSize;
+          const movedDeltaX = group.position[0] - groupDrag.groupPosition[0];
+          const movedDeltaY = group.position[1] - groupDrag.groupPosition[1];
+          for (const node of next.nodes) {
+            const origin = groupDrag.nodes.get(node.id);
+            if (origin) node.position = [origin[0] + movedDeltaX, origin[1] + movedDeltaY];
+          }
+        }, false);
+      } else if (groupResize) {
+        const deltaX = point[0] - groupResize.start[0];
+        const deltaY = point[1] - groupResize.start[1];
+        mutate((next) => {
+          const group = next.groups?.find((candidate) => candidate.id === groupResize.groupId);
+          if (!group) return;
+          const rawSize: GraphPoint = [
+            Math.max(240, groupResize.size[0] + deltaX),
+            Math.max(160, groupResize.size[1] + deltaY),
+          ];
+          group.size = snapEnabled ? snapMaterialGraphPoint(rawSize) : rawSize;
+        }, false);
       } else if (pan) {
         updateViewport({
           x: pan.viewport[0] + (event.clientX - pan.start[0]),
@@ -897,7 +934,7 @@ export function MaterialGraphEditor({
       }
     };
     const up = () => {
-      if (drag) commitGraph(graph, { recordHistory: true });
+      if (drag || groupDrag || groupResize) commitGraph(graph, { recordHistory: true });
       if (box) {
         const bounds = graphSelectionBounds(box);
         setSelectedNodes(
@@ -915,6 +952,8 @@ export function MaterialGraphEditor({
         );
       }
       setDrag(null);
+      setGroupDrag(null);
+      setGroupResize(null);
       setPan(null);
       setBox(null);
     };
@@ -924,7 +963,20 @@ export function MaterialGraphEditor({
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
     };
-  }, [box, commitGraph, document, drag, graph, graphPoint, mutate, pan, snapEnabled, updateViewport]);
+  }, [
+    box,
+    commitGraph,
+    document,
+    drag,
+    graph,
+    graphPoint,
+    groupDrag,
+    groupResize,
+    mutate,
+    pan,
+    snapEnabled,
+    updateViewport,
+  ]);
 
   const deleteSelected = () => {
     if (document.readOnly || selectedNodes.size === 0) return;
@@ -1084,6 +1136,52 @@ export function MaterialGraphEditor({
     resetAddMenuPath();
   };
 
+  const addGroup = (fallbackPosition?: GraphPoint) => {
+    if (document.readOnly) return;
+    const members = graph.nodes.filter((node) => selectedNodes.has(node.id));
+    const existingCount = graph.groups?.length ?? 0;
+    const id = materialGraphId('group');
+    const name = `Group ${existingCount + 1}`;
+    const padding = { left: 36, right: 36, top: 54, bottom: 36 };
+
+    let position: GraphPoint;
+    let size: GraphPoint;
+    if (members.length > 0) {
+      const left = Math.min(...members.map((node) => node.position[0]));
+      const top = Math.min(...members.map((node) => node.position[1]));
+      const right = Math.max(...members.map((node) => node.position[0] + materialNodeWidth(node.type)));
+      const bottom = Math.max(...members.map((node) => node.position[1] + materialNodeHeight(node)));
+      position = [left - padding.left, top - padding.top];
+      size = [right - left + padding.left + padding.right, bottom - top + padding.top + padding.bottom];
+    } else {
+      const origin = fallbackPosition ?? pointerGraph;
+      position = snapEnabled ? snapMaterialGraphPoint(origin) : origin;
+      size = [520, 320];
+    }
+
+    mutate((next) => {
+      const memberIds = new Set(members.map((node) => node.id));
+      // A node belongs to at most one movable group. Re-grouping selected nodes
+      // removes them from an older group before adding the new container.
+      next.groups = (next.groups ?? []).flatMap((group) => {
+        if (!group.nodeIds) return [group];
+        const nodeIds = group.nodeIds.filter((nodeId) => !memberIds.has(nodeId));
+        return nodeIds.length > 0 ? [{ ...group, nodeIds }] : [];
+      });
+      next.groups.push({
+        id,
+        name,
+        ...(members.length > 0 ? { nodeIds: members.map((node) => node.id) } : {}),
+        position,
+        size,
+        order: existingCount + 1,
+      });
+    });
+    setAddMenu(null);
+    setNodeSearch('');
+    resetAddMenuPath();
+  };
+
   const availableNodes = useMemo(() => {
     const query = nodeSearch.trim().toLocaleLowerCase();
     return materialGraphDomain
@@ -1194,6 +1292,18 @@ export function MaterialGraphEditor({
         >
           <Plus size={13} /> Add Node
         </UiButton>
+        <UiButton
+          disabled={document.readOnly}
+          onClick={() => {
+            const rect = canvasRef.current?.getBoundingClientRect();
+            const center = rect ? graphPoint(rect.left + rect.width * 0.5, rect.top + rect.height * 0.5) : pointerGraph;
+            addGroup(center);
+          }}
+          title={selectedNodes.size ? 'Group selected nodes' : 'Add an empty material graph group'}
+          variant="ghost"
+        >
+          <Plus size={13} /> Add Group
+        </UiButton>
         <UiButton disabled={!selectedNodes.size} onClick={copySelected} variant="ghost">
           <Copy size={13} /> Copy
         </UiButton>
@@ -1247,6 +1357,62 @@ export function MaterialGraphEditor({
       </div>
 
       <GraphViewportLayer className="material-graph-transform" viewport={viewport}>
+        {(graph.groups ?? [])
+          .slice()
+          .sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.name.localeCompare(right.name))
+          .map((group) => {
+            const rect = materialGraphGroupRect(graph, group);
+            if (!rect) return null;
+            return (
+              <div
+                className="material-graph-group"
+                key={group.id}
+                style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+              >
+                <button
+                  className="material-graph-group-title"
+                  disabled={document.readOnly}
+                  onPointerDown={(event) => {
+                    if (document.readOnly || event.button !== 0) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const origins = new Map<string, GraphPoint>();
+                    for (const nodeId of group.nodeIds ?? []) {
+                      const node = graph.nodes.find((candidate) => candidate.id === nodeId);
+                      if (node) origins.set(node.id, [...node.position]);
+                    }
+                    setGroupDrag({
+                      start: graphPoint(event.clientX, event.clientY),
+                      groupId: group.id,
+                      groupPosition: [rect.left, rect.top],
+                      groupSize: [rect.width, rect.height],
+                      nodes: origins,
+                    });
+                  }}
+                  type="button"
+                >
+                  {group.name}
+                </button>
+                {!document.readOnly && (
+                  <button
+                    aria-label={`Resize ${group.name} group`}
+                    className="material-graph-group-resize"
+                    onPointerDown={(event) => {
+                      if (event.button !== 0) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setGroupResize({
+                        start: graphPoint(event.clientX, event.clientY),
+                        groupId: group.id,
+                        size: [rect.width, rect.height],
+                      });
+                    }}
+                    type="button"
+                  />
+                )}
+              </div>
+            );
+          })}
         <GraphWireLayer className="material-graph-wires" pendingPath={pendingPath} wires={wirePaths} />
         {graph.nodes.map((node) => {
           const definition = materialGraphDomain.getNodeDefinition(node);
@@ -1364,15 +1530,30 @@ export function MaterialGraphEditor({
               {editableValueNode(node) && (
                 <MaterialNodeParameterControl
                   enabled={Boolean(node.parameter?.exposed)}
+                  group={node.parameter?.group}
                   name={node.parameter?.name ?? definition.title}
+                  order={node.parameter?.order}
                   readOnly={document.readOnly}
                   onEnabledChange={(enabled) =>
                     mutate((next) => {
                       const target = next.nodes.find((candidate) => candidate.id === node.id);
                       if (!target) return;
                       target.parameter = {
+                        ...target.parameter,
                         exposed: enabled,
                         name: target.parameter?.name ?? definition.title,
+                      };
+                    })
+                  }
+                  onGroupChange={(group) =>
+                    mutate((next) => {
+                      const target = next.nodes.find((candidate) => candidate.id === node.id);
+                      if (!target) return;
+                      target.parameter = {
+                        ...target.parameter,
+                        exposed: Boolean(target.parameter?.exposed),
+                        name: target.parameter?.name ?? definition.title,
+                        group,
                       };
                     })
                   }
@@ -1381,9 +1562,23 @@ export function MaterialGraphEditor({
                       const target = next.nodes.find((candidate) => candidate.id === node.id);
                       if (!target) return;
                       target.parameter = {
+                        ...target.parameter,
                         exposed: Boolean(target.parameter?.exposed),
                         name,
                       };
+                    })
+                  }
+                  onOrderChange={(order) =>
+                    mutate((next) => {
+                      const target = next.nodes.find((candidate) => candidate.id === node.id);
+                      if (!target) return;
+                      target.parameter = {
+                        ...target.parameter,
+                        exposed: Boolean(target.parameter?.exposed),
+                        name: target.parameter?.name ?? definition.title,
+                        ...(order === undefined ? {} : { order }),
+                      };
+                      if (order === undefined) delete target.parameter.order;
                     })
                   }
                 />
@@ -1421,6 +1616,11 @@ export function MaterialGraphEditor({
             />
           </div>
           <div className="material-node-menu-items">
+            {!searchingNodes && (
+              <UiContextMenuItem onClick={() => addGroup(addMenu.graph)}>
+                <strong>{selectedNodes.size ? 'Group Selected Nodes' : 'Add Group'}</strong>
+              </UiContextMenuItem>
+            )}
             {searchingNodes
               ? availableNodes.map((definition) => (
                   <UiContextMenuItem

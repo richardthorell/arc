@@ -148,14 +148,14 @@ describe('core built-in material families', () => {
       values: { texture: '', dimension: '2d', semantic: 'clear_coat' },
     });
     expect(
-      graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'b'),
+      graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'rgba' && connection.to.nodeId === 'orm-unpack'),
     ).toBe(true);
     expect(
-      graph.connections.some((connection) => connection.from.nodeId === packed?.id && connection.from.pin === 'g'),
+      graph.connections.some((connection) => connection.from.nodeId === 'orm-unpack' && connection.from.pin === 'roughness' && connection.to.nodeId === 'roughness-multiply'),
     ).toBe(true);
     expect(
       graph.connections.some(
-        (connection) => connection.from.nodeId === ao?.id && connection.from.pin === 'r' && connection.to.pin === 'ao',
+        (connection) => connection.from.nodeId === 'ao-channel-mask' && connection.from.pin === 'value' && connection.to.pin === 'ao',
       ),
     ).toBe(true);
   });

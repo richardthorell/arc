@@ -54,6 +54,10 @@ type DisplayParameter = {
   name: string;
   type: MaterialGraphValueType;
   editorKind: MaterialEditorParameterKind;
+  group?: string;
+  groupLabel?: string;
+  groupOrder?: number;
+  order?: number;
   range?: { min: number; max: number };
   values: number[];
   texture: string;
@@ -154,6 +158,19 @@ const parameterValues = (node: MaterialGraphNode): number[] => {
 
 const parameterTexture = (node: MaterialGraphNode) =>
   typeof node.values.texture === 'string' ? node.values.texture : '';
+
+const parameterGrouping = (
+  graph: ReturnType<typeof materialGraphFromAsset>,
+  groupId: string | undefined,
+  order: number | undefined,
+) => {
+  const group = groupId ? graph.groups?.find((candidate) => candidate.id === groupId) : undefined;
+  return {
+    ...(groupId ? { group: groupId, groupLabel: group?.name || groupId } : {}),
+    ...(group?.order !== undefined ? { groupOrder: group.order } : {}),
+    ...(order !== undefined ? { order } : {}),
+  };
+};
 
 const bytesToHex = (text: string) =>
   Array.from(new TextEncoder().encode(text), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -341,6 +358,7 @@ export function MaterialParameterSubsection({
                 : '';
           return {
             ...parameter,
+            ...parameterGrouping(graph, parameter.group, parameter.order),
             nodeId: materialParameterId(parameter.nodeId),
             values: authoredValues,
             texture: authoredTexture,
@@ -381,8 +399,7 @@ export function MaterialParameterSubsection({
                   return typeof path === 'string' && path.trim() ? [path] : [];
                 })
               : [];
-          // A single referenced function is a fixed graph dependency, not a choice.
-          const selectableCall = node.type === 'functionCall' && authoredReferences.length > 1;
+          const selectableCall = node.type === 'functionCall' && node.parameter?.exposed === true;
           if (node.type !== 'functionSlot' && !selectableCall) return [];
           const id = typeof node.values.slotId === 'string' ? node.values.slotId.trim() : '';
           const name =
@@ -433,6 +450,7 @@ export function MaterialParameterSubsection({
             const parameterId = materialParameterId(`${id}::${parameter.nodeId}`);
             return {
               ...parameter,
+              ...parameterGrouping(selectedOption.document.graph, parameter.group, parameter.order),
               nodeId: parameterId,
               slotId: id,
               values: functionNode ? parameterValues(functionNode) : [],
@@ -533,6 +551,7 @@ export function MaterialParameterSubsection({
                         const functionNode = option.document.graph.nodes.find((node) => node.id === parameter.nodeId);
                         return {
                           ...parameter,
+                          ...parameterGrouping(option.document.graph, parameter.group, parameter.order),
                           nodeId: materialParameterId(`${candidate.id}::${parameter.nodeId}`),
                           slotId: candidate.id,
                           values: functionNode ? parameterValues(functionNode) : [],
@@ -600,6 +619,32 @@ export function MaterialParameterSubsection({
         : state.status === 'custom'
           ? 'Cook-reflected'
           : '';
+
+  const parameterGroups =
+    state.status === 'ready'
+      ? (() => {
+          const ordered = [...state.parameters].sort(
+            (left, right) =>
+              (left.groupOrder ?? Number.MAX_SAFE_INTEGER) - (right.groupOrder ?? Number.MAX_SAFE_INTEGER) ||
+              (left.groupLabel ?? '').localeCompare(right.groupLabel ?? '') ||
+              (left.order ?? Number.MAX_SAFE_INTEGER) - (right.order ?? Number.MAX_SAFE_INTEGER) ||
+              left.name.localeCompare(right.name),
+          );
+          if (!ordered.some((parameter) => parameter.group)) return [{ id: '', label: '', parameters: ordered }];
+          const groups = new Map<string, { id: string; label: string; parameters: DisplayParameter[] }>();
+          for (const parameter of ordered) {
+            const id = parameter.group || '__ungrouped';
+            const current = groups.get(id) ?? {
+              id,
+              label: parameter.groupLabel || (id === '__ungrouped' ? 'Other' : id),
+              parameters: [],
+            };
+            current.parameters.push(parameter);
+            groups.set(id, current);
+          }
+          return [...groups.values()];
+        })()
+      : [];
 
   return (
     <section className="inspector-subsection inspector-material-parameters" aria-label="Material parameters">
@@ -775,150 +820,155 @@ export function MaterialParameterSubsection({
       )}
       {state.status === 'ready' && state.parameters.length > 0 && (
         <div className="inspector-material-parameter-list">
-          {state.parameters.map((parameter) => {
-            const override = overrideFor(parameter);
-            const values = effectiveValues(parameter);
-            const reset = override ? (
-              <button
-                aria-label={`Reset ${parameter.name}`}
-                className="inspector-field-reset"
-                onClick={() => void commitOverride(parameter, null)}
-                title="Revert to material default"
-                type="button"
-              >
-                <RotateCcw aria-hidden="true" size={12} />
-              </button>
-            ) : null;
+          {parameterGroups.map((group) => (
+            <div className="inspector-material-parameter-group" key={group.id || '__all'}>
+              {group.label && <div className="inspector-material-parameter-group-title">{group.label}</div>}
+              {group.parameters.map((parameter) => {
+                const override = overrideFor(parameter);
+                const values = effectiveValues(parameter);
+                const reset = override ? (
+                  <button
+                    aria-label={`Reset ${parameter.name}`}
+                    className="inspector-field-reset"
+                    onClick={() => void commitOverride(parameter, null)}
+                    title="Revert to material default"
+                    type="button"
+                  >
+                    <RotateCcw aria-hidden="true" size={12} />
+                  </button>
+                ) : null;
 
-            if (parameter.editorKind === 'texture') {
-              const textureValue = effectiveTexture(parameter);
-              return (
-                <div className="inspector-material-parameter" key={parameter.nodeId}>
-                  <TexturePicker
-                    allowEmpty
-                    assets={assets}
-                    label={parameter.name}
-                    thumbnailProvider={thumbnailProvider}
-                    value={textureValue}
-                    onChange={(texture, asset) =>
-                      void commitOverride(parameter, {
-                        name: parameter.name,
-                        type: parameter.type,
-                        kind: parameter.editorKind,
-                        texture,
-                        ...(asset ? { textureReference: hostAssetReference(asset) ?? undefined } : {}),
-                      })
-                    }
-                  />
-                  {reset}
-                </div>
-              );
-            }
-
-            if (parameter.editorKind === 'color') {
-              const rgba: Vec4 = {
-                x: values[0] ?? 0,
-                y: values[1] ?? 0,
-                z: values[2] ?? 0,
-                w: parameter.type === 'vec4' ? (values[3] ?? 1) : 1,
-              };
-              const colorOverride = (next: Vec4): InstanceOverride => ({
-                name: parameter.name,
-                type: parameter.type,
-                kind: parameter.editorKind,
-                value: parameter.type === 'vec4' ? [next.x, next.y, next.z, next.w] : [next.x, next.y, next.z],
-              });
-              return (
-                <div className="inspector-material-parameter" key={parameter.nodeId}>
-                  <span className="inspector-property-label">{parameter.name}</span>
-                  <UiColorControl
-                    allowAlpha={parameter.type === 'vec4'}
-                    label={parameter.name}
-                    value={rgba}
-                    onPreview={(next) => updateLocalOverride(parameter, colorOverride(next))}
-                    onCommit={(next) => void commitOverride(parameter, colorOverride(next))}
-                  />
-                  {reset}
-                </div>
-              );
-            }
-
-            if (parameter.editorKind === 'scalar') {
-              const nextOverride = (next: number): InstanceOverride => ({
-                name: parameter.name,
-                type: parameter.type,
-                kind: parameter.editorKind,
-                value: [clampParameterValue(next, parameter.range)],
-              });
-              const scalarValue = clampParameterValue(values[0] ?? 0, parameter.range);
-              return (
-                <div className="inspector-material-parameter" key={parameter.nodeId}>
-                  <div className="inspector-material-scalar-control">
-                    <NumberControl
-                      field={numericField(parameter.name, parameter.range)}
-                      value={scalarValue}
-                      onPreview={(next) => updateLocalOverride(parameter, nextOverride(next))}
-                      onCommit={(next) => void commitOverride(parameter, nextOverride(next))}
-                    />
-                    {parameter.range && (
-                      <UiSlider
-                        aria-label={`${parameter.name} slider`}
-                        min={parameter.range.min}
-                        max={parameter.range.max}
-                        step={Math.max(0.001, (parameter.range.max - parameter.range.min) / 100)}
-                        value={scalarValue}
-                        onValueChange={(next) => void commitOverride(parameter, nextOverride(next))}
+                if (parameter.editorKind === 'texture') {
+                  const textureValue = effectiveTexture(parameter);
+                  return (
+                    <div className="inspector-material-parameter" key={parameter.nodeId}>
+                      <TexturePicker
+                        allowEmpty
+                        assets={assets}
+                        label={parameter.name}
+                        thumbnailProvider={thumbnailProvider}
+                        value={textureValue}
+                        onChange={(texture, asset) =>
+                          void commitOverride(parameter, {
+                            name: parameter.name,
+                            type: parameter.type,
+                            kind: parameter.editorKind,
+                            texture,
+                            ...(asset ? { textureReference: hostAssetReference(asset) ?? undefined } : {}),
+                          })
+                        }
                       />
-                    )}
-                  </div>
-                  {reset}
-                </div>
-              );
-            }
+                      {reset}
+                    </div>
+                  );
+                }
 
-            return (
-              <div className="inspector-material-parameter" key={parameter.nodeId}>
-                <span className="inspector-property-label" title={`${parameter.name} (${parameter.type})`}>
-                  {parameter.name}
-                </span>
-                <div className="inspector-material-parameter-values">
-                  {values.map((parameterValue, index) => (
-                    <UiNumericInput
-                      ariaLabel={`${parameter.name} ${componentLabels[index]}`}
-                      key={index}
-                      precision={3}
-                      scrubClassName={`axis-${componentLabels[index].toLocaleLowerCase()}`}
-                      scrubLabel={componentLabels[index]}
-                      scrubSensitivity={0.005}
-                      step={0.01}
-                      value={parameterValue}
-                      onCommit={(next) => {
-                        const nextValues = [...values];
-                        nextValues[index] = next;
-                        void commitOverride(parameter, {
-                          name: parameter.name,
-                          type: parameter.type,
-                          kind: parameter.editorKind,
-                          value: nextValues,
-                        });
-                      }}
-                      onPreview={(next) => {
-                        const nextValues = [...values];
-                        nextValues[index] = next;
-                        updateLocalOverride(parameter, {
-                          name: parameter.name,
-                          type: parameter.type,
-                          kind: parameter.editorKind,
-                          value: nextValues,
-                        });
-                      }}
-                    />
-                  ))}
-                </div>
-                {reset}
-              </div>
-            );
-          })}
+                if (parameter.editorKind === 'color') {
+                  const rgba: Vec4 = {
+                    x: values[0] ?? 0,
+                    y: values[1] ?? 0,
+                    z: values[2] ?? 0,
+                    w: parameter.type === 'vec4' ? (values[3] ?? 1) : 1,
+                  };
+                  const colorOverride = (next: Vec4): InstanceOverride => ({
+                    name: parameter.name,
+                    type: parameter.type,
+                    kind: parameter.editorKind,
+                    value: parameter.type === 'vec4' ? [next.x, next.y, next.z, next.w] : [next.x, next.y, next.z],
+                  });
+                  return (
+                    <div className="inspector-material-parameter" key={parameter.nodeId}>
+                      <span className="inspector-property-label">{parameter.name}</span>
+                      <UiColorControl
+                        allowAlpha={parameter.type === 'vec4'}
+                        label={parameter.name}
+                        value={rgba}
+                        onPreview={(next) => updateLocalOverride(parameter, colorOverride(next))}
+                        onCommit={(next) => void commitOverride(parameter, colorOverride(next))}
+                      />
+                      {reset}
+                    </div>
+                  );
+                }
+
+                if (parameter.editorKind === 'scalar') {
+                  const nextOverride = (next: number): InstanceOverride => ({
+                    name: parameter.name,
+                    type: parameter.type,
+                    kind: parameter.editorKind,
+                    value: [clampParameterValue(next, parameter.range)],
+                  });
+                  const scalarValue = clampParameterValue(values[0] ?? 0, parameter.range);
+                  return (
+                    <div className="inspector-material-parameter" key={parameter.nodeId}>
+                      <div className="inspector-material-scalar-control">
+                        <NumberControl
+                          field={numericField(parameter.name, parameter.range)}
+                          value={scalarValue}
+                          onPreview={(next) => updateLocalOverride(parameter, nextOverride(next))}
+                          onCommit={(next) => void commitOverride(parameter, nextOverride(next))}
+                        />
+                        {parameter.range && (
+                          <UiSlider
+                            aria-label={`${parameter.name} slider`}
+                            min={parameter.range.min}
+                            max={parameter.range.max}
+                            step={Math.max(0.001, (parameter.range.max - parameter.range.min) / 100)}
+                            value={scalarValue}
+                            onValueChange={(next) => void commitOverride(parameter, nextOverride(next))}
+                          />
+                        )}
+                      </div>
+                      {reset}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="inspector-material-parameter" key={parameter.nodeId}>
+                    <span className="inspector-property-label" title={`${parameter.name} (${parameter.type})`}>
+                      {parameter.name}
+                    </span>
+                    <div className="inspector-material-parameter-values">
+                      {values.map((parameterValue, index) => (
+                        <UiNumericInput
+                          ariaLabel={`${parameter.name} ${componentLabels[index]}`}
+                          key={index}
+                          precision={3}
+                          scrubClassName={`axis-${componentLabels[index].toLocaleLowerCase()}`}
+                          scrubLabel={componentLabels[index]}
+                          scrubSensitivity={0.005}
+                          step={0.01}
+                          value={parameterValue}
+                          onCommit={(next) => {
+                            const nextValues = [...values];
+                            nextValues[index] = next;
+                            void commitOverride(parameter, {
+                              name: parameter.name,
+                              type: parameter.type,
+                              kind: parameter.editorKind,
+                              value: nextValues,
+                            });
+                          }}
+                          onPreview={(next) => {
+                            const nextValues = [...values];
+                            nextValues[index] = next;
+                            updateLocalOverride(parameter, {
+                              name: parameter.name,
+                              type: parameter.type,
+                              kind: parameter.editorKind,
+                              value: nextValues,
+                            });
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {reset}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
       {mutationError && (

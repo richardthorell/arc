@@ -133,6 +133,67 @@
   transform-origin: 0 0;
 }
 
+.material-graph-group {
+  position: absolute;
+  z-index: 0;
+  box-sizing: border-box;
+  border: 1px solid rgba(111, 145, 164, 0.28);
+  border-radius: 8px;
+  background: rgba(25, 39, 48, 0.2);
+  pointer-events: none;
+}
+
+.material-graph-group-title {
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  max-width: calc(100% - 14px);
+  padding: 3px 5px;
+  overflow: hidden;
+  color: rgba(177, 198, 209, 0.76);
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.035em;
+  text-align: left;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.material-graph-group-title:active {
+  cursor: grabbing;
+}
+
+.material-graph-group-title:disabled {
+  cursor: default;
+}
+
+.material-graph-group-resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 0 45%,
+    rgba(177, 198, 209, 0.45) 46% 53%,
+    transparent 54% 65%,
+    rgba(177, 198, 209, 0.45) 66% 73%,
+    transparent 74%
+  );
+  pointer-events: auto;
+  cursor: nwse-resize;
+}
+
 .material-graph-wires {
   position: absolute;
   inset: 0;
@@ -297,8 +358,7 @@
 }
 
 .material-node-parameter-toggle {
-  display: flex;
-  align-items: center;
+  display: grid;
   gap: 5px;
   padding-top: 5px;
   color: #77909b;
@@ -306,15 +366,20 @@
   font-size: 10px;
 }
 
-.material-node-parameter-toggle > input:last-child {
+.material-node-parameter-main,
+.material-node-parameter-metadata {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+}
+
+.material-node-parameter-metadata {
+  grid-template-columns: minmax(0, 1fr) 58px;
+}
+
+.material-node-parameter-toggle .ui-text-input {
   min-width: 0;
-  flex: 1;
-  height: 23px;
-  padding: 0 5px;
-  color: #c7d5db;
-  border: 1px solid #30434d;
-  border-radius: 3px;
-  background: #111c22;
 }
 
 .material-graph-box-selection {

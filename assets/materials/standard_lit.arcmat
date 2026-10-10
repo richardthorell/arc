@@ -12,8 +12,8 @@
         "id": "material-output",
         "type": "output",
         "position": [
-          1040,
-          760
+          1460,
+          1120
         ],
         "values": {}
       },
@@ -21,8 +21,8 @@
         "id": "base-color-source",
         "type": "functionCall",
         "position": [
-          400,
-          160
+          900,
+          -20
         ],
         "values": {
           "slotId": "base-color-source",
@@ -50,14 +50,18 @@
               "path": "material_functions/noise.arcmatfn"
             }
           ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Base Color Source"
         }
       },
       {
         "id": "metallic",
         "type": "constant",
         "position": [
-          40,
-          440
+          100,
+          330
         ],
         "values": {
           "value": 0,
@@ -66,15 +70,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Metallic"
+          "name": "Metallic",
+          "group": "surface",
+          "order": 10
         }
       },
       {
         "id": "roughness",
         "type": "constant",
         "position": [
-          40,
-          570
+          100,
+          610
         ],
         "values": {
           "value": 0.62,
@@ -83,15 +89,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Roughness"
+          "name": "Roughness",
+          "group": "surface",
+          "order": 20
         }
       },
       {
         "id": "metallic-roughness-texture",
         "type": "textureSample2D",
         "position": [
-          40,
-          700
+          420,
+          470
         ],
         "values": {
           "texture": "",
@@ -99,15 +107,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Metallic Roughness Texture"
+          "name": "Metallic Roughness Texture",
+          "group": "surface",
+          "order": 30
         }
       },
       {
         "id": "metallic-multiply",
         "type": "multiply",
         "position": [
-          400,
-          460
+          850,
+          370
         ],
         "values": {}
       },
@@ -115,8 +125,8 @@
         "id": "roughness-multiply",
         "type": "multiply",
         "position": [
-          400,
-          610
+          850,
+          650
         ],
         "values": {}
       },
@@ -124,8 +134,8 @@
         "id": "ambient-occlusion-texture",
         "type": "textureSample2D",
         "position": [
-          40,
-          860
+          420,
+          830
         ],
         "values": {
           "texture": "",
@@ -133,15 +143,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Ambient Occlusion Texture"
+          "name": "Ambient Occlusion Texture",
+          "group": "surface",
+          "order": 40
         }
       },
       {
         "id": "normal-texture",
         "type": "textureSample2D",
         "position": [
-          40,
-          1020
+          100,
+          1165
         ],
         "values": {
           "texture": "",
@@ -150,15 +162,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Normal Texture"
+          "name": "Normal Texture",
+          "group": "normal",
+          "order": 10
         }
       },
       {
         "id": "normal-map",
         "type": "normalMap",
         "position": [
-          400,
-          1020
+          850,
+          1210
         ],
         "values": {
           "strength": 1
@@ -168,8 +182,8 @@
         "id": "clear-coat",
         "type": "constant",
         "position": [
-          40,
-          1200
+          100,
+          1590
         ],
         "values": {
           "value": 0,
@@ -178,15 +192,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Clear Coat"
+          "name": "Clear Coat",
+          "group": "clear-coat",
+          "order": 10
         }
       },
       {
         "id": "clear-coat-roughness",
         "type": "constant",
         "position": [
-          40,
-          1330
+          100,
+          1880
         ],
         "values": {
           "value": 0.1,
@@ -195,15 +211,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Clear Coat Roughness"
+          "name": "Clear Coat Roughness",
+          "group": "clear-coat",
+          "order": 20
         }
       },
       {
         "id": "clear-coat-texture",
         "type": "textureSample2D",
         "position": [
-          40,
-          1460
+          420,
+          1730
         ],
         "values": {
           "texture": "",
@@ -212,15 +230,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Clear Coat Texture"
+          "name": "Clear Coat Texture",
+          "group": "clear-coat",
+          "order": 30
         }
       },
       {
         "id": "clear-coat-multiply",
         "type": "multiply",
         "position": [
-          400,
-          1210
+          850,
+          1630
         ],
         "values": {}
       },
@@ -228,8 +248,8 @@
         "id": "clear-coat-roughness-multiply",
         "type": "multiply",
         "position": [
-          400,
-          1360
+          850,
+          1920
         ],
         "values": {}
       },
@@ -237,8 +257,8 @@
         "id": "emissive-color",
         "type": "colorRgba",
         "position": [
-          40,
-          1640
+          100,
+          2370
         ],
         "values": {
           "value": [
@@ -250,15 +270,17 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Emissive Color"
+          "name": "Emissive Color",
+          "group": "emission",
+          "order": 10
         }
       },
       {
         "id": "emissive-texture",
         "type": "textureSample2D",
         "position": [
-          40,
-          1800
+          420,
+          2370
         ],
         "values": {
           "texture": "",
@@ -266,30 +288,34 @@
         },
         "parameter": {
           "exposed": true,
-          "name": "Emissive Texture"
+          "name": "Emissive Texture",
+          "group": "emission",
+          "order": 20
         }
       },
       {
         "id": "emissive-strength",
         "type": "constant",
         "position": [
-          40,
-          1960
+          420,
+          2670
         ],
         "values": {
           "value": 0
         },
         "parameter": {
           "exposed": true,
-          "name": "Emissive Strength"
+          "name": "Emissive Strength",
+          "group": "emission",
+          "order": 30
         }
       },
       {
         "id": "emissive-color-multiply",
         "type": "multiply",
         "position": [
-          400,
-          1720
+          850,
+          2410
         ],
         "values": {}
       },
@@ -297,8 +323,8 @@
         "id": "emissive-strength-multiply",
         "type": "multiply",
         "position": [
-          600,
-          1720
+          1080,
+          2410
         ],
         "values": {}
       },
@@ -306,8 +332,8 @@
         "id": "orm-unpack",
         "type": "functionCall",
         "position": [
-          385,
-          745
+          760,
+          680
         ],
         "values": {
           "slotId": "orm-unpack",
@@ -342,14 +368,18 @@
               "path": "material_functions/unpack_orm.arcmatfn"
             }
           ]
+        },
+        "parameter": {
+          "exposed": false,
+          "name": "Unpack ORM"
         }
       },
       {
         "id": "ao-channel-mask",
         "type": "functionCall",
         "position": [
-          395,
-          890
+          760,
+          860
         ],
         "values": {
           "slotId": "ao-channel-mask",
@@ -379,6 +409,10 @@
               "path": "material_functions/channel_mask.arcmatfn"
             }
           ]
+        },
+        "parameter": {
+          "exposed": false,
+          "name": "Channel Mask"
         }
       }
     ],
@@ -638,9 +672,107 @@
       }
     ],
     "viewport": {
-      "x": 24,
-      "y": 24,
-      "zoom": 0.78
-    }
+      "x": 30,
+      "y": 60,
+      "zoom": 0.55
+    },
+    "groups": [
+      {
+        "id": "base-color",
+        "name": "Base Color",
+        "nodeIds": [
+          "base-color-source"
+        ],
+        "position": [
+          830,
+          -90
+        ],
+        "size": [
+          370,
+          250
+        ],
+        "order": 10
+      },
+      {
+        "id": "surface",
+        "name": "Surface",
+        "nodeIds": [
+          "metallic",
+          "roughness",
+          "metallic-roughness-texture",
+          "metallic-multiply",
+          "roughness-multiply",
+          "ambient-occlusion-texture",
+          "orm-unpack",
+          "ao-channel-mask"
+        ],
+        "position": [
+          40,
+          260
+        ],
+        "size": [
+          1160,
+          780
+        ],
+        "order": 20
+      },
+      {
+        "id": "normal",
+        "name": "Normal",
+        "nodeIds": [
+          "normal-texture",
+          "normal-map"
+        ],
+        "position": [
+          40,
+          1120
+        ],
+        "size": [
+          1160,
+          320
+        ],
+        "order": 30
+      },
+      {
+        "id": "clear-coat",
+        "name": "Clear Coat",
+        "nodeIds": [
+          "clear-coat",
+          "clear-coat-roughness",
+          "clear-coat-texture",
+          "clear-coat-multiply",
+          "clear-coat-roughness-multiply"
+        ],
+        "position": [
+          40,
+          1520
+        ],
+        "size": [
+          1160,
+          700
+        ],
+        "order": 40
+      },
+      {
+        "id": "emission",
+        "name": "Emission",
+        "nodeIds": [
+          "emissive-color",
+          "emissive-texture",
+          "emissive-strength",
+          "emissive-color-multiply",
+          "emissive-strength-multiply"
+        ],
+        "position": [
+          40,
+          2300
+        ],
+        "size": [
+          1160,
+          700
+        ],
+        "order": 50
+      }
+    ]
   }
 }
