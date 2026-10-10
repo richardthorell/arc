@@ -306,6 +306,8 @@ struct shadow_uniform_data
     float cascade_texel_size[4]{};
     float cascade_blend_starts[4]{};
     float configuration[4]{};
+    /** x = directional angular source radius in radians; VSM/conventional filters share this contract. */
+    float source_shape[4]{};
 };
 
 struct alignas(16) forward_scene_uniform_data
