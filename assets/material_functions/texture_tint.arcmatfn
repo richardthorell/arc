@@ -1,0 +1,151 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Texture Tint",
+  "description": "Sample a 2D texture at supplied UVs and multiply RGB by an authorable tint.",
+  "inputs": [
+    {
+      "id": "uv",
+      "name": "UV",
+      "type": "vec2"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "color",
+      "name": "Color",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "uv-input",
+        "type": "functionInput",
+        "position": [
+          40,
+          320
+        ],
+        "values": {
+          "input": "uv",
+          "name": "UV",
+          "valueType": "vec2"
+        }
+      },
+      {
+        "id": "texture",
+        "type": "textureSample2D",
+        "position": [
+          300,
+          290
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Texture"
+        }
+      },
+      {
+        "id": "tint",
+        "type": "colorRgba",
+        "position": [
+          300,
+          80
+        ],
+        "values": {
+          "value": [
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Tint"
+        }
+      },
+      {
+        "id": "tinted",
+        "type": "multiply",
+        "position": [
+          610,
+          190
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          870,
+          190
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "uv",
+        "from": {
+          "nodeId": "uv-input",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "sample",
+        "from": {
+          "nodeId": "texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "tinted",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "tint",
+        "from": {
+          "nodeId": "tint",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "tinted",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "tinted",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "color"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.85
+    }
+  }
+}
