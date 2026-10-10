@@ -270,11 +270,20 @@ TEST_CASE("asset manager scans persists moves and loads source generations")
     REQUIRE(fixture.manager.find(material->guid)->state == asset_state::ready);
     REQUIRE_FALSE(fixture.manager.find(material->guid)->artifacts.empty());
 
+    const asset_reference reference_before_move{
+        material->guid, asset_types::material, "assets/materials/stone.arcmat"};
     const auto moved = fixture.manager.move(material->guid, "assets/materials/renamed.arcmat");
     REQUIRE(moved.succeeded());
     REQUIRE(std::filesystem::exists(project.assets / "materials/renamed.arcmat"));
     REQUIRE(std::filesystem::exists(project.assets / "materials/renamed.arcmat.arcmeta"));
     REQUIRE(fixture.manager.find("assets/materials/renamed.arcmat")->guid == material->guid);
+
+    // Persisted GUID references survive source moves even when their human-readable
+    // path hint still names the previous location.
+    const auto resolved_after_move = fixture.manager.find(reference_before_move);
+    REQUIRE(resolved_after_move);
+    CHECK(resolved_after_move->guid == material->guid);
+    CHECK(resolved_after_move->source_path == "assets/materials/renamed.arcmat");
 }
 
 TEST_CASE("asset references resolve by GUID without redirecting through stale path hints")
