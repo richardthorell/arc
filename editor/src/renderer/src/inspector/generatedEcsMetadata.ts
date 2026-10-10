@@ -773,7 +773,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.directional_light_component",
     "displayName": "Directional Light",
     "description": "Reflected scene data for the Directional Light component.",
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "fields": []
   },
   {
@@ -781,7 +781,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.point_light_component",
     "displayName": "Point Light",
     "description": "Reflected scene data for the Point Light component.",
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "fields": []
   },
   {
@@ -789,7 +789,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.spot_light_component",
     "displayName": "Spot Light",
     "description": "Reflected scene data for the Spot Light component.",
-    "schemaVersion": 4,
+    "schemaVersion": 5,
     "fields": []
   },
   {
