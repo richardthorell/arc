@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace arc::render
@@ -41,6 +42,34 @@ enum class area_light_shape : std::uint8_t
     rectangle,
     disk
 };
+
+/**
+ * @brief Normalized LM-63 photometric distribution used by runtime and editor previews.
+ *
+ * Values are stored horizontal-major: horizontal angle index first, then vertical angle.
+ * normalized_candela has a maximum of 1 for non-empty valid profiles. The original peak
+ * candela and declared lamp lumens are retained so authoring/runtime can apply the same
+ * photometric normalization policy without baking exposure into the profile.
+ */
+struct photometric_profile
+{
+    std::vector<float> vertical_angles_degrees;
+    std::vector<float> horizontal_angles_degrees;
+    std::vector<float> normalized_candela;
+    float peak_candela{1.0f};
+    float declared_lumens{};
+    std::uint32_t photometric_type{1u};
+};
+
+/** @brief Parse an LM-63 IES document. v1 supports TILT=NONE and photometric types C/B/A. */
+[[nodiscard]] bool parse_ies_profile(std::string_view source, photometric_profile& out, std::string& error);
+
+/**
+ * @brief Sample a normalized IES profile using photometric vertical/horizontal angles in radians.
+ * Returns 1 for an empty/unassigned profile so light assignment remains behavior-preserving.
+ */
+[[nodiscard]] float sample_photometric_profile(const photometric_profile& profile, float vertical_angle_radians,
+                                               float horizontal_angle_radians) noexcept;
 
 enum class environment_generation_state : std::uint8_t
 {
