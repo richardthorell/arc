@@ -116,7 +116,8 @@ float arc_point_shadow_visibility(point_light_data light, vec3 world_position)
     if (first_face < 0 || light.shadow_parameters.y < 5.5)
         return 1.0;
     uint face = arc_point_shadow_face(world_position - light.position_range.xyz);
-    float filter_scale = 1.0 + 12.0 * max(light.source_shape.x, 0.0) / max(light.position_range.w, 1.0e-4);
+    float effective_source_radius = max(max(light.source_shape.x, 0.0), 0.5 * max(light.source_shape.y, 0.0));
+    float filter_scale = 1.0 + 12.0 * effective_source_radius / max(light.position_range.w, 1.0e-4);
     float sampled = arc_sample_local_shadow_face(uint(first_face) + face, world_position, filter_scale);
     return mix(1.0, sampled, clamp(light.shadow_parameters.z, 0.0, 1.0));
 }
@@ -191,8 +192,10 @@ vec3 arc_evaluate_scene_lights(
         float cutoff = 1.0 - pow(normalized_range, 4.0);
         vec3 radiance = lights.point_lights[index].color_intensity.rgb *
             lights.point_lights[index].color_intensity.w * cutoff * cutoff / distance_squared;
-        float source_angle =
-            arc_source_angular_radius(max(lights.point_lights[index].source_shape.x, 0.0), distance_to_light);
+        float source_radius = max(
+            max(lights.point_lights[index].source_shape.x, 0.0),
+            0.5 * max(lights.point_lights[index].source_shape.y, 0.0));
+        float source_angle = arc_source_angular_radius(source_radius, distance_to_light);
         direct += arc_evaluate_surface_light(
             arc_surface_for_extended_source(surface, source_angle),
             view_direction,
@@ -215,8 +218,10 @@ vec3 arc_evaluate_scene_lights(
             dot(-direction_to_light, normalize(lights.spot_lights[index].direction_inner_angle.xyz)));
         vec3 radiance = lights.spot_lights[index].color_intensity.rgb *
             lights.spot_lights[index].color_intensity.w * cutoff * cutoff * cone / distance_squared;
-        float source_angle =
-            arc_source_angular_radius(max(lights.spot_lights[index].source_shape.x, 0.0), distance_to_light);
+        float source_radius = max(
+            max(lights.spot_lights[index].source_shape.x, 0.0),
+            0.5 * max(lights.spot_lights[index].source_shape.y, 0.0));
+        float source_angle = arc_source_angular_radius(source_radius, distance_to_light);
         direct += arc_evaluate_surface_light(
             arc_surface_for_extended_source(surface, source_angle),
             view_direction,
