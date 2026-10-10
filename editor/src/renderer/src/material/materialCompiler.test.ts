@@ -157,6 +157,19 @@ describe('native material compiler editor adapter', () => {
     );
   });
 
+  it('projects parameter groups without treating presentation metadata as shader state', () => {
+    const before = createDefaultMaterialGraph();
+    const after = structuredClone(before);
+    const roughness = after.nodes.find((node) => node.parameter?.name === 'Roughness')!;
+    roughness.parameter = { ...roughness.parameter!, group: 'surface', order: 20 };
+    after.groups = [{ id: 'surface', name: 'Surface', nodeIds: [roughness.id], order: 10 }];
+
+    expect(materialEditorParameters(after)).toContainEqual(
+      expect.objectContaining({ name: 'Roughness', group: 'surface', order: 20 }),
+    );
+    expect(materialGraphEditImpact(before, after)).toBe('none');
+  });
+
   it('classifies value-only edits to existing exposed parameters without requiring a shader rebuild', () => {
     const before = createDefaultMaterialGraph();
     const after = structuredClone(before);

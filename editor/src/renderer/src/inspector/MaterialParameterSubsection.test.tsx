@@ -130,6 +130,58 @@ describe('MaterialPicker exported parameters', () => {
     expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
   });
 
+  it('groups exposed parameters using material graph group metadata', async () => {
+    readText.mockResolvedValue({
+      text: JSON.stringify({
+        version: 4,
+        name: 'Grouped',
+        graph: {
+          version: 1,
+          groups: [
+            { id: 'surface', name: 'Surface', nodeIds: ['roughness'], order: 10 },
+            { id: 'emission', name: 'Emission', nodeIds: ['emissive'], order: 20 },
+          ],
+          nodes: [
+            {
+              id: 'roughness',
+              type: 'constant',
+              position: [0, 0],
+              values: { value: 0.5, min: 0, max: 1 },
+              parameter: { exposed: true, name: 'Roughness', group: 'surface', order: 10 },
+            },
+            {
+              id: 'emissive',
+              type: 'colorRgba',
+              position: [0, 200],
+              values: { value: [1, 1, 1, 1] },
+              parameter: { exposed: true, name: 'Emissive Color', group: 'emission', order: 10 },
+            },
+            { id: 'material-output', type: 'output', position: [400, 0], values: {} },
+          ],
+          connections: [
+            {
+              id: 'roughness-out',
+              from: { nodeId: 'roughness', pin: 'value' },
+              to: { nodeId: 'material-output', pin: 'roughness' },
+            },
+            {
+              id: 'emissive-out',
+              from: { nodeId: 'emissive', pin: 'rgb' },
+              to: { nodeId: 'material-output', pin: 'emissive' },
+            },
+          ],
+        },
+      }),
+    });
+
+    render(<MaterialPicker assets={[material]} label="Material" value={material.path} onChange={() => undefined} />);
+
+    expect(await screen.findByText('Surface')).toBeVisible();
+    expect(screen.getByText('Emission')).toBeVisible();
+    expect(screen.getByLabelText('Roughness')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open Emissive Color color picker' })).toBeVisible();
+  });
+
   it('shows authored Function Call choices and swaps function-specific parameters', async () => {
     const defaultFunction = {
       id: 'default-base-color',

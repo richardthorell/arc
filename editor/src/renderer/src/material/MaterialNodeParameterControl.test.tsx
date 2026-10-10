@@ -31,6 +31,30 @@ describe('MaterialNodeParameterControl', () => {
     expect(onEnabledChange).toHaveBeenCalledWith(true);
   });
 
+  it('authors parameter group and order metadata', () => {
+    const onGroupChange = vi.fn();
+    const onOrderChange = vi.fn();
+
+    render(
+      <MaterialNodeParameterControl
+        enabled
+        group="surface"
+        name="Roughness"
+        order={20}
+        onEnabledChange={vi.fn()}
+        onGroupChange={onGroupChange}
+        onNameChange={vi.fn()}
+        onOrderChange={onOrderChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Parameter group' }), { target: { value: 'coat' } });
+    expect(onGroupChange).toHaveBeenCalledWith('coat');
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Parameter order' }), { target: { value: '30' } });
+    expect(onOrderChange).toHaveBeenCalledWith(30);
+  });
+
   it('keeps the parameter name editable only while exposed', () => {
     const onNameChange = vi.fn();
 

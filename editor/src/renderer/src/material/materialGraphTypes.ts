@@ -76,6 +76,21 @@ export type MaterialGraphPosition = [number, number];
 export type MaterialGraphParameter = {
   exposed: boolean;
   name: string;
+  /** Optional graph/inspector section shared by related parameters. */
+  group?: string;
+  /** Stable ordering within the parameter group. Lower values render first. */
+  order?: number;
+};
+
+export type MaterialGraphGroup = {
+  id: string;
+  name: string;
+  /** Nodes contained by this semantic group. The editor derives the frame bounds from them. */
+  nodeIds?: string[];
+  /** Optional freeform comment-frame bounds when the group does not own nodes. */
+  position?: MaterialGraphPosition;
+  size?: MaterialGraphPosition;
+  order?: number;
 };
 
 export type MaterialGraphNode = {
@@ -107,6 +122,8 @@ export type MaterialGraph = {
   version: 1;
   nodes: MaterialGraphNode[];
   connections: MaterialGraphConnection[];
+  /** Authoring-only comment/group frames. Excluded from shader compilation fingerprints. */
+  groups?: MaterialGraphGroup[];
   viewport?: MaterialGraphViewport;
 };
 
@@ -658,7 +675,7 @@ export const materialGraphCompileFingerprint = (graph: MaterialGraph): string =>
       id: node.id,
       type: node.type,
       values: node.values,
-      parameter: node.parameter,
+      parameter: node.parameter ? { exposed: node.parameter.exposed, name: node.parameter.name } : undefined,
     })),
     connections: graph.connections,
   });
@@ -961,7 +978,28 @@ export const isMaterialGraph = (value: unknown): value is MaterialGraph => {
       const scalar = node.values?.value;
       return typeof scalar === 'number' && Number.isFinite(scalar) && scalar >= min && scalar <= max;
     }) &&
-    Array.isArray(graph.connections)
+    Array.isArray(graph.connections) &&
+    (graph.groups === undefined ||
+      (Array.isArray(graph.groups) &&
+        graph.groups.every(
+          (group) =>
+            Boolean(group) &&
+            typeof group.id === 'string' &&
+            Boolean(group.id.trim()) &&
+            typeof group.name === 'string' &&
+            ((Array.isArray(group.nodeIds) &&
+              group.nodeIds.length > 0 &&
+              group.nodeIds.every((nodeId) => typeof nodeId === 'string' && Boolean(nodeId.trim()))) ||
+              (Array.isArray(group.position) &&
+                group.position.length === 2 &&
+                group.position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate)) &&
+                Array.isArray(group.size) &&
+                group.size.length === 2 &&
+                group.size.every(
+                  (coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate) && coordinate > 0,
+                ))) &&
+            (group.order === undefined || (typeof group.order === 'number' && Number.isFinite(group.order))),
+        )))
   );
 };
 
