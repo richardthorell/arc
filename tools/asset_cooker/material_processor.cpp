@@ -421,8 +421,12 @@ public:
 
     std::string toolchain_fingerprint() const override
     {
-        return "arc.material-instance-cooker/1;arc-material-instance/1;arc-material-package/4;"
-               "arc-material-function/1;arc-material-pass-codegen/2;" +
+        return "arc.material-instance-cooker/" + std::to_string(descriptor_.version) + ";arc-material-instance/" +
+               std::to_string(render::tools::material_instance_package_version) + ";arc-material-package/" +
+               std::to_string(render::tools::material_package_version) + ";arc-material-function/" +
+               std::to_string(render::tools::material_function_version) + ";arc-material-pass-contract/" +
+               std::to_string(render::material_pass_contract_version) + ";arc-material-pass-codegen/" +
+               std::to_string(render::tools::material_pass_codegen_version) + ";" +
                std::string(compiler_.fingerprint());
     }
 
@@ -490,14 +494,15 @@ public:
         render::material_compiled_program program;
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
-        for (const auto pass : material_passes)
+        for (const auto [pass, virtual_shadows] : material_passes)
         {
             if (!render::material_supports_pass(pass_material, pass)) continue;
 
-            auto generated = render::tools::generate_material_pass_slang(evaluator.value(), pass_material, pass);
+            auto generated = render::tools::generate_material_pass_slang(evaluator.value(), pass_material, pass, 0,
+                                                                         false, virtual_shadows);
             if (!generated) return failure(context, generated.error().message);
 
-            const std::string pass_label{pass_name(pass)};
+            const std::string pass_label = std::string{pass_name(pass)} + (virtual_shadows ? ".vsm" : "");
             render::shader_compile_request request{
                 .source_path = context.source.source_path.string() + "." + pass_label + ".generated.slang",
                 .source_override = generated.value().source,

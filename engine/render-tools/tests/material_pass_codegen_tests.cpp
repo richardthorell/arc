@@ -87,6 +87,17 @@ void require_compiles(arc::render::tools::slang_shader_compiler& compiler,
                                                         "arcVirtualShadowPages",        "arcVirtualShadowStaticAtlas",
                                                         "arcVirtualShadowDynamicAtlas", "arcVirtualShadowSampler"};
         const auto& resources = result.value().reflection.resources;
+        if (!generated.virtual_shadow_sampling)
+        {
+            CHECK(std::ranges::none_of(resources, [](const auto& resource)
+                                       { return resource.set == 2u && resource.binding >= 10u; }));
+            CHECK(std::ranges::count_if(resources,
+                                        [](const auto& resource) {
+                                            return resource.set == 2u &&
+                                                   resource.kind ==
+                                                       arc::render::shader_resource_kind::structured_buffer;
+                                        }) <= 2);
+        }
         for (std::uint32_t index = 0; index < names.size(); ++index)
         {
             const auto found =
