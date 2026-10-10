@@ -267,7 +267,9 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     const bool supports_v3 = name == "Terrain" || name == "Water" || name == "Camera" || name == "MeshRenderer" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
-    const bool supports_v4 = name == "MeshRenderer" || name == "Terrain" || name == "Water";
+    const bool supports_v4 = name == "MeshRenderer" || name == "Terrain" || name == "Water" ||
+                             name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
+                             name == "AreaLight";
     const bool supports_v5 = name == "MeshRenderer";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
         !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u) &&
@@ -627,6 +629,17 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
               shadow["mapMethod"].get<int>() > 2)))
             return fail("has invalid shadow settings");
     }
+    if (component_version >= 4u)
+    {
+        if (name == "DirectionalLight" &&
+            (!finite_number(value, "sourceAngle") || value["sourceAngle"].get<double>() < 0.0 ||
+             value["sourceAngle"].get<double>() > math::to_radians(45.0)))
+            return fail("has an invalid source angle");
+        if ((name == "PointLight" || name == "SpotLight") &&
+            (!finite_number(value, "sourceRadius") || value["sourceRadius"].get<double>() < 0.0 ||
+             !finite_number(value, "sourceLength") || value["sourceLength"].get<double>() < 0.0))
+            return fail("has invalid physical source dimensions");
+    }
     if (name == "DirectionalLight" && value.contains("cascades"))
     {
         const auto& cascades = value["cascades"];
@@ -909,7 +922,7 @@ json serialize_light_common(const math::vector3f& color, float intensity, bool s
                             bool use_temperature, float temperature, render::light_intensity_unit unit,
                             const render::shadow_settings& shadow)
 {
-    return {{"version", 3},
+    return {{"version", 4},
             {"color", vector3(color)},
             {"intensity", intensity},
             {"castsShadows", shadows},
@@ -1054,6 +1067,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
             serialize_light_common(component->color, component->intensity, component->casts_shadows, component->enabled,
                                    component->use_color_temperature, component->temperature_kelvin,
                                    component->intensity_unit, component->shadow);
+        components["DirectionalLight"]["sourceAngle"] = component->source_angle;
         components["DirectionalLight"]["cascades"] = {{"count", component->cascades.cascade_count},
                                                       {"maximumDistance", component->cascades.maximum_distance},
                                                       {"splitLambda", component->cascades.split_lambda},
@@ -1067,6 +1081,8 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                    component->use_color_temperature, component->temperature_kelvin,
                                    component->intensity_unit, component->shadow);
         components["PointLight"]["range"] = component->range;
+        components["PointLight"]["sourceRadius"] = component->source_radius;
+        components["PointLight"]["sourceLength"] = component->source_length;
     }
     if (const auto* component = state.scene.try_get<scene::spot_light_component>(value))
     {
@@ -1077,6 +1093,8 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
         components["SpotLight"]["range"] = component->range;
         components["SpotLight"]["innerAngle"] = component->inner_angle;
         components["SpotLight"]["outerAngle"] = component->outer_angle;
+        components["SpotLight"]["sourceRadius"] = component->source_radius;
+        components["SpotLight"]["sourceLength"] = component->source_length;
     }
     if (const auto* component = state.scene.try_get<scene::area_light_component>(value))
     {
@@ -1767,6 +1785,7 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     light.intensity_unit = render::light_intensity_unit::lux;
                 }
                 loaded.scene.emplace<scene::directional_light_component>(entity, light);
+                light.source_angle = components["DirectionalLight"].value("sourceAngle", light.source_angle);
                 if (const auto found = components["DirectionalLight"].find("cascades");
                     found != components["DirectionalLight"].end())
                 {
@@ -1793,6 +1812,8 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     light.intensity_unit = render::light_intensity_unit::lumen;
                 }
                 light.range = components["PointLight"].value("range", light.range);
+                light.source_radius = components["PointLight"].value("sourceRadius", light.source_radius);
+                light.source_length = components["PointLight"].value("sourceLength", light.source_length);
                 loaded.scene.emplace<scene::point_light_component>(entity, light);
             }
             if (components.contains("SpotLight"))
@@ -1810,6 +1831,8 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 light.range = components["SpotLight"].value("range", light.range);
                 light.inner_angle = components["SpotLight"].value("innerAngle", light.inner_angle);
                 light.outer_angle = components["SpotLight"].value("outerAngle", light.outer_angle);
+                light.source_radius = components["SpotLight"].value("sourceRadius", light.source_radius);
+                light.source_length = components["SpotLight"].value("sourceLength", light.source_length);
                 loaded.scene.emplace<scene::spot_light_component>(entity, light);
             }
             if (components.contains("AreaLight"))
