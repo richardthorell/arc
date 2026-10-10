@@ -255,6 +255,7 @@ describe('MaterialPicker exported parameters', () => {
 
     const selector = await screen.findByRole('combobox', { name: 'Base Color Source function' });
     expect(selector).toHaveTextContent('Color');
+    expect(screen.queryByRole('combobox', { name: 'Fixed Utility function' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose Base Color Texture asset' })).toBeVisible();
 
