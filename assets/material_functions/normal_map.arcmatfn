@@ -1,0 +1,95 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Normal Map",
+  "description": "Convert sampled tangent-space normal RGB into a world-space surface normal using the native normalMap node and mesh tangent basis.",
+  "inputs": [
+    {
+      "id": "rgb",
+      "name": "Normal RGB",
+      "type": "vec3"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "normal",
+      "name": "World Normal",
+      "type": "vec3"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-rgb",
+        "type": "functionInput",
+        "position": [
+          40,
+          200
+        ],
+        "values": {
+          "input": "rgb",
+          "name": "Normal RGB",
+          "valueType": "vec3"
+        }
+      },
+      {
+        "id": "normal-map",
+        "type": "normalMap",
+        "position": [
+          420,
+          200
+        ],
+        "values": {
+          "strength": 1
+        }
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          950,
+          220
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "normal",
+              "name": "World Normal",
+              "type": "vec3"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "rgb",
+        "from": {
+          "nodeId": "input-rgb",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "normal-map",
+          "pin": "texture"
+        }
+      },
+      {
+        "id": "normal",
+        "from": {
+          "nodeId": "normal-map",
+          "pin": "normal"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "normal"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 25,
+      "y": 25,
+      "zoom": 0.9
+    }
+  }
+}

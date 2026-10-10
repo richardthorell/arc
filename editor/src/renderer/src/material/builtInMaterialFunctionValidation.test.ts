@@ -27,6 +27,8 @@ describe('built-in Material Functions', () => {
       'default_base_color.arcmatfn',
       'gradient.arcmatfn',
       'noise.arcmatfn',
+      'normal_blend.arcmatfn',
+      'normal_map.arcmatfn',
       'texture_tint.arcmatfn',
       'tint_rgb.arcmatfn',
       'unpack_orm.arcmatfn',
@@ -47,6 +49,8 @@ describe('built-in Material Functions', () => {
         { id: 'metallic', name: 'Metallic', type: 'float' },
       ],
       uv_transform: [{ id: 'uv', name: 'UV', type: 'vec2' }],
+      normal_blend: [{ id: 'normal', name: 'World Normal', type: 'vec3' }],
+      normal_map: [{ id: 'normal', name: 'World Normal', type: 'vec3' }],
     };
     const key = file.replace('.arcmatfn', '');
     expect(asset.outputs).toEqual(expectedOutputs[key] ?? [{ id: 'color', name: 'Color', type: 'vec3' }]);
