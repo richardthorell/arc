@@ -3324,9 +3324,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!state_->preview_stopped) return fail("Flow sources can only be staged before Play starts");
                 const auto guid = assets::parse_asset_guid(payload.guid);
                 if (!guid) return fail("Flow source GUID is malformed");
-                const auto asset = state_->asset_registry ? state_->asset_registry->find(*guid) : std::nullopt;
-                if (!asset || asset->type != assets::asset_types::flow_graph)
-                    return fail("Flow source GUID is not a registered Flow asset");
+                const auto asset =
+                    state_->asset_registry
+                        ? state_->asset_registry->database().query(*guid, assets::asset_types::flow_graph)
+                        : std::nullopt;
+                if (!asset) return fail("Flow source GUID is not a registered Flow asset");
                 if (payload.source.size() > maximum_flow_source_bytes)
                     return fail("Flow source exceeds the 8 MiB Play override limit");
                 std::size_t batch_bytes = payload.source.size();
@@ -5497,9 +5499,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (field->kind == project::game_field_kind_v1::asset_reference && !reference.empty())
                 {
                     const auto referenced_guid = assets::parse_asset_guid(reference);
-                    const auto referenced_asset = referenced_guid && state_->asset_registry
-                                                      ? state_->asset_registry->find(*referenced_guid)
-                                                      : std::nullopt;
+                    const auto referenced_asset =
+                        referenced_guid && state_->asset_registry
+                            ? state_->asset_registry->database().query(*referenced_guid)
+                            : std::nullopt;
                     if (!referenced_guid || !referenced_asset)
                         return fail("Project asset reference does not resolve in the selected project");
                     if (!field->asset_type_restriction.empty())
