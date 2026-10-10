@@ -381,7 +381,8 @@ export function MaterialParameterSubsection({
                   return typeof path === 'string' && path.trim() ? [path] : [];
                 })
               : [];
-          const selectableCall = node.type === 'functionCall' && authoredReferences.length > 0;
+          // A single referenced function is a fixed graph dependency, not a choice.
+          const selectableCall = node.type === 'functionCall' && authoredReferences.length > 1;
           if (node.type !== 'functionSlot' && !selectableCall) return [];
           const id = typeof node.values.slotId === 'string' ? node.values.slotId.trim() : '';
           const name =
