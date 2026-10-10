@@ -91,6 +91,65 @@ TEST_CASE("asset database queries logical authoring records by GUID")
     CHECK_FALSE(fixture.manager.database().query(source->guid, asset_types::texture_2d));
 }
 
+TEST_CASE("asset database classifies built-in authoring providers")
+{
+    using namespace arc::assets;
+    temporary_database_project project;
+    const auto builtin_root = project.root / "builtin";
+    std::filesystem::create_directories(builtin_root / "materials");
+    const auto source_path = builtin_root / "materials" / "builtin.arcmat";
+    {
+        std::ofstream output(source_path, std::ios::binary | std::ios::trunc);
+        output << R"({"version":4,"name":"Builtin"})";
+    }
+    const auto builtin_guid = generate_asset_guid();
+    REQUIRE(save_asset_metadata(metadata_path_for(source_path),
+                                {.guid = builtin_guid,
+                                 .type = asset_types::material,
+                                 .importer = importer_ids::material}));
+
+    arc::memory::memory_system memory;
+    arc::jobs::job_system jobs(
+        {.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory});
+    arc::io::async_file_service files(jobs);
+    asset_manager manager({.project_root = project.root,
+                           .asset_root = project.assets,
+                           .read_only_source_roots = {builtin_root},
+                           .cache_root = project.root / ".arc" / "cache",
+                           .enable_source_monitor = false},
+                          jobs, files, memory);
+    arc::framework::runtime_service_registry services;
+    arc::framework::runtime_service_context context(services);
+    manager.on_start(context);
+
+    const auto record = manager.database().query(builtin_guid, asset_types::material);
+    REQUIRE(record);
+    REQUIRE(record->providers.size() == 1);
+    CHECK(record->providers.front().kind == asset_provider_kind::builtin_source);
+    CHECK(record->providers.front().read_only);
+    CHECK(record->active_provider == "arc.builtin.source");
+
+    manager.on_shutdown(context);
+}
+
+TEST_CASE("asset database classifies virtual built-in providers")
+{
+    using namespace arc::assets;
+    temporary_database_project project;
+    database_fixture fixture(project);
+    const auto guid = generate_asset_guid();
+    auto payload = asset_payload::make(
+        asset_types::binary_blob, std::make_shared<const source_asset_data>(source_asset_data{}));
+    REQUIRE(fixture.manager.register_virtual_asset(guid, asset_types::binary_blob, std::move(payload), "test"));
+
+    const auto record = fixture.manager.database().query(guid, asset_types::binary_blob);
+    REQUIRE(record);
+    REQUIRE(record->providers.size() == 1);
+    CHECK(record->providers.front().kind == asset_provider_kind::virtual_builtin);
+    CHECK(record->providers.front().read_only);
+    CHECK(record->active_provider == "arc.builtin.virtual");
+}
+
 TEST_CASE("asset database reference queries never recover identity from path hints")
 {
     using namespace arc::assets;
