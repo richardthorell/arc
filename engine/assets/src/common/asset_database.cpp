@@ -87,7 +87,7 @@ std::vector<asset_guid> asset_manager_database::reverse_dependencies(asset_guid 
     return manager_ ? manager_->reverse_dependencies(guid) : std::vector<asset_guid>{};
 }
 
-std::uint64_t asset_manager_database::revision() const noexcept
+std::uint64_t asset_manager_database::revision() const
 {
     return manager_ ? manager_->snapshot().revision : 0;
 }
