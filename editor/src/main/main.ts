@@ -838,7 +838,8 @@ const saveSceneWithDialog = async (target: BrowserWindow, activeScenePath = ''):
 const requestWindowCloseChoice = (target: BrowserWindow, sceneName: string): Promise<'save' | 'discard' | 'cancel'> =>
   new Promise((resolve) => {
     closeChoiceResolve = resolve;
-    if (!sendToRenderer(target, 'nativeWindow:closeRequested', { sceneName: sceneName || 'Untitled' })) resolve('cancel');
+    if (!sendToRenderer(target, 'nativeWindow:closeRequested', { sceneName: sceneName || 'Untitled' }))
+      resolve('cancel');
   });
 
 const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
