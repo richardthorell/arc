@@ -435,6 +435,9 @@ struct host_light_snapshot
     host_vec3 color{1.0f, 1.0f, 1.0f};
     float intensity{1000.0f};
     float range{10.0f};
+    float source_angle_degrees{};
+    float source_radius{};
+    float source_length{};
     float inner_angle_degrees{20.0f};
     float outer_angle_degrees{40.0f};
     float width{1.0f};

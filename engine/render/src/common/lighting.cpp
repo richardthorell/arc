@@ -177,7 +177,8 @@ scene_lighting_data pack_scene_lighting(const std::vector<directional_light_even
         const auto& light = sorted_directional[index];
         data.directional_lights[index] = {
             .direction_intensity = {light.direction[0], light.direction[1], light.direction[2], light.intensity},
-            .color_flags = {light.color[0], light.color[1], light.color[2], light.casts_shadows ? 1.0f : 0.0f}};
+            .color_flags = {light.color[0], light.color[1], light.color[2], light.casts_shadows ? 1.0f : 0.0f},
+            .source_shape = {std::max(light.source_angle, 0.0f), 0.0f, 0.0f, 0.0f}};
     }
 
     for (std::uint32_t index = 0; index < data.point_count; ++index)
@@ -189,7 +190,8 @@ scene_lighting_data pack_scene_lighting(const std::vector<directional_light_even
                                 light_intensity_scale(light.intensity_unit, light.intensity, light.range)},
             .object_id_shadow = {static_cast<float>(light.object_id.index),
                                  static_cast<float>(light.object_id.generation), -1.0f, 0.0f},
-            .shadow_parameters = {-1.0f, 0.0f, 0.0f, 0.0f}};
+            .shadow_parameters = {-1.0f, 0.0f, 0.0f, 0.0f},
+            .source_shape = {std::max(light.source_radius, 0.0f), std::max(light.source_length, 0.0f), 0.0f, 0.0f}};
     }
 
     for (std::uint32_t index = 0; index < data.spot_count; ++index)
@@ -206,7 +208,8 @@ scene_lighting_data pack_scene_lighting(const std::vector<directional_light_even
             .params = {light.outer_angle, light.casts_shadows ? 1.0f : 0.0f, 0.0f, 0.0f},
             .object_id_shadow = {static_cast<float>(light.object_id.index),
                                  static_cast<float>(light.object_id.generation), -1.0f, 0.0f},
-            .shadow_parameters = {-1.0f, 0.0f, 0.0f, 0.0f}};
+            .shadow_parameters = {-1.0f, 0.0f, 0.0f, 0.0f},
+            .source_shape = {std::max(light.source_radius, 0.0f), std::max(light.source_length, 0.0f), 0.0f, 0.0f}};
     }
 
     for (std::uint32_t index = 0; index < data.area_count; ++index)

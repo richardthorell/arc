@@ -24,6 +24,7 @@ layout(set = ARC_SHADOW_SET, binding = ARC_SHADOW_DATA_BINDING) uniform arc_shad
     vec4 cascade_texel_size;
     vec4 cascade_blend_starts;
     vec4 configuration;
+    vec4 source_shape;
 } arc_shadows;
 
 int arc_shadow_cascade(float camera_distance)
@@ -62,7 +63,11 @@ float arc_sample_shadow_cascade(
     }
 
     int radius = filter_mode >= 2 ? 2 : 1;
-    vec2 texel = vec2(1.0 / float(textureSize(arc_directional_shadow_map, 0).x));
+    // Conventional CSM approximates a finite directional emitter by widening
+    // its PCF footprint. source_shape.x is the shared angular-radius contract
+    // consumed by both conventional shadows and future VSM filtering.
+    float source_scale = 1.0 + clamp(0.5 * arc_shadows.source_shape.x, 0.0, 0.25) * 48.0;
+    vec2 texel = vec2(1.0 / float(textureSize(arc_directional_shadow_map, 0).x)) * source_scale;
     float visibility = 0.0;
     float sample_count = 0.0;
     for (int y = -radius; y <= radius; ++y)

@@ -438,6 +438,8 @@ bool light_value(std::string_view json, std::string_view key, host_light_snapsho
     std::uint32_t cache_mode = out.shadow_cache_mode;
     std::uint32_t map_method = out.shadow_map_method;
     const bool valid =
+        optional_number("sourceAngleDegrees", out.source_angle_degrees) &&
+        optional_number("sourceRadius", out.source_radius) && optional_number("sourceLength", out.source_length) &&
         optional_number("shadowResolution", out.shadow_resolution) &&
         optional_number("shadowPriority", out.shadow_priority) &&
         optional_number("shadowStrength", out.shadow_strength) && optional_number("shadowBias", out.shadow_bias) &&
@@ -1450,6 +1452,8 @@ std::string to_json(const host_light_snapshot& light)
     std::ostringstream stream;
     stream << "{\"kind\":" << quote(kind) << ",\"unit\":" << quote(unit) << ",\"color\":" << vec3_json(light.color)
            << ",\"intensity\":" << light.intensity << ",\"range\":" << light.range
+           << ",\"sourceAngleDegrees\":" << light.source_angle_degrees
+           << ",\"sourceRadius\":" << light.source_radius << ",\"sourceLength\":" << light.source_length
            << ",\"innerAngleDegrees\":" << light.inner_angle_degrees
            << ",\"outerAngleDegrees\":" << light.outer_angle_degrees << ",\"width\":" << light.width
            << ",\"height\":" << light.height << ",\"twoSided\":" << bool_json(light.two_sided)

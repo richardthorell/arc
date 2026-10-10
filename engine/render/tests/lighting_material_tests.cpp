@@ -28,7 +28,8 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
         directional.push_back({.direction = {0.0f, -1.0f, 0.0f},
                                .color = {1.0f, 1.0f, 1.0f},
                                .intensity = static_cast<float>(index + 1),
-                               .label = "sun"});
+                               .label = "sun",
+                               .source_angle = 0.00465f});
     }
 
     std::vector<arc::render::point_light_event> points{
@@ -37,7 +38,9 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
          .color = {1.0f, 0.5f, 0.25f},
          .intensity = 80.0f,
          .range = 4.0f,
-         .intensity_unit = arc::render::light_intensity_unit::lumen},
+         .intensity_unit = arc::render::light_intensity_unit::lumen,
+         .source_radius = 0.2f,
+         .source_length = 0.5f},
         {.position = {0.0f, 0.0f, 0.0f}, .color = {1.0f, 1.0f, 1.0f}, .intensity = 2.0f, .range = 8.0f}};
     std::vector<arc::render::spot_light_event> spots{{.position = {0.0f, 1.0f, 0.0f},
                                                       .direction = {0.0f, -1.0f, 0.0f},
@@ -45,7 +48,9 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
                                                       .intensity = 3.0f,
                                                       .range = 10.0f,
                                                       .inner_angle = 0.2f,
-                                                      .outer_angle = 0.7f}};
+                                                      .outer_angle = 0.7f,
+                                                      .source_radius = 0.15f,
+                                                      .source_length = 0.4f}};
 
     arc::render::environment_descriptor environment;
     environment.fallback_color = {0.1f, 0.2f, 0.3f};
@@ -55,13 +60,18 @@ TEST_CASE("scene lighting data packs sorted capped light arrays")
     REQUIRE(data.directional_count == arc::render::max_directional_lights);
     REQUIRE(data.skipped_directional_count == 2);
     REQUIRE(data.directional_lights[0].direction_intensity[3] == Catch::Approx(6.0f));
+    REQUIRE(data.directional_lights[0].source_shape[0] == Catch::Approx(0.00465f));
     REQUIRE(data.point_count == 2);
     REQUIRE(data.point_lights[0].color_intensity[3] == Catch::Approx(80.0f / (4.0f * arc::math::pi<float>)));
     REQUIRE(data.point_lights[0].object_id_shadow[0] == Catch::Approx(17.0f));
     REQUIRE(data.point_lights[0].object_id_shadow[1] == Catch::Approx(3.0f));
     REQUIRE(data.point_lights[0].shadow_parameters[0] == Catch::Approx(-1.0f));
+    REQUIRE(data.point_lights[0].source_shape[0] == Catch::Approx(0.2f));
+    REQUIRE(data.point_lights[0].source_shape[1] == Catch::Approx(0.5f));
     REQUIRE(data.spot_count == 1);
     REQUIRE(data.spot_lights[0].params[0] == Catch::Approx(0.7f));
+    REQUIRE(data.spot_lights[0].source_shape[0] == Catch::Approx(0.15f));
+    REQUIRE(data.spot_lights[0].source_shape[1] == Catch::Approx(0.4f));
     REQUIRE(data.ambient_color_intensity[1] == Catch::Approx(0.2f));
     REQUIRE(data.local_shadow_face_count == 0);
     STATIC_REQUIRE(arc::render::max_local_shadow_faces == 144);

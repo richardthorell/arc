@@ -384,6 +384,8 @@ struct directional_light_event
     directional_shadow_settings cascades{};
     render_mobility mobility{render_mobility::movable};
     std::string label;
+    /** Angular diameter of the emitter in radians (Source Angle). Zero preserves an ideal directional source. */
+    float source_angle{0.0f};
 };
 
 /**
@@ -405,6 +407,10 @@ struct point_light_event
     shadow_settings shadow{.enabled = false};
     render_mobility mobility{render_mobility::movable};
     std::string label;
+    /** Radius of the spherical emitter in metres. Zero preserves a punctual point light. */
+    float source_radius{0.0f};
+    /** Optional emitter length in metres reserved for line/tube source semantics. */
+    float source_length{0.0f};
 };
 
 /**
@@ -429,6 +435,10 @@ struct spot_light_event
     shadow_settings shadow{.enabled = false};
     render_mobility mobility{render_mobility::movable};
     std::string label;
+    /** Radius of the spherical emitter in metres. Zero preserves a punctual spotlight. */
+    float source_radius{0.0f};
+    /** Optional emitter length in metres reserved for line/tube source semantics. */
+    float source_length{0.0f};
 };
 
 /**

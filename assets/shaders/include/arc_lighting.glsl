@@ -12,6 +12,7 @@ struct directional_light_data
 {
     vec4 direction_intensity;
     vec4 color_flags;
+    vec4 source_shape;
 };
 
 struct point_light_data
@@ -20,6 +21,7 @@ struct point_light_data
     vec4 color_intensity;
     vec4 object_id_shadow;
     vec4 shadow_parameters;
+    vec4 source_shape;
 };
 
 struct spot_light_data
@@ -30,6 +32,7 @@ struct spot_light_data
     vec4 params;
     vec4 object_id_shadow;
     vec4 shadow_parameters;
+    vec4 source_shape;
 };
 
 struct local_shadow_face_data
@@ -72,7 +75,7 @@ layout(std430, set = 0, binding = ARC_LIGHT_BUFFER_BINDING) readonly buffer scen
 
 layout(set = 0, binding = ARC_LOCAL_SHADOW_BINDING) uniform sampler2DShadow arc_local_shadow_atlas;
 
-float arc_sample_local_shadow_face(uint face_index, vec3 world_position)
+float arc_sample_local_shadow_face(uint face_index, vec3 world_position, float filter_scale)
 {
     if (face_index >= min(lights.local_shadow_face_count, 144u))
         return 1.0;
@@ -93,7 +96,7 @@ float arc_sample_local_shadow_face(uint face_index, vec3 world_position)
         for (int x = -1; x <= 1; ++x)
             visibility += texture(
                 arc_local_shadow_atlas,
-                vec3(atlas_uv + vec2(x, y) * texel, comparison));
+                vec3(atlas_uv + vec2(x, y) * texel * max(filter_scale, 1.0), comparison));
     return visibility / 9.0;
 }
 
@@ -113,7 +116,9 @@ float arc_point_shadow_visibility(point_light_data light, vec3 world_position)
     if (first_face < 0 || light.shadow_parameters.y < 5.5)
         return 1.0;
     uint face = arc_point_shadow_face(world_position - light.position_range.xyz);
-    float sampled = arc_sample_local_shadow_face(uint(first_face) + face, world_position);
+    float effective_source_radius = max(max(light.source_shape.x, 0.0), 0.5 * max(light.source_shape.y, 0.0));
+    float filter_scale = 1.0 + 12.0 * effective_source_radius / max(light.position_range.w, 1.0e-4);
+    float sampled = arc_sample_local_shadow_face(uint(first_face) + face, world_position, filter_scale);
     return mix(1.0, sampled, clamp(light.shadow_parameters.z, 0.0, 1.0));
 }
 
@@ -122,8 +127,27 @@ float arc_spot_shadow_visibility(spot_light_data light, vec3 world_position)
     int face = int(light.shadow_parameters.x + 0.5);
     if (face < 0)
         return 1.0;
-    float sampled = arc_sample_local_shadow_face(uint(face), world_position);
+    float filter_scale = 1.0 + 12.0 * max(light.source_shape.x, 0.0) / max(light.position_range.w, 1.0e-4);
+    float sampled = arc_sample_local_shadow_face(uint(face), world_position, filter_scale);
     return mix(1.0, sampled, clamp(light.shadow_parameters.z, 0.0, 1.0));
+}
+
+float arc_source_angular_radius(float source_radius, float distance_to_light)
+{
+    if (source_radius <= 0.0)
+        return 0.0;
+    return asin(clamp(source_radius / max(distance_to_light, source_radius), 0.0, 1.0));
+}
+
+arc_surface_data arc_surface_for_extended_source(arc_surface_data surface, float angular_radius)
+{
+    // A finite emitter occupies a cone of incident directions. Approximate that
+    // convolution by broadening the microfacet lobe while preserving the exact
+    // punctual-light result when the authored source size is zero.
+    float source_roughness = clamp(angular_radius * (2.0 / ARC_PI), 0.0, 1.0);
+    surface.perceptual_roughness = max(surface.perceptual_roughness, source_roughness);
+    surface.clear_coat_roughness = max(surface.clear_coat_roughness, source_roughness);
+    return surface;
 }
 
 vec3 arc_evaluate_surface_light(
@@ -150,8 +174,9 @@ vec3 arc_evaluate_scene_lights(
         vec3 direction_to_light = normalize(-lights.directional_lights[index].direction_intensity.xyz);
         vec3 radiance = lights.directional_lights[index].color_flags.rgb *
             lights.directional_lights[index].direction_intensity.w;
+        float source_angle = 0.5 * max(lights.directional_lights[index].source_shape.x, 0.0);
         direct += arc_evaluate_surface_light(
-            surface,
+            arc_surface_for_extended_source(surface, source_angle),
             view_direction,
             direction_to_light,
             radiance,
@@ -167,8 +192,12 @@ vec3 arc_evaluate_scene_lights(
         float cutoff = 1.0 - pow(normalized_range, 4.0);
         vec3 radiance = lights.point_lights[index].color_intensity.rgb *
             lights.point_lights[index].color_intensity.w * cutoff * cutoff / distance_squared;
+        float source_radius = max(
+            max(lights.point_lights[index].source_shape.x, 0.0),
+            0.5 * max(lights.point_lights[index].source_shape.y, 0.0));
+        float source_angle = arc_source_angular_radius(source_radius, distance_to_light);
         direct += arc_evaluate_surface_light(
-            surface,
+            arc_surface_for_extended_source(surface, source_angle),
             view_direction,
             to_light / distance_to_light,
             radiance,
@@ -189,8 +218,12 @@ vec3 arc_evaluate_scene_lights(
             dot(-direction_to_light, normalize(lights.spot_lights[index].direction_inner_angle.xyz)));
         vec3 radiance = lights.spot_lights[index].color_intensity.rgb *
             lights.spot_lights[index].color_intensity.w * cutoff * cutoff * cone / distance_squared;
+        float source_radius = max(
+            max(lights.spot_lights[index].source_shape.x, 0.0),
+            0.5 * max(lights.spot_lights[index].source_shape.y, 0.0));
+        float source_angle = arc_source_angular_radius(source_radius, distance_to_light);
         direct += arc_evaluate_surface_light(
-            surface,
+            arc_surface_for_extended_source(surface, source_angle),
             view_direction,
             direction_to_light,
             radiance,

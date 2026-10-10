@@ -37,6 +37,9 @@ export type InspectorLight = {
   color: Vec4;
   intensity: number;
   range: number;
+  sourceAngleDegrees: number;
+  sourceRadius: number;
+  sourceLength: number;
   innerAngleDegrees: number;
   outerAngleDegrees: number;
   width: number;
@@ -272,6 +275,9 @@ const hostSelectedEntitySchema = z.object({
       color: vec3Tuple,
       intensity: finiteNumber.nonnegative(),
       range: finiteNumber.positive(),
+      sourceAngleDegrees: finiteNumber.min(0).max(45).default(0),
+      sourceRadius: finiteNumber.nonnegative().default(0),
+      sourceLength: finiteNumber.nonnegative().default(0),
       innerAngleDegrees: finiteNumber.nonnegative(),
       outerAngleDegrees: finiteNumber.positive(),
       width: finiteNumber.positive(),
