@@ -46,7 +46,7 @@ struct database_fixture
                                 .cache_root = project.root / ".arc" / "cache",
                                 .enable_source_monitor = false},
                                jobs, files, memory),
-          context(services), database(manager)
+          context(services)
     {
         manager.on_start(context);
     }
@@ -62,7 +62,6 @@ struct database_fixture
     arc::assets::asset_manager manager;
     arc::framework::runtime_service_registry services;
     arc::framework::runtime_service_context context;
-    arc::assets::asset_manager_database database;
 };
 
 } // namespace
@@ -77,7 +76,7 @@ TEST_CASE("asset database queries logical authoring records by GUID")
     const auto source = fixture.manager.find("assets/materials/stone.arcmat");
     REQUIRE(source);
 
-    const auto record = fixture.database.query(source->guid, asset_types::material);
+    const auto record = fixture.manager.database().query(source->guid, asset_types::material);
     REQUIRE(record);
     CHECK(record->guid == source->guid);
     CHECK(record->type == asset_types::material);
@@ -89,7 +88,7 @@ TEST_CASE("asset database queries logical authoring records by GUID")
     CHECK(record->generation == source->generation);
     CHECK(record->revision == source->revision);
 
-    CHECK_FALSE(fixture.database.query(source->guid, asset_types::texture_2d));
+    CHECK_FALSE(fixture.manager.database().query(source->guid, asset_types::texture_2d));
 }
 
 TEST_CASE("asset database reference queries never recover identity from path hints")
@@ -103,10 +102,40 @@ TEST_CASE("asset database reference queries never recover identity from path hin
     REQUIRE(source);
 
     const asset_reference stable{source->guid, asset_types::material, "assets/materials/moved.arcmat"};
-    REQUIRE(fixture.database.query(stable));
+    REQUIRE(fixture.manager.database().query(stable));
 
     const asset_reference legacy{{}, asset_types::material, "assets/materials/stone.arcmat"};
-    CHECK_FALSE(fixture.database.query(legacy));
+    CHECK_FALSE(fixture.manager.database().query(legacy));
+}
+
+TEST_CASE("asset manager owns a stable live Asset Database view")
+{
+    using namespace arc::assets;
+    temporary_database_project project;
+    project.write("materials/live.arcmat", R"({"version":4,"name":"Live"})");
+    database_fixture fixture(project);
+
+    const asset_database* first = &fixture.manager.database();
+    const asset_database* second = &fixture.manager.database();
+    CHECK(first == second);
+
+    const auto source = fixture.manager.find("assets/materials/live.arcmat");
+    REQUIRE(source);
+    const auto before = first->query(source->guid);
+    REQUIRE(before);
+
+    const auto loaded =
+        fixture.manager
+            .load<source_asset_data>({.reference = {source->guid, source->type, "assets/materials/live.arcmat"}})
+            .get();
+    REQUIRE(loaded.succeeded());
+
+    const auto after = first->query(source->guid);
+    REQUIRE(after);
+    CHECK(after->generation >= before->generation);
+    CHECK(after->state == asset_state::ready);
+    CHECK(after->residency == asset_residency::cpu);
+    CHECK(after->strong_references >= before->strong_references);
 }
 
 TEST_CASE("asset database exposes dependency graph through one logical contract")
@@ -125,11 +154,11 @@ TEST_CASE("asset database exposes dependency graph through one logical contract"
     const asset_reference b_reference{b->guid, b->type, "assets/materials/b.arcmat"};
     REQUIRE(fixture.manager.set_dependencies(a->guid, std::span(&b_reference, 1)));
 
-    CHECK(fixture.database.dependencies(a->guid) == std::vector<asset_guid>{b->guid});
-    CHECK(fixture.database.reverse_dependencies(b->guid) == std::vector<asset_guid>{a->guid});
+    CHECK(fixture.manager.database().dependencies(a->guid) == std::vector<asset_guid>{b->guid});
+    CHECK(fixture.manager.database().reverse_dependencies(b->guid) == std::vector<asset_guid>{a->guid});
 
-    const auto record = fixture.database.query(a->guid);
+    const auto record = fixture.manager.database().query(a->guid);
     REQUIRE(record);
     CHECK(record->dependencies == std::vector<asset_guid>{b->guid});
-    CHECK(fixture.database.revision() >= record->revision);
+    CHECK(fixture.manager.database().revision() >= record->revision);
 }
