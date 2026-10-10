@@ -71,12 +71,34 @@
       },
       {
         "id": "tinted",
-        "type": "multiply",
+        "type": "functionCall",
         "position": [
           610,
           190
         ],
-        "values": {}
+        "values": {
+          "path": "material_functions/tint_rgb.arcmatfn",
+          "name": "Tint RGB",
+          "inputPins": [
+            {
+              "id": "color",
+              "name": "Sampled RGB",
+              "type": "vec3"
+            },
+            {
+              "id": "tint",
+              "name": "Tint RGB",
+              "type": "vec3"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
       },
       {
         "id": "out",
@@ -116,7 +138,7 @@
         },
         "to": {
           "nodeId": "tinted",
-          "pin": "a"
+          "pin": "color"
         }
       },
       {
@@ -127,14 +149,14 @@
         },
         "to": {
           "nodeId": "tinted",
-          "pin": "b"
+          "pin": "tint"
         }
       },
       {
         "id": "out",
         "from": {
           "nodeId": "tinted",
-          "pin": "result"
+          "pin": "color"
         },
         "to": {
           "nodeId": "out",
