@@ -1722,8 +1722,10 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_set_tag_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"tag\":" + quote(payload.tag) + '}';
             else if constexpr (std::is_same_v<type, host_set_flow_command>)
-                return "{\"entity\":" + to_json(payload.entity) + ",\"graphGuid\":" + quote(payload.graph_guid) +
-                       ",\"graphPathHint\":" + quote(payload.graph_path_hint) +
+                return "{\"entity\":" + to_json(payload.entity) +
+                       (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") +
+                       (!payload.graph_guid.empty() ? ",\"graphGuid\":" + quote(payload.graph_guid) : "") +
+                       (!payload.graph_path_hint.empty() ? ",\"graphPathHint\":" + quote(payload.graph_path_hint) : "") +
                        ",\"enabled\":" + bool_json(payload.enabled) + '}';
             else if constexpr (std::is_same_v<type, host_runtime_stage_flow_source_command> ||
                                std::is_same_v<type, host_runtime_update_flow_source_command>)
@@ -1782,7 +1784,7 @@ std::string to_json(const host_command_envelope& envelope)
             }
             else if constexpr (std::is_same_v<type, host_set_terrain_layer_command>)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"layer\":" + std::to_string(payload.layer) +
-                       ",\"path\":" + quote(payload.path.generic_string()) +
+                       (!payload.path.empty() ? ",\"path\":" + quote(payload.path.generic_string()) : "") +
                        (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
             else if constexpr (std::is_same_v<type, host_create_terrain_command>)
                 return "{\"size\":" + std::to_string(payload.size) +
@@ -1832,7 +1834,8 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"x\":" + std::to_string(payload.x) +
                        ",\"y\":" + std::to_string(payload.y) + ",\"clear\":" + bool_json(payload.clear) + '}';
             else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
-                return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
+                return "{\"entity\":" + to_json(payload.entity) +
+                       (!payload.path.empty() ? ",\"path\":" + quote(payload.path.generic_string()) : "") +
                        (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
             else if constexpr (std::is_same_v<type, host_component_operation_command>)
                 return "{\"component\":" + quote(payload.component) + '}';
@@ -1845,7 +1848,8 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"entity\":" + to_json(payload.entity) + ",\"preset\":" + quote(to_string(payload.preset)) +
                        '}';
             else if constexpr (std::is_same_v<type, host_set_environment_hdri_command>)
-                return "{\"entity\":" + to_json(payload.entity) + ",\"path\":" + quote(payload.path.generic_string()) +
+                return "{\"entity\":" + to_json(payload.entity) +
+                       (!payload.path.empty() ? ",\"path\":" + quote(payload.path.generic_string()) : "") +
                        (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
             else if constexpr (std::is_same_v<type, host_set_camera_projection_command>)
                 return "{\"projection\":" + quote(to_string(payload.projection)) + '}';
@@ -2749,6 +2753,13 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         {
             error = "Flow command requires entity";
             return false;
+        }
+        std::string_view asset_json;
+        if (object_value(payload, "asset", asset_json))
+        {
+            host_asset_reference asset;
+            if (!from_json(asset_json, asset, error)) return false;
+            command.asset = std::move(asset);
         }
         string_value(payload, "graphGuid", command.graph_guid);
         string_value(payload, "graphPathHint", command.graph_path_hint);

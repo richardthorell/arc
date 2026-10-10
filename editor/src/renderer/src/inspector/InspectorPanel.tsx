@@ -45,6 +45,7 @@ const knownTags = ['Untagged', 'Camera', 'Light', 'Mesh', 'Environment'];
 const defaultLayerMask = 1;
 const environmentLayerMask = 2;
 const proceduralParameterPrefix = '__arc_primitive_parameter__/';
+const meshAssignmentPrefix = '__arc_mesh__/';
 
 const defaultWaterShape = (bodyType: 'ocean' | 'lake' | 'river') => {
   if (bodyType === 'lake')
@@ -272,13 +273,16 @@ export function InspectorPanel({
     } else if (component === 'meshRenderer' && next.meshRenderer) {
       if (path === 'meshRenderer.materialPath') {
         const proceduralParameter = next.meshRenderer.materialPath.startsWith(proceduralParameterPrefix);
+        const assetReference = selectedAsset ? hostAssetReference(selectedAsset) : null;
+        const requiresCommandPath =
+          proceduralParameter || next.meshRenderer.materialPath.startsWith(meshAssignmentPrefix) || !assetReference;
         void runMutation(
           next,
           'entity.setMaterial',
           {
             ...entityPayload(next),
-            path: next.meshRenderer.materialPath,
-            ...(selectedAsset ? { asset: hostAssetReference(selectedAsset) ?? undefined } : {}),
+            ...(requiresCommandPath ? { path: next.meshRenderer.materialPath } : {}),
+            ...(assetReference ? { asset: assetReference } : {}),
           },
           proceduralParameter ? settled : true,
           proceduralParameter ? transactionKey : undefined,
@@ -318,14 +322,16 @@ export function InspectorPanel({
     } else if (component === 'terrain' && next.terrain) {
       const layerMatch = /^terrain\.layers\.(\d)\.baseColorPath$/.exec(path);
       if (layerMatch) {
+        const assetReference = selectedAsset ? hostAssetReference(selectedAsset) : null;
         void runMutation(
           next,
           'terrain.assignLayer',
           {
             ...entityPayload(next),
             layer: Number(layerMatch[1]),
-            path: next.terrain.layers[Number(layerMatch[1])].baseColorPath,
-            ...(selectedAsset ? { asset: hostAssetReference(selectedAsset) ?? undefined } : {}),
+            ...(assetReference
+              ? { asset: assetReference }
+              : { path: next.terrain.layers[Number(layerMatch[1])].baseColorPath }),
           },
           true,
         );
@@ -350,11 +356,20 @@ export function InspectorPanel({
         );
       }
     } else if (component === 'flow' && next.flow) {
-      const flowReference = selectedAsset ? hostAssetReference(selectedAsset) : null;
+      const selectedFlowReference = selectedAsset ? hostAssetReference(selectedAsset) : null;
       const normalizedFlow =
-        flowReference && path === 'flow.graphGuid'
-          ? { ...next.flow, graphGuid: flowReference.guid, graphPathHint: flowReference.pathHint || '' }
+        selectedFlowReference && path === 'flow.graphGuid'
+          ? {
+              ...next.flow,
+              graphGuid: selectedFlowReference.guid,
+              graphPathHint: selectedFlowReference.pathHint || '',
+            }
           : next.flow;
+      const flowReference =
+        selectedFlowReference ??
+        (normalizedFlow.graphGuid
+          ? { guid: normalizedFlow.graphGuid, pathHint: normalizedFlow.graphPathHint || '' }
+          : null);
       const normalizedNext =
         normalizedFlow === next.flow ? next : ({ ...next, flow: normalizedFlow } as InspectorEntitySnapshot);
       void runMutation(
@@ -362,9 +377,9 @@ export function InspectorPanel({
         'entity.setFlow',
         {
           ...entityPayload(normalizedNext),
-          graphGuid: normalizedFlow.graphGuid,
-          graphPathHint: normalizedFlow.graphPathHint,
-          ...(flowReference ? { asset: flowReference } : {}),
+          ...(flowReference
+            ? { asset: flowReference }
+            : { graphGuid: normalizedFlow.graphGuid, graphPathHint: normalizedFlow.graphPathHint }),
           enabled: normalizedFlow.enabled,
         },
         settled,

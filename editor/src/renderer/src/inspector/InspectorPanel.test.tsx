@@ -345,7 +345,19 @@ describe('data-driven InspectorPanel', () => {
 
   it('renders persistent terrain fields without transient brush controls', async () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
-    const assets = [{ id: 'sand', name: 'Sand', path: 'textures/sand.jpg', kind: 'texture', status: 'ready' as const }];
+    const assets = [
+      {
+        id: 'sand',
+        guid: 'aaaaaaaa11111111bbbbbbbb22222222',
+        typeId: 'a7ca55e7000000010000000000000005',
+        name: 'Sand',
+        path: 'textures/sand.jpg',
+        sourcePath: 'Content/textures/sand.jpg',
+        kind: 'texture',
+        status: 'ready' as const,
+        scope: 'project' as const,
+      },
+    ];
     render(
       <InspectorPanel snapshot={terrainSnapshot()} command={command} refresh={async () => undefined} assets={assets} />,
     );
@@ -358,10 +370,15 @@ describe('data-driven InspectorPanel', () => {
     await userEvent.click(screen.getByLabelText('Choose Sand Layer asset'));
     await userEvent.click(screen.getByLabelText('Select Sand'));
     await waitFor(() =>
-      expect(command).toHaveBeenCalledWith(
-        'terrain.assignLayer',
-        expect.objectContaining({ layer: 3, path: 'textures/sand.jpg' }),
-      ),
+      expect(command).toHaveBeenCalledWith('terrain.assignLayer', {
+        entity: { index: 3, generation: 1 },
+        layer: 3,
+        asset: {
+          guid: 'aaaaaaaa11111111bbbbbbbb22222222',
+          expectedType: 'a7ca55e7000000010000000000000005',
+          pathHint: 'Content/textures/sand.jpg',
+        },
+      }),
     );
   });
 
@@ -626,7 +643,6 @@ describe('data-driven InspectorPanel', () => {
     await waitFor(() =>
       expect(command).toHaveBeenCalledWith('entity.setMaterial', {
         entity: { index: 3, generation: 1 },
-        path: 'Content/materials/bronze.arcmat',
         asset: {
           guid: '11112222333344445555666677778888',
           expectedType: 'a7ca55e7000000010000000000000002',

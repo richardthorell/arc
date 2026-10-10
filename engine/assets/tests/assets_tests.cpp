@@ -270,11 +270,19 @@ TEST_CASE("asset manager scans persists moves and loads source generations")
     REQUIRE(fixture.manager.find(material->guid)->state == asset_state::ready);
     REQUIRE_FALSE(fixture.manager.find(material->guid)->artifacts.empty());
 
+    const asset_reference reference_before_move{material->guid, asset_types::material, "assets/materials/stone.arcmat"};
     const auto moved = fixture.manager.move(material->guid, "assets/materials/renamed.arcmat");
     REQUIRE(moved.succeeded());
     REQUIRE(std::filesystem::exists(project.assets / "materials/renamed.arcmat"));
     REQUIRE(std::filesystem::exists(project.assets / "materials/renamed.arcmat.arcmeta"));
     REQUIRE(fixture.manager.find("assets/materials/renamed.arcmat")->guid == material->guid);
+
+    // Persisted GUID references survive source moves even when their human-readable
+    // path hint still names the previous location.
+    const auto resolved_after_move = fixture.manager.find(reference_before_move);
+    REQUIRE(resolved_after_move);
+    CHECK(resolved_after_move->guid == material->guid);
+    CHECK(resolved_after_move->source_path == "assets/materials/renamed.arcmat");
 }
 
 TEST_CASE("asset references resolve by GUID without redirecting through stale path hints")
@@ -698,6 +706,43 @@ TEST_CASE("HTTP shared cache authenticates and verifies immutable blob responses
     REQUIRE(error);
 }
 
+TEST_CASE("GUID references resolve assets from secondary project content roots")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    const auto secondary_root = project.root / "DLC";
+    std::filesystem::create_directories(secondary_root / "materials");
+    const auto source_path = secondary_root / "materials" / "expansion.arcmat";
+    {
+        std::ofstream output(source_path, std::ios::binary | std::ios::trunc);
+        output << R"({"version":4,"name":"Expansion"})";
+    }
+
+    arc::memory::memory_system memory;
+    arc::jobs::job_system jobs(
+        {.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory});
+    arc::io::async_file_service files(jobs);
+    asset_manager manager({.project_root = project.root,
+                           .asset_root = project.assets,
+                           .additional_source_roots = {secondary_root},
+                           .cache_root = project.root / ".arc" / "cache",
+                           .enable_source_monitor = false},
+                          jobs, files, memory);
+    arc::framework::runtime_service_registry services;
+    arc::framework::runtime_service_context context(services);
+    manager.on_start(context);
+
+    const auto secondary = manager.find("DLC/materials/expansion.arcmat");
+    REQUIRE(secondary);
+    const asset_reference reference{secondary->guid, asset_types::material, "Content/materials/old-expansion.arcmat"};
+    const auto resolved = manager.find(reference);
+    REQUIRE(resolved);
+    CHECK(resolved->guid == secondary->guid);
+    CHECK(resolved->source_path == "DLC/materials/expansion.arcmat");
+
+    manager.on_shutdown(context);
+}
+
 TEST_CASE("read-only source roots mount built-in assets without allowing source mutation")
 {
     using namespace arc::assets;
@@ -731,10 +776,12 @@ TEST_CASE("read-only source roots mount built-in assets without allowing source 
     REQUIRE(builtin);
     REQUIRE(builtin->guid == guid);
     REQUIRE(builtin->read_only);
-    const auto loaded = manager
-                            .load<source_asset_data>(
-                                {.reference = {guid, asset_types::material, "builtin/materials/default_phong.arcmat"}})
-                            .get();
+    const asset_reference builtin_reference{guid, asset_types::material, "builtin/materials/stale-name.arcmat"};
+    const auto resolved_builtin = manager.find(builtin_reference);
+    REQUIRE(resolved_builtin);
+    CHECK(resolved_builtin->source_path == "builtin/materials/default_phong.arcmat");
+
+    const auto loaded = manager.load<source_asset_data>({.reference = builtin_reference}).get();
     REQUIRE(loaded.succeeded());
     const auto moved = manager.move(guid, "assets/materials/copied.arcmat");
     REQUIRE_FALSE(moved.succeeded());
