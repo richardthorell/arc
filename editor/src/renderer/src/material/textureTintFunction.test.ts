@@ -30,8 +30,8 @@ describe('Texture Tint built-in Material Function', () => {
     expect(nodes.get('texture')?.parameter).toEqual({ exposed: true, name: 'Texture' });
     expect(nodes.get('texture')?.values.texture).toBe('');
     expect(connected('uv-input', 'value', 'texture', 'uv')).toBe(true);
-    expect(connected('texture', 'rgb', 'tinted', 'a')).toBe(true);
-    expect(connected('tint', 'rgb', 'tinted', 'b')).toBe(true);
-    expect(connected('tinted', 'result', 'out', 'color')).toBe(true);
+    expect(connected('texture', 'rgb', 'tinted', 'color')).toBe(true);
+    expect(connected('tint', 'rgb', 'tinted', 'tint')).toBe(true);
+    expect(connected('tinted', 'color', 'out', 'color')).toBe(true);
   });
 });

@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "3ff8892d-9b57-4fb3-927a-63ff70fa9c39",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "Tint RGB",
+  "description": "Multiply sampled texture RGB by a tint RGB without owning texture or tint parameters. Suitable for stable parameter identities in calling materials."
+}

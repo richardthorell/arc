@@ -58,12 +58,34 @@
       },
       {
         "id": "base-color-multiply",
-        "type": "multiply",
+        "type": "functionCall",
         "position": [
           380,
           160
         ],
-        "values": {}
+        "values": {
+          "path": "material_functions/tint_rgb.arcmatfn",
+          "name": "Tint RGB",
+          "inputPins": [
+            {
+              "id": "color",
+              "name": "Sampled RGB",
+              "type": "vec3"
+            },
+            {
+              "id": "tint",
+              "name": "Tint RGB",
+              "type": "vec3"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ]
+        }
       },
       {
         "id": "function-output",
@@ -105,7 +127,7 @@
         },
         "to": {
           "nodeId": "base-color-multiply",
-          "pin": "a"
+          "pin": "tint"
         }
       },
       {
@@ -116,14 +138,14 @@
         },
         "to": {
           "nodeId": "base-color-multiply",
-          "pin": "b"
+          "pin": "color"
         }
       },
       {
         "id": "color-out",
         "from": {
           "nodeId": "base-color-multiply",
-          "pin": "result"
+          "pin": "color"
         },
         "to": {
           "nodeId": "function-output",
