@@ -67,7 +67,10 @@ struct [[nodiscard]] photometric_profile_parse_result
     photometric_profile profile;
     std::string error;
 
-    [[nodiscard]] explicit operator bool() const noexcept { return error.empty(); }
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return error.empty();
+    }
 };
 
 /** @brief Parse an LM-63 IES document. v1 supports TILT=NONE and photometric types C/B/A. */

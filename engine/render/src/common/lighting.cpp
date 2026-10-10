@@ -32,7 +32,6 @@ template <class Light> std::vector<Light> sorted_by_contribution(std::vector<Lig
 
 } // namespace
 
-
 photometric_profile_parse_result parse_ies_profile(std::string_view source)
 {
     photometric_profile_parse_result result{};
@@ -46,9 +45,9 @@ photometric_profile_parse_result parse_ies_profile(std::string_view source)
         return result;
     }
     const auto tilt_end = source.find_first_of("\r\n", tilt_position);
-    const auto tilt = source.substr(tilt_position + 5u, tilt_end == std::string_view::npos
-                                                                ? std::string_view::npos
-                                                                : tilt_end - (tilt_position + 5u));
+    const auto tilt =
+        source.substr(tilt_position + 5u,
+                      tilt_end == std::string_view::npos ? std::string_view::npos : tilt_end - (tilt_position + 5u));
     if (tilt != "NONE")
     {
         error = "IES TILT data is not supported yet; use TILT=NONE";
@@ -104,9 +103,7 @@ photometric_profile_parse_result parse_ies_profile(std::string_view source)
         }
 
     const auto strictly_non_decreasing = [](const std::vector<float>& values)
-    {
-        return std::adjacent_find(values.begin(), values.end(), std::greater<float>{}) == values.end();
-    };
+    { return std::adjacent_find(values.begin(), values.end(), std::greater<float>{}) == values.end(); };
     if (!strictly_non_decreasing(out.vertical_angles_degrees) ||
         !strictly_non_decreasing(out.horizontal_angles_degrees))
     {
@@ -135,7 +132,8 @@ photometric_profile_parse_result parse_ies_profile(std::string_view source)
         return result;
     }
 
-    for (auto& value : out.normalized_candela) value /= peak;
+    for (auto& value : out.normalized_candela)
+        value /= peak;
     out.peak_candela = peak;
     out.declared_lumens = static_cast<float>(lamp_count) * std::max(lumens_per_lamp, 0.0f);
     out.photometric_type = photometric_type;
@@ -179,15 +177,11 @@ float sample_photometric_profile(const photometric_profile& profile, float verti
     const auto [v0, v1] = bracket(profile.vertical_angles_degrees, vertical);
     const auto [h0, h1] = bracket(profile.horizontal_angles_degrees, horizontal);
     const auto fraction = [](float value, float low, float high)
-    {
-        return high > low ? std::clamp((value - low) / (high - low), 0.0f, 1.0f) : 0.0f;
-    };
+    { return high > low ? std::clamp((value - low) / (high - low), 0.0f, 1.0f) : 0.0f; };
     const float tv = fraction(vertical, profile.vertical_angles_degrees[v0], profile.vertical_angles_degrees[v1]);
     const float th = fraction(horizontal, profile.horizontal_angles_degrees[h0], profile.horizontal_angles_degrees[h1]);
     const auto sample = [&](std::size_t h, std::size_t v)
-    {
-        return profile.normalized_candela[h * profile.vertical_angles_degrees.size() + v];
-    };
+    { return profile.normalized_candela[h * profile.vertical_angles_degrees.size() + v]; };
     const float low = sample(h0, v0) + (sample(h0, v1) - sample(h0, v0)) * tv;
     const float high = sample(h1, v0) + (sample(h1, v1) - sample(h1, v0)) * tv;
     return std::clamp(low + (high - low) * th, 0.0f, 1.0f);
