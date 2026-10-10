@@ -45,6 +45,11 @@
       "name": "Offset",
       "type": "float",
       "default": 0
+    },
+    {
+      "id": "uv",
+      "name": "UV",
+      "type": "vec2"
     }
   ],
   "outputs": [
