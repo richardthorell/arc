@@ -859,6 +859,7 @@ host_light_snapshot to_host_light(const scene::directional_light_component& ligh
                                .unit = to_host_light_unit(light.intensity_unit),
                                .color = to_host_vec3(light.color),
                                .intensity = light.intensity,
+                               .source_angle_degrees = math::to_degrees(light.source_angle),
                                .enabled = light.enabled,
                                .casts_shadows = light.casts_shadows,
                                .use_color_temperature = light.use_color_temperature,
@@ -879,6 +880,8 @@ host_light_snapshot to_host_light(const scene::point_light_component& light) noe
                                .color = to_host_vec3(light.color),
                                .intensity = light.intensity,
                                .range = light.range,
+                               .source_radius = light.source_radius,
+                               .source_length = light.source_length,
                                .enabled = light.enabled,
                                .casts_shadows = light.casts_shadows,
                                .use_color_temperature = light.use_color_temperature,
@@ -894,6 +897,8 @@ host_light_snapshot to_host_light(const scene::spot_light_component& light) noex
                                .color = to_host_vec3(light.color),
                                .intensity = light.intensity,
                                .range = light.range,
+                               .source_radius = light.source_radius,
+                               .source_length = light.source_length,
                                .inner_angle_degrees = math::to_degrees(light.inner_angle),
                                .outer_angle_degrees = math::to_degrees(light.outer_angle),
                                .enabled = light.enabled,
@@ -928,7 +933,9 @@ bool valid_light(const host_light_snapshot& light) noexcept
     const bool color_valid =
         finite_nonnegative(light.color.x) && finite_nonnegative(light.color.y) && finite_nonnegative(light.color.z);
     const bool common_valid =
-        color_valid && finite_nonnegative(light.intensity) && std::isfinite(light.temperature_kelvin) &&
+        color_valid && finite_nonnegative(light.intensity) && finite_nonnegative(light.source_angle_degrees) &&
+        light.source_angle_degrees <= 45.0f && finite_nonnegative(light.source_radius) &&
+        finite_nonnegative(light.source_length) && std::isfinite(light.temperature_kelvin) &&
         light.temperature_kelvin >= 1000.0f && light.temperature_kelvin <= 40000.0f &&
         light.shadow_resolution >= 128u && light.shadow_resolution <= 8192u && std::isfinite(light.shadow_strength) &&
         light.shadow_strength >= 0.0f && light.shadow_strength <= 1.0f && finite_nonnegative(light.shadow_bias) &&
@@ -4127,6 +4134,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         directional_light->color = color;
                         directional_light->intensity = payload.light.intensity;
+                        directional_light->source_angle = math::to_radians(payload.light.source_angle_degrees);
                         directional_light->intensity_unit = unit;
                         directional_light->enabled = payload.light.enabled;
                         directional_light->casts_shadows = payload.light.casts_shadows;
@@ -4144,6 +4152,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         point_light->color = color;
                         point_light->intensity = payload.light.intensity;
                         point_light->range = payload.light.range;
+                        point_light->source_radius = payload.light.source_radius;
+                        point_light->source_length = payload.light.source_length;
                         point_light->intensity_unit = unit;
                         point_light->enabled = payload.light.enabled;
                         point_light->casts_shadows = payload.light.casts_shadows;
@@ -4158,6 +4168,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         spot_light->range = payload.light.range;
                         spot_light->inner_angle = math::to_radians(payload.light.inner_angle_degrees);
                         spot_light->outer_angle = math::to_radians(payload.light.outer_angle_degrees);
+                        spot_light->source_radius = payload.light.source_radius;
+                        spot_light->source_length = payload.light.source_length;
                         spot_light->intensity_unit = unit;
                         spot_light->enabled = payload.light.enabled;
                         spot_light->casts_shadows = payload.light.casts_shadows;
