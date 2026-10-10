@@ -1278,6 +1278,7 @@ struct host_set_terrain_layer_command
 {
     host_entity_id entity{};
     std::uint32_t layer{};
+    /** Legacy path-only compatibility. Registered assets should use asset. */
     std::filesystem::path path;
     std::optional<host_asset_reference> asset;
 };
@@ -1303,6 +1304,11 @@ struct host_terrain_hover_command
 struct host_set_entity_material_command
 {
     host_entity_id entity{};
+    /**
+     * Legacy path-only compatibility plus internal command tokens such as
+     * __arc_mesh__/ and __arc_primitive_parameter__/. Registered material
+     * identity should use asset.
+     */
     std::filesystem::path path;
     std::optional<host_asset_reference> asset;
     bool apply_to_selection{};
@@ -1342,6 +1348,7 @@ struct host_apply_world_environment_preset_command
 struct host_set_environment_hdri_command
 {
     host_entity_id entity{};
+    /** Legacy path-only compatibility. Registered HDRIs should use asset. */
     std::filesystem::path path;
     std::optional<host_asset_reference> asset;
 };
