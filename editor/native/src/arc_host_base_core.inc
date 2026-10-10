@@ -16,6 +16,7 @@
 #include "project_runtime_components.h"
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
+#include <arc/assets/asset_database.h>
 #include <arc/assets/cook.h>
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
@@ -562,9 +563,9 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
 
     if (registry)
     {
-        const auto snapshot = registry->find(*reference);
-        if (!snapshot) return std::nullopt;
-        return resolve_editor_asset(asset_state, registry, project_root, snapshot->source_path);
+        const auto record = registry->database().query(*reference);
+        if (!record) return std::nullopt;
+        return resolve_editor_asset(asset_state, registry, project_root, record->source_hint);
     }
 
     // A GUID cannot be safely resolved without the asset registry. Retain path
@@ -4027,11 +4028,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     if (graph.guid.valid())
                     {
-                        const auto asset = state_->asset_registry->find(graph);
+                        const auto asset = state_->asset_registry->database().query(graph);
                         if (!asset) return fail("Flow graph GUID does not identify a registered Flow asset", entity);
                         graph.guid = asset->guid;
                         graph.expected_type = assets::asset_types::flow_graph;
-                        graph.path_hint = assets::normalize_asset_path(asset->source_path);
+                        graph.path_hint = asset->source_hint;
                     }
                     else if (!graph.path_hint.empty())
                         graph = state_->asset_registry->resolve(graph.path_hint, assets::asset_types::flow_graph);
