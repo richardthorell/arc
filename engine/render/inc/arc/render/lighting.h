@@ -85,7 +85,7 @@ struct directional_light_data
 {
     math::vector4f direction_intensity{0.0f, -1.0f, 0.0f, 0.0f};
     math::vector4f color_flags{1.0f, 1.0f, 1.0f, 0.0f};
-    /** x = angular source radius in radians; remaining lanes reserved for source-shape evolution. */
+    /** x = angular source diameter in radians; remaining lanes reserved for source-shape evolution. */
     math::vector4f source_shape{};
 };
 
