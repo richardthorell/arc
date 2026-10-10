@@ -211,6 +211,7 @@ const sharedViewportPresented = new Set<string>();
 const sharedViewportFailures = new Map<string, string>();
 const sharedViewportPresentationTails = new Map<string, Promise<void>>();
 const sharedViewportOutstandingReleases = new Map<string, Set<Promise<void>>>();
+const sharedViewportQuiescing = new Set<string>();
 
 const trackSharedViewportRelease = (
   viewportId: string,
@@ -248,6 +249,15 @@ const waitForSharedViewportRelease = async (viewportIds: readonly string[], time
   }
 };
 
+const setWindowSharedViewportsVisible = (target: BrowserWindow, visible: boolean): void => {
+  if (!hostClient || target.isDestroyed()) return;
+  const webContentsId = target.webContents.id;
+  for (const [viewportId, targetWebContentsId] of sharedViewportTargets) {
+    if (targetWebContentsId !== webContentsId) continue;
+    void hostClient.command('viewport.setVisibility', { viewportId, visible }).catch(() => undefined);
+  }
+};
+
 const quiesceSharedViewportsForWindow = async (target: BrowserWindow): Promise<void> => {
   if (target.isDestroyed()) return;
   const webContentsId = target.webContents.id;
@@ -256,21 +266,19 @@ const quiesceSharedViewportsForWindow = async (target: BrowserWindow): Promise<v
     .map(([viewportId]) => viewportId);
   if (viewportIds.length === 0) return;
 
-  setWindowSharedViewportsVisible(target, false);
+  viewportIds.forEach((viewportId) => sharedViewportQuiescing.add(viewportId));
+  if (hostClient)
+    await Promise.allSettled(
+      viewportIds.map((viewportId) => hostClient!.command('viewport.setVisibility', { viewportId, visible: false })),
+    );
+
+  // Drain sends that were already queued before visibility reached the native
+  // host, then wait briefly for Chromium to release renderer-side references.
   const tails = viewportIds
     .map((viewportId) => sharedViewportPresentationTails.get(viewportId))
     .filter((tail): tail is Promise<void> => Boolean(tail));
   if (tails.length > 0) await Promise.allSettled(tails);
   await waitForSharedViewportRelease(viewportIds);
-};
-
-const setWindowSharedViewportsVisible = (target: BrowserWindow, visible: boolean): void => {
-  if (!hostClient || target.isDestroyed()) return;
-  const webContentsId = target.webContents.id;
-  for (const [viewportId, targetWebContentsId] of sharedViewportTargets) {
-    if (targetWebContentsId !== webContentsId) continue;
-    void hostClient.command('viewport.setVisibility', { viewportId, visible }).catch(() => undefined);
-  }
 };
 
 const setAllSharedViewportsVisible = (visible: boolean): void => {
@@ -287,6 +295,8 @@ const forgetSharedViewportsForWindow = (target: BrowserWindow): void => {
     sharedViewportPresented.delete(viewportId);
     sharedViewportFailures.delete(viewportId);
     sharedViewportPresentationTails.delete(viewportId);
+    sharedViewportOutstandingReleases.delete(viewportId);
+    sharedViewportQuiescing.delete(viewportId);
   }
 };
 
@@ -330,6 +340,7 @@ const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
 
   const target = sharedViewportWindow(frame.viewportId);
   if (
+    sharedViewportQuiescing.has(frame.viewportId) ||
     !target ||
     target.isDestroyed() ||
     target.isMinimized() ||
