@@ -44,6 +44,10 @@ describe('core built-in material families', () => {
       'Emissive Color',
       'Emissive Texture',
       'Emissive Strength',
+      'UV Tiling',
+      'UV Offset',
+      'UV Pivot',
+      'UV Rotation (radians)',
     ]);
     expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
