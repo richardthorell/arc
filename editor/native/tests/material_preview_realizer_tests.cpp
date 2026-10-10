@@ -1,6 +1,8 @@
 #include <arc/editor/material_preview.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/editor/material_library.h>
 #include <arc/render/material_pass.h>
+#include <arc/render_tools/render_tools.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -41,6 +43,37 @@ const std::string red_material_source = R"({
 })";
 
 } // namespace
+
+TEST_CASE("built-in materials and instances compile conventional and VSM forward variants")
+{
+    const auto root = std::filesystem::path(ARC_SOURCE_ROOT) / "assets";
+    const arc::render::tools::slang_shader_compiler compiler;
+    for (const auto* name : {"standard_lit.arcmat", "water.arcmat", "floor.arcmatinst"})
+    {
+        CAPTURE(name);
+        arc::render::renderer renderer;
+        arc::editor::editor_material_library library;
+        arc::editor::material_asset loaded;
+        const auto handle =
+            arc::editor::load_material_for_editor(library, renderer, root, root / "materials" / name, &loaded);
+        REQUIRE(handle.valid());
+        if (!compiler.available()) continue;
+
+        REQUIRE(loaded.material.runtime_program);
+        const auto& program = *loaded.material.runtime_program;
+        const auto* conventional =
+            arc::render::find_material_runtime_pass(program, arc::render::material_pass::forward, false);
+        const auto* virtualized =
+            arc::render::find_material_runtime_pass(program, arc::render::material_pass::forward, true);
+        REQUIRE(conventional);
+        REQUIRE(virtualized);
+        CHECK_FALSE(conventional->virtual_shadow_sampling);
+        CHECK(virtualized->virtual_shadow_sampling);
+        CHECK(conventional->permutation != virtualized->permutation);
+        CHECK_FALSE(conventional->compiled.bytecode.empty());
+        CHECK_FALSE(virtualized->compiled.bytecode.empty());
+    }
+}
 
 TEST_CASE("material preview realizes authored base color through native Material IR")
 {
