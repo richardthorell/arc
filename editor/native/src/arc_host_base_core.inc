@@ -16,6 +16,7 @@
 #include "project_runtime_components.h"
 #include <arc/editor/world_environment_host.h>
 #include <arc/assets/assets.h>
+#include <arc/assets/asset_database.h>
 #include <arc/assets/cook.h>
 #include <arc/geometric/box.h>
 #include <arc/framework/framework.h>
@@ -562,9 +563,9 @@ std::optional<resolved_editor_asset> resolve_editor_asset(const editor_asset_sta
 
     if (registry)
     {
-        const auto snapshot = registry->find(*reference);
-        if (!snapshot) return std::nullopt;
-        return resolve_editor_asset(asset_state, registry, project_root, snapshot->source_path);
+        const auto record = registry->database().query(*reference);
+        if (!record) return std::nullopt;
+        return resolve_editor_asset(asset_state, registry, project_root, record->source_hint);
     }
 
     // A GUID cannot be safely resolved without the asset registry. Retain path
@@ -3330,9 +3331,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!state_->preview_stopped) return fail("Flow sources can only be staged before Play starts");
                 const auto guid = assets::parse_asset_guid(payload.guid);
                 if (!guid) return fail("Flow source GUID is malformed");
-                const auto asset = state_->asset_registry ? state_->asset_registry->find(*guid) : std::nullopt;
-                if (!asset || asset->type != assets::asset_types::flow_graph)
-                    return fail("Flow source GUID is not a registered Flow asset");
+                const auto asset =
+                    state_->asset_registry
+                        ? state_->asset_registry->database().query(*guid, assets::asset_types::flow_graph)
+                        : std::nullopt;
+                if (!asset) return fail("Flow source GUID is not a registered Flow asset");
                 if (payload.source.size() > maximum_flow_source_bytes)
                     return fail("Flow source exceeds the 8 MiB Play override limit");
                 std::size_t batch_bytes = payload.source.size();
@@ -4034,11 +4037,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 {
                     if (graph.guid.valid())
                     {
-                        const auto asset = state_->asset_registry->find(graph);
+                        const auto asset = state_->asset_registry->database().query(graph);
                         if (!asset) return fail("Flow graph GUID does not identify a registered Flow asset", entity);
                         graph.guid = asset->guid;
                         graph.expected_type = assets::asset_types::flow_graph;
-                        graph.path_hint = assets::normalize_asset_path(asset->source_path);
+                        graph.path_hint = asset->source_hint;
                     }
                     else if (!graph.path_hint.empty())
                         graph = state_->asset_registry->resolve(graph.path_hint, assets::asset_types::flow_graph);
@@ -5508,9 +5511,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (field->kind == project::game_field_kind_v1::asset_reference && !reference.empty())
                 {
                     const auto referenced_guid = assets::parse_asset_guid(reference);
-                    const auto referenced_asset = referenced_guid && state_->asset_registry
-                                                      ? state_->asset_registry->find(*referenced_guid)
-                                                      : std::nullopt;
+                    const auto referenced_asset =
+                        referenced_guid && state_->asset_registry
+                            ? state_->asset_registry->database().query(*referenced_guid)
+                            : std::nullopt;
                     if (!referenced_guid || !referenced_asset)
                         return fail("Project asset reference does not resolve in the selected project");
                     if (!field->asset_type_restriction.empty())

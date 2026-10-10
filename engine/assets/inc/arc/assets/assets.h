@@ -692,6 +692,8 @@ struct asset_event
 
 using asset_event_callback = std::function<void(const asset_event&)>;
 
+class asset_database;
+
 class asset_manager final : public framework::runtime_service
 {
 public:
@@ -801,6 +803,13 @@ public:
     bool unsubscribe(std::uint64_t token);
     [[nodiscard]] std::vector<asset_event> events_since(std::uint64_t sequence) const;
 
+    /**
+     * Backend-neutral logical catalog view for this authoring registry.
+     *
+     * Loading, imports, handles, pins and eviction remain on asset_manager.
+     */
+    [[nodiscard]] const asset_database& database() const noexcept;
+
     [[nodiscard]] const asset_manager_config& config() const noexcept;
     [[nodiscard]] jobs::job_system& jobs() const noexcept;
     [[nodiscard]] static jobs::job_priority to_job_priority(asset_streaming_priority priority) noexcept;
@@ -816,6 +825,7 @@ private:
 
     struct implementation;
     std::unique_ptr<implementation> implementation_;
+    std::unique_ptr<asset_database> database_;
 };
 
 [[nodiscard]] std::filesystem::path metadata_path_for(const std::filesystem::path& source_path);

@@ -1,4 +1,5 @@
 #include "asset_manager_internal.h"
+#include <arc/assets/asset_database.h>
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -39,7 +40,8 @@ void asset_pin::reset() noexcept
 
 asset_manager::asset_manager(asset_manager_config config, jobs::job_system& jobs, io::async_file_service& files,
                              memory::memory_system& memory)
-    : implementation_(std::make_unique<implementation>(std::move(config), jobs, files, memory))
+    : implementation_(std::make_unique<implementation>(std::move(config), jobs, files, memory)),
+      database_(std::make_unique<asset_manager_database>(*this))
 {
 }
 
@@ -659,6 +661,11 @@ std::vector<asset_event> asset_manager::events_since(std::uint64_t sequence) con
     std::copy_if(implementation_->events.begin(), implementation_->events.end(), std::back_inserter(result),
                  [sequence](const asset_event& event) { return event.sequence > sequence; });
     return result;
+}
+
+const asset_database& asset_manager::database() const noexcept
+{
+    return *database_;
 }
 
 const asset_manager_config& asset_manager::config() const noexcept
