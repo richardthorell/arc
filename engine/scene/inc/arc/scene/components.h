@@ -276,6 +276,8 @@ struct directional_light_component
 {
     math::vector3f color = math::vector3f::one;
     float intensity{100000.0f};
+    /** Angular radius of the directional emitter in radians. Zero is an ideal sun/directional source. */
+    float source_angle{0.0f};
     bool casts_shadows{false};
     bool enabled{true};
     bool use_color_temperature{};
@@ -294,6 +296,8 @@ struct point_light_component
     math::vector3f color = math::vector3f::one;
     float intensity{800.0f};
     float range{10.0f};
+    float source_radius{0.0f};
+    float source_length{0.0f};
     bool casts_shadows{false};
     bool enabled{true};
     bool use_color_temperature{};
@@ -313,6 +317,8 @@ struct spot_light_component
     float range{10.0f};
     float inner_angle{0.35f};
     float outer_angle{0.75f};
+    float source_radius{0.0f};
+    float source_length{0.0f};
     bool casts_shadows{false};
     bool enabled{true};
     bool use_color_temperature{};
