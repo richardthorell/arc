@@ -84,6 +84,19 @@ beforeEach(() => {
             values: { texture: 'assets/textures/default.png' },
             parameter: { exposed: true, name: 'Albedo' },
           },
+          {
+            id: 'fixed-utility',
+            type: 'functionCall',
+            position: [100, 120],
+            values: {
+              slotId: 'fixed-utility',
+              name: 'Fixed Utility',
+              path: 'material_functions/checker.arcmatfn',
+              functions: [{ path: 'material_functions/checker.arcmatfn' }],
+              inputPins: [],
+              outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+            },
+          },
           { id: 'material-output', type: 'output', position: [300, 0], values: {} },
         ],
         connections: [
