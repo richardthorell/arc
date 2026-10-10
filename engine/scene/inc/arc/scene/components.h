@@ -284,7 +284,8 @@ struct directional_light_component
     render::texture_handle cookie_texture{};
     render::shadow_settings shadow{};
     render::directional_shadow_settings cascades{};
-    /** Angular diameter of the directional emitter in radians (Source Angle). Zero is an ideal sun/directional source. */
+    /** Angular diameter of the directional emitter in radians (Source Angle). Zero is an ideal sun/directional source.
+     */
     float source_angle{0.0f};
 };
 
