@@ -1392,10 +1392,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return false;
     }
     setWorldEnvironment({ ...worldEnvironment, hdriPath: path });
+    const assetReference = asset ? hostAssetReference(asset) : null;
     const response = (await window.arc.host.command('environment.setHdri', {
       entity: worldEnvironment.entity,
-      path,
-      ...(asset ? { asset: hostAssetReference(asset) ?? undefined } : {}),
+      ...(assetReference ? { asset: assetReference } : { path }),
     })) as HostResponse;
     setLastCommand(response.succeeded ? 'Environment HDRI loaded' : response.error || 'HDRI load failed');
     await refreshWorldEnvironment(hostEntityKey(worldEnvironment.entity));
