@@ -84,6 +84,20 @@ beforeEach(() => {
             values: { texture: 'assets/textures/default.png' },
             parameter: { exposed: true, name: 'Albedo' },
           },
+          {
+            id: 'fixed-utility',
+            type: 'functionCall',
+            position: [100, 120],
+            parameter: { exposed: false, name: 'Fixed Utility' },
+            values: {
+              slotId: 'fixed-utility',
+              name: 'Fixed Utility',
+              path: 'material_functions/checker.arcmatfn',
+              functions: [{ path: 'material_functions/checker.arcmatfn' }],
+              inputPins: [],
+              outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+            },
+          },
           { id: 'material-output', type: 'output', position: [300, 0], values: {} },
         ],
         connections: [
@@ -249,6 +263,7 @@ describe('MaterialPicker exported parameters', () => {
             id: 'base-color-source',
             type: 'functionCall',
             position: [100, 0],
+            parameter: { exposed: true, name: 'Base Color Source' },
             values: {
               slotId: 'base-color-source',
               name: 'Base Color Source',
@@ -294,6 +309,7 @@ describe('MaterialPicker exported parameters', () => {
 
     const selector = await screen.findByRole('combobox', { name: 'Base Color Source function' });
     expect(selector).toHaveTextContent('Color');
+    expect(screen.queryByRole('combobox', { name: 'Fixed Utility function' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Choose Base Color Texture asset' })).toBeVisible();
 

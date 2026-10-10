@@ -91,9 +91,14 @@ describe('built-in material validation', () => {
       expect(contributing.has(node.id), `${file}: exposed parameter "${node.parameter?.name}" must affect output`).toBe(
         true,
       );
-      expect(presented.has(node.id), `${file}: exposed parameter "${node.parameter?.name}" must be authorable`).toBe(
-        true,
-      );
+      if (node.type === 'functionCall' || node.type === 'functionSlot') {
+        expect(typeof node.values.slotId, `${file}: exposed function must have a slot ID`).toBe('string');
+        expect(typeof node.values.path, `${file}: exposed function must reference a function`).toBe('string');
+      } else {
+        expect(presented.has(node.id), `${file}: exposed parameter "${node.parameter?.name}" must be authorable`).toBe(
+          true,
+        );
+      }
     }
 
     for (const node of graph.nodes) {
