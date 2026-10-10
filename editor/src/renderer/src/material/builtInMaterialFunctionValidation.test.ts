@@ -61,7 +61,11 @@ describe('built-in Material Functions', () => {
       baseColor.graph.nodes.filter((node) => node.parameter?.exposed === true).map((node) => node.parameter?.name),
     ).toEqual(['Base Color Tint', 'Base Color Texture']);
     expect(baseColor.graph.nodes.some((node) => node.type === 'textureSample2D')).toBe(true);
-    expect(baseColor.graph.nodes.some((node) => node.type === 'functionCall' && node.values.path === 'material_functions/tint_rgb.arcmatfn')).toBe(true);
+    expect(
+      baseColor.graph.nodes.some(
+        (node) => node.type === 'functionCall' && node.values.path === 'material_functions/tint_rgb.arcmatfn',
+      ),
+    ).toBe(true);
   });
 
   it('gives every built-in a stable unique Material Function identity', () => {
