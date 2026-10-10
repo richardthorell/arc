@@ -67,8 +67,8 @@ TEST_CASE("asset assignment commands round trip GUID references without duplicat
     };
     const arc::editor::host_command_envelope source{
         .request_id = 41,
-        .payload = arc::editor::host_set_environment_hdri_command{
-            .entity = {.index = 4, .generation = 2}, .asset = reference},
+        .payload =
+            arc::editor::host_set_environment_hdri_command{.entity = {.index = 4, .generation = 2}, .asset = reference},
     };
 
     const auto json = arc::editor::to_json(source);
@@ -103,8 +103,9 @@ TEST_CASE("Flow assignment prefers the common asset reference contract")
     };
     const arc::editor::host_command_envelope source{
         .request_id = 43,
-        .payload = arc::editor::host_set_flow_command{
-            .entity = {.index = 7, .generation = 1}, .asset = reference, .enabled = true},
+        .payload = arc::editor::host_set_flow_command{.entity = {.index = 7, .generation = 1},
+                                                      .asset = reference,
+                                                      .enabled = true},
     };
 
     const auto json = arc::editor::to_json(source);

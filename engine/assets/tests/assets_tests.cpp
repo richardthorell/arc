@@ -270,8 +270,7 @@ TEST_CASE("asset manager scans persists moves and loads source generations")
     REQUIRE(fixture.manager.find(material->guid)->state == asset_state::ready);
     REQUIRE_FALSE(fixture.manager.find(material->guid)->artifacts.empty());
 
-    const asset_reference reference_before_move{
-        material->guid, asset_types::material, "assets/materials/stone.arcmat"};
+    const asset_reference reference_before_move{material->guid, asset_types::material, "assets/materials/stone.arcmat"};
     const auto moved = fixture.manager.move(material->guid, "assets/materials/renamed.arcmat");
     REQUIRE(moved.succeeded());
     REQUIRE(std::filesystem::exists(project.assets / "materials/renamed.arcmat"));
@@ -735,8 +734,7 @@ TEST_CASE("GUID references resolve assets from secondary project content roots")
 
     const auto secondary = manager.find("DLC/materials/expansion.arcmat");
     REQUIRE(secondary);
-    const asset_reference reference{
-        secondary->guid, asset_types::material, "Content/materials/old-expansion.arcmat"};
+    const asset_reference reference{secondary->guid, asset_types::material, "Content/materials/old-expansion.arcmat"};
     const auto resolved = manager.find(reference);
     REQUIRE(resolved);
     CHECK(resolved->guid == secondary->guid);
@@ -778,8 +776,7 @@ TEST_CASE("read-only source roots mount built-in assets without allowing source 
     REQUIRE(builtin);
     REQUIRE(builtin->guid == guid);
     REQUIRE(builtin->read_only);
-    const asset_reference builtin_reference{
-        guid, asset_types::material, "builtin/materials/stale-name.arcmat"};
+    const asset_reference builtin_reference{guid, asset_types::material, "builtin/materials/stale-name.arcmat"};
     const auto resolved_builtin = manager.find(builtin_reference);
     REQUIRE(resolved_builtin);
     CHECK(resolved_builtin->source_path == "builtin/materials/default_phong.arcmat");
