@@ -13,7 +13,9 @@ asset_database_provider provider_for(const asset_snapshot& snapshot)
     provider.read_only = snapshot.read_only;
 
     const auto source = normalize_asset_path(snapshot.source_path);
-    if (source.starts_with("arc://builtin/"))
+    // std::filesystem canonicalizes URI-like paths such as arc://builtin/foo
+    // to arc:/builtin/foo. Treat both spellings as the virtual built-in namespace.
+    if (source.starts_with("arc://builtin/") || source.starts_with("arc:/builtin/"))
     {
         provider.id = "arc.builtin.virtual";
         provider.kind = asset_provider_kind::virtual_builtin;
