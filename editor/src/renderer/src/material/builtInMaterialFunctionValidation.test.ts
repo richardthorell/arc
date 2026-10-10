@@ -29,6 +29,7 @@ describe('built-in Material Functions', () => {
       'noise.arcmatfn',
       'normal_blend.arcmatfn',
       'normal_map.arcmatfn',
+      'reoriented_normal_blend.arcmatfn',
       'texture_tint.arcmatfn',
       'tint_rgb.arcmatfn',
       'unpack_orm.arcmatfn',
@@ -40,7 +41,12 @@ describe('built-in Material Functions', () => {
     const asset = readFunction(file);
     expect(asset.kind).toBe('materialFunction');
     expect(asset.version).toBe(1);
-    expect(isMaterialGraph(asset.graph)).toBe(true);
+    if (file === 'reoriented_normal_blend.arcmatfn') {
+      expect(asset.shader?.entryPoint).toBe('arc_material_function');
+      expect(asset.shader?.source).toContain('void arc_material_function(');
+    } else {
+      expect(isMaterialGraph(asset.graph)).toBe(true);
+    }
     const expectedOutputs: Record<string, Array<{ id: string; name: string; type: string }>> = {
       channel_mask: [{ id: 'value', name: 'Value', type: 'float' }],
       unpack_orm: [
@@ -51,11 +57,14 @@ describe('built-in Material Functions', () => {
       uv_transform: [{ id: 'uv', name: 'UV', type: 'vec2' }],
       normal_blend: [{ id: 'normal', name: 'World Normal', type: 'vec3' }],
       normal_map: [{ id: 'normal', name: 'World Normal', type: 'vec3' }],
+      reoriented_normal_blend: [{ id: 'normal', name: 'Tangent Normal', type: 'vec3' }],
     };
     const key = file.replace('.arcmatfn', '');
     expect(asset.outputs).toEqual(expectedOutputs[key] ?? [{ id: 'color', name: 'Color', type: 'vec3' }]);
-    expect(asset.graph.nodes.filter((node) => node.type === 'functionOutput')).toHaveLength(1);
-    expect(asset.graph.nodes.some((node) => node.type === 'functionSlot')).toBe(false);
+    if (file !== 'reoriented_normal_blend.arcmatfn') {
+      expect(asset.graph.nodes.filter((node) => node.type === 'functionOutput')).toHaveLength(1);
+      expect(asset.graph.nodes.some((node) => node.type === 'functionSlot')).toBe(false);
+    }
   });
 
   it('lets the default base-color function own its tint and texture parameters', () => {
