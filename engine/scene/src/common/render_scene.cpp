@@ -816,7 +816,6 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                  .direction = world_forward_direction(transform),
                  .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                  .intensity = light.intensity,
-                 .source_angle = light.source_angle,
                  .casts_shadows = light.casts_shadows,
                  .enabled = light.enabled,
                  .use_color_temperature = light.use_color_temperature,
@@ -826,7 +825,8 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                  .shadow = light.shadow,
                  .cascades = light.cascades,
                  .mobility = entity_mobility(scene, value),
-                 .label = entity_label(scene, value)});
+                 .label = entity_label(scene, value),
+                 .source_angle = light.source_angle});
             ++result.directional_light_count;
         });
 
@@ -840,8 +840,6 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                  .color = effective_light_color(light.color, light.use_color_temperature, light.temperature_kelvin),
                  .intensity = light.intensity,
                  .range = light.range,
-                 .source_radius = light.source_radius,
-                 .source_length = light.source_length,
                  .casts_shadows = light.casts_shadows,
                  .enabled = light.enabled,
                  .use_color_temperature = light.use_color_temperature,
@@ -850,7 +848,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                  .cookie_texture = light.cookie_texture,
                  .shadow = light.shadow,
                  .mobility = entity_mobility(scene, value),
-                 .label = entity_label(scene, value)});
+                 .label = entity_label(scene, value),
+                 .source_radius = light.source_radius,
+                 .source_length = light.source_length});
             ++result.point_light_count;
         });
 
@@ -867,8 +867,6 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                  .range = light.range,
                  .inner_angle = light.inner_angle,
                  .outer_angle = light.outer_angle,
-                 .source_radius = light.source_radius,
-                 .source_length = light.source_length,
                  .casts_shadows = light.casts_shadows,
                  .enabled = light.enabled,
                  .use_color_temperature = light.use_color_temperature,
@@ -877,7 +875,9 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                  .cookie_texture = light.cookie_texture,
                  .shadow = light.shadow,
                  .mobility = entity_mobility(scene, value),
-                 .label = entity_label(scene, value)});
+                 .label = entity_label(scene, value),
+                 .source_radius = light.source_radius,
+                 .source_length = light.source_length});
             ++result.spot_light_count;
         });
 
