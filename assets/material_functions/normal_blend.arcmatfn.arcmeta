@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "f62a1934-0e5f-4af1-947f-33dd41073d3d",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "Normal Blend",
+  "description": "Blend two world-space normals with normalized linear interpolation. Both inputs must already be world-space; do not supply encoded normal-texture RGB."
+}
