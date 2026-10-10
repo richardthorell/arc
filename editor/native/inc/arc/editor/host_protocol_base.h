@@ -1166,6 +1166,9 @@ struct host_set_tag_command
 struct host_set_flow_command
 {
     host_entity_id entity{};
+    /** Authoritative registered Flow asset reference. */
+    std::optional<host_asset_reference> asset;
+    /** Legacy compatibility fields for path/GUID-only callers. */
     std::string graph_guid;
     std::string graph_path_hint;
     bool enabled{true};
