@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "55f18c46-8ab2-4998-b8ec-94e859360945",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "Texture Tint",
+  "description": "Sample a 2D texture at supplied UVs and multiply RGB by an authorable tint."
+}
