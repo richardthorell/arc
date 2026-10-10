@@ -974,7 +974,7 @@ const createMainWindow = (): void => {
     // remains authoritative and alive.
     setTimeout(() => {
       if (rendererWindow.isDestroyed() || rendererWindow.webContents.isDestroyed()) return;
-      rendererWindow.reload();
+      rendererWindow.webContents.reload();
     }, 250);
   });
 
