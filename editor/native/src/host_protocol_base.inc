@@ -416,6 +416,9 @@ bool light_value(std::string_view json, std::string_view key, host_light_snapsho
     if (!parse_enum(object, "kind", kinds, std::size(kinds), out.kind) ||
         !parse_enum(object, "unit", units, std::size(units), out.unit) || !array3_value(object, "color", out.color) ||
         !number_value(object, "intensity", out.intensity) || !number_value(object, "range", out.range) ||
+        !number_value(object, "sourceAngleDegrees", out.source_angle_degrees) ||
+        !number_value(object, "sourceRadius", out.source_radius) ||
+        !number_value(object, "sourceLength", out.source_length) ||
         !number_value(object, "innerAngleDegrees", out.inner_angle_degrees) ||
         !number_value(object, "outerAngleDegrees", out.outer_angle_degrees) ||
         !number_value(object, "width", out.width) || !number_value(object, "height", out.height) ||
@@ -1450,6 +1453,8 @@ std::string to_json(const host_light_snapshot& light)
     std::ostringstream stream;
     stream << "{\"kind\":" << quote(kind) << ",\"unit\":" << quote(unit) << ",\"color\":" << vec3_json(light.color)
            << ",\"intensity\":" << light.intensity << ",\"range\":" << light.range
+           << ",\"sourceAngleDegrees\":" << light.source_angle_degrees
+           << ",\"sourceRadius\":" << light.source_radius << ",\"sourceLength\":" << light.source_length
            << ",\"innerAngleDegrees\":" << light.inner_angle_degrees
            << ",\"outerAngleDegrees\":" << light.outer_angle_degrees << ",\"width\":" << light.width
            << ",\"height\":" << light.height << ",\"twoSided\":" << bool_json(light.two_sided)
