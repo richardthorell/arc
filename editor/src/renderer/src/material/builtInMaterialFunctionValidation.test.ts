@@ -42,8 +42,9 @@ describe('built-in Material Functions', () => {
     expect(asset.kind).toBe('materialFunction');
     expect(asset.version).toBe(1);
     if (file === 'reoriented_normal_blend.arcmatfn') {
-      expect(asset.shader?.entryPoint).toBe('arc_material_function');
-      expect(asset.shader?.source).toContain('void arc_material_function(');
+      const shader = (asset as unknown as { shader?: { entryPoint: string; source: string } }).shader;
+      expect(shader?.entryPoint).toBe('arc_material_function');
+      expect(shader?.source).toContain('void arc_material_function(');
     } else {
       expect(isMaterialGraph(asset.graph)).toBe(true);
     }
