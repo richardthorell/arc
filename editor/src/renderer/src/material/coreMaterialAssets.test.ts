@@ -35,6 +35,10 @@ describe('core built-in material families', () => {
     expect(editorParameters.map((parameter) => parameter.name)).toEqual([
       'Metallic',
       'Roughness',
+      'UV Tiling',
+      'UV Offset',
+      'UV Pivot',
+      'UV Rotation (radians)',
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
       'Normal Texture',
