@@ -213,9 +213,7 @@ const sharedViewportPresentationTails = new Map<string, Promise<void>>();
 const sharedViewportOutstandingReleases = new Map<string, Set<Promise<void>>>();
 const sharedViewportQuiescing = new Set<string>();
 
-const trackSharedViewportRelease = (
-  viewportId: string,
-): { released: Promise<void>; complete: () => void } => {
+const trackSharedViewportRelease = (viewportId: string): { released: Promise<void>; complete: () => void } => {
   let completeRelease!: () => void;
   const released = new Promise<void>((resolve) => {
     completeRelease = resolve;
@@ -232,9 +230,7 @@ const trackSharedViewportRelease = (
 };
 
 const waitForSharedViewportRelease = async (viewportIds: readonly string[], timeoutMs = 250): Promise<void> => {
-  const releases = viewportIds.flatMap((viewportId) => [
-    ...(sharedViewportOutstandingReleases.get(viewportId) ?? []),
-  ]);
+  const releases = viewportIds.flatMap((viewportId) => [...(sharedViewportOutstandingReleases.get(viewportId) ?? [])]);
   if (releases.length === 0) return;
   let timeout: NodeJS.Timeout | undefined;
   try {
