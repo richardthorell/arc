@@ -1,0 +1,35 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Reoriented Normal Blend",
+  "description": "Reoriented normal mapping (RNM) for two unpacked tangent-space normals. Detail weight 0 preserves the base normal; weight 1 applies full detail. Inputs must be signed tangent-space normals, not texture RGB or world normals.",
+  "inputs": [
+    {
+      "id": "base",
+      "name": "Base Tangent Normal",
+      "type": "vec3"
+    },
+    {
+      "id": "detail",
+      "name": "Detail Tangent Normal",
+      "type": "vec3"
+    },
+    {
+      "id": "weight",
+      "name": "Detail Weight",
+      "type": "float",
+      "default": 0
+    }
+  ],
+  "outputs": [
+    {
+      "id": "normal",
+      "name": "Tangent Normal",
+      "type": "vec3"
+    }
+  ],
+  "shader": {
+    "entryPoint": "arc_material_function",
+    "source": "void arc_material_function(float3 arc_input_base, float3 arc_input_detail, float arc_input_weight, out float3 arc_output_normal)\n{\n    float3 base = normalize(arc_input_base);\n    float3 detail = normalize(lerp(float3(0.0, 0.0, 1.0), arc_input_detail, saturate(arc_input_weight)));\n    float3 t = base + float3(0.0, 0.0, 1.0);\n    float3 u = detail * float3(-1.0, -1.0, 1.0);\n    float3 combined = t * (dot(t, u) / max(t.z, 0.00001)) - u;\n    arc_output_normal = normalize(combined);\n}\n"
+  }
+}
