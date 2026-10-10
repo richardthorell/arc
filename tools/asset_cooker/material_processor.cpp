@@ -494,7 +494,7 @@ public:
         render::material_compiled_program program;
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
-        for (const auto [pass, virtual_shadows] : material_passes)
+        for (const auto& [pass, virtual_shadows] : material_passes)
         {
             if (!render::material_supports_pass(pass_material, pass)) continue;
 
@@ -777,7 +777,7 @@ public:
 
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
-        for (const auto [pass, virtual_shadows] : material_passes)
+        for (const auto& [pass, virtual_shadows] : material_passes)
         {
             if (!render::material_supports_pass(pass_material, pass)) continue;
 

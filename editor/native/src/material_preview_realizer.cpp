@@ -419,7 +419,7 @@ compile_preview_runtime_program(const material_graph_compilation& compilation,
                                       std::pair{render::material_pass::forward, false},
                                       std::pair{render::material_pass::forward, true}};
     bool parameter_layout_initialized{};
-    for (const auto [pass, virtual_shadows] : candidate_passes)
+    for (const auto& [pass, virtual_shadows] : candidate_passes)
     {
         if (!render::material_supports_pass(material, pass)) continue;
 
