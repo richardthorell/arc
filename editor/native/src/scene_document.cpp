@@ -641,6 +641,22 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
              !finite_number(value, "sourceLength") || value["sourceLength"].get<double>() < 0.0))
             return fail("has invalid physical source dimensions");
     }
+    if (component_version >= 5u)
+    {
+        if (name == "DirectionalLight" && value.contains("cookie") &&
+            !validate_asset_reference_json(value["cookie"], {}))
+            return fail("has an invalid cookie asset reference");
+        if (name == "PointLight" && value.contains("iesProfile") &&
+            !validate_asset_reference_json(value["iesProfile"], {}))
+            return fail("has an invalid IES profile asset reference");
+        if (name == "SpotLight")
+        {
+            if (value.contains("cookie") && !validate_asset_reference_json(value["cookie"], {}))
+                return fail("has an invalid cookie asset reference");
+            if (value.contains("iesProfile") && !validate_asset_reference_json(value["iesProfile"], {}))
+                return fail("has an invalid IES profile asset reference");
+        }
+    }
     if (name == "DirectionalLight" && value.contains("cascades"))
     {
         const auto& cascades = value["cascades"];
