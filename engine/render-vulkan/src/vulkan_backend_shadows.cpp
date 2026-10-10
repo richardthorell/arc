@@ -1911,6 +1911,7 @@ shadow_uniform_data vulkan_render_backend::build_shadow_uniform(const directiona
     data.configuration[1] = frame_camera_.forward[0];
     data.configuration[2] = frame_camera_.forward[1];
     data.configuration[3] = frame_camera_.forward[2];
+    data.source_shape[0] = light ? std::max(light->source_angle, 0.0f) : 0.0f;
     return data;
 }
 
