@@ -201,6 +201,8 @@ const areaLightSnapshot = (): InspectorEntitySnapshot => ({
     sourceAngleDegrees: 0,
     sourceRadius: 0,
     sourceLength: 0,
+    cookiePath: '',
+    iesProfilePath: '',
     innerAngleDegrees: 20,
     outerAngleDegrees: 40,
     width: 2,

@@ -438,6 +438,8 @@ struct host_light_snapshot
     float source_angle_degrees{};
     float source_radius{};
     float source_length{};
+    std::string cookie_path;
+    std::string ies_profile_path;
     float inner_angle_degrees{20.0f};
     float outer_angle_degrees{40.0f};
     float width{1.0f};

@@ -861,6 +861,7 @@ host_light_snapshot to_host_light(const scene::directional_light_component& ligh
                                .color = to_host_vec3(light.color),
                                .intensity = light.intensity,
                                .source_angle_degrees = math::to_degrees(light.source_angle),
+                               .cookie_path = light.cookie_asset.path_hint,
                                .enabled = light.enabled,
                                .casts_shadows = light.casts_shadows,
                                .use_color_temperature = light.use_color_temperature,
@@ -883,6 +884,7 @@ host_light_snapshot to_host_light(const scene::point_light_component& light) noe
                                .range = light.range,
                                .source_radius = light.source_radius,
                                .source_length = light.source_length,
+                               .ies_profile_path = light.ies_profile.path_hint,
                                .enabled = light.enabled,
                                .casts_shadows = light.casts_shadows,
                                .use_color_temperature = light.use_color_temperature,
@@ -900,6 +902,8 @@ host_light_snapshot to_host_light(const scene::spot_light_component& light) noex
                                .range = light.range,
                                .source_radius = light.source_radius,
                                .source_length = light.source_length,
+                               .cookie_path = light.cookie_asset.path_hint,
+                               .ies_profile_path = light.ies_profile.path_hint,
                                .inner_angle_degrees = math::to_degrees(light.inner_angle),
                                .outer_angle_degrees = math::to_degrees(light.outer_angle),
                                .enabled = light.enabled,
@@ -4148,6 +4152,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         directional_light->color = color;
                         directional_light->intensity = payload.light.intensity;
                         directional_light->source_angle = math::to_radians(payload.light.source_angle_degrees);
+                        directional_light->cookie_asset = {.expected_type = assets::asset_types::texture_2d,
+                                                           .path_hint = payload.light.cookie_path};
                         directional_light->intensity_unit = unit;
                         directional_light->enabled = payload.light.enabled;
                         directional_light->casts_shadows = payload.light.casts_shadows;
@@ -4167,6 +4173,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                         point_light->range = payload.light.range;
                         point_light->source_radius = payload.light.source_radius;
                         point_light->source_length = payload.light.source_length;
+                        point_light->ies_profile = {.expected_type = assets::asset_types::photometric_profile,
+                                                    .path_hint = payload.light.ies_profile_path};
                         point_light->intensity_unit = unit;
                         point_light->enabled = payload.light.enabled;
                         point_light->casts_shadows = payload.light.casts_shadows;
@@ -4183,6 +4191,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                         spot_light->outer_angle = math::to_radians(payload.light.outer_angle_degrees);
                         spot_light->source_radius = payload.light.source_radius;
                         spot_light->source_length = payload.light.source_length;
+                        spot_light->cookie_asset = {.expected_type = assets::asset_types::texture_2d,
+                                                    .path_hint = payload.light.cookie_path};
+                        spot_light->ies_profile = {.expected_type = assets::asset_types::photometric_profile,
+                                                  .path_hint = payload.light.ies_profile_path};
                         spot_light->intensity_unit = unit;
                         spot_light->enabled = payload.light.enabled;
                         spot_light->casts_shadows = payload.light.casts_shadows;

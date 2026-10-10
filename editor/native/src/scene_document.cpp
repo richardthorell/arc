@@ -270,7 +270,8 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     const bool supports_v4 = name == "MeshRenderer" || name == "Terrain" || name == "Water" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
-    const bool supports_v5 = name == "MeshRenderer";
+    const bool supports_v5 = name == "MeshRenderer" || name == "DirectionalLight" || name == "PointLight" ||
+                             name == "SpotLight";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
         !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u) &&
         !(supports_v5 && component_version == 5u))
@@ -639,6 +640,22 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
             (!finite_number(value, "sourceRadius") || value["sourceRadius"].get<double>() < 0.0 ||
              !finite_number(value, "sourceLength") || value["sourceLength"].get<double>() < 0.0))
             return fail("has invalid physical source dimensions");
+    }
+    if (component_version >= 5u)
+    {
+        if (name == "DirectionalLight" && value.contains("cookie") &&
+            !validate_asset_reference_json(value["cookie"], {}))
+            return fail("has an invalid cookie asset reference");
+        if (name == "PointLight" && value.contains("iesProfile") &&
+            !validate_asset_reference_json(value["iesProfile"], {}))
+            return fail("has an invalid IES profile asset reference");
+        if (name == "SpotLight")
+        {
+            if (value.contains("cookie") && !validate_asset_reference_json(value["cookie"], {}))
+                return fail("has an invalid cookie asset reference");
+            if (value.contains("iesProfile") && !validate_asset_reference_json(value["iesProfile"], {}))
+                return fail("has an invalid IES profile asset reference");
+        }
     }
     if (name == "DirectionalLight" && value.contains("cascades"))
     {
@@ -1068,6 +1085,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                    component->use_color_temperature, component->temperature_kelvin,
                                    component->intensity_unit, component->shadow);
         components["DirectionalLight"]["sourceAngle"] = component->source_angle;
+        components["DirectionalLight"]["cookie"] = serialize_asset_reference(component->cookie_asset, project_root);
         components["DirectionalLight"]["cascades"] = {{"count", component->cascades.cascade_count},
                                                       {"maximumDistance", component->cascades.maximum_distance},
                                                       {"splitLambda", component->cascades.split_lambda},
@@ -1083,6 +1101,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
         components["PointLight"]["range"] = component->range;
         components["PointLight"]["sourceRadius"] = component->source_radius;
         components["PointLight"]["sourceLength"] = component->source_length;
+        components["PointLight"]["iesProfile"] = serialize_asset_reference(component->ies_profile, project_root);
     }
     if (const auto* component = state.scene.try_get<scene::spot_light_component>(value))
     {
@@ -1095,6 +1114,8 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
         components["SpotLight"]["outerAngle"] = component->outer_angle;
         components["SpotLight"]["sourceRadius"] = component->source_radius;
         components["SpotLight"]["sourceLength"] = component->source_length;
+        components["SpotLight"]["cookie"] = serialize_asset_reference(component->cookie_asset, project_root);
+        components["SpotLight"]["iesProfile"] = serialize_asset_reference(component->ies_profile, project_root);
     }
     if (const auto* component = state.scene.try_get<scene::area_light_component>(value))
     {
@@ -1784,8 +1805,13 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                     light.intensity *= 20000.0f;
                     light.intensity_unit = render::light_intensity_unit::lux;
                 }
-                loaded.scene.emplace<scene::directional_light_component>(entity, light);
                 light.source_angle = components["DirectionalLight"].value("sourceAngle", light.source_angle);
+                if (components["DirectionalLight"].value("version", 1u) >= 5u &&
+                    components["DirectionalLight"].contains("cookie"))
+                    light.cookie_asset = read_asset_reference(components["DirectionalLight"]["cookie"],
+                                                              assets::asset_types::texture_2d, project_root,
+                                                              asset_registry);
+                loaded.scene.emplace<scene::directional_light_component>(entity, light);
                 if (const auto found = components["DirectionalLight"].find("cascades");
                     found != components["DirectionalLight"].end())
                 {
@@ -1814,6 +1840,11 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 light.range = components["PointLight"].value("range", light.range);
                 light.source_radius = components["PointLight"].value("sourceRadius", light.source_radius);
                 light.source_length = components["PointLight"].value("sourceLength", light.source_length);
+                if (components["PointLight"].value("version", 1u) >= 5u &&
+                    components["PointLight"].contains("iesProfile"))
+                    light.ies_profile = read_asset_reference(components["PointLight"]["iesProfile"],
+                                                             assets::asset_types::photometric_profile, project_root,
+                                                             asset_registry);
                 loaded.scene.emplace<scene::point_light_component>(entity, light);
             }
             if (components.contains("SpotLight"))
@@ -1833,6 +1864,17 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 light.outer_angle = components["SpotLight"].value("outerAngle", light.outer_angle);
                 light.source_radius = components["SpotLight"].value("sourceRadius", light.source_radius);
                 light.source_length = components["SpotLight"].value("sourceLength", light.source_length);
+                if (components["SpotLight"].value("version", 1u) >= 5u)
+                {
+                    if (components["SpotLight"].contains("cookie"))
+                        light.cookie_asset = read_asset_reference(components["SpotLight"]["cookie"],
+                                                                  assets::asset_types::texture_2d, project_root,
+                                                                  asset_registry);
+                    if (components["SpotLight"].contains("iesProfile"))
+                        light.ies_profile = read_asset_reference(components["SpotLight"]["iesProfile"],
+                                                                 assets::asset_types::photometric_profile, project_root,
+                                                                 asset_registry);
+                }
                 loaded.scene.emplace<scene::spot_light_component>(entity, light);
             }
             if (components.contains("AreaLight"))
