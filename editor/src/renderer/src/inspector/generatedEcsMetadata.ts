@@ -773,7 +773,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.directional_light_component",
     "displayName": "Directional Light",
     "description": "Reflected scene data for the Directional Light component.",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "fields": []
   },
   {
@@ -781,7 +781,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.point_light_component",
     "displayName": "Point Light",
     "description": "Reflected scene data for the Point Light component.",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "fields": []
   },
   {
@@ -789,7 +789,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.spot_light_component",
     "displayName": "Spot Light",
     "description": "Reflected scene data for the Spot Light component.",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "fields": []
   },
   {
@@ -1033,7 +1033,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.area_light_component",
     "displayName": "Area Light",
     "description": "Reflected scene data for the Area Light component.",
-    "schemaVersion": 3,
+    "schemaVersion": 4,
     "fields": []
   }
 ] as const satisfies readonly GeneratedEcsComponentMetadata[]
