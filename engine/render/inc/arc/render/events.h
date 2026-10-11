@@ -442,7 +442,7 @@ struct spot_light_event
 };
 
 /**
- * @brief Rectangle/disk area light evaluated through a raster approximation.
+ * @brief Rectangle/disk finite emitter evaluated through the shared LTC direct-light path.
  */
 struct area_light_event
 {
