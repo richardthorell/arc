@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "34e6e230-443a-43f4-82a7-0bb9c5ae4736",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "Reoriented Normal Blend",
+  "description": "Reoriented normal mapping (RNM) for two unpacked tangent-space normals. Detail weight 0 preserves the base normal; weight 1 applies full detail. Inputs must be signed tangent-space normals, not texture RGB or world normals."
+}
