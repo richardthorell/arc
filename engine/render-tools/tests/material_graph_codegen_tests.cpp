@@ -319,10 +319,10 @@ TEST_CASE("Material shader codegen specializes neutral and independent clear-coa
     })";
     const auto compiled = arc::render::tools::compile_material_graph_json(graph);
     REQUIRE(compiled);
-    const auto active = arc::render::tools::generate_material_slang(
-        compiled.value(), {.independent_clear_coat_normal = true});
-    const auto neutral = arc::render::tools::generate_material_slang(
-        compiled.value(), {.independent_clear_coat_normal = false});
+    const auto active =
+        arc::render::tools::generate_material_slang(compiled.value(), {.independent_clear_coat_normal = true});
+    const auto neutral =
+        arc::render::tools::generate_material_slang(compiled.value(), {.independent_clear_coat_normal = false});
     REQUIRE(active);
     REQUIRE(neutral);
     REQUIRE(active.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") != std::string::npos);

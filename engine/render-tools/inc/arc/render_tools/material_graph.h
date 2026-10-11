@@ -366,8 +366,8 @@ struct material_shader_codegen_options
     bool independent_clear_coat_normal = true;
 };
 
-[[nodiscard]] material_shader_codegen_result
-generate_material_slang(const material_graph_compilation& compilation, material_shader_codegen_options options);
+[[nodiscard]] material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation,
+                                                                     material_shader_codegen_options options);
 
 [[nodiscard]] material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation);
 

@@ -958,7 +958,7 @@ void append_compiler_input(source_builder& source)
 } // namespace
 
 material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation,
-                                                      material_shader_codegen_options options)
+                                                       material_shader_codegen_options options)
 {
     if (compilation.ir.version != material_ir_version || compilation.descriptor.material_abi != material_abi_version)
         return material_shader_codegen_result::failure(
