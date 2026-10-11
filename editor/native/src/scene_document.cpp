@@ -270,8 +270,8 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     const bool supports_v4 = name == "MeshRenderer" || name == "Terrain" || name == "Water" ||
                              name == "DirectionalLight" || name == "PointLight" || name == "SpotLight" ||
                              name == "AreaLight";
-    const bool supports_v5 = name == "MeshRenderer" || name == "DirectionalLight" || name == "PointLight" ||
-                             name == "SpotLight";
+    const bool supports_v5 =
+        name == "MeshRenderer" || name == "DirectionalLight" || name == "PointLight" || name == "SpotLight";
     if (component_version != 1u && !(supports_v2 && component_version == 2u) &&
         !(supports_v3 && component_version == 3u) && !(supports_v4 && component_version == 4u) &&
         !(supports_v5 && component_version == 5u))
@@ -1808,9 +1808,9 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 light.source_angle = components["DirectionalLight"].value("sourceAngle", light.source_angle);
                 if (components["DirectionalLight"].value("version", 1u) >= 5u &&
                     components["DirectionalLight"].contains("cookie"))
-                    light.cookie_asset = read_asset_reference(components["DirectionalLight"]["cookie"],
-                                                              assets::asset_types::texture_2d, project_root,
-                                                              asset_registry);
+                    light.cookie_asset =
+                        read_asset_reference(components["DirectionalLight"]["cookie"], assets::asset_types::texture_2d,
+                                             project_root, asset_registry);
                 loaded.scene.emplace<scene::directional_light_component>(entity, light);
                 if (const auto found = components["DirectionalLight"].find("cascades");
                     found != components["DirectionalLight"].end())
@@ -1842,9 +1842,9 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 light.source_length = components["PointLight"].value("sourceLength", light.source_length);
                 if (components["PointLight"].value("version", 1u) >= 5u &&
                     components["PointLight"].contains("iesProfile"))
-                    light.ies_profile = read_asset_reference(components["PointLight"]["iesProfile"],
-                                                             assets::asset_types::photometric_profile, project_root,
-                                                             asset_registry);
+                    light.ies_profile =
+                        read_asset_reference(components["PointLight"]["iesProfile"],
+                                             assets::asset_types::photometric_profile, project_root, asset_registry);
                 loaded.scene.emplace<scene::point_light_component>(entity, light);
             }
             if (components.contains("SpotLight"))
@@ -1867,9 +1867,9 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 if (components["SpotLight"].value("version", 1u) >= 5u)
                 {
                     if (components["SpotLight"].contains("cookie"))
-                        light.cookie_asset = read_asset_reference(components["SpotLight"]["cookie"],
-                                                                  assets::asset_types::texture_2d, project_root,
-                                                                  asset_registry);
+                        light.cookie_asset =
+                            read_asset_reference(components["SpotLight"]["cookie"], assets::asset_types::texture_2d,
+                                                 project_root, asset_registry);
                     if (components["SpotLight"].contains("iesProfile"))
                         light.ies_profile = read_asset_reference(components["SpotLight"]["iesProfile"],
                                                                  assets::asset_types::photometric_profile, project_root,

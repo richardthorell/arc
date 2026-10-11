@@ -415,7 +415,8 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         assetTypeLabel: 'Light Cookie',
         allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'],
         allowEmpty: true,
-        tooltip: 'Optional 2D grayscale/color mask projected by the light. Point-light cookies are intentionally unsupported.',
+        tooltip:
+          'Optional 2D grayscale/color mask projected by the light. Point-light cookies are intentionally unsupported.',
       },
       {
         id: 'sourceAngle',
@@ -561,7 +562,8 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
         assetTypeLabel: 'Light Cookie',
         allowedExtensions: ['.png', '.jpg', '.jpeg', '.tga'],
         allowEmpty: true,
-        tooltip: 'Optional 2D grayscale/color mask projected by the light. Point-light cookies are intentionally unsupported.',
+        tooltip:
+          'Optional 2D grayscale/color mask projected by the light. Point-light cookies are intentionally unsupported.',
       },
       {
         id: 'iesProfile',
