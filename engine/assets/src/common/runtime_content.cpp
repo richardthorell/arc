@@ -398,7 +398,8 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     auto package = std::move(provider).value();
     const auto manifest = package->manifest();
     const auto provider_id =
-        "package:" + (manifest.build_id.empty() ? std::to_string(logical_->revision + 1) : manifest.build_id);
+        "package:" + (manifest.build_id.empty() ? std::string{"anonymous"} : manifest.build_id) + ":" +
+        std::to_string(logical_->revision + 1);
     const auto status = mount_provider(package, priority, provider_id);
     if (!status) return status;
 
