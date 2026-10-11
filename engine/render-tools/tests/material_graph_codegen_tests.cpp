@@ -303,3 +303,30 @@ TEST_CASE("Material IR codegen emits typed texture sampling resources")
     REQUIRE(source.find("arcSampleTextureCube(arcMaterialTexturesCube[0]") != std::string::npos);
     REQUIRE(source.find("arcSampleTexture3D(arcMaterialTextures3D[0]") != std::string::npos);
 }
+
+TEST_CASE("Material shader codegen specializes neutral and independent clear-coat normal outputs")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"coat","type":"vector3","values":{"value":[0.0,1.0,0.0]}}
+      ],
+      "connections":[
+        {"id":"coat-out","from":{"nodeId":"coat","pin":"value"},
+         "to":{"nodeId":"out","pin":"clearCoatNormal"}}
+      ]
+    })";
+    const auto compiled = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(compiled);
+    const auto active =
+        arc::render::tools::generate_material_slang(compiled.value(), {.independent_clear_coat_normal = true});
+    const auto neutral =
+        arc::render::tools::generate_material_slang(compiled.value(), {.independent_clear_coat_normal = false});
+    REQUIRE(active);
+    REQUIRE(neutral);
+    REQUIRE(active.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") != std::string::npos);
+    REQUIRE(neutral.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") == std::string::npos);
+    REQUIRE(neutral.value().source.find("surface.clearCoatNormalWS = surface.normalWS;") != std::string::npos);
+    REQUIRE(active.value().source != neutral.value().source);
+}

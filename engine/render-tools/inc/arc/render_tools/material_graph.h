@@ -358,6 +358,17 @@ compile_material_graph_json(std::string_view graph_json, std::span<const materia
  * The generated source implements `arc_evaluate_material(ArcSurfaceInput)` against Material ABI v1.
  * Shader-backed reusable functions are emitted once in stable namespaces before the evaluator.
  */
+/** @brief Shader variant contract for independently authored clear-coat normals. */
+struct material_shader_codegen_options
+{
+    // Neutral instances inherit the base normal. Active coat-normal instances evaluate
+    // the authored clearCoatNormal output. The caller owns permutation selection.
+    bool independent_clear_coat_normal = true;
+};
+
+[[nodiscard]] material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation,
+                                                                     material_shader_codegen_options options);
+
 [[nodiscard]] material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation);
 
 } // namespace arc::render::tools
