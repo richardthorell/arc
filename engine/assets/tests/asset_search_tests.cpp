@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 
 namespace
 {
@@ -347,6 +348,40 @@ TEST_CASE("persistent asset search index removes documents and derived metadata 
 
     REQUIRE(index->erase(document.guid));
     CHECK(index->query({.text = "Rusty"}).empty());
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+
+TEST_CASE("persistent asset search index recreates a corrupt derived cache")
+{
+    using namespace arc::assets;
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("arc-search-index-corrupt-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(database_path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output);
+        output << "not a sqlite database";
+    }
+
+    {
+        auto opened = persistent_asset_search_index::open(database_path);
+        REQUIRE(opened);
+        auto index = std::move(opened).value();
+
+        asset_search_document document{.guid = generate_asset_guid(),
+                                       .type = asset_types::static_mesh,
+                                       .display_name = "Recovered Bike",
+                                       .title = "Recovered Bike"};
+        REQUIRE(index->upsert(document));
+        const auto results = index->query({.text = "Recovered Bike"});
+        REQUIRE(results.size() == 1);
+        CHECK(results.front().guid == document.guid);
+    }
 
     std::error_code error;
     std::filesystem::remove_all(root, error);
