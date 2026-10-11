@@ -364,6 +364,12 @@ std::uint64_t cas_overlay_provider::active_sequence() const noexcept
     return implementation_->active.update_sequence;
 }
 
+runtime_update_manifest cas_overlay_provider::active_manifest() const
+{
+    std::shared_lock lock(implementation_->mutex);
+    return implementation_->active;
+}
+
 struct runtime_update_receiver::implementation
 {
     std::shared_ptr<cas_overlay_provider> overlay;
