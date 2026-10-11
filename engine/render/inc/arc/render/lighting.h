@@ -241,6 +241,7 @@ struct area_light_data
     math::vector4f direction_two_sided{0.0f, -1.0f, 0.0f, 0.0f};
     math::vector4f tangent_width{1.0f, 0.0f, 0.0f, 1.0f};
     math::vector4f color_intensity{1.0f, 1.0f, 1.0f, 0.0f};
+    /** x/y = emitter dimensions, z = authored shadow request, w = area_shadow_representation. */
     math::vector4f dimensions_shadow{1.0f, 1.0f, 0.0f, 0.0f};
 };
 
