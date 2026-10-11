@@ -1,0 +1,265 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Roughness Remap",
+  "description": "Clamp roughness to [0,1], apply a configurable curve exponent, then remap to a minimum and maximum roughness.",
+  "inputs": [
+    {
+      "id": "roughness",
+      "name": "Roughness",
+      "type": "float"
+    },
+    {
+      "id": "min",
+      "name": "Minimum Roughness",
+      "type": "float",
+      "default": 0
+    },
+    {
+      "id": "max",
+      "name": "Maximum Roughness",
+      "type": "float",
+      "default": 1
+    },
+    {
+      "id": "power",
+      "name": "Curve Exponent",
+      "type": "float",
+      "default": 1
+    }
+  ],
+  "outputs": [
+    {
+      "id": "roughness",
+      "name": "Roughness",
+      "type": "float"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-roughness",
+        "type": "functionInput",
+        "position": [
+          30,
+          80
+        ],
+        "values": {
+          "input": "roughness",
+          "name": "Roughness",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-min",
+        "type": "functionInput",
+        "position": [
+          30,
+          260
+        ],
+        "values": {
+          "input": "min",
+          "name": "Minimum Roughness",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-max",
+        "type": "functionInput",
+        "position": [
+          30,
+          430
+        ],
+        "values": {
+          "input": "max",
+          "name": "Maximum Roughness",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-power",
+        "type": "functionInput",
+        "position": [
+          30,
+          600
+        ],
+        "values": {
+          "input": "power",
+          "name": "Curve Exponent",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "clamp-input",
+        "type": "saturate",
+        "position": [
+          280,
+          80
+        ],
+        "values": {}
+      },
+      {
+        "id": "epsilon",
+        "type": "constant",
+        "position": [
+          280,
+          750
+        ],
+        "values": {
+          "value": 0.0001
+        }
+      },
+      {
+        "id": "safe-exponent",
+        "type": "max",
+        "position": [
+          490,
+          600
+        ],
+        "values": {}
+      },
+      {
+        "id": "curve",
+        "type": "power",
+        "position": [
+          650,
+          130
+        ],
+        "values": {}
+      },
+      {
+        "id": "remap",
+        "type": "lerp",
+        "position": [
+          850,
+          220
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          1040,
+          220
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "input",
+        "from": {
+          "nodeId": "input-roughness",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clamp-input",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "power",
+        "from": {
+          "nodeId": "input-power",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "safe-exponent",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "epsilon",
+        "from": {
+          "nodeId": "epsilon",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "safe-exponent",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "curve-base",
+        "from": {
+          "nodeId": "clamp-input",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "curve",
+          "pin": "base"
+        }
+      },
+      {
+        "id": "curve-exponent",
+        "from": {
+          "nodeId": "safe-exponent",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "curve",
+          "pin": "exponent"
+        }
+      },
+      {
+        "id": "remap-min",
+        "from": {
+          "nodeId": "input-min",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "remap",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "remap-max",
+        "from": {
+          "nodeId": "input-max",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "remap",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "remap-t",
+        "from": {
+          "nodeId": "curve",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "remap",
+          "pin": "t"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "remap",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "roughness"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.8
+    }
+  }
+}
