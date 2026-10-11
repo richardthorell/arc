@@ -957,7 +957,8 @@ void append_compiler_input(source_builder& source)
 
 } // namespace
 
-material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation)
+material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation,
+                                                      material_shader_codegen_options options)
 {
     if (compilation.ir.version != material_ir_version || compilation.descriptor.material_abi != material_abi_version)
         return material_shader_codegen_result::failure(
@@ -975,7 +976,9 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         const auto metallic = expressions.output(material_surface_output::metallic, {});
         const auto roughness = expressions.output(material_surface_output::roughness, {});
         const auto normal = expressions.output(material_surface_output::normal, {});
-        const auto clear_coat_normal = expressions.output(material_surface_output::clear_coat_normal, {});
+        const auto clear_coat_normal = options.independent_clear_coat_normal
+                                           ? expressions.output(material_surface_output::clear_coat_normal, {})
+                                           : std::string{};
         const auto tangent = expressions.output(material_surface_output::tangent, {});
         const auto ambient_occlusion = expressions.output(material_surface_output::ambient_occlusion, {});
         const auto emissive = expressions.output(material_surface_output::emissive, {});
@@ -1094,6 +1097,11 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
     }
 
     return material_shader_codegen_result::success(std::move(generated));
+}
+
+material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation)
+{
+    return generate_material_slang(compilation, {});
 }
 
 } // namespace arc::render::tools
