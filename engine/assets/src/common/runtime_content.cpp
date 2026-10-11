@@ -273,6 +273,7 @@ struct cooked_asset_catalog::logical_catalog
     struct package_record
     {
         std::string provider_id;
+        io::mount_id mount{};
         std::string debug_name;
         std::int32_t priority{};
         std::uint64_t generation{};
@@ -483,6 +484,7 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     if (!status) return status;
 
     logical_->packages.push_back({.provider_id = provider_id,
+                                  .mount = mounts_.back(),
                                   .debug_name = provider_id,
                                   .priority = priority,
                                   .generation = package->provider_generation(),
@@ -531,7 +533,22 @@ asset_status cooked_asset_catalog::unmount_provider(std::string_view provider_id
     const auto found = std::find_if(logical_->overlays.begin(), logical_->overlays.end(),
                                     [&](const auto& entry) { return entry.id == provider_id; });
     if (found == logical_->overlays.end())
-        return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Unknown overlay provider"));
+    {
+        const auto package = std::find_if(logical_->packages.begin(), logical_->packages.end(),
+                                          [&](const auto& entry) { return entry.provider_id == provider_id; });
+        if (package == logical_->packages.end())
+            return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Unknown provider"));
+        const auto unmounted = files_->unmount(package->mount);
+        if (!unmounted)
+            return asset_status::failure(asset_failure(asset_error_code::invalid_request, unmounted.error().message));
+        for (const auto& artifact : package->manifest.artifacts)
+            logical_->append_change({.kind = asset_database_change_kind::provider_changed,
+                                     .guid = artifact.asset, .provider_id = package->provider_id});
+        mounts_.erase(std::remove(mounts_.begin(), mounts_.end(), package->mount), mounts_.end());
+        logical_->packages.erase(package);
+        ++logical_->revision;
+        return asset_status::success();
+    }
     const auto unmounted = files_->unmount(found->mount);
     if (!unmounted)
         return asset_status::failure(asset_failure(asset_error_code::invalid_request, unmounted.error().message));
