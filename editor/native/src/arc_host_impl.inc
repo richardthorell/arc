@@ -1130,6 +1130,16 @@ template <class HostState> bool ensure_water_asset_importer(HostState& host)
     return ::arc::water::register_water_asset_importer(*host.asset_registry);
 }
 
+template <class HostState> bool ensure_photometric_profile_importer(HostState& host)
+{
+    if (!host.asset_registry) return false;
+    const auto importers = host.asset_registry->importers();
+    if (std::any_of(importers.begin(), importers.end(),
+                    [](const auto& importer) { return importer.id == assets::importer_ids::photometric_profile; }))
+        return true;
+    return scene::register_photometric_profile_importer(*host.asset_registry);
+}
+
 template <class HostState> void refresh_scene_terrain_assets(HostState& host)
 {
     if (!host.asset_registry) return;
@@ -1178,6 +1188,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     auto response = open_project_base(command, assets, request_id);
     if (response.succeeded && ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
     if (response.succeeded && ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
+    if (response.succeeded) (void)ensure_photometric_profile_importer(*state_);
     return response;
 }
 
@@ -1366,6 +1377,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 refresh_reimported_world_material(*state_, *reimport);
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
                 if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
+                (void)ensure_photometric_profile_importer(*state_);
             }
             if (std::holds_alternative<host_open_project_command>(command.payload) ||
                 std::holds_alternative<host_open_scene_command>(command.payload) ||
