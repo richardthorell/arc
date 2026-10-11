@@ -3,328 +3,15 @@ import { z } from 'zod';
 import type { AiJsonObject, AiJsonValue, AiToolDefinition } from '../common/aiRuntimeTypes';
 import { assertAiToolInvocationAllowed, type AiToolSecurityDescriptor } from '../common/aiSecurityPolicy';
 import type { BuiltInAgentCapabilities, BuiltInAgentToolExecutionResult } from '../common/builtInAgentTypes';
-import { agentEditorBatchRequestSchema } from './agentEditorBatch';
-import { agentEditActions, type AgentEditAction, type AgentHarnessMethod } from './agentHarnessContract';
-import { agentEditValueSchema, validateAgentEditValue } from './agentEditToolSchemas';
+import { type AgentEditAction, type AgentHarnessMethod } from './agentHarnessContract';
+import { validateAgentEditValue } from './agentEditToolSchemas';
 import type { BuiltInAgentAdapter } from './builtInAgentAdapter';
+import type { EditorOperationDescriptor } from '../common/editorOperationRegistry';
 
 export const BUILT_IN_AGENT_TOOL_RESULT_MAX_BYTES = 64 * 1024;
 const maximumResultPreviewCharacters = 16 * 1024;
 
-const agentChoiceOption = z
-  .object({
-    uri: z.string().regex(/^arc:\/\/asset\/[^/?#]+$/u),
-    label: z.string().min(1).max(120),
-    reason: z.string().min(1).max(240).optional(),
-  })
-  .strict();
-const agentChoices = z
-  .object({
-    title: z.string().min(1).max(120),
-    prompt: z.string().min(1).max(280).optional(),
-    selection: z.literal('single').default('single'),
-    options: z.array(agentChoiceOption).min(2).max(8),
-  })
-  .strict();
-
-const vector3 = z.tuple([z.number(), z.number(), z.number()]);
-const empty = z.object({}).strict();
-const captureOptions = z
-  .object({
-    color: z.boolean().optional(),
-    depth: z.boolean().optional(),
-    objectId: z.boolean().optional(),
-    normals: z.boolean().optional(),
-    sceneColor: z.boolean().optional(),
-    baseColor: z.boolean().optional(),
-    materialProperties: z.boolean().optional(),
-    emissive: z.boolean().optional(),
-    indirectDiffuse: z.boolean().optional(),
-    reflections: z.boolean().optional(),
-    traceSource: z.boolean().optional(),
-    distanceField: z.boolean().optional(),
-    temporalConfidence: z.boolean().optional(),
-    waitFrames: z.number().int().min(0).max(120).optional(),
-    maxWidth: z.number().int().min(1).max(1920).optional(),
-    maxHeight: z.number().int().min(1).max(1080).optional(),
-    samplePixels: z
-      .array(z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative() }).strict())
-      .max(64)
-      .optional(),
-  })
-  .strict();
-const cameraMove = z
-  .object({
-    action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
-    x: z.number().optional(),
-    y: z.number().optional(),
-    amount: z.number().optional(),
-    guid: z.string().min(1).optional(),
-    position: vector3.optional(),
-    target: vector3.optional(),
-    waitFrames: z.number().int().min(0).max(120).optional(),
-    maxWidth: z.number().int().min(1).max(1920).optional(),
-    maxHeight: z.number().int().min(1).max(1080).optional(),
-  })
-  .strict();
-const environmentOptions = z
-  .object({
-    sky: z.boolean().optional(),
-    fog: z.boolean().optional(),
-    terrain: z.boolean().optional(),
-    water: z.boolean().optional(),
-    vegetation: z.boolean().optional(),
-    decals: z.boolean().optional(),
-  })
-  .strict();
-const renderOptions = z
-  .object({
-    renderMode: z.enum(['shaded', 'wireframe']).optional(),
-    visualization: z.string().min(1).optional(),
-    overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
-    selectionOutline: z.boolean().optional(),
-    hoverOutline: z.boolean().optional(),
-    selectionBounds: z.boolean().optional(),
-    componentGizmos: z.boolean().optional(),
-    selectionHierarchy: z.boolean().optional(),
-    shadows: z.boolean().optional(),
-    grid: z.boolean().optional(),
-    environment: environmentOptions.optional(),
-    waitFrames: z.number().int().min(0).max(120).optional(),
-  })
-  .strict();
-
-type RegistryEntry = Readonly<{
-  method: AgentHarnessMethod;
-  description: string;
-  schema: z.ZodType<unknown>;
-  mutating?: boolean;
-}>;
-
-const registryEntries = [
-  {
-    method: 'agent.capabilities',
-    description: 'Describe the editor operations and edit actions currently available to the built-in ARC agent.',
-    schema: empty,
-  },
-  {
-    method: 'agent.presentChoices',
-    description:
-      'Present 2-8 visual project asset choices to the user when their selection is needed before continuing. Each option must use an authoritative arc://asset/<guid> reference from project context or tool results. Do not invent GUIDs. After calling this tool, wait for the user selection before taking dependent action.',
-    schema: agentChoices,
-  },
-  {
-    method: 'scene.overview',
-    description: 'Read the current ARC scene hierarchy, document state, and authority revisions.',
-    schema: empty,
-  },
-  {
-    method: 'scene.findEntities',
-    description: 'Find scene entities by name or persistent GUID.',
-    schema: z
-      .object({
-        search: z.string().optional(),
-        offset: z.number().int().nonnegative().optional(),
-        limit: z.number().int().min(1).max(200).optional(),
-      })
-      .strict(),
-  },
-  {
-    method: 'scene.getEntity',
-    description: 'Inspect one scene entity and its components using a persistent GUID.',
-    schema: z.object({ guid: z.string().min(1) }).strict(),
-  },
-  {
-    method: 'scene.componentSchemas',
-    description: 'Read reflected ARC component and field schemas.',
-    schema: empty,
-  },
-  {
-    method: 'scene.spatialQuery',
-    description: 'Raycast or find nearby, bounds-overlapping, or frustum-visible entities.',
-    schema: z
-      .object({
-        kind: z.enum(['raycast', 'nearby', 'bounds', 'frustum']),
-        origin: vector3.optional(),
-        direction: vector3.optional(),
-        center: vector3.optional(),
-        extent: vector3.optional(),
-        radius: z.number().nonnegative().optional(),
-        limit: z.number().int().min(1).max(500).optional(),
-      })
-      .strict(),
-  },
-  {
-    method: 'scene.changes',
-    description: 'Read scene changes since a known scene revision, with full-snapshot fallback metadata.',
-    schema: z.object({ sinceSceneRevision: z.number().int().nonnegative() }).strict(),
-  },
-  {
-    method: 'selection.set',
-    description: 'Replace the editor selection with one scene entity using its persistent GUID.',
-    schema: z.object({ guid: z.string().min(1) }).strict(),
-  },
-  {
-    method: 'selection.clear',
-    description: 'Clear the current editor entity selection without mutating scene content.',
-    schema: empty,
-  },
-  {
-    method: 'assets.list',
-    description:
-      'Search the authoritative ARC asset inventory, including engine built-ins and project content. Use this before authoring or assigning materials, textures, functions, shaders, prefabs, or other reusable assets. Results are bounded and include stable identity, readiness, provenance, dependency relations, and typed capability hints derived from the registered asset kind. For scene construction or appearance changes, inspect the current inventory before planning edits; do not assume the project lacks assets or rely on hardcoded material/function catalogs. Use returned references and distinguish capabilities from available assets.',
-    schema: z
-      .object({
-        search: z.string().max(240).optional(),
-        kinds: z.array(z.string().min(1).max(64)).max(16).optional(),
-        scopes: z
-          .array(z.enum(['builtin', 'project', 'user', 'organization', 'procedural']))
-          .max(5)
-          .optional(),
-        statuses: z.array(z.string().min(1).max(32)).max(12).optional(),
-        offset: z.number().int().nonnegative().optional(),
-        limit: z.number().int().min(1).max(200).optional(),
-      })
-      .strict(),
-  },
-  {
-    method: 'viewport.state',
-    description: 'Read the live ARC viewport dimensions, camera, frame revision, and render state.',
-    schema: empty,
-  },
-  {
-    method: 'viewport.move',
-    description: 'Move, frame, or place the editor camera without changing persistent scene content.',
-    schema: cameraMove,
-  },
-  {
-    method: 'viewport.setRenderOptions',
-    description: 'Set non-persistent viewport visualization, overlays, shadows, and environment visibility.',
-    schema: renderOptions,
-  },
-  {
-    method: 'viewport.pick',
-    description: 'Pick an entity at output viewport pixel coordinates.',
-    schema: z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative() }).strict(),
-  },
-  {
-    method: 'viewport.observe',
-    description: 'Capture coherent viewport channels and optional pixel samples from the live renderer.',
-    schema: captureOptions,
-  },
-  {
-    method: 'viewport.debug',
-    description: 'Configure, settle, capture, and diagnose the viewport atomically.',
-    schema: z
-      .object({
-        renderOptions: renderOptions.omit({ waitFrames: true }).optional(),
-        camera: cameraMove.omit({ waitFrames: true, maxWidth: true, maxHeight: true }).optional(),
-        capture: captureOptions.omit({ waitFrames: true, samplePixels: true }).optional(),
-        samplePixels: z
-          .array(z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative() }).strict())
-          .max(64)
-          .optional(),
-        baselineCaptureId: z.number().int().positive().optional(),
-        waitFrames: z.number().int().min(1).max(120).optional(),
-      })
-      .strict(),
-  },
-  {
-    method: 'viewport.inspectPixel',
-    description: 'Inspect color, depth, ObjectID/entity GUID, and normal values at one viewport pixel.',
-    schema: z
-      .object({
-        x: z.number().int().nonnegative(),
-        y: z.number().int().nonnegative(),
-        captureId: z.number().int().positive().optional(),
-        waitFrames: z.number().int().min(0).max(120).optional(),
-      })
-      .strict(),
-  },
-  {
-    method: 'viewport.compare',
-    description: 'Compare coherent viewport captures using per-channel error and changed-pixel fractions.',
-    schema: z
-      .object({
-        baselineCaptureId: z.number().int().positive(),
-        currentCaptureId: z.number().int().positive().optional(),
-        waitFrames: z.number().int().min(0).max(120).optional(),
-      })
-      .strict(),
-  },
-  {
-    method: 'diagnostics.get',
-    description: 'Collect current scene, viewport, renderer, render-graph, shadow, and history diagnostics.',
-    schema: empty,
-  },
-  {
-    method: 'events.wait',
-    description: 'Wait for a newer scene, frame, selection, or diagnostic event.',
-    schema: z
-      .object({
-        kind: z.enum(['scene', 'frame', 'selection', 'diagnostic']),
-        afterSequence: z.number().int().nonnegative().optional(),
-        afterFrameRevision: z.number().int().nonnegative().optional(),
-        timeoutMs: z.number().int().min(1).max(30_000).optional(),
-      })
-      .strict(),
-  },
-  {
-    method: 'edit.request',
-    description: 'Request user approval for a temporary ARC editor mutation scope.',
-    schema: z.object({ label: z.string().optional() }).strict(),
-  },
-  {
-    method: 'edit.begin',
-    description: 'Begin one transactional editor action after user approval.',
-    schema: z.object({ label: z.string().min(1), expectedSceneRevision: z.number().int().positive() }).strict(),
-    mutating: true,
-  },
-  {
-    method: 'edit.apply',
-    description: 'Apply one validated scene operation or stage an authored asset inside an active transaction.',
-    schema: z
-      .object({
-        editSessionId: z.string().min(1),
-        expectedSceneRevision: z.number().int().positive(),
-        action: z.enum(agentEditActions),
-        value: agentEditValueSchema,
-      })
-      .strict(),
-    mutating: true,
-  },
-  {
-    method: 'editor.applyBatch',
-    description:
-      'Apply multiple validated editor mutations in one active transaction. Use tempId to reference entities created earlier in the same batch. Prefer existing asset bindings and lightweight overrides; include material.create only when no suitable project asset or override can satisfy the request, or when a new reusable asset was explicitly requested. Inspect assets.list for appearance edits, and verify resolved material assignments and rendered results before claiming success; a successful batch alone does not prove the requested appearance changed.',
-    schema: agentEditorBatchRequestSchema,
-    mutating: true,
-  },
-  {
-    method: 'edit.commit',
-    description: 'Commit an active approved ARC edit transaction.',
-    schema: z.object({ editSessionId: z.string().min(1), expectedSceneRevision: z.number().int().positive() }).strict(),
-    mutating: true,
-  },
-  {
-    method: 'edit.cancel',
-    description: 'Cancel an active ARC edit transaction without committing staged changes.',
-    schema: z.object({ editSessionId: z.string().min(1) }).strict(),
-    mutating: true,
-  },
-  {
-    method: 'history.undo',
-    description: 'Undo one validated in-memory scene history operation after edit access is approved.',
-    schema: z.object({ expectedSceneRevision: z.number().int().positive() }).strict(),
-    mutating: true,
-  },
-  {
-    method: 'history.redo',
-    description: 'Redo one validated in-memory scene history operation after edit access is approved.',
-    schema: z.object({ expectedSceneRevision: z.number().int().positive() }).strict(),
-    mutating: true,
-  },
-] as const satisfies readonly RegistryEntry[];
+import { registryEntries, type RegistryEntry } from './agentOperationCatalog';
 
 const entryByMethod = new Map<AgentHarnessMethod, RegistryEntry>(registryEntries.map((entry) => [entry.method, entry]));
 
@@ -388,11 +75,7 @@ export const builtInAgentToolDefinitions = (capabilities: BuiltInAgentCapabiliti
     .map((entry) => definition(entry, capabilities));
 };
 
-const serializeToolResult = (
-  name: string,
-  operation: AgentHarnessMethod,
-  value: unknown,
-): BuiltInAgentToolExecutionResult => {
+const serializeToolResult = (name: string, operation: string, value: unknown): BuiltInAgentToolExecutionResult => {
   const normalized = toJsonValue(value);
   const serialized = JSON.stringify(normalized);
   const originalBytes = Buffer.byteLength(serialized, 'utf8');
@@ -412,14 +95,64 @@ export class BuiltInAgentToolRegistry {
   constructor(private readonly adapter: Pick<BuiltInAgentAdapter, 'capabilities' | 'invoke'>) {}
 
   async definitions(): Promise<AiToolDefinition[]> {
-    return builtInAgentToolDefinitions(await this.adapter.capabilities());
+    const capabilities = await this.adapter.capabilities();
+    if (typeof capabilities.catalogRevision !== 'string') return builtInAgentToolDefinitions(capabilities);
+    const definitions: AiToolDefinition[] = [];
+    for (let offset = 0; offset < capabilities.operations.length; offset += 16) {
+      const descriptors = await this.describe(
+        capabilities.operations.slice(offset, offset + 16),
+        capabilities.catalogRevision,
+      );
+      for (const descriptor of descriptors) {
+        if (descriptor.available)
+          definitions.push({
+            name: descriptor.id,
+            description: descriptor.description,
+            inputSchema: descriptor.inputSchema,
+            operationContract: { version: descriptor.version, catalogRevision: capabilities.catalogRevision },
+          });
+      }
+    }
+    return definitions;
+  }
+
+  private async describe(ids: readonly string[], catalogRevision: string): Promise<EditorOperationDescriptor[]> {
+    const result = (await this.adapter.invoke('agent.operations.describe', { ids, catalogRevision })) as {
+      operations: EditorOperationDescriptor[];
+    };
+    return result.operations;
   }
 
   async invoke(name: string, rawArguments: unknown = {}): Promise<BuiltInAgentToolExecutionResult> {
     const entry = entryByName.get(name);
-    if (!entry) throw new Error(`Unknown built-in ARC AI tool: ${name}`);
-
     const capabilities = await this.adapter.capabilities();
+    if (typeof capabilities.catalogRevision === 'string') {
+      if (!capabilities.operations.includes(name)) throw new Error(`Unknown built-in ARC AI tool: ${name}`);
+      const [descriptor] = await this.describe([name], capabilities.catalogRevision);
+      assertAiToolInvocationAllowed(
+        {
+          name,
+          boundary: 'harness',
+          harnessOperation: name,
+          mutating: descriptor.permissions.includes('scene.edit'),
+          requiresHarnessApproval: descriptor.permissions.includes('scene.edit'),
+        },
+        { harnessCapabilities: new Set(capabilities.operations) },
+      );
+      const params = toJsonObject(rawArguments ?? {}, 'tool arguments');
+      return serializeToolResult(
+        name,
+        name,
+        await this.adapter.invoke(name, {
+          ...params,
+          operationContract: params.operationContract ?? {
+            version: descriptor.version,
+            catalogRevision: capabilities.catalogRevision,
+          },
+        }),
+      );
+    }
+    if (!entry) throw new Error(`Unknown built-in ARC AI tool: ${name}`);
     const capabilitySet = new Set(capabilities.operations);
     assertAiToolInvocationAllowed(securityDescriptor(entry), { harnessCapabilities: capabilitySet });
 

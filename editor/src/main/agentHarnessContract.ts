@@ -7,6 +7,8 @@
  */
 export const agentHarnessMethods = [
   'agent.capabilities',
+  'agent.operations.list',
+  'agent.operations.describe',
   'agent.presentChoices',
   'scene.overview',
   'scene.findEntities',
@@ -67,6 +69,8 @@ export type GatewayMethod = (typeof gatewayMethods)[number];
 
 export const gatewayHttpMethods = {
   '/api/v1/agent/capabilities': 'agent.capabilities',
+  '/api/v1/agent/operations': 'agent.operations.list',
+  '/api/v1/agent/operations/describe': 'agent.operations.describe',
   '/api/v1/agent/present-choices': 'agent.presentChoices',
   '/api/v1/scene/overview': 'scene.overview',
   '/api/v1/scene/find-entities': 'scene.findEntities',

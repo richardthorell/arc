@@ -609,7 +609,7 @@ export class EditorAgentHarness {
     }
   }
 
-  private async dispatch(method: string, params: Record<string, unknown>, clientId: string): Promise<unknown> {
+  protected async dispatch(method: string, params: Record<string, unknown>, clientId: string): Promise<unknown> {
     switch (method) {
       case 'agent.capabilities':
         return {
@@ -1843,6 +1843,21 @@ export class EditorAgentHarness {
     }
   }
 
+  protected async authorizeOperation(permissions: readonly string[], clientId: string): Promise<void> {
+    await this.expireInactiveAuthority();
+    this.touchClient(clientId);
+    for (const permission of permissions) {
+      if (permission === 'scene.edit') this.requireApproved(clientId);
+      else if (permission !== 'editor.read') throw new Error(`Unsupported operation permission: ${permission}`);
+    }
+  }
+
+  protected validateBatchAuthority(editSessionId: string, clientId: string, expected: number): void {
+    const session = this.requireSession(editSessionId, clientId);
+    if (expected !== session.expectedSceneRevision)
+      throw new Error(`Edit session expects scene revision ${session.expectedSceneRevision}`);
+  }
+
   private requireApproved(clientId: string): void {
     this.expirePermissions();
     const expires = this.approvedClients.get(clientId);
@@ -1941,7 +1956,7 @@ export class EditorAgentHarness {
     this.notify();
   }
 
-  private audit(
+  protected audit(
     clientId: string,
     category: AgentAuditEntry['category'],
     operation: string,
