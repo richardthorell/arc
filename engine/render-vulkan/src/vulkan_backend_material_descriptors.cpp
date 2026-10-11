@@ -129,7 +129,7 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
         shadow_atlas_.array_view == VK_NULL_HANDLE || local_shadow_atlas_.view == VK_NULL_HANDLE ||
         shadow_buffer_resource == nullptr || shadow_buffer_resource->buffer == VK_NULL_HANDLE ||
         material_parameters == nullptr || material_parameters->buffer == VK_NULL_HANDLE ||
-        light_buffer_.buffer == VK_NULL_HANDLE)
+        light_buffer_.buffer == VK_NULL_HANDLE || ltc_lookup_buffer_.buffer == VK_NULL_HANDLE)
         return;
 
     const auto resolve_texture = [&](texture_handle handle, VkSampler& sampler, VkImageView& view,
@@ -231,7 +231,7 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
     shadow_buffer.offset = 0;
     shadow_buffer.range = sizeof(shadow_uniform_data);
 
-    std::array<VkWriteDescriptorSet, material_image_bindings.size() + 8u> writes{};
+    std::array<VkWriteDescriptorSet, material_image_bindings.size() + 9u> writes{};
     for (std::uint32_t image_index = 0; image_index < image_infos.size(); ++image_index)
     {
         writes[image_index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -268,6 +268,14 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
     parameter_write.descriptorCount = 1;
     parameter_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     parameter_write.pBufferInfo = &parameter_buffer;
+    VkDescriptorBufferInfo ltc_lookup_buffer{ltc_lookup_buffer_.buffer, 0, VK_WHOLE_SIZE};
+    auto& ltc_write = writes[material_image_bindings.size() + 3u];
+    ltc_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    ltc_write.dstSet = descriptor_set;
+    ltc_write.dstBinding = material_ltc_lookup_binding;
+    ltc_write.descriptorCount = 1;
+    ltc_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    ltc_write.pBufferInfo = &ltc_lookup_buffer;
 
     const auto& virtual_shadows = virtual_shadow_resources_;
     const auto fallback_buffer = light_buffer_.buffer;
@@ -298,7 +306,7 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
                                                         material_virtual_shadow_page_table_binding};
     for (std::size_t index = 0; index < virtual_shadow_buffers.size(); ++index)
     {
-        auto& write = writes[material_image_bindings.size() + 3u + index];
+        auto& write = writes[material_image_bindings.size() + 4u + index];
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet = descriptor_set;
         write.dstBinding = virtual_shadow_buffer_bindings[index];
@@ -310,7 +318,7 @@ void vulkan_render_backend::update_material_descriptor_set(VkDescriptorSet descr
                                                        material_virtual_shadow_dynamic_binding};
     for (std::size_t index = 0; index < virtual_shadow_images.size(); ++index)
     {
-        auto& write = writes[material_image_bindings.size() + 6u + index];
+        auto& write = writes[material_image_bindings.size() + 7u + index];
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet = descriptor_set;
         write.dstBinding = virtual_shadow_image_bindings[index];
@@ -380,10 +388,34 @@ VkDescriptorSet vulkan_render_backend::allocate_material_descriptor_set()
     return set;
 }
 
+bool vulkan_render_backend::ensure_ltc_lookup_buffer()
+{
+    if (ltc_lookup_buffer_.buffer != VK_NULL_HANDLE) return true;
+
+    const auto table = build_ltc_lookup_table(32u);
+    if (table.resolution != 32u || table.samples.empty()) return false;
+    static_assert(sizeof(ltc_lookup_sample) == sizeof(float) * 8u);
+
+    const VkDeviceSize bytes = static_cast<VkDeviceSize>(table.samples.size() * sizeof(ltc_lookup_sample));
+    if (!create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, ltc_lookup_buffer_))
+        return false;
+
+    void* mapped{};
+    if (vmaMapMemory(allocator_, ltc_lookup_buffer_.allocation, &mapped) != VK_SUCCESS)
+    {
+        destroy_buffer(ltc_lookup_buffer_);
+        return false;
+    }
+    std::memcpy(mapped, table.samples.data(), static_cast<std::size_t>(bytes));
+    vmaFlushAllocation(allocator_, ltc_lookup_buffer_.allocation, 0, bytes);
+    vmaUnmapMemory(allocator_, ltc_lookup_buffer_.allocation);
+    return true;
+}
+
 bool vulkan_render_backend::ensure_white_texture()
 {
     const auto shadow_resolution = shadow_atlas_.resolution == 0 ? 2048u : shadow_atlas_.resolution;
-    if (!ensure_shadow_uniform_buffers() ||
+    if (!ensure_ltc_lookup_buffer() || !ensure_shadow_uniform_buffers() ||
         !ensure_shadow_resources({.enabled = false, .resolution = shadow_resolution}) ||
         !ensure_local_shadow_resources())
         return false;
@@ -403,21 +435,22 @@ bool vulkan_render_backend::ensure_white_texture()
         bindings[binding_index].descriptorType =
             binding_index == material_shadow_data_binding || binding_index == material_parameters_binding
                 ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-            : binding_index == material_light_data_binding || virtual_shadow_buffer
+            : binding_index == material_light_data_binding || binding_index == material_ltc_lookup_binding ||
+                    virtual_shadow_buffer
                 ? VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                 : VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[binding_index].descriptorCount = 1;
         bindings[binding_index].stageFlags =
             binding_index == material_shadow_data_binding || binding_index == material_light_data_binding ||
-                    binding_index == material_parameters_binding || virtual_shadow_buffer
+                    binding_index == material_parameters_binding || binding_index == material_ltc_lookup_binding ||
+                    virtual_shadow_buffer
                 ? VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
                 : VK_SHADER_STAGE_FRAGMENT_BIT;
     }
 
     VkDescriptorSetLayoutCreateInfo layout{};
     layout.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout.bindingCount = capabilities_.virtual_shadow_sampling ? static_cast<std::uint32_t>(bindings.size())
-                                                                : material_virtual_shadow_address_binding;
+    layout.bindingCount = static_cast<std::uint32_t>(bindings.size());
     layout.pBindings = bindings.data();
     if (vkCreateDescriptorSetLayout(device_, &layout, nullptr, &white_descriptor_set_layout_) != VK_SUCCESS)
         return false;
@@ -541,7 +574,7 @@ bool vulkan_render_backend::ensure_white_texture()
     pool_sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     pool_sizes[1].descriptorCount = material_descriptor_set_capacity * 2u;
     pool_sizes[2].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    pool_sizes[2].descriptorCount = material_descriptor_set_capacity * 4u;
+    pool_sizes[2].descriptorCount = material_descriptor_set_capacity * 5u;
     VkDescriptorPoolCreateInfo descriptor_pool{};
     descriptor_pool.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     descriptor_pool.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;

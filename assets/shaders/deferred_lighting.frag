@@ -4,6 +4,7 @@
 #include "include/arc_pbr.glsl"
 #define ARC_LIGHT_BUFFER_BINDING 7
 #define ARC_LOCAL_SHADOW_BINDING 11
+#define ARC_LTC_LOOKUP_BINDING 18
 #include "include/arc_lighting.glsl"
 #define ARC_SHADOW_TEXTURE_BINDING 9
 #define ARC_SHADOW_DATA_BINDING 10
