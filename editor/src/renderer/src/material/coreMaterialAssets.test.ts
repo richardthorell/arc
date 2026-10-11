@@ -48,6 +48,9 @@ describe('core built-in material families', () => {
       'UV Offset',
       'UV Pivot',
       'UV Rotation (radians)',
+      'Roughness Minimum',
+      'Roughness Maximum',
+      'Roughness Curve',
       'Detail Normal Texture',
       'Detail Normal Strength',
     ]);
