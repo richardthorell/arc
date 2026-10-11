@@ -382,13 +382,14 @@ public:
                 {
                     const auto locator =
                         cooked_artifact_virtual_path(artifact.address, catalog_->artifact_root_.string());
-                    record.representations.push_back(
-                        {.name = artifact.address.name,
-                         .provider_id = overlay->id,
-                         .content_hash = artifact.hash,
-                         .size = artifact.size,
-                         .residency = asset_residency::metadata_only,
-                         .locator_hint = locator ? locator.value().string() : std::string{}});
+                    asset_database_representation representation;
+                    representation.name = artifact.address.name;
+                    representation.provider_id = overlay->id;
+                    representation.content_hash = artifact.hash;
+                    representation.size = artifact.size;
+                    representation.residency = asset_residency::metadata_only;
+                    representation.locator_hint = locator ? locator.value().string() : std::string{};
+                    record.representations.push_back(std::move(representation));
                 }
         }
         for (const auto& candidate : candidates)
