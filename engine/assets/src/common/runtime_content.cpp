@@ -414,12 +414,8 @@ public:
 
     [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override
     {
-        if (!catalog_ || !guid.valid()) return {};
-        const auto& packages = catalog_->logical_->packages;
-        for (auto it = packages.rbegin(); it != packages.rend(); ++it)
-            for (const auto& edge : it->manifest.dependency_edges)
-                if (edge.asset == guid) return edge.dependencies;
-        return {};
+        const auto record = query(guid);
+        return record ? record->dependencies : std::vector<asset_guid>{};
     }
 
     [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const override
