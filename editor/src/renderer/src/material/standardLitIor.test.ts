@@ -30,9 +30,7 @@ describe('Standard Lit physical IOR', () => {
           edge.to.pin === 'indexOfRefraction',
       ),
     ).toBe(true);
-    expect(graph.nodes.some((node) => node.values.path === 'material_functions/fresnel_schlick.arcmatfn')).toBe(
-      false,
-    );
+    expect(graph.nodes.some((node) => node.values.path === 'material_functions/fresnel_schlick.arcmatfn')).toBe(false);
     expect(graph.nodes.some((node) => node.values.path === 'material_functions/ior_to_f0.arcmatfn')).toBe(false);
   });
 });
