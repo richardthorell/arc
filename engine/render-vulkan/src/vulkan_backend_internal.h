@@ -62,7 +62,8 @@ constexpr std::uint32_t material_virtual_shadow_view_binding = 19u;
 constexpr std::uint32_t material_virtual_shadow_page_table_binding = 20u;
 constexpr std::uint32_t material_virtual_shadow_static_binding = 21u;
 constexpr std::uint32_t material_virtual_shadow_dynamic_binding = 22u;
-constexpr std::uint32_t material_binding_count = 23u;
+constexpr std::uint32_t material_ltc_lookup_binding = 23u;
+constexpr std::uint32_t material_binding_count = 24u;
 constexpr std::uint32_t material_descriptor_set_capacity = 12288u;
 constexpr std::uint32_t directional_shadow_layer_count = directional_shadow_cascade_count * 2u;
 constexpr VkDeviceSize upload_staging_capacity = 64u * 1024u * 1024u;
@@ -1387,6 +1388,8 @@ private:
 
     VkDescriptorSet allocate_material_descriptor_set();
 
+    bool ensure_ltc_lookup_buffer();
+
     bool ensure_white_texture();
 
     bool ensure_mesh_pipeline();
@@ -1595,6 +1598,7 @@ private:
     bool frame_shadows_enabled_{true};
     bool frame_fxaa_enabled_{};
     gpu_buffer light_buffer_;
+    gpu_buffer ltc_lookup_buffer_;
     gpu_buffer clustered_light_buffer_;
     VkDeviceSize clustered_light_buffer_size_{};
     VkDescriptorSetLayout forward_scene_descriptor_set_layout_{};
