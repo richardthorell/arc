@@ -235,6 +235,8 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arccollision") return std::pair{asset_types::collision, importer_ids::collision};
     if (extension == ".arcnav") return std::pair{asset_types::navigation, importer_ids::navigation};
     if (extension == ".wav") return std::pair{asset_types::audio_clip, importer_ids::audio};
+    if (extension == ".ies")
+        return std::pair{asset_types::photometric_profile, importer_ids::photometric_profile};
     return std::nullopt;
 }
 
