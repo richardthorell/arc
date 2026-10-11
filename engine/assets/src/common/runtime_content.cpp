@@ -309,13 +309,13 @@ public:
         }
         if (candidates.empty()) return std::nullopt;
 
-        const auto active = std::max_element(
-            candidates.begin(), candidates.end(), [](const candidate& lhs, const candidate& rhs)
-            {
-                if (lhs.package->priority != rhs.package->priority)
-                    return lhs.package->priority < rhs.package->priority;
-                return lhs.package->generation < rhs.package->generation;
-            });
+        const auto active = std::max_element(candidates.begin(), candidates.end(),
+                                             [](const candidate& lhs, const candidate& rhs)
+                                             {
+                                                 if (lhs.package->priority != rhs.package->priority)
+                                                     return lhs.package->priority < rhs.package->priority;
+                                                 return lhs.package->generation < rhs.package->generation;
+                                             });
 
         asset_database_record record;
         record.guid = guid;
@@ -339,17 +339,15 @@ public:
             for (const auto& artifact : package.manifest.artifacts)
             {
                 if (artifact.asset != guid) continue;
-                const cooked_artifact_address address{.asset = artifact.asset,
-                                                      .schema = artifact.schema,
-                                                      .name = artifact.name};
+                const cooked_artifact_address address{
+                    .asset = artifact.asset, .schema = artifact.schema, .name = artifact.name};
                 auto locator = cooked_artifact_virtual_path(address, catalog_->artifact_root_.string());
-                record.representations.push_back(
-                    {.name = artifact.name,
-                     .provider_id = package.provider_id,
-                     .content_hash = artifact.hash,
-                     .size = artifact.size,
-                     .residency = asset_residency::metadata_only,
-                     .locator_hint = locator ? locator.value().string() : std::string{}});
+                record.representations.push_back({.name = artifact.name,
+                                                  .provider_id = package.provider_id,
+                                                  .content_hash = artifact.hash,
+                                                  .size = artifact.size,
+                                                  .residency = asset_residency::metadata_only,
+                                                  .locator_hint = locator ? locator.value().string() : std::string{}});
             }
         }
         return record;
@@ -377,10 +375,8 @@ private:
 };
 
 cooked_asset_catalog::cooked_asset_catalog(io::virtual_file_system& files, io::virtual_path artifact_root)
-    : logical_(std::make_unique<logical_catalog>()),
-      database_(std::make_unique<cooked_asset_database>(*this)),
-      files_(&files),
-      artifact_root_(std::move(artifact_root))
+    : logical_(std::make_unique<logical_catalog>()), database_(std::make_unique<cooked_asset_database>(*this)),
+      files_(&files), artifact_root_(std::move(artifact_root))
 {
 }
 
@@ -397,9 +393,8 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
 
     auto package = std::move(provider).value();
     const auto manifest = package->manifest();
-    const auto provider_id =
-        "package:" + (manifest.build_id.empty() ? std::string{"anonymous"} : manifest.build_id) + ":" +
-        std::to_string(logical_->revision + 1);
+    const auto provider_id = "package:" + (manifest.build_id.empty() ? std::string{"anonymous"} : manifest.build_id) +
+                             ":" + std::to_string(logical_->revision + 1);
     const auto status = mount_provider(package, priority, provider_id);
     if (!status) return status;
 
