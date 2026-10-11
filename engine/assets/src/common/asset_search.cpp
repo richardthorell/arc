@@ -4,6 +4,30 @@
 
 namespace arc::assets
 {
+namespace
+{
+
+void apply_changes(const asset_database& database, asset_search_index& index,
+                   const asset_database_change_batch& batch)
+{
+    for (const auto& change : batch.events)
+    {
+        if (change.kind == asset_database_change_kind::catalog_reset || !change.guid.valid()) continue;
+
+        if (change.kind == asset_database_change_kind::removed)
+        {
+            index.erase(change.guid);
+            continue;
+        }
+
+        if (const auto record = database.query(change.guid))
+            index.upsert(make_asset_search_document(*record));
+        else
+            index.erase(change.guid);
+    }
+}
+
+} // namespace
 
 asset_search_document make_asset_search_document(const asset_database_record& record)
 {
@@ -32,11 +56,13 @@ void asset_search_indexer::rebuild()
 
     index_->reset(documents);
 
-    // Replaying from zero after the snapshot is intentionally idempotent. It
-    // closes the race between taking the database snapshot and observing the
-    // latest change cursor without requiring storage-specific transactions.
-    cursor_ = 0;
-    refresh();
+    // Replaying retained events after the snapshot is intentionally idempotent.
+    // It closes the race between taking the database snapshot and observing the
+    // latest change cursor. history_lost is harmless here because the complete
+    // record snapshot is already the baseline.
+    const auto batch = database_->changes_since(0);
+    apply_changes(*database_, *index_, batch);
+    cursor_ = batch.next_sequence;
 }
 
 void asset_search_indexer::refresh()
@@ -53,22 +79,7 @@ void asset_search_indexer::refresh()
         return;
     }
 
-    for (const auto& change : batch.events)
-    {
-        if (!change.guid.valid()) continue;
-
-        if (change.kind == asset_database_change_kind::removed)
-        {
-            index_->erase(change.guid);
-            continue;
-        }
-
-        if (const auto record = database_->query(change.guid))
-            index_->upsert(make_asset_search_document(*record));
-        else
-            index_->erase(change.guid);
-    }
-
+    apply_changes(*database_, *index_, batch);
     cursor_ = batch.next_sequence;
 }
 
