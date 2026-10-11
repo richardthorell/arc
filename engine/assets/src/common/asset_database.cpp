@@ -17,19 +17,19 @@ asset_database_provider provider_for(const asset_snapshot& snapshot)
     // to arc:/builtin/foo. Treat both spellings as the virtual built-in namespace.
     if (source.starts_with("arc://builtin/") || source.starts_with("arc:/builtin/"))
     {
-        provider.id = "arc.builtin.virtual";
+        provider.id = asset_provider_ids::virtual_builtin;
         provider.kind = asset_provider_kind::virtual_builtin;
         provider.debug_name = "Engine Built-in";
     }
     else if (snapshot.read_only)
     {
-        provider.id = "arc.builtin.source";
+        provider.id = asset_provider_ids::builtin_source;
         provider.kind = asset_provider_kind::builtin_source;
         provider.debug_name = "Built-in Source";
     }
     else
     {
-        provider.id = "arc.project.source";
+        provider.id = asset_provider_ids::project_source;
         provider.kind = asset_provider_kind::project_source;
         provider.debug_name = "Project Source";
     }
