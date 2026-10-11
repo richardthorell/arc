@@ -3,6 +3,7 @@
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_library.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/editor/entity_material_service.h>
 #include <arc/diagnostics/diagnostics.h>
 #include <arc/render/texture.h>
 #include <arc/scene/scene.h>
@@ -850,7 +851,8 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
     return realized;
 }
 
-bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity, const json& overrides)
+bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity, const json& overrides,
+                       const material_parameter_edit* requested = nullptr)
 {
     auto* component = scene.scene.try_get<scene::mesh_renderer_component>(entity);
     if (!component)
@@ -904,6 +906,23 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
             parameter_layout.end())
             continue;
         parameter_layout.push_back({.id = binding.parameter_id, .name = "Texture", .type = binding.type, .size = 0});
+    }
+
+    // Recovery may skip stale entries loaded from old scenes, but an explicit new edit must
+    // never succeed by being silently ignored. Validate it before replacing any runtime binding.
+    if (requested)
+    {
+        const auto parameter =
+            requested->parameter_id != 0
+                ? std::ranges::find(parameter_layout, render::shader_parameter_id{requested->parameter_id},
+                                    &render::shader_parameter_descriptor::id)
+                : std::ranges::find(parameter_layout, requested->name, &render::shader_parameter_descriptor::name);
+        if (parameter == parameter_layout.end() || parameter->type != requested->type ||
+            (!requested->reset && !override_value(scene, renderer, base, *parameter, edit_to_json(*requested))))
+        {
+            set_material_edit_error("Requested material parameter is missing or has an incompatible value");
+            return false;
+        }
     }
 
     render::material_instance_descriptor instance;
@@ -990,6 +1009,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
         set_material_edit_error("Material instance could not be resolved: " + resolved.error().message);
         return false;
     }
+    const auto resolved_descriptor = resolved.value();
 
     auto* runtime = runtime_for(scene, guid);
     render::material_handle instance_handle{};
@@ -1024,6 +1044,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
     {
         auto asset = base.asset;
         asset.name = instance_asset_name;
+        asset.material = resolved_descriptor;
         scene.material_library.materials.push_back({base.path, std::move(asset), instance_handle});
     }
     else
@@ -1031,6 +1052,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
         record->path = base.path;
         record->asset = base.asset;
         record->asset.name = instance_asset_name;
+        record->asset.material = resolved_descriptor;
     }
     return true;
 }
@@ -1042,7 +1064,7 @@ bool apply_material_edit(editor_scene_state& scene, render::renderer& renderer, 
     const auto guid = entity_guid_of(scene, entity);
     if (!guid.valid()) return false;
     auto overrides = apply_edit(persisted_overrides(scene, guid), edit);
-    if (!realize_overrides(scene, renderer, entity, overrides)) return false;
+    if (!realize_overrides(scene, renderer, entity, overrides, &edit)) return false;
     store_persisted_overrides(scene, guid, overrides);
     return true;
 }
@@ -1060,6 +1082,89 @@ bool apply_function_edit(editor_scene_state& scene, render::renderer& renderer, 
 }
 
 } // namespace
+
+bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                   render::shader_parameter_id parameter, std::span<const float> values,
+                                   const assets::asset_reference* texture, bool reset, std::string& error)
+{
+    error.clear();
+    if (!parameter.valid())
+    {
+        error = "A stable material parameter ID is required";
+        return false;
+    }
+    const auto* component = scene.scene.try_get<scene::mesh_renderer_component>(entity);
+    if (!component)
+    {
+        error = "Material override target has no mesh renderer";
+        return false;
+    }
+    const auto record =
+        std::ranges::find(scene.material_library.materials, component->material, &editor_material_record::material);
+    if (record == scene.material_library.materials.end() || !record->asset.material.runtime_program)
+    {
+        error = "The entity has no inspectable realized material generation";
+        return false;
+    }
+    const auto& layout = record->asset.material.runtime_program->parameters;
+    const auto found = std::ranges::find(layout, parameter, &render::shader_parameter_descriptor::id);
+    if (found == layout.end())
+    {
+        error = "Parameter ID is not exposed by this material generation";
+        return false;
+    }
+    material_parameter_edit edit{.parameter_id = parameter.representation(),
+                                 .name = found->name,
+                                 .type = found->type,
+                                 .value = std::vector<float>(values.begin(), values.end()),
+                                 .reset = reset};
+    if (found->type == render::shader_parameter_type::texture_2d)
+    {
+        edit.kind = material_parameter_edit_kind::texture;
+        if (!values.empty() || (!reset && (!texture || !texture->guid.valid())))
+        {
+            error = "Texture parameters require a GUID-backed texture reference";
+            return false;
+        }
+        if (!reset)
+        {
+            auto reference = *texture;
+            reference.expected_type = assets::asset_types::texture_2d;
+            if (!scene.asset_registry || !scene.asset_registry->find(reference))
+            {
+                error = "Texture GUID does not resolve to a Texture2D asset";
+                return false;
+            }
+            edit.texture_reference = std::move(reference);
+        }
+    }
+    else
+    {
+        const std::size_t count = found->type == render::shader_parameter_type::float32  ? 1
+                                  : found->type == render::shader_parameter_type::float2 ? 2
+                                  : found->type == render::shader_parameter_type::float3 ? 3
+                                  : found->type == render::shader_parameter_type::float4 ? 4
+                                                                                         : 0;
+        if (!count || texture || (!reset && values.size() != count) ||
+            std::ranges::any_of(values, [](float value) { return !std::isfinite(value); }))
+        {
+            error = "Parameter value shape is unsupported or does not match compiler metadata";
+            return false;
+        }
+        edit.kind = count == 1 ? material_parameter_edit_kind::scalar : material_parameter_edit_kind::vector;
+    }
+    if (!apply_material_edit(scene, renderer, entity, edit))
+    {
+        error = pending_material_edit_error;
+        return false;
+    }
+    return true;
+}
+
+std::string entity_material_overrides_json(editor_scene_state& scene, ecs::entity entity)
+{
+    return persisted_overrides(scene, entity_guid_of(scene, entity)).dump();
+}
 
 procedural_mesh_component* ensure_procedural_or_material_parameter_component(editor_scene_state& scene,
                                                                              ecs::entity entity)
