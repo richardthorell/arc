@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -126,6 +127,8 @@ public:
     [[nodiscard]] virtual asset_status reset(std::span<const asset_search_document> documents) = 0;
     [[nodiscard]] virtual asset_status upsert(asset_search_document document) = 0;
     [[nodiscard]] virtual asset_status erase(asset_guid guid) = 0;
+    [[nodiscard]] virtual std::optional<std::uint64_t> source_change_cursor() const = 0;
+    [[nodiscard]] virtual asset_status set_source_change_cursor(std::uint64_t cursor) = 0;
     [[nodiscard]] virtual std::vector<asset_search_result> query(const asset_search_query& query) const = 0;
 };
 
@@ -150,6 +153,8 @@ public:
     [[nodiscard]] asset_status reset(std::span<const asset_search_document> documents) override;
     [[nodiscard]] asset_status upsert(asset_search_document document) override;
     [[nodiscard]] asset_status erase(asset_guid guid) override;
+    [[nodiscard]] std::optional<std::uint64_t> source_change_cursor() const override;
+    [[nodiscard]] asset_status set_source_change_cursor(std::uint64_t cursor) override;
     [[nodiscard]] std::vector<asset_search_result> query(const asset_search_query& query) const override;
 
     [[nodiscard]] const std::filesystem::path& path() const noexcept;
@@ -173,7 +178,7 @@ class asset_search_indexer
 {
 public:
     asset_search_indexer(const asset_database& database, asset_search_index& index) noexcept
-        : database_(&database), index_(&index)
+        : database_(&database), index_(&index), cursor_(index.source_change_cursor().value_or(0))
     {
     }
 
@@ -189,6 +194,43 @@ private:
     const asset_database* database_{};
     asset_search_index* index_{};
     std::uint64_t cursor_{};
+};
+
+
+/**
+ * Thread-safe owner for one persistent search cache and its Asset Database
+ * synchronization state.
+ *
+ * synchronize() resumes from the persisted change cursor when possible and
+ * performs a full rebuild when no valid checkpoint exists or history was lost.
+ * Callers never need to know that the initial backend is SQLite.
+ */
+class asset_search_service final
+{
+public:
+    using open_result = core::result<std::unique_ptr<asset_search_service>, asset_error>;
+
+    [[nodiscard]] static open_result open(const asset_database& database, std::filesystem::path cache_path);
+    ~asset_search_service();
+
+    asset_search_service(const asset_search_service&) = delete;
+    asset_search_service& operator=(const asset_search_service&) = delete;
+
+    [[nodiscard]] asset_status synchronize();
+    [[nodiscard]] asset_status rebuild();
+    [[nodiscard]] asset_status refresh();
+    [[nodiscard]] std::vector<asset_search_result> query(const asset_search_query& query) const;
+
+    [[nodiscard]] std::uint64_t cursor() const noexcept;
+    [[nodiscard]] const std::filesystem::path& path() const noexcept;
+
+private:
+    asset_search_service(const asset_database& database, std::unique_ptr<persistent_asset_search_index> index);
+
+    const asset_database* database_{};
+    std::unique_ptr<persistent_asset_search_index> index_;
+    std::unique_ptr<asset_search_indexer> indexer_;
+    mutable std::mutex mutex_;
 };
 
 } // namespace arc::assets
