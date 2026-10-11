@@ -53,11 +53,11 @@ describe('Standard Lit shared channel functions', () => {
       'UV Offset',
       'UV Pivot',
       'UV Rotation (radians)',
+      'Detail Normal Texture',
+      'Detail Normal Strength',
       'Roughness Minimum',
       'Roughness Maximum',
       'Roughness Curve',
-      'Detail Normal Texture',
-      'Detail Normal Strength',
     ]);
   });
 });
