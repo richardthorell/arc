@@ -35,7 +35,5 @@ export const clearCoatNormalTextureActive = (
   if (Object.prototype.hasOwnProperty.call(resolvedTextures, textureNode.id)) {
     return Boolean(resolvedTextures[textureNode.id]?.trim());
   }
-  return typeof textureNode.values.texture === 'string'
-    ? textureNode.values.texture.trim().length > 0
-    : true;
+  return typeof textureNode.values.texture === 'string' ? textureNode.values.texture.trim().length > 0 : true;
 };
