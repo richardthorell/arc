@@ -94,7 +94,6 @@ asset_status asset_search_indexer::refresh()
     return asset_status::success();
 }
 
-
 asset_search_service::asset_search_service(const asset_database& database,
                                            std::unique_ptr<persistent_asset_search_index> index)
     : database_(&database), index_(std::move(index)),
@@ -104,14 +103,13 @@ asset_search_service::asset_search_service(const asset_database& database,
 
 asset_search_service::~asset_search_service() = default;
 
-asset_search_service::open_result
-asset_search_service::open(const asset_database& database, std::filesystem::path cache_path)
+asset_search_service::open_result asset_search_service::open(const asset_database& database,
+                                                             std::filesystem::path cache_path)
 {
     auto opened = persistent_asset_search_index::open(std::move(cache_path));
     if (!opened) return open_result::failure(std::move(opened).error());
 
-    auto service = std::unique_ptr<asset_search_service>(
-        new asset_search_service(database, std::move(opened).value()));
+    auto service = std::unique_ptr<asset_search_service>(new asset_search_service(database, std::move(opened).value()));
     auto status = service->synchronize();
     if (!status) return open_result::failure(std::move(status).error());
     return open_result::success(std::move(service));

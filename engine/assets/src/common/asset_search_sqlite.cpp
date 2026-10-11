@@ -403,9 +403,8 @@ asset_status persistent_asset_search_index::upsert(asset_search_document documen
         return sqlite_failure(implementation_->database, implementation_->path, "Could not begin search update");
 
     {
-        sqlite_statement existing(
-            implementation_->database,
-            "SELECT source_generation,source_revision FROM search_documents WHERE guid=?;");
+        sqlite_statement existing(implementation_->database,
+                                  "SELECT source_generation,source_revision FROM search_documents WHERE guid=?;");
         if (!existing)
         {
             execute(implementation_->database, "ROLLBACK;");
@@ -483,9 +482,8 @@ std::optional<std::uint64_t> persistent_asset_search_index::source_change_cursor
 {
     if (!implementation_ || !implementation_->database) return std::nullopt;
 
-    sqlite_statement statement(
-        implementation_->database,
-        "SELECT value FROM search_meta WHERE key='source_change_cursor';");
+    sqlite_statement statement(implementation_->database,
+                               "SELECT value FROM search_meta WHERE key='source_change_cursor';");
     if (!statement || sqlite3_step(statement.get()) != SQLITE_ROW) return std::nullopt;
 
     const auto text = column_text(statement.get(), 0);
@@ -501,10 +499,9 @@ asset_status persistent_asset_search_index::set_source_change_cursor(std::uint64
         return asset_status::failure(
             {.code = asset_error_code::invalid_request, .message = "Search index is not open"});
 
-    sqlite_statement statement(
-        implementation_->database,
-        "INSERT INTO search_meta(key,value) VALUES('source_change_cursor',?) "
-        "ON CONFLICT(key) DO UPDATE SET value=excluded.value;");
+    sqlite_statement statement(implementation_->database,
+                               "INSERT INTO search_meta(key,value) VALUES('source_change_cursor',?) "
+                               "ON CONFLICT(key) DO UPDATE SET value=excluded.value;");
     if (!statement)
         return sqlite_failure(implementation_->database, implementation_->path,
                               "Could not prepare search change checkpoint");

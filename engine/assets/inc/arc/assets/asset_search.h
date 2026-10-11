@@ -205,7 +205,6 @@ private:
     std::uint64_t cursor_{};
 };
 
-
 /**
  * Thread-safe owner for one persistent search cache and its Asset Database
  * synchronization state.

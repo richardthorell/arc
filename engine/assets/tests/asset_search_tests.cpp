@@ -397,7 +397,6 @@ TEST_CASE("persistent asset search index recreates a corrupt derived cache")
     std::filesystem::remove_all(root, error);
 }
 
-
 TEST_CASE("persistent asset search index persists the Asset Database change checkpoint")
 {
     using namespace arc::assets;
@@ -430,8 +429,7 @@ TEST_CASE("persistent asset search index persists the Asset Database change chec
 TEST_CASE("persistent asset search index rejects source revisions older than the cached document")
 {
     using namespace arc::assets;
-    const auto root =
-        std::filesystem::temp_directory_path() / ("arc-search-stale-" + to_string(generate_asset_guid()));
+    const auto root = std::filesystem::temp_directory_path() / ("arc-search-stale-" + to_string(generate_asset_guid()));
     const auto database_path = root / "search.db";
 
     auto opened = persistent_asset_search_index::open(database_path);
@@ -533,8 +531,7 @@ TEST_CASE("asset search service rebuilds when persisted change history is no lon
 
     auto replacement = make_record("Replacement", 2);
     database.records_ = {replacement};
-    database.events_.push_back(
-        {.sequence = 2, .kind = asset_database_change_kind::catalog_reset, .guid = {}});
+    database.events_.push_back({.sequence = 2, .kind = asset_database_change_kind::catalog_reset, .guid = {}});
     database.history_lost_ = true;
 
     {
