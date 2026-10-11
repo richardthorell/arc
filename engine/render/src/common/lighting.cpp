@@ -272,7 +272,6 @@ exposure_state adapt_exposure(exposure_state current, const exposure_settings& s
     return current;
 }
 
-
 ltc_lookup_table build_ltc_lookup_table(std::uint32_t resolution)
 {
     ltc_lookup_table table;
@@ -301,8 +300,7 @@ ltc_lookup_table build_ltc_lookup_table(std::uint32_t resolution)
             const float m33 = std::max(0.35f, 1.0f - grazing * (1.0f - alpha) * 0.45f);
             const float amplitude =
                 std::clamp(1.0f - 0.28f * perceptual_roughness - 0.18f * grazing * perceptual_roughness, 0.05f, 1.0f);
-            const float fresnel_weight =
-                std::clamp(0.04f + (1.0f - 0.04f) * std::pow(grazing, 5.0f), 0.0f, 1.0f);
+            const float fresnel_weight = std::clamp(0.04f + (1.0f - 0.04f) * std::pow(grazing, 5.0f), 0.0f, 1.0f);
 
             table.samples[static_cast<std::size_t>(y) * table.resolution + x] = {
                 .inverse_transform = {m11, shear, -shear, m33},
@@ -314,8 +312,7 @@ ltc_lookup_table build_ltc_lookup_table(std::uint32_t resolution)
 
 ltc_lookup_sample sample_ltc_lookup(const ltc_lookup_table& table, float perceptual_roughness, float n_dot_v) noexcept
 {
-    if (table.resolution < 2u ||
-        table.samples.size() != static_cast<std::size_t>(table.resolution) * table.resolution)
+    if (table.resolution < 2u || table.samples.size() != static_cast<std::size_t>(table.resolution) * table.resolution)
         return {};
 
     const float x = std::clamp(perceptual_roughness, 0.0f, 1.0f) * static_cast<float>(table.resolution - 1u);
@@ -328,15 +325,14 @@ ltc_lookup_sample sample_ltc_lookup(const ltc_lookup_table& table, float percept
     const float tx = x - static_cast<float>(x0);
     const float ty = y - static_cast<float>(y0);
 
-    const auto lerp4 = [](const math::vector4f& a, const math::vector4f& b, float t)
-    { return a + (b - a) * t; };
+    const auto lerp4 = [](const math::vector4f& a, const math::vector4f& b, float t) { return a + (b - a) * t; };
     const auto& s00 = table.samples[static_cast<std::size_t>(y0) * table.resolution + x0];
     const auto& s10 = table.samples[static_cast<std::size_t>(y0) * table.resolution + x1];
     const auto& s01 = table.samples[static_cast<std::size_t>(y1) * table.resolution + x0];
     const auto& s11 = table.samples[static_cast<std::size_t>(y1) * table.resolution + x1];
 
     return {.inverse_transform = lerp4(lerp4(s00.inverse_transform, s10.inverse_transform, tx),
-                                      lerp4(s01.inverse_transform, s11.inverse_transform, tx), ty),
+                                       lerp4(s01.inverse_transform, s11.inverse_transform, tx), ty),
             .amplitude_fresnel = lerp4(lerp4(s00.amplitude_fresnel, s10.amplitude_fresnel, tx),
                                        lerp4(s01.amplitude_fresnel, s11.amplitude_fresnel, tx), ty)};
 }
@@ -456,19 +452,17 @@ scene_lighting_data pack_scene_lighting(const std::vector<directional_light_even
                                    ? std::max(light.intensity, 0.0f) /
                                          std::max(math::pi<float> * area_size * (light.two_sided ? 2.0f : 1.0f), 0.001f)
                                    : light_intensity_scale(light.intensity_unit, light.intensity);
-        data.area_lights[index] = {.position_shape = {light.position[0], light.position[1], light.position[2],
-                                                      static_cast<float>(light.shape)},
-                                   .direction_two_sided = {light.direction[0], light.direction[1], light.direction[2],
-                                                           light.two_sided ? 1.0f : 0.0f},
-                                   .tangent_width = {light.tangent[0], light.tangent[1], light.tangent[2], width},
-                                   .color_intensity = {light.color[0], light.color[1], light.color[2], radiance},
-                                   .dimensions_shadow = {
-                                       width,
-                                       height,
-                                       light.casts_shadows ? 1.0f : 0.0f,
-                                       static_cast<float>(light.casts_shadows
-                                                              ? area_shadow_representation::unsupported_conventional
-                                                              : area_shadow_representation::none)}};
+        data.area_lights[index] = {
+            .position_shape = {light.position[0], light.position[1], light.position[2],
+                               static_cast<float>(light.shape)},
+            .direction_two_sided = {light.direction[0], light.direction[1], light.direction[2],
+                                    light.two_sided ? 1.0f : 0.0f},
+            .tangent_width = {light.tangent[0], light.tangent[1], light.tangent[2], width},
+            .color_intensity = {light.color[0], light.color[1], light.color[2], radiance},
+            .dimensions_shadow = {width, height, light.casts_shadows ? 1.0f : 0.0f,
+                                  static_cast<float>(light.casts_shadows
+                                                         ? area_shadow_representation::unsupported_conventional
+                                                         : area_shadow_representation::none)}};
     }
 
     return data;
