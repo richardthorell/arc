@@ -14,8 +14,6 @@ namespace arc::assets
 namespace
 {
 
-constexpr std::uint32_t search_index_schema_version = 1;
-
 class sqlite_statement
 {
 public:
@@ -348,7 +346,7 @@ persistent_asset_search_index::open(std::filesystem::path database_path)
         if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) version = 0;
     }
 
-    if (version != search_index_schema_version)
+    if (version != asset_search_index_schema_version)
     {
         status = clear_schema(state->database, state->path);
         if (!status) return open_result::failure(std::move(status).error());
