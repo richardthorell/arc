@@ -91,6 +91,18 @@ std::vector<asset_guid> asset_manager_database::reverse_dependencies(asset_guid 
     return manager_ ? manager_->reverse_dependencies(guid) : std::vector<asset_guid>{};
 }
 
+std::vector<asset_database_record> asset_manager_database::records() const
+{
+    std::vector<asset_database_record> records;
+    if (!manager_) return records;
+
+    const auto snapshot = manager_->snapshot();
+    records.reserve(snapshot.assets.size());
+    for (const auto& asset : snapshot.assets)
+        records.push_back(database_record_from(asset));
+    return records;
+}
+
 asset_database_change_batch asset_manager_database::changes_since(std::uint64_t cursor) const
 {
     asset_database_change_batch batch;
