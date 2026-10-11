@@ -2,6 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+
 #include <filesystem>
 #include <fstream>
 
@@ -81,6 +83,24 @@ TEST_CASE("asset database provider vocabulary is stable across backends")
     CHECK(asset_provider_kind_name(asset_provider_kind::virtual_builtin) == "virtual-builtin");
     CHECK(asset_provider_kind_name(asset_provider_kind::cooked_package) == "cooked-package");
     CHECK(asset_provider_kind_name(asset_provider_kind::runtime_overlay) == "runtime-overlay");
+}
+
+TEST_CASE("asset database change cursor reports authoring additions and updates")
+{
+    using namespace arc::assets;
+    temporary_database_project project;
+    database_fixture fixture(project);
+    const auto initial = fixture.manager.database().changes_since(0).next_sequence;
+    const auto guid = generate_asset_guid();
+    auto payload =
+        asset_payload::make(asset_types::binary_blob, std::make_shared<const source_asset_data>(source_asset_data{}));
+    REQUIRE(fixture.manager.register_virtual_asset(guid, asset_types::binary_blob, std::move(payload), "event-test"));
+
+    const auto changes = fixture.manager.database().changes_since(initial);
+    CHECK(changes.next_sequence >= initial);
+    CHECK(std::any_of(changes.events.begin(), changes.events.end(),
+                      [&](const auto& event) { return event.guid == guid; }));
+    CHECK(fixture.manager.database().changes_since(changes.next_sequence).events.empty());
 }
 
 TEST_CASE("asset database queries logical authoring records by GUID")
