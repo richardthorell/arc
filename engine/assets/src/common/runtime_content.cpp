@@ -281,6 +281,8 @@ struct cooked_asset_catalog::logical_catalog
 
     std::vector<package_record> packages;
     std::uint64_t revision{};
+    std::uint64_t change_sequence{};
+    std::vector<asset_database_change> changes;
 };
 
 class cooked_asset_database final : public asset_database
@@ -372,6 +374,18 @@ public:
         return catalog_ ? catalog_->logical_->revision : 0;
     }
 
+    [[nodiscard]] asset_database_change_batch changes_since(std::uint64_t cursor) const override
+    {
+        asset_database_change_batch batch;
+        batch.next_sequence = cursor;
+        if (!catalog_) return batch;
+        const auto& logical = *catalog_->logical_;
+        batch.next_sequence = std::max(cursor, logical.change_sequence);
+        for (const auto& change : logical.changes)
+            if (change.sequence > cursor) batch.events.push_back(change);
+        return batch;
+    }
+
 private:
     const cooked_asset_catalog* catalog_{};
 };
@@ -407,6 +421,20 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
                                   .generation = package->provider_generation(),
                                   .manifest = manifest});
     ++logical_->revision;
+    for (const auto& artifact : manifest.artifacts)
+    {
+        const auto was_present = std::any_of(
+            logical_->packages.begin(), logical_->packages.end() - 1,
+            [&](const auto& previous) {
+                return std::any_of(previous.manifest.artifacts.begin(), previous.manifest.artifacts.end(),
+                                   [&](const auto& entry) { return entry.asset == artifact.asset; });
+            });
+        logical_->changes.push_back({.sequence = ++logical_->change_sequence,
+                                     .kind = was_present ? asset_database_change_kind::provider_changed
+                                                         : asset_database_change_kind::added,
+                                     .guid = artifact.asset,
+                                     .provider_id = provider_id});
+    }
     return asset_status::success();
 }
 
@@ -474,6 +502,20 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
         result.events.insert(result.events.begin(), std::move(event));
     }
     if (!result.events.empty()) ++telemetry_.change_batches;
+    if (result.catalog_reset)
+        logical_->changes.push_back({.sequence = ++logical_->change_sequence,
+                                     .kind = asset_database_change_kind::catalog_reset});
+    for (const auto& event : result.events)
+    {
+        if (!event.address.asset.valid()) continue;
+        const auto kind = event.kind == cooked_artifact_change_kind::removed
+                              ? asset_database_change_kind::removed
+                              : asset_database_change_kind::updated;
+        logical_->changes.push_back({.sequence = ++logical_->change_sequence,
+                                     .kind = kind,
+                                     .guid = event.address.asset});
+    }
+    if (!result.events.empty() || result.catalog_reset) ++logical_->revision;
     return result;
 }
 
