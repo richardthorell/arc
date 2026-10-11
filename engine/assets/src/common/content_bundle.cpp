@@ -142,29 +142,16 @@ std::string serialize_content_bundle(const content_bundle_descriptor& descriptor
     return document.dump(2) + "\n";
 }
 
-bool save_content_bundle(const std::filesystem::path& path, const content_bundle_descriptor& descriptor,
-                         std::string& error)
+content_bundle_save_result save_content_bundle(const std::filesystem::path& path,
+                                               const content_bundle_descriptor& descriptor)
 {
     const auto bytes = serialize_content_bundle(descriptor);
-    if (bytes.empty())
-    {
-        error = "Invalid bundle descriptor";
-        return false;
-    }
+    if (bytes.empty()) return {.error = "Invalid bundle descriptor"};
     std::error_code ec;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    if (ec)
-    {
-        error = ec.message();
-        return false;
-    }
+    if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec) return {.error = ec.message()};
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file || !(file << bytes))
-    {
-        error = "Could not write .arcbundle file";
-        return false;
-    }
-    error.clear();
-    return true;
+    if (!file || !(file << bytes)) return {.error = "Could not write .arcbundle file"};
+    return {};
 }
 } // namespace arc::assets
