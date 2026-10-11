@@ -355,7 +355,8 @@ asset_status persistent_asset_search_index::reset(std::span<const asset_search_d
                                             "DELETE FROM search_categories;"
                                             "DELETE FROM search_generated_tags;"
                                             "DELETE FROM search_authored_tags;"
-                                            "DELETE FROM search_documents;"))
+                                            "DELETE FROM search_documents;"
+                                            "DELETE FROM search_meta WHERE key='source_change_cursor';"))
         return sqlite_failure(implementation_->database, implementation_->path, "Could not reset search index");
 
     for (const auto& document : documents)
@@ -400,6 +401,33 @@ asset_status persistent_asset_search_index::upsert(asset_search_document documen
 
     if (!execute(implementation_->database, "BEGIN IMMEDIATE;"))
         return sqlite_failure(implementation_->database, implementation_->path, "Could not begin search update");
+
+    {
+        sqlite_statement existing(
+            implementation_->database,
+            "SELECT source_generation,source_revision FROM search_documents WHERE guid=?;");
+        if (!existing)
+        {
+            execute(implementation_->database, "ROLLBACK;");
+            return sqlite_failure(implementation_->database, implementation_->path,
+                                  "Could not inspect existing search document");
+        }
+        bind_text(existing.get(), 1, to_string(document.guid));
+        if (sqlite3_step(existing.get()) == SQLITE_ROW)
+        {
+            const auto generation = static_cast<std::uint64_t>(sqlite3_column_int64(existing.get(), 0));
+            const auto revision = static_cast<std::uint64_t>(sqlite3_column_int64(existing.get(), 1));
+            if (revision > document.source_revision ||
+                (revision == document.source_revision && generation > document.source_generation))
+            {
+                execute(implementation_->database, "ROLLBACK;");
+                return asset_status::failure({.code = asset_error_code::invalid_metadata,
+                                              .guid = document.guid,
+                                              .path = implementation_->path,
+                                              .message = "Search document is older than the cached source revision"});
+            }
+        }
+    }
 
     auto status = write_document(implementation_->database, implementation_->path, document);
     if (!status)
@@ -448,6 +476,44 @@ asset_status persistent_asset_search_index::erase(asset_guid guid)
         execute(implementation_->database, "ROLLBACK;");
         return sqlite_failure(implementation_->database, implementation_->path, "Could not commit search delete");
     }
+    return asset_status::success();
+}
+
+std::optional<std::uint64_t> persistent_asset_search_index::source_change_cursor() const
+{
+    if (!implementation_ || !implementation_->database) return std::nullopt;
+
+    sqlite_statement statement(
+        implementation_->database,
+        "SELECT value FROM search_meta WHERE key='source_change_cursor';");
+    if (!statement || sqlite3_step(statement.get()) != SQLITE_ROW) return std::nullopt;
+
+    const auto text = column_text(statement.get(), 0);
+    std::uint64_t cursor{};
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), cursor);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) return std::nullopt;
+    return cursor;
+}
+
+asset_status persistent_asset_search_index::set_source_change_cursor(std::uint64_t cursor)
+{
+    if (!implementation_ || !implementation_->database)
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Search index is not open"});
+
+    sqlite_statement statement(
+        implementation_->database,
+        "INSERT INTO search_meta(key,value) VALUES('source_change_cursor',?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value;");
+    if (!statement)
+        return sqlite_failure(implementation_->database, implementation_->path,
+                              "Could not prepare search change checkpoint");
+
+    const auto value = std::to_string(cursor);
+    bind_text(statement.get(), 1, value);
+    if (sqlite3_step(statement.get()) != SQLITE_DONE)
+        return sqlite_failure(implementation_->database, implementation_->path,
+                              "Could not persist search change checkpoint");
     return asset_status::success();
 }
 
