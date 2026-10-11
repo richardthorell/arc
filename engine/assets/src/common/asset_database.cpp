@@ -97,6 +97,12 @@ asset_database_change_batch asset_manager_database::changes_since(std::uint64_t 
     batch.next_sequence = cursor;
     if (!manager_) return batch;
     const auto source_events = manager_->events_since(cursor);
+    if (!source_events.empty() && cursor < source_events.front().sequence - 1)
+    {
+        batch.history_lost = true;
+        batch.next_sequence = source_events.back().sequence;
+        return batch;
+    }
     for (const auto& event : source_events)
     {
         batch.next_sequence = std::max(batch.next_sequence, event.sequence);

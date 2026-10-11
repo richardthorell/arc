@@ -272,6 +272,12 @@ cook_result asset_cooker::cook(const cook_request& request)
     for (const auto root : roots)
         if (!visit(root)) return result;
     result.manifest.dependency_closure = order;
+    for (const auto guid : order)
+    {
+        const auto snapshot = implementation_->assets->find(guid);
+        if (snapshot)
+            result.manifest.dependency_edges.push_back({.asset = guid, .dependencies = snapshot->dependencies});
+    }
 
     std::vector<asset_hash> build_hashes;
     for (const auto guid : order)
@@ -468,9 +474,21 @@ asset_status save_cook_manifest(const std::filesystem::path& path, const cook_ma
     json closure = json::array();
     for (const auto guid : manifest.dependency_closure)
         closure.push_back(to_string(guid));
-    const json document{{"format", "arc.cook-manifest"},    {"version", manifest.version},
-                        {"buildId", manifest.build_id},     {"target", target_json(manifest.target)},
-                        {"roots", std::move(roots)},        {"dependencyClosure", std::move(closure)},
+    json edges = json::array();
+    for (const auto& edge : manifest.dependency_edges)
+    {
+        json dependencies = json::array();
+        for (const auto dependency : edge.dependencies)
+            dependencies.push_back(to_string(dependency));
+        edges.push_back({{"asset", to_string(edge.asset)}, {"dependencies", std::move(dependencies)}});
+    }
+    const json document{{"dependencyEdges", std::move(edges)},
+                        {"format", "arc.cook-manifest"},
+                        {"version", manifest.version},
+                        {"buildId", manifest.build_id},
+                        {"target", target_json(manifest.target)},
+                        {"roots", std::move(roots)},
+                        {"dependencyClosure", std::move(closure)},
                         {"artifacts", std::move(artifacts)}};
     std::error_code filesystem_error;
     std::filesystem::create_directories(path.parent_path(), filesystem_error);
@@ -534,6 +552,22 @@ cook_manifest_result load_cook_manifest(const std::filesystem::path& path)
         !document.contains("artifacts") || !document["artifacts"].is_array())
     {
         return failure("Cook manifest contains invalid asset identities");
+    }
+    for (const auto& edge : document.value("dependencyEdges", json::array()))
+    {
+        if (!edge.is_object()) return failure("Cook manifest has invalid dependency edges");
+        const auto asset = parse_asset_guid(edge.value("asset", ""));
+        if (!asset || !edge.contains("dependencies") || !edge["dependencies"].is_array())
+            return failure("Cook manifest has invalid dependency edge");
+        cook_manifest_dependency entry;
+        entry.asset = *asset;
+        for (const auto& value : edge["dependencies"])
+        {
+            const auto dependency = value.is_string() ? parse_asset_guid(value.get<std::string>()) : std::nullopt;
+            if (!dependency) return failure("Cook manifest has invalid dependency GUID");
+            entry.dependencies.push_back(*dependency);
+        }
+        manifest.dependency_edges.push_back(std::move(entry));
     }
     for (const auto& value : document["artifacts"])
     {
@@ -601,6 +635,22 @@ cook_manifest_result parse_cook_manifest(std::span<const std::byte> bytes, std::
         !document.contains("artifacts") || !document["artifacts"].is_array())
         return failure("Cook manifest contains invalid asset identities");
 
+    for (const auto& edge : document.value("dependencyEdges", json::array()))
+    {
+        if (!edge.is_object()) return failure("Cook manifest has invalid dependency edges");
+        const auto asset = parse_asset_guid(edge.value("asset", ""));
+        if (!asset || !edge.contains("dependencies") || !edge["dependencies"].is_array())
+            return failure("Cook manifest has invalid dependency edge");
+        cook_manifest_dependency entry;
+        entry.asset = *asset;
+        for (const auto& value : edge["dependencies"])
+        {
+            const auto dependency = value.is_string() ? parse_asset_guid(value.get<std::string>()) : std::nullopt;
+            if (!dependency) return failure("Cook manifest has invalid dependency GUID");
+            entry.dependencies.push_back(*dependency);
+        }
+        manifest.dependency_edges.push_back(std::move(entry));
+    }
     for (const auto& value : document["artifacts"])
     {
         const auto asset = parse_asset_guid(value.value("asset", ""));

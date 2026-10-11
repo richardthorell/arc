@@ -31,6 +31,7 @@ struct package_fixture
     std::filesystem::path root = std::filesystem::temp_directory_path() /
                                  ("arc-runtime-content-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
     arc::assets::asset_guid asset = arc::assets::generate_asset_guid();
+    arc::assets::asset_guid dependency = arc::assets::generate_asset_guid();
     arc::io::file_buffer packaged = bytes("packaged-payload");
     arc::assets::cooked_artifact_address address{asset, arc::assets::artifact_schemas::virtual_geometry,
                                                  "terrain/regions/0/0/virtual-geometry"};
@@ -48,6 +49,7 @@ struct package_fixture
         description.build_id = "base-build";
         description.roots.push_back(asset);
         description.dependency_closure.push_back(asset);
+        description.dependency_edges.push_back({.asset = asset, .dependencies = {dependency}});
         description.artifacts.push_back({.asset = asset,
                                          .type = asset_types::terrain,
                                          .name = address.name,
@@ -110,6 +112,10 @@ TEST_CASE("cooked package catalog exposes logical assets through Asset Database"
     CHECK(record->type == arc::assets::asset_types::terrain);
     CHECK(record->state == arc::assets::asset_state::ready);
     CHECK(record->residency == arc::assets::asset_residency::metadata_only);
+    CHECK(record->dependencies == std::vector<arc::assets::asset_guid>{fixture.dependency});
+    CHECK(catalog.database().dependencies(fixture.asset) == record->dependencies);
+    CHECK(catalog.database().reverse_dependencies(fixture.dependency) ==
+          std::vector<arc::assets::asset_guid>{fixture.asset});
     CHECK(record->active_provider.starts_with(std::string(arc::assets::asset_provider_ids::cooked_package_prefix) +
                                               "base-build:"));
     REQUIRE(record->providers.size() == 1);
@@ -124,6 +130,30 @@ TEST_CASE("cooked package catalog exposes logical assets through Asset Database"
     CHECK(record->representations.front().locator_hint.starts_with("artifact://game/"));
     CHECK_FALSE(catalog.database().query(fixture.asset, arc::assets::asset_types::texture_2d));
     CHECK(catalog.database().revision() > 0);
+}
+
+TEST_CASE("cooked package unmount removes its logical records")
+{
+    package_fixture fixture;
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service native_files(jobs);
+    arc::io::virtual_file_system vfs(jobs);
+    auto files = std::make_shared<arc::io::filesystem_file_provider>(native_files, fixture.root / "package");
+    REQUIRE(vfs.mount({.root = path("package://base"), .provider = files}).succeeded());
+    arc::assets::cooked_asset_catalog catalog(vfs, path("artifact://game"));
+    REQUIRE(catalog.mount_package(path("package://base/" + fixture.manifest.filename().string()), 10));
+    const auto record = catalog.database().query(fixture.asset);
+    REQUIRE(record);
+    const auto cursor = catalog.database().changes_since(0).next_sequence;
+    REQUIRE(catalog.unmount_provider(record->active_provider));
+    CHECK_FALSE(catalog.database().query(fixture.asset));
+    const auto changes = catalog.database().changes_since(cursor);
+    CHECK(std::any_of(changes.events.begin(), changes.events.end(),
+                      [&](const auto& event) {
+                          return event.guid == fixture.asset &&
+                                 event.kind == arc::assets::asset_database_change_kind::provider_changed;
+                      }));
 }
 
 TEST_CASE("cooked Asset Database change cursor tracks mounted providers")
@@ -257,6 +287,54 @@ TEST_CASE("CAS updates publish atomically persist and supersede resolved generat
     auto preserved = catalog.resolve(fixture.address);
     REQUIRE(preserved.succeeded());
     CHECK(vfs.read_all(preserved.value()).get().value() == replacement_two);
+}
+
+TEST_CASE("cooked database projects overlay records and provider unmount")
+{
+    package_fixture fixture;
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service native_files(jobs);
+    arc::io::virtual_file_system vfs(jobs);
+    auto files = std::make_shared<arc::io::filesystem_file_provider>(native_files, fixture.root / "package");
+    REQUIRE(vfs.mount({.root = path("package://base"), .provider = files}).succeeded());
+    arc::assets::cooked_asset_catalog catalog(vfs, path("artifact://game"));
+    REQUIRE(catalog.mount_package(path("package://base/" + fixture.manifest.filename().string()), 10));
+
+    auto overlay = std::make_shared<arc::assets::cas_overlay_provider>(native_files, fixture.root / "overlay");
+    REQUIRE(catalog.mount_overlay(overlay, 100));
+    auto before = catalog.database().query(fixture.asset);
+    REQUIRE(before);
+    REQUIRE(before->providers.size() == 1);
+
+    const auto overlay_only = arc::assets::generate_asset_guid();
+    const auto payload = bytes("overlay-only");
+    const arc::assets::runtime_update_manifest manifest{
+        .target_profile = "windows-test",
+        .base_build_id = "base-build",
+        .update_sequence = 1,
+        .artifacts = {{.address = {overlay_only, fixture.address.schema, "custom"},
+                       .type = arc::assets::asset_types::terrain,
+                       .schema_version = 1,
+                       .hash = arc::assets::hash_bytes(payload),
+                       .size = payload.size()}}};
+    arc::assets::runtime_update_receiver receiver(
+        overlay,
+        {.cache_root = fixture.root / "overlay", .target_profile = "windows-test", .base_build_id = "base-build"});
+    const std::array blobs{std::pair{manifest.artifacts.front().hash, payload}};
+    REQUIRE(receiver.ingest(manifest, blobs));
+    static_cast<void>(catalog.poll_changes());
+
+    const auto record = catalog.database().query(overlay_only, arc::assets::asset_types::terrain);
+    REQUIRE(record);
+    CHECK(record->providers.size() == 1);
+    CHECK(record->providers.front().kind == arc::assets::asset_provider_kind::runtime_overlay);
+    CHECK(record->providers.front().active);
+    CHECK(record->active_provider == record->providers.front().id);
+    CHECK(record->representations.front().content_hash == manifest.artifacts.front().hash);
+
+    REQUIRE(catalog.unmount_provider(record->active_provider));
+    CHECK_FALSE(catalog.database().query(overlay_only));
 }
 
 TEST_CASE("CAS rejects corrupt incompatible and stale updates without replacing active content")
