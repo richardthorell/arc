@@ -214,12 +214,10 @@ TEST_CASE("asset search indexer recovers from lost incremental history with a fu
     CHECK(indexer.cursor() == 2);
 }
 
-
 TEST_CASE("persistent asset search index survives reopen and ranks deterministic baseline matches")
 {
     using namespace arc::assets;
-    const auto root = std::filesystem::temp_directory_path() /
-                      ("arc-search-index-" + to_string(generate_asset_guid()));
+    const auto root = std::filesystem::temp_directory_path() / ("arc-search-index-" + to_string(generate_asset_guid()));
     const auto database_path = root / "search.db";
 
     const auto exact_guid = generate_asset_guid();
@@ -275,8 +273,7 @@ TEST_CASE("persistent asset search index survives reopen and ranks deterministic
         REQUIRE(reopened);
         auto index = std::move(reopened).value();
 
-        const auto filtered =
-            index->query({.text = "bike", .filters = {.type = asset_types::static_mesh}, .limit = 1});
+        const auto filtered = index->query({.text = "bike", .filters = {.type = asset_types::static_mesh}, .limit = 1});
         REQUIRE(filtered.size() == 1);
         CHECK(filtered.front().guid == exact_guid);
 
@@ -293,18 +290,16 @@ TEST_CASE("persistent asset search index survives reopen and ranks deterministic
 TEST_CASE("persistent asset search index rejects incompatible documents atomically")
 {
     using namespace arc::assets;
-    const auto root = std::filesystem::temp_directory_path() /
-                      ("arc-search-index-invalid-" + to_string(generate_asset_guid()));
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-index-invalid-" + to_string(generate_asset_guid()));
     const auto database_path = root / "search.db";
 
     auto opened = persistent_asset_search_index::open(database_path);
     REQUIRE(opened);
     auto index = std::move(opened).value();
 
-    asset_search_document good{.guid = generate_asset_guid(),
-                               .type = asset_types::material,
-                               .display_name = "Stone",
-                               .title = "Stone"};
+    asset_search_document good{
+        .guid = generate_asset_guid(), .type = asset_types::material, .display_name = "Stone", .title = "Stone"};
     REQUIRE(index->upsert(good));
 
     auto incompatible = good;
@@ -326,8 +321,8 @@ TEST_CASE("persistent asset search index rejects incompatible documents atomical
 TEST_CASE("persistent asset search index removes documents and derived metadata together")
 {
     using namespace arc::assets;
-    const auto root = std::filesystem::temp_directory_path() /
-                      ("arc-search-index-erase-" + to_string(generate_asset_guid()));
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-index-erase-" + to_string(generate_asset_guid()));
     const auto database_path = root / "search.db";
 
     auto opened = persistent_asset_search_index::open(database_path);
@@ -341,8 +336,7 @@ TEST_CASE("persistent asset search index removes documents and derived metadata 
                                    .authored_tags = {"metal"},
                                    .generated_tags = {"rusty"},
                                    .categories = {"Material/Metal"},
-                                   .metadata = {{"condition", "weathered",
-                                                asset_search_metadata_origin::generated}}};
+                                   .metadata = {{"condition", "weathered", asset_search_metadata_origin::generated}}};
     REQUIRE(index->upsert(document));
     REQUIRE(index->query({.text = "Rusty"}).size() == 1);
 
@@ -353,12 +347,11 @@ TEST_CASE("persistent asset search index removes documents and derived metadata 
     std::filesystem::remove_all(root, error);
 }
 
-
 TEST_CASE("persistent asset search index recreates a corrupt derived cache")
 {
     using namespace arc::assets;
-    const auto root = std::filesystem::temp_directory_path() /
-                      ("arc-search-index-corrupt-" + to_string(generate_asset_guid()));
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-index-corrupt-" + to_string(generate_asset_guid()));
     const auto database_path = root / "search.db";
     std::filesystem::create_directories(root);
 

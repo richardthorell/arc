@@ -47,8 +47,8 @@ asset_search_document make_asset_search_document(const asset_database_record& re
 asset_status asset_search_indexer::rebuild()
 {
     if (!database_ || !index_)
-        return asset_status::failure({.code = asset_error_code::invalid_request,
-                                      .message = "Asset search indexer is not initialized"});
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Asset search indexer is not initialized"});
 
     const auto records = database_->records();
     std::vector<asset_search_document> documents;
@@ -73,8 +73,8 @@ asset_status asset_search_indexer::rebuild()
 asset_status asset_search_indexer::refresh()
 {
     if (!database_ || !index_)
-        return asset_status::failure({.code = asset_error_code::invalid_request,
-                                      .message = "Asset search indexer is not initialized"});
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Asset search indexer is not initialized"});
 
     const auto batch = database_->changes_since(cursor_);
     if (batch.history_lost ||

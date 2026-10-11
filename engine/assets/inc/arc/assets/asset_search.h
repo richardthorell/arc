@@ -129,7 +129,6 @@ public:
     [[nodiscard]] virtual std::vector<asset_search_result> query(const asset_search_query& query) const = 0;
 };
 
-
 /**
  * Persistent local search-document cache backed by SQLite.
  *

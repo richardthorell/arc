@@ -63,8 +63,7 @@ asset_status sqlite_failure(sqlite3* database, const std::filesystem::path& path
         message += ": ";
         message += sqlite3_errmsg(database);
     }
-    return asset_status::failure(
-        {.code = asset_error_code::io_failed, .path = path, .message = std::move(message)});
+    return asset_status::failure({.code = asset_error_code::io_failed, .path = path, .message = std::move(message)});
 }
 
 bool execute(sqlite3* database, const char* sql)
@@ -85,8 +84,7 @@ std::string lowercase(std::string_view value)
 
 bool contains_provider(std::span<const std::string> providers, std::string_view provider)
 {
-    return providers.empty() ||
-           std::find(providers.begin(), providers.end(), provider) != providers.end();
+    return providers.empty() || std::find(providers.begin(), providers.end(), provider) != providers.end();
 }
 
 struct baseline_match
@@ -167,15 +165,14 @@ asset_status create_schema(sqlite3* database, const std::filesystem::path& path)
 
 asset_status clear_schema(sqlite3* database, const std::filesystem::path& path)
 {
-    const char* sql =
-        "BEGIN;"
-        "DROP TABLE IF EXISTS search_metadata;"
-        "DROP TABLE IF EXISTS search_categories;"
-        "DROP TABLE IF EXISTS search_generated_tags;"
-        "DROP TABLE IF EXISTS search_authored_tags;"
-        "DROP TABLE IF EXISTS search_documents;"
-        "DROP TABLE IF EXISTS search_meta;"
-        "COMMIT;";
+    const char* sql = "BEGIN;"
+                      "DROP TABLE IF EXISTS search_metadata;"
+                      "DROP TABLE IF EXISTS search_categories;"
+                      "DROP TABLE IF EXISTS search_generated_tags;"
+                      "DROP TABLE IF EXISTS search_authored_tags;"
+                      "DROP TABLE IF EXISTS search_documents;"
+                      "DROP TABLE IF EXISTS search_meta;"
+                      "COMMIT;";
     if (!execute(database, sql)) return sqlite_failure(database, path, "Could not reset search index schema");
     return create_schema(database, path);
 }
@@ -206,20 +203,18 @@ asset_status replace_values(sqlite3* database, const std::filesystem::path& path
     return asset_status::success();
 }
 
-asset_status write_document(sqlite3* database, const std::filesystem::path& path,
-                            const asset_search_document& document)
+asset_status write_document(sqlite3* database, const std::filesystem::path& path, const asset_search_document& document)
 {
     sqlite_statement statement(
-        database,
-        "INSERT INTO search_documents("
-        "guid,type,display_name,logical_path,active_provider,title,description,"
-        "source_generation,source_revision,document_schema_version)"
-        "VALUES(?,?,?,?,?,?,?,?,?,?)"
-        "ON CONFLICT(guid) DO UPDATE SET "
-        "type=excluded.type,display_name=excluded.display_name,logical_path=excluded.logical_path,"
-        "active_provider=excluded.active_provider,title=excluded.title,description=excluded.description,"
-        "source_generation=excluded.source_generation,source_revision=excluded.source_revision,"
-        "document_schema_version=excluded.document_schema_version;");
+        database, "INSERT INTO search_documents("
+                  "guid,type,display_name,logical_path,active_provider,title,description,"
+                  "source_generation,source_revision,document_schema_version)"
+                  "VALUES(?,?,?,?,?,?,?,?,?,?)"
+                  "ON CONFLICT(guid) DO UPDATE SET "
+                  "type=excluded.type,display_name=excluded.display_name,logical_path=excluded.logical_path,"
+                  "active_provider=excluded.active_provider,title=excluded.title,description=excluded.description,"
+                  "source_generation=excluded.source_generation,source_revision=excluded.source_revision,"
+                  "document_schema_version=excluded.document_schema_version;");
     if (!statement) return sqlite_failure(database, path, "Could not prepare search document upsert");
 
     bind_text(statement.get(), 1, to_string(document.guid));
@@ -235,11 +230,9 @@ asset_status write_document(sqlite3* database, const std::filesystem::path& path
     if (sqlite3_step(statement.get()) != SQLITE_DONE)
         return sqlite_failure(database, path, "Could not write search document");
 
-    auto status = replace_values(database, path, "search_authored_tags", document.guid,
-                                 document.authored_tags);
+    auto status = replace_values(database, path, "search_authored_tags", document.guid, document.authored_tags);
     if (!status) return status;
-    status = replace_values(database, path, "search_generated_tags", document.guid,
-                            document.generated_tags);
+    status = replace_values(database, path, "search_generated_tags", document.guid, document.generated_tags);
     if (!status) return status;
     status = replace_values(database, path, "search_categories", document.guid, document.categories);
     if (!status) return status;
@@ -250,8 +243,7 @@ asset_status write_document(sqlite3* database, const std::filesystem::path& path
     if (sqlite3_step(erase_metadata.get()) != SQLITE_DONE)
         return sqlite_failure(database, path, "Could not clear search metadata");
 
-    sqlite_statement insert_metadata(
-        database, "INSERT INTO search_metadata(guid,key,value,origin) VALUES(?,?,?,?);");
+    sqlite_statement insert_metadata(database, "INSERT INTO search_metadata(guid,key,value,origin) VALUES(?,?,?,?);");
     if (!insert_metadata) return sqlite_failure(database, path, "Could not prepare metadata insert");
     for (const auto& metadata : document.metadata)
     {
@@ -277,8 +269,7 @@ persistent_asset_search_index::persistent_asset_search_index(std::unique_ptr<imp
 
 persistent_asset_search_index::~persistent_asset_search_index() = default;
 
-persistent_asset_search_index::open_result
-persistent_asset_search_index::open(std::filesystem::path database_path)
+persistent_asset_search_index::open_result persistent_asset_search_index::open(std::filesystem::path database_path)
 {
     std::error_code filesystem_error;
     if (!database_path.parent_path().empty())
@@ -308,16 +299,14 @@ persistent_asset_search_index::open(std::filesystem::path database_path)
     bool healthy = true;
     {
         sqlite_statement integrity(state->database, "PRAGMA quick_check;");
-        healthy = integrity && sqlite3_step(integrity.get()) == SQLITE_ROW &&
-                  column_text(integrity.get(), 0) == "ok";
+        healthy = integrity && sqlite3_step(integrity.get()) == SQLITE_ROW && column_text(integrity.get(), 0) == "ok";
     }
     if (!healthy)
     {
         sqlite3_close(state->database);
         state->database = nullptr;
-        const auto corrupt =
-            state->path.string() + ".corrupt-" +
-            std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+        const auto corrupt = state->path.string() + ".corrupt-" +
+                             std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
         std::filesystem::rename(state->path, corrupt, filesystem_error);
         if (filesystem_error)
         {
@@ -335,8 +324,7 @@ persistent_asset_search_index::open(std::filesystem::path database_path)
 
     std::uint32_t version{};
     {
-        sqlite_statement statement(state->database,
-                                   "SELECT value FROM search_meta WHERE key='schema_version';");
+        sqlite_statement statement(state->database, "SELECT value FROM search_meta WHERE key='schema_version';");
         if (!statement || sqlite3_step(statement.get()) != SQLITE_ROW)
             return open_result::failure({.code = asset_error_code::invalid_metadata,
                                          .path = state->path,
@@ -359,16 +347,15 @@ persistent_asset_search_index::open(std::filesystem::path database_path)
 asset_status persistent_asset_search_index::reset(std::span<const asset_search_document> documents)
 {
     if (!implementation_ || !implementation_->database)
-        return asset_status::failure({.code = asset_error_code::invalid_request,
-                                      .message = "Search index is not open"});
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Search index is not open"});
 
-    if (!execute(implementation_->database,
-                 "BEGIN IMMEDIATE;"
-                 "DELETE FROM search_metadata;"
-                 "DELETE FROM search_categories;"
-                 "DELETE FROM search_generated_tags;"
-                 "DELETE FROM search_authored_tags;"
-                 "DELETE FROM search_documents;"))
+    if (!execute(implementation_->database, "BEGIN IMMEDIATE;"
+                                            "DELETE FROM search_metadata;"
+                                            "DELETE FROM search_categories;"
+                                            "DELETE FROM search_generated_tags;"
+                                            "DELETE FROM search_authored_tags;"
+                                            "DELETE FROM search_documents;"))
         return sqlite_failure(implementation_->database, implementation_->path, "Could not reset search index");
 
     for (const auto& document : documents)
@@ -400,8 +387,8 @@ asset_status persistent_asset_search_index::reset(std::span<const asset_search_d
 asset_status persistent_asset_search_index::upsert(asset_search_document document)
 {
     if (!implementation_ || !implementation_->database)
-        return asset_status::failure({.code = asset_error_code::invalid_request,
-                                      .message = "Search index is not open"});
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Search index is not open"});
     if (!document.guid.valid() || !document.type.valid())
         return asset_status::failure({.code = asset_error_code::invalid_metadata,
                                       .guid = document.guid,
@@ -431,24 +418,22 @@ asset_status persistent_asset_search_index::upsert(asset_search_document documen
 asset_status persistent_asset_search_index::erase(asset_guid guid)
 {
     if (!implementation_ || !implementation_->database)
-        return asset_status::failure({.code = asset_error_code::invalid_request,
-                                      .message = "Search index is not open"});
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Search index is not open"});
 
     if (!execute(implementation_->database, "BEGIN IMMEDIATE;"))
         return sqlite_failure(implementation_->database, implementation_->path, "Could not begin search delete");
 
     const auto guid_text = to_string(guid);
     for (const auto* table :
-         {"search_metadata", "search_categories", "search_generated_tags", "search_authored_tags",
-          "search_documents"})
+         {"search_metadata", "search_categories", "search_generated_tags", "search_authored_tags", "search_documents"})
     {
         const std::string sql = "DELETE FROM " + std::string(table) + " WHERE guid=?;";
         sqlite_statement statement(implementation_->database, sql.c_str());
         if (!statement)
         {
             execute(implementation_->database, "ROLLBACK;");
-            return sqlite_failure(implementation_->database, implementation_->path,
-                                  "Could not prepare search delete");
+            return sqlite_failure(implementation_->database, implementation_->path, "Could not prepare search delete");
         }
         bind_text(statement.get(), 1, guid_text);
         if (sqlite3_step(statement.get()) != SQLITE_DONE)
@@ -466,16 +451,14 @@ asset_status persistent_asset_search_index::erase(asset_guid guid)
     return asset_status::success();
 }
 
-std::vector<asset_search_result>
-persistent_asset_search_index::query(const asset_search_query& query_value) const
+std::vector<asset_search_result> persistent_asset_search_index::query(const asset_search_query& query_value) const
 {
     std::vector<asset_search_result> results;
     if (!implementation_ || !implementation_->database || query_value.limit == 0) return results;
 
-    sqlite_statement statement(
-        implementation_->database,
-        "SELECT guid,type,display_name,logical_path,active_provider,title,description "
-        "FROM search_documents;");
+    sqlite_statement statement(implementation_->database,
+                               "SELECT guid,type,display_name,logical_path,active_provider,title,description "
+                               "FROM search_documents;");
     if (!statement) return results;
 
     while (sqlite3_step(statement.get()) == SQLITE_ROW)
@@ -488,15 +471,14 @@ persistent_asset_search_index::query(const asset_search_query& query_value) cons
         const auto provider = column_text(statement.get(), 4);
         if (!contains_provider(query_value.filters.provider_ids, provider)) continue;
 
-        const auto match = match_text(query_value.text, column_text(statement.get(), 2),
-                                      column_text(statement.get(), 5), column_text(statement.get(), 3),
-                                      column_text(statement.get(), 6));
+        const auto match =
+            match_text(query_value.text, column_text(statement.get(), 2), column_text(statement.get(), 5),
+                       column_text(statement.get(), 3), column_text(statement.get(), 6));
         if (!match.matched) continue;
 
         asset_search_result result{.guid = *guid, .score = match.score};
         if (!query_value.text.empty())
-            result.reasons.push_back(
-                {.kind = match.kind, .score = match.score, .detail = std::move(match.detail)});
+            result.reasons.push_back({.kind = match.kind, .score = match.score, .detail = std::move(match.detail)});
         results.push_back(std::move(result));
     }
 
