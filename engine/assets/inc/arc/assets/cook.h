@@ -392,6 +392,12 @@ struct cook_manifest_artifact
     bool compressed{};
 };
 
+struct cook_manifest_dependency
+{
+    asset_guid asset{};
+    std::vector<asset_guid> dependencies;
+};
+
 struct cook_manifest
 {
     static constexpr std::uint32_t current_version = 1;
@@ -400,6 +406,7 @@ struct cook_manifest
     cook_target target{};
     std::vector<asset_guid> roots;
     std::vector<asset_guid> dependency_closure;
+    std::vector<cook_manifest_dependency> dependency_edges;
     std::vector<cook_manifest_artifact> artifacts;
 };
 
