@@ -138,6 +138,10 @@ public:
  * This backend intentionally provides only the S1 baseline matching needed to
  * validate persistence and the query contract. S2 owns FTS/fuzzy search,
  * facets, structured predicates and richer ranking.
+ *
+ * The SQLite connection uses serialized mode, but compound synchronization
+ * ownership belongs to asset_search_service. Production callers should prefer
+ * the service rather than interleave direct backend mutations and queries.
  */
 class persistent_asset_search_index final : public asset_search_index
 {
@@ -173,6 +177,11 @@ private:
  *
  * rebuild() is the recovery path for first use, cache loss, schema migration,
  * catalog reset, or lost change history. refresh() applies incremental changes.
+ *
+ * The indexer is a single-writer synchronization primitive. Its cursor is
+ * persisted by the index only after document changes succeed, making replay
+ * idempotent after interruption. asset_search_service provides serialization
+ * for normal multi-threaded callers.
  */
 class asset_search_indexer
 {
@@ -203,7 +212,9 @@ private:
  *
  * synchronize() resumes from the persisted change cursor when possible and
  * performs a full rebuild when no valid checkpoint exists or history was lost.
- * Callers never need to know that the initial backend is SQLite.
+ * The service owns the backend/indexer lifetimes and serializes public
+ * query/synchronization operations so callers never need to know that the
+ * initial backend is SQLite.
  */
 class asset_search_service final
 {
