@@ -57,9 +57,8 @@ bool valid_profile(const render::photometric_profile& profile) noexcept
     if (profile.vertical_angles_degrees.size() > maximum_angle_count ||
         profile.horizontal_angles_degrees.size() > maximum_angle_count)
         return false;
-    if (profile.photometric_type < 1u || profile.photometric_type > 3u ||
-        !std::isfinite(profile.peak_candela) || profile.peak_candela <= 0.0f ||
-        !std::isfinite(profile.declared_lumens) || profile.declared_lumens < 0.0f)
+    if (profile.photometric_type < 1u || profile.photometric_type > 3u || !std::isfinite(profile.peak_candela) ||
+        profile.peak_candela <= 0.0f || !std::isfinite(profile.declared_lumens) || profile.declared_lumens < 0.0f)
         return false;
     if (!std::is_sorted(profile.vertical_angles_degrees.begin(), profile.vertical_angles_degrees.end()) ||
         !std::is_sorted(profile.horizontal_angles_degrees.begin(), profile.horizontal_angles_degrees.end()))
@@ -84,7 +83,10 @@ public:
         descriptor_.output_types = {assets::asset_types::photometric_profile};
     }
 
-    const assets::asset_importer_descriptor& descriptor() const noexcept override { return descriptor_; }
+    const assets::asset_importer_descriptor& descriptor() const noexcept override
+    {
+        return descriptor_;
+    }
 
     assets::asset_import_result import(const assets::asset_import_context& context) override
     {
@@ -94,7 +96,8 @@ public:
                               .path = context.source_path,
                               .message = "IES profile import was cancelled"}};
 
-        const std::string source(reinterpret_cast<const char*>(context.source_bytes.data()), context.source_bytes.size());
+        const std::string source(reinterpret_cast<const char*>(context.source_bytes.data()),
+                                 context.source_bytes.size());
         auto parsed = render::parse_ies_profile(source);
         if (!parsed)
             return {.error = {.code = assets::asset_error_code::import_failed,
@@ -150,9 +153,12 @@ std::vector<std::byte> encode_photometric_profile_artifact(const render::photome
     append_u32(output, profile.photometric_type);
     append_f32(output, profile.peak_candela);
     append_f32(output, profile.declared_lumens);
-    for (float value : profile.vertical_angles_degrees) append_f32(output, value);
-    for (float value : profile.horizontal_angles_degrees) append_f32(output, value);
-    for (float value : profile.normalized_candela) append_f32(output, value);
+    for (float value : profile.vertical_angles_degrees)
+        append_f32(output, value);
+    for (float value : profile.horizontal_angles_degrees)
+        append_f32(output, value);
+    for (float value : profile.normalized_candela)
+        append_f32(output, value);
     return output;
 }
 
