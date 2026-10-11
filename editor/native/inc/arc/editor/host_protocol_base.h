@@ -1782,6 +1782,16 @@ struct host_texture_settings_query
     std::string guid;
 };
 
+struct host_material_describe_query
+{
+    std::string guid;
+};
+
+struct host_asset_inspect_query
+{
+    std::string guid;
+};
+
 struct host_viewport_state_query
 {
     std::string viewport_id{"viewport-1"};
@@ -1812,7 +1822,8 @@ using host_query_payload = std::variant<
     host_scene_hierarchy_query, host_selected_entity_query, host_scene_entities_query, host_entity_by_guid_query,
     host_scene_spatial_query, host_component_schema_query, host_workspace_documents_query,
     host_gateway_diagnostics_query, host_viewport_capture_query, host_project_assets_query, host_asset_thumbnail_query,
-    host_texture_settings_query, host_viewport_state_query, host_world_environment_query, host_history_state_query,
+    host_texture_settings_query, host_material_describe_query, host_asset_inspect_query,
+    host_viewport_state_query, host_world_environment_query, host_history_state_query,
     host_runtime_state_query, host_runtime_hierarchy_query, host_runtime_entity_query, host_terrain_tool_state_query>;
 
 struct host_query_envelope

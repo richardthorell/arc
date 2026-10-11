@@ -1,0 +1,314 @@
+#include <arc/editor/material_inspection.h>
+
+#include <arc/assets/assets.h>
+#include <arc/render_tools/material_asset.h>
+#include <arc/render_tools/material_graph.h>
+
+#include <nlohmann/json.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <map>
+#include <set>
+#include <stdexcept>
+#include <vector>
+
+namespace arc::editor
+{
+namespace
+{
+using json = nlohmann::json;
+namespace rt = render::tools;
+constexpr std::size_t source_limit = 8 * 1024 * 1024;
+constexpr std::size_t total_limit = 32 * 1024 * 1024;
+constexpr std::size_t dependency_limit = 128;
+constexpr std::size_t alternative_limit = 16;
+
+std::string_view type_name(render::shader_parameter_type type)
+{
+    switch (type)
+    {
+        case render::shader_parameter_type::float32:
+            return "float";
+        case render::shader_parameter_type::float2:
+            return "vec2";
+        case render::shader_parameter_type::float3:
+            return "vec3";
+        case render::shader_parameter_type::float4:
+            return "vec4";
+        case render::shader_parameter_type::texture_2d:
+            return "texture2d";
+        default:
+            return "unsupported";
+    }
+}
+
+json pin_json(const rt::material_function_pin& pin)
+{
+    json value = nullptr;
+    if (pin.has_default)
+        value = std::vector<float>(pin.default_value.values.begin(),
+                                   pin.default_value.values.begin() + pin.default_value.components);
+    return {{"id", pin.id},
+            {"name", pin.name},
+            {"type", type_name(pin.type)},
+            {"hasDefault", pin.has_default},
+            {"defaultValue", value}};
+}
+
+json checked_value(json value, const render::shader_parameter_descriptor& parameter)
+{
+    const auto type = type_name(parameter.type);
+    if (type == "texture2d")
+    {
+        if (value.is_string() || (value.is_object() && value.contains("guid") && value["guid"].is_string() &&
+                                  assets::parse_asset_guid(value["guid"].get<std::string>())))
+            return value;
+        throw std::runtime_error("Texture override requires an asset reference");
+    }
+    const auto count = type == "float" ? 1u : type == "vec2" ? 2u : type == "vec3" ? 3u : type == "vec4" ? 4u : 0u;
+    if (count == 1 && value.is_number()) value = json::array({value});
+    if (!count || !value.is_array() || value.size() != count)
+        throw std::runtime_error("Override shape does not match parameter " +
+                                 std::to_string(parameter.id.representation()));
+    for (const auto& component : value)
+        if (!component.is_number() || !std::isfinite(component.get<float>()) ||
+            (parameter.has_range &&
+             (component.get<float>() < parameter.minimum || component.get<float>() > parameter.maximum)))
+            throw std::runtime_error("Override is non-finite or outside the declared parameter range");
+    return value;
+}
+
+struct inspection
+{
+    const material_inspection_resolver& resolve;
+    std::map<std::string, material_inspection_source> sources;
+    std::map<std::string, std::string> aliases;
+    std::size_t bytes{};
+
+    void remember(const material_inspection_source& source)
+    {
+        if (source.guid.empty()) throw std::runtime_error("Dependency has no registered asset identity");
+        if (sources.contains(source.guid)) return;
+        if (source.source.size() > source_limit || sources.size() >= dependency_limit ||
+            source.source.size() > total_limit - bytes)
+            throw std::runtime_error("Material inspection dependency/source budget exceeded");
+        bytes += source.source.size();
+        sources.emplace(source.guid, source);
+    }
+
+    material_inspection_source load(std::string_view guid, std::string_view hint)
+    {
+        const auto source = resolve(guid, hint);
+        if (!source || (!guid.empty() && source->guid != guid))
+            throw std::runtime_error("Missing registered dependency: " + std::string(guid.empty() ? hint : guid));
+        remember(*source);
+        return *source;
+    }
+
+    void functions(const json& graph, std::vector<rt::material_function_source>& library)
+    {
+        if (!graph.contains("nodes") || !graph["nodes"].is_array()) return;
+        for (const auto& node : graph["nodes"])
+        {
+            const auto type = node.value("type", std::string{});
+            if (type != "functionCall" && type != "functionSlot") continue;
+            const auto values = node.value("values", json::object());
+            std::vector<std::string> paths{values.value("path", std::string{})};
+            if (values.contains("functions") && values["functions"].is_array())
+                for (const auto& entry : values["functions"])
+                    paths.push_back(entry.value("path", std::string{}));
+            for (const auto& path : paths)
+                function(path, {}, library);
+        }
+    }
+
+    void function(const std::string& path, const std::string& guid, std::vector<rt::material_function_source>& library)
+    {
+        if (path.empty() && guid.empty()) return;
+        const auto source = load(guid, path);
+        const auto alias = path.empty() ? source.path : path;
+        if (const auto found = aliases.find(alias); found != aliases.end())
+        {
+            if (found->second != source.guid) throw std::runtime_error("Ambiguous Material Function locator");
+            return;
+        }
+        if (aliases.size() >= dependency_limit) throw std::runtime_error("Too many Material Function aliases");
+        aliases.emplace(alias, source.guid);
+        if (source.kind != "materialFunction") throw std::runtime_error("Dependency is not a Material Function");
+        library.push_back({.path = alias, .identity = source.guid, .source = source.source});
+        const auto document = json::parse(source.source);
+        if (document.contains("graph")) functions(document["graph"], library);
+    }
+
+    std::string revision() const
+    {
+        // Sorted GUIDs, not names or filesystem timestamps, determine the dependency revision.
+        json identity = json::array();
+        for (const auto& [guid, source] : sources)
+            identity.push_back({guid, source.source});
+        const auto serialized = identity.dump();
+        return assets::to_string(assets::hash_bytes(std::as_bytes(std::span(serialized.data(), serialized.size()))));
+    }
+};
+} // namespace
+
+std::string inspect_saved_material(const material_inspection_source& source,
+                                   const material_inspection_resolver& resolve)
+{
+    json result{{"guid", source.guid},          {"kind", source.kind},
+                {"provenance", "savedSource"},  {"definitionRevision", ""},
+                {"parentGuid", nullptr},        {"dependencies", json::array()},
+                {"parameters", json::array()},  {"functionSlots", json::array()},
+                {"functionInterface", nullptr}, {"diagnostics", json::array()},
+                {"definitionReady", false},     {"runtimeStatus", "notInspected"}};
+    inspection state{.resolve = resolve};
+    try
+    {
+        state.remember(source);
+        if (source.kind == "materialFunction")
+        {
+            const auto validated = rt::validate_material_function_json(source.source, source.path);
+            if (!validated) throw std::runtime_error(validated.error().message);
+            const auto document = json::parse(source.source);
+            const auto inputs = document.value("inputs", json::array()).size();
+            json signature{{"inputs", json::array()}, {"outputs", json::array()}};
+            for (std::size_t i = 0; i < validated.value().size(); ++i)
+                signature[i < inputs ? "inputs" : "outputs"].push_back(pin_json(validated.value()[i]));
+            result["functionInterface"] = std::move(signature);
+            result["definitionReady"] = true;
+        }
+        else
+        {
+            auto parent = source;
+            std::optional<rt::material_instance_authoring_document> instance;
+            if (source.kind == "materialInstance")
+            {
+                auto parsed = rt::parse_material_instance_authoring_json(source.source);
+                if (!parsed) throw std::runtime_error(parsed.error().message);
+                instance = std::move(parsed).value();
+                parent = state.load(instance->parent.guid, instance->parent.path_hint);
+                result["parentGuid"] = parent.guid;
+            }
+            if (parent.kind != "material") throw std::runtime_error("Expected a Material parent asset");
+            const auto authored = rt::parse_material_authoring_json(parent.source);
+            if (!authored) throw std::runtime_error(authored.error().message);
+            if (authored.value().graph_json.empty())
+                throw std::runtime_error("Handwritten shader parameter inspection is not yet supported");
+            const auto graph = json::parse(authored.value().graph_json);
+            std::vector<rt::material_function_source> functions;
+            state.functions(graph, functions);
+            std::vector<rt::material_function_slot_override> selections;
+            if (instance)
+                for (const auto& selection : instance->function_overrides)
+                {
+                    const auto selected = state.load(selection.function.guid, selection.function.path_hint);
+                    // The compiler enforces authored alternative lists, including their original locators.
+                    auto path = selected.path;
+                    for (const auto& [alias, guid] : state.aliases)
+                        if (guid == selected.guid)
+                        {
+                            path = alias;
+                            break;
+                        }
+                    state.function(path, selected.guid, functions);
+                    selections.push_back({.slot_id = selection.slot_id, .function_path = path});
+                }
+            const auto compiled = rt::compile_material_graph_json(authored.value().graph_json, functions, selections);
+            if (!compiled) throw std::runtime_error(compiled.error().message);
+            std::map<std::uint64_t, json> overrides;
+            if (instance)
+            {
+                for (const auto& entry : instance->parameter_overrides)
+                    overrides[entry.parameter_id.representation()] = json::parse(entry.value_json);
+                for (const auto& selection : instance->function_overrides)
+                    for (const auto& entry : selection.input_overrides)
+                        overrides[render::make_shader_parameter_id("slot::" + selection.slot_id +
+                                                                   "::" + selection.function.guid + "::" + entry.pin_id)
+                                      .representation()] = json::parse(entry.value_json);
+            }
+            for (const auto& parameter : compiled.value().descriptor.parameters)
+            {
+                const auto type = type_name(parameter.type);
+                json default_value = nullptr;
+                const auto count = type == "float"  ? 1u
+                                   : type == "vec2" ? 2u
+                                   : type == "vec3" ? 3u
+                                   : type == "vec4" ? 4u
+                                                    : 0u;
+                if (count && parameter.default_value.size() == count * sizeof(float))
+                {
+                    std::vector<float> values(count);
+                    std::memcpy(values.data(), parameter.default_value.data(), parameter.default_value.size());
+                    default_value = values;
+                }
+                auto resolved = default_value;
+                if (const auto found = overrides.find(parameter.id.representation()); found != overrides.end())
+                {
+                    resolved = checked_value(found->second, parameter);
+                    overrides.erase(found);
+                }
+                result["parameters"].push_back(
+                    {{"id", std::to_string(parameter.id.representation())},
+                     {"name", parameter.name},
+                     {"type", type},
+                     {"defaultValue", default_value},
+                     {"resolvedValue", resolved},
+                     {"valueStatus", resolved.is_null() ? "unavailable" : "resolved"},
+                     {"range", parameter.has_range ? json{{"min", parameter.minimum}, {"max", parameter.maximum}}
+                                                   : json(nullptr)}});
+            }
+            if (!overrides.empty())
+                throw std::runtime_error("Instance contains stale parameter overrides; repair the saved definition");
+            std::size_t trials = 0;
+            for (const auto& slot : compiled.value().descriptor.function_slots)
+            {
+                json alternatives = json::array();
+                std::set<std::string> seen;
+                bool truncated = false;
+                for (const auto& candidate : functions)
+                {
+                    if (!seen.insert(candidate.identity).second) continue;
+                    if (alternatives.size() >= alternative_limit || trials >= 256)
+                    {
+                        truncated = true;
+                        break;
+                    }
+                    ++trials;
+                    auto trial = selections;
+                    std::erase_if(trial, [&](const auto& entry) { return entry.slot_id == slot.id; });
+                    trial.push_back({.slot_id = slot.id, .function_path = candidate.path});
+                    if (rt::compile_material_graph_json(authored.value().graph_json, functions, trial))
+                        alternatives.push_back({{"guid", candidate.identity}, {"pathHint", candidate.path}});
+                }
+                json inputs = json::array(), outputs = json::array();
+                for (const auto& pin : slot.inputs)
+                    inputs.push_back(pin_json(pin));
+                for (const auto& pin : slot.outputs)
+                    outputs.push_back(pin_json(pin));
+                result["functionSlots"].push_back(
+                    {{"id", slot.id},
+                     {"name", slot.name},
+                     {"defaultFunctionGuid", state.aliases.at(slot.default_function_path)},
+                     {"selectedFunctionGuid", slot.selected_function_identity},
+                     {"inputs", inputs},
+                     {"outputs", outputs},
+                     {"alternatives", alternatives},
+                     {"alternativesTruncated", truncated}});
+            }
+            for (const auto& diagnostic : compiled.value().diagnostics)
+                result["diagnostics"].push_back({{"code", diagnostic.code}, {"message", diagnostic.message}});
+            result["definitionReady"] = true;
+        }
+    }
+    catch (const std::exception& error)
+    {
+        result["diagnostics"].push_back({{"code", "material-inspection-failed"}, {"message", error.what()}});
+    }
+    result["definitionRevision"] = state.revision();
+    for (const auto& [guid, dependency] : state.sources)
+        if (guid != source.guid) result["dependencies"].push_back({{"guid", guid}, {"pathHint", dependency.path}});
+    return result.dump();
+}
+} // namespace arc::editor

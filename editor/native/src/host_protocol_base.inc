@@ -1,4 +1,5 @@
 #include <arc/editor/host_protocol.h>
+#include <arc/assets/assets.h>
 
 #include <algorithm>
 #include <array>
@@ -1354,6 +1355,10 @@ std::string query_type(const host_query_payload& payload)
                 return "asset.thumbnail";
             else if constexpr (std::is_same_v<type, host_texture_settings_query>)
                 return "texture.settings";
+            else if constexpr (std::is_same_v<type, host_material_describe_query>)
+                return "materials.describe";
+            else if constexpr (std::is_same_v<type, host_asset_inspect_query>)
+                return "assets.inspect";
             else if constexpr (std::is_same_v<type, host_viewport_state_query>)
                 return "viewport.state";
             else if constexpr (std::is_same_v<type, host_world_environment_query>)
@@ -2033,7 +2038,9 @@ std::string to_json(const host_query_envelope& envelope)
                 return "{\"entity\":" + to_json(value.entity) + '}';
             else if constexpr (std::is_same_v<query, host_asset_thumbnail_query>)
                 return "{\"path\":" + quote(value.path) + ",\"maxSize\":" + std::to_string(value.max_size) + '}';
-            else if constexpr (std::is_same_v<query, host_texture_settings_query>)
+            else if constexpr (std::is_same_v<query, host_texture_settings_query> ||
+                               std::is_same_v<query, host_material_describe_query> ||
+                               std::is_same_v<query, host_asset_inspect_query>)
                 return "{\"guid\":" + quote(value.guid) + '}';
             else if constexpr (std::is_same_v<query, host_scene_entities_query>)
                 return "{\"search\":" + quote(value.search) + ",\"offset\":" + std::to_string(value.offset) +
@@ -3681,6 +3688,17 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
     }
     else if (type == "project.assets")
         envelope.payload = host_project_assets_query{};
+    else if (type == "materials.describe" || type == "assets.inspect")
+    {
+        std::string guid;
+        if (!string_value(json, "guid", guid) || !assets::parse_asset_guid(guid))
+        {
+            error = "Asset inspection requires a valid GUID";
+            return false;
+        }
+        if (type == "materials.describe") envelope.payload = host_material_describe_query{std::move(guid)};
+        else envelope.payload = host_asset_inspect_query{std::move(guid)};
+    }
     else if (type == "texture.settings")
     {
         host_texture_settings_query settings;

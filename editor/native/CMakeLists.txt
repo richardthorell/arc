@@ -11,6 +11,7 @@ add_library(arc-editor-host STATIC
     src/host_protocol.cpp
     src/material_asset.cpp
     src/material_instance_bridge.cpp
+    src/material_inspection.cpp
     src/material_library.cpp
     src/material_preview.cpp
     src/material_preview_jobs.cpp

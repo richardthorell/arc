@@ -9,6 +9,7 @@ import {
 } from '../common/editorOperationRegistry';
 import { legacyOperationOutput, operationMetadata, operationMcpName, registryEntries } from './agentOperationCatalog';
 import { providerToolName } from '../common/aiToolProviderProjection';
+import { registerMaterialReadOperations } from './materialOperations';
 
 export type AgentOperationContext = EditorOperationContext & { clientId: string };
 
@@ -279,6 +280,7 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
         execute: (params, context) => this.invokeLegacy(entry.method, params, context.clientId),
       });
     }
+    registerMaterialReadOperations(this, selectionHost);
   }
 
   /** Trusted startup registrations, never executable code from clients or project assets. */

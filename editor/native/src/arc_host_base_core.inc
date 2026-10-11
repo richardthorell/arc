@@ -7,6 +7,7 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
+#include <arc/editor/material_inspection.h>
 #include <arc/editor/model_preview.h>
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/scene_document.h>
@@ -6916,6 +6917,79 @@ host_response arc_host::query(const host_query_envelope& query) const
             {
                 return {
                     .request_id = request_id, .succeeded = true, .payload_json = to_json(project_assets_snapshot())};
+            }
+            else if constexpr (std::is_same_v<query_type, host_asset_inspect_query>)
+            {
+                if (!state_->asset_registry)
+                    return {.request_id = request_id, .succeeded = false, .error = "No project asset registry is active"};
+                const auto guid = assets::parse_asset_guid(payload.guid);
+                const auto asset = guid ? state_->asset_registry->find(*guid) : std::nullopt;
+                if (!asset) return {.request_id = request_id, .succeeded = false, .error = "Asset GUID was not found"};
+                nlohmann::json result{{"guid", assets::to_string(asset->guid)},
+                    {"typeId", assets::to_string(asset->type)}, {"title", asset->title},
+                    {"sourcePath", assets::normalize_asset_path(asset->source_path)},
+                    {"scope", asset->read_only ? "builtin" : "project"}, {"readOnly", asset->read_only},
+                    {"generation", std::to_string(asset->generation)}, {"revision", std::to_string(asset->revision)},
+                    {"sourceMissing", asset->source_missing}, {"hasLastGood", asset->has_last_good},
+                    {"dependencies", nlohmann::json::array()}, {"diagnostics", nlohmann::json::array()}};
+                for (const auto dependency : asset->dependencies)
+                    result["dependencies"].push_back(assets::to_string(dependency));
+                for (const auto& diagnostic : asset->diagnostics)
+                    result["diagnostics"].push_back(diagnostic.message);
+                return {.request_id = request_id, .succeeded = true, .payload_json = result.dump()};
+            }
+            else if constexpr (std::is_same_v<query_type, host_material_describe_query>)
+            {
+                if (!state_->asset_registry)
+                    return {.request_id = request_id, .succeeded = false, .error = "No project asset registry is active"};
+                const auto catalog = state_->asset_registry->search();
+                const material_inspection_resolver resolve = [&](std::string_view guid, std::string_view hint)
+                    -> std::optional<material_inspection_source>
+                {
+                    std::optional<assets::asset_snapshot> asset;
+                    if (!guid.empty())
+                    {
+                        const auto parsed = assets::parse_asset_guid(guid);
+                        if (!parsed) return std::nullopt;
+                        asset = state_->asset_registry->find(*parsed);
+                    }
+                    else
+                    {
+                        // Legacy authored function locators may be content-root-relative. Require a unique
+                        // registered suffix match; never reconstruct a GUID or choose by display name.
+                        const auto normalized = assets::normalize_asset_path(std::filesystem::path(hint));
+                        for (const auto& candidate : catalog)
+                        {
+                            const auto path = assets::normalize_asset_path(candidate.source_path);
+                            if (path != normalized && !path.ends_with("/" + normalized)) continue;
+                            if (asset) return std::nullopt;
+                            asset = candidate;
+                        }
+                    }
+                    if (!asset) return std::nullopt;
+                    const auto kind = asset->type == assets::asset_types::material ? "material" :
+                        asset->type == assets::asset_types::material_instance ? "materialInstance" :
+                        asset->type == assets::asset_types::material_function ? "materialFunction" : "unsupported";
+                    if (std::string_view(kind) == "unsupported") return std::nullopt;
+                    const auto resolved = resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                        state_->project.root, host_asset_reference{.guid = assets::to_string(asset->guid)});
+                    if (!resolved) return std::nullopt;
+                    std::error_code error;
+                    const auto size = std::filesystem::file_size(resolved->path, error);
+                    if (error || size > 8 * 1024 * 1024) return std::nullopt;
+                    std::ifstream stream(resolved->path, std::ios::binary);
+                    if (!stream) return std::nullopt;
+                    std::string source(static_cast<std::size_t>(size), '\0');
+                    stream.read(source.data(), static_cast<std::streamsize>(size));
+                    if (!stream || stream.peek() != std::char_traits<char>::eof()) return std::nullopt;
+                    return material_inspection_source{.guid = assets::to_string(asset->guid),
+                        .path = assets::normalize_asset_path(asset->source_path), .kind = kind, .source = std::move(source)};
+                };
+                const auto source = resolve(payload.guid, {});
+                if (!source) return {.request_id = request_id, .succeeded = false,
+                    .error = "Material GUID is missing, unsupported, unreadable, or exceeds the source limit"};
+                return {.request_id = request_id, .succeeded = true,
+                    .payload_json = inspect_saved_material(*source, resolve)};
             }
             else if constexpr (std::is_same_v<query_type, host_texture_settings_query>)
             {
