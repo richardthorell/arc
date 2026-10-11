@@ -368,3 +368,37 @@ TEST_CASE("content bundles reject dependency cycles and missing references")
     REQUIRE(missing.add(std::move(root)) == bundle_error::none);
     CHECK(missing.closure("Only", database).error == bundle_error::missing_asset);
 }
+
+
+TEST_CASE("arcbundle descriptor round trips with GUID roots and policies")
+{
+    using namespace arc::assets;
+    content_bundle_descriptor descriptor;
+    descriptor.id = "Level/Forest";
+    descriptor.display_name = "Forest";
+    descriptor.roots = {generate_asset_guid(), generate_asset_guid()};
+    descriptor.bundle_dependencies = {"Startup/Common"};
+    descriptor.preload = bundle_preload_policy::metadata;
+    descriptor.closure = bundle_closure_policy::roots_only;
+    descriptor.tags = {"level", "forest"};
+    const auto encoded = serialize_content_bundle(descriptor);
+    REQUIRE_FALSE(encoded.empty());
+    const auto decoded = parse_content_bundle(encoded);
+    REQUIRE(decoded.succeeded());
+    CHECK(decoded.descriptor.id == descriptor.id);
+    CHECK(decoded.descriptor.roots == descriptor.roots);
+    CHECK(decoded.descriptor.bundle_dependencies == descriptor.bundle_dependencies);
+    CHECK(decoded.descriptor.preload == descriptor.preload);
+    CHECK(decoded.descriptor.closure == descriptor.closure);
+    CHECK(decoded.descriptor.tags == descriptor.tags);
+}
+
+TEST_CASE("arcbundle parser rejects malformed formats and references")
+{
+    using namespace arc::assets;
+    CHECK_FALSE(parse_content_bundle("{}").succeeded());
+    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":2,"id":"A","roots":[]})").succeeded());
+    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":["not-a-guid"]})").succeeded());
+    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":[],"bundleDependencies":["A"]})").succeeded());
+    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":[],"preload":"invalid"})").succeeded());
+}
