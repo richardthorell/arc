@@ -23,8 +23,7 @@
 TEST_CASE("baked irradiance probe volumes cook and decode deterministically")
 {
     arc::render::irradiance_probe_volume_descriptor volume;
-    volume.local_bounds = {arc::geometric::point3f{-1.0f, -1.0f, -1.0f},
-                           arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+    volume.local_bounds = {arc::geometric::point3f{-1.0f, -1.0f, -1.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
     volume.dimensions = {2u, 2u, 2u};
     volume.spacing = {2.0f, 2.0f, 2.0f};
     volume.blend_distance = 0.5f;
@@ -32,8 +31,7 @@ TEST_CASE("baked irradiance probe volumes cook and decode deterministically")
     volume.probes.resize(8u);
     for (std::size_t index = 0; index < volume.probes.size(); ++index)
     {
-        volume.probes[index].spherical_harmonics[0] =
-            {static_cast<float>(index + 1u), 0.5f, 0.25f};
+        volume.probes[index].spherical_harmonics[0] = {static_cast<float>(index + 1u), 0.5f, 0.25f};
         volume.probes[index].validity = 1.0f;
         volume.probes[index].visibility = 0.75f;
         volume.probes[index].mean_distance = 4.0f;
@@ -62,8 +60,7 @@ TEST_CASE("baked irradiance probe volumes cook and decode deterministically")
 TEST_CASE("baked irradiance probe resolver uses trilinear validity and environment fallback")
 {
     arc::render::irradiance_probe_volume_descriptor volume;
-    volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f},
-                           arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+    volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
     volume.dimensions = {2u, 2u, 2u};
     volume.spacing = {1.0f, 1.0f, 1.0f};
     volume.blend_distance = 0.1f;
@@ -78,25 +75,25 @@ TEST_CASE("baked irradiance probe resolver uses trilinear validity and environme
     arc::render::irradiance_probe_volume_instance instance{
         .stable_id = 7u,
         .volume = &volume,
-        .world_bounds = {arc::geometric::point3f{10.0f, 0.0f, 0.0f},
-                         arc::geometric::point3f{12.0f, 2.0f, 2.0f}}};
+        .world_bounds = {arc::geometric::point3f{10.0f, 0.0f, 0.0f}, arc::geometric::point3f{12.0f, 2.0f, 2.0f}}};
 
     const std::array instances{instance};
-    const auto center = arc::render::resolve_irradiance_probe_volumes(
-        instances, arc::math::vector3f{11.0f, 1.0f, 1.0f});
+    const auto center =
+        arc::render::resolve_irradiance_probe_volumes(instances, arc::math::vector3f{11.0f, 1.0f, 1.0f});
     REQUIRE_FALSE(center.fallback_to_environment);
     REQUIRE(center.contributing_volumes == 1u);
     REQUIRE(center.contributing_probes == 8u);
     REQUIRE(center.spherical_harmonics[0][0] == Catch::Approx(3.5f));
 
-    const auto outside = arc::render::resolve_irradiance_probe_volumes(
-        instances, arc::math::vector3f{20.0f, 1.0f, 1.0f});
+    const auto outside =
+        arc::render::resolve_irradiance_probe_volumes(instances, arc::math::vector3f{20.0f, 1.0f, 1.0f});
     REQUIRE(outside.fallback_to_environment);
     REQUIRE(outside.contributing_volumes == 0u);
 
-    for (auto& probe : volume.probes) probe.validity = 0.0f;
-    const auto invalid = arc::render::resolve_irradiance_probe_volumes(
-        instances, arc::math::vector3f{11.0f, 1.0f, 1.0f});
+    for (auto& probe : volume.probes)
+        probe.validity = 0.0f;
+    const auto invalid =
+        arc::render::resolve_irradiance_probe_volumes(instances, arc::math::vector3f{11.0f, 1.0f, 1.0f});
     REQUIRE(invalid.fallback_to_environment);
 }
 
@@ -105,8 +102,7 @@ TEST_CASE("overlapping irradiance volumes select highest priority and blend equa
     const auto make_volume = [](float red, std::int32_t priority)
     {
         arc::render::irradiance_probe_volume_descriptor volume;
-        volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f},
-                               arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+        volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
         volume.dimensions = {1u, 1u, 1u};
         volume.spacing = {1.0f, 1.0f, 1.0f};
         volume.blend_distance = 0.25f;
@@ -120,7 +116,7 @@ TEST_CASE("overlapping irradiance volumes select highest priority and blend equa
     auto high_a = make_volume(4.0f, 5);
     auto high_b = make_volume(8.0f, 5);
     const arc::geometric::box3f bounds{arc::geometric::point3f{-1.0f, -1.0f, -1.0f},
-                                      arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+                                       arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
     const std::array instances{
         arc::render::irradiance_probe_volume_instance{.stable_id = 1u, .volume = &low, .world_bounds = bounds},
         arc::render::irradiance_probe_volume_instance{.stable_id = 2u, .volume = &high_a, .world_bounds = bounds},

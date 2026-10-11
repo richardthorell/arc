@@ -193,7 +193,6 @@ float sample_field(const mesh_distance_field_descriptor& field, const math::vect
     return static_cast<float>(encoded) / 32767.0f * field.distance_scale;
 }
 
-
 constexpr std::uint32_t irradiance_volume_magic = 0x56504941u; // AIPV
 constexpr std::uint32_t irradiance_volume_version = 1u;
 constexpr std::uint64_t maximum_probe_count = 16ull * 1024ull * 1024ull;
@@ -207,15 +206,14 @@ bool valid_irradiance_volume(const irradiance_probe_volume_descriptor& volume) n
 {
     if (volume.format_version != irradiance_probe_volume_descriptor::current_format_version) return false;
     if (volume.dimensions[0] == 0u || volume.dimensions[1] == 0u || volume.dimensions[2] == 0u) return false;
-    const std::uint64_t probe_count = static_cast<std::uint64_t>(volume.dimensions[0]) * volume.dimensions[1] *
-                                      volume.dimensions[2];
+    const std::uint64_t probe_count =
+        static_cast<std::uint64_t>(volume.dimensions[0]) * volume.dimensions[1] * volume.dimensions[2];
     if (probe_count == 0u || probe_count > maximum_probe_count || probe_count != volume.probes.size()) return false;
     if (!finite3(volume.local_bounds.min.as_vector()) || !finite3(volume.local_bounds.max.as_vector()) ||
         !finite3(volume.spacing) || !std::isfinite(volume.blend_distance) || volume.blend_distance < 0.0f)
         return false;
     for (std::size_t axis = 0; axis < 3; ++axis)
-        if (volume.local_bounds.max[axis] < volume.local_bounds.min[axis] || volume.spacing[axis] <= 0.0f)
-            return false;
+        if (volume.local_bounds.max[axis] < volume.local_bounds.min[axis] || volume.spacing[axis] <= 0.0f) return false;
 
     for (const auto& probe : volume.probes)
     {
@@ -275,8 +273,8 @@ float volume_influence(const geometric::box3f& bounds, float blend_distance, con
     if (blend_distance <= 0.0f) return 1.0f;
     float edge_distance = std::numeric_limits<float>::max();
     for (std::size_t axis = 0; axis < 3; ++axis)
-        edge_distance = std::min(edge_distance,
-                                 std::min(point[axis] - bounds.min[axis], bounds.max[axis] - point[axis]));
+        edge_distance =
+            std::min(edge_distance, std::min(point[axis] - bounds.min[axis], bounds.max[axis] - point[axis]));
     return std::clamp(edge_distance / blend_distance, 0.0f, 1.0f);
 }
 
@@ -329,9 +327,8 @@ sampled_probe_volume sample_probe_volume(const irradiance_probe_volume_descripto
         const float weight = wx * wy * wz * probe.validity * probe.visibility;
         if (weight <= 0.0f) continue;
         for (std::size_t coefficient = 0; coefficient < result.spherical_harmonics.size(); ++coefficient)
-            result.spherical_harmonics[coefficient] =
-                math::add(result.spherical_harmonics[coefficient],
-                          math::mul(probe.spherical_harmonics[coefficient], weight));
+            result.spherical_harmonics[coefficient] = math::add(
+                result.spherical_harmonics[coefficient], math::mul(probe.spherical_harmonics[coefficient], weight));
         total_weight += weight;
         ++result.contributing_probes;
     }
@@ -363,15 +360,19 @@ std::vector<std::byte> encode_irradiance_probe_volume(const irradiance_probe_vol
     append_u32(output, volume.dimensions[2]);
     append_u32(output, std::bit_cast<std::uint32_t>(volume.priority));
     append_u32(output, probe_count);
-    for (std::size_t axis = 0; axis < 3; ++axis) append_f32(output, volume.local_bounds.min[axis]);
-    for (std::size_t axis = 0; axis < 3; ++axis) append_f32(output, volume.local_bounds.max[axis]);
-    for (std::size_t axis = 0; axis < 3; ++axis) append_f32(output, volume.spacing[axis]);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        append_f32(output, volume.local_bounds.min[axis]);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        append_f32(output, volume.local_bounds.max[axis]);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        append_f32(output, volume.spacing[axis]);
     append_f32(output, volume.blend_distance);
 
     for (const auto& probe : volume.probes)
     {
         for (const auto& coefficient : probe.spherical_harmonics)
-            for (std::size_t channel = 0; channel < 3; ++channel) append_f32(output, coefficient[channel]);
+            for (std::size_t channel = 0; channel < 3; ++channel)
+                append_f32(output, coefficient[channel]);
         append_f32(output, probe.validity);
         append_f32(output, probe.visibility);
         append_f32(output, probe.mean_distance);
@@ -485,8 +486,7 @@ resolve_irradiance_probe_volumes(std::span<const irradiance_probe_volume_instanc
     return result;
 }
 
-math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& sh,
-                                       const math::vector3f& normal) noexcept
+math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& sh, const math::vector3f& normal) noexcept
 {
     const auto n = math::normalize(normal);
     const float x = n[0], y = n[1], z = n[2];
@@ -495,16 +495,15 @@ math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& sh,
     constexpr float c2 = 1.092548f;
     constexpr float c3 = 0.315392f;
     constexpr float c4 = 0.546274f;
-    const std::array<float, 9> basis{
-        c0,
-        c1 * y,
-        c1 * z,
-        c1 * x,
-        c2 * x * y,
-        c2 * y * z,
-        c3 * (3.0f * z * z - 1.0f),
-        c2 * x * z,
-        c4 * (x * x - y * y)};
+    const std::array<float, 9> basis{c0,
+                                     c1 * y,
+                                     c1 * z,
+                                     c1 * x,
+                                     c2 * x * y,
+                                     c2 * y * z,
+                                     c3 * (3.0f * z * z - 1.0f),
+                                     c2 * x * z,
+                                     c4 * (x * x - y * y)};
     math::vector3f irradiance{};
     for (std::size_t index = 0; index < sh.size(); ++index)
         irradiance = math::add(irradiance, math::mul(sh[index], basis[index]));

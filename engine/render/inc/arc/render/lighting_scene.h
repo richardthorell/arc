@@ -268,16 +268,17 @@ struct [[nodiscard]] irradiance_probe_volume_decode_result
     irradiance_probe_volume_descriptor volume;
     std::string error;
 
-    [[nodiscard]] explicit operator bool() const noexcept { return error.empty(); }
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return error.empty();
+    }
 };
 
 /** @brief Encode a deterministic little-endian baked irradiance-volume artifact. */
-[[nodiscard]] std::vector<std::byte>
-encode_irradiance_probe_volume(const irradiance_probe_volume_descriptor& volume);
+[[nodiscard]] std::vector<std::byte> encode_irradiance_probe_volume(const irradiance_probe_volume_descriptor& volume);
 
 /** @brief Decode and validate one cooked baked irradiance-volume artifact. */
-[[nodiscard]] irradiance_probe_volume_decode_result
-decode_irradiance_probe_volume(std::span<const std::byte> bytes);
+[[nodiscard]] irradiance_probe_volume_decode_result decode_irradiance_probe_volume(std::span<const std::byte> bytes);
 
 /**
  * @brief Resolve trilinear baked irradiance for a world-space receiver.
@@ -291,9 +292,8 @@ resolve_irradiance_probe_volumes(std::span<const irradiance_probe_volume_instanc
                                  const math::vector3f& world_position) noexcept;
 
 /** @brief Evaluate ARC's SH9 irradiance convention for one normalized surface normal. */
-[[nodiscard]] math::vector3f
-evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& spherical_harmonics,
-                        const math::vector3f& normal) noexcept;
+[[nodiscard]] math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& spherical_harmonics,
+                                                     const math::vector3f& normal) noexcept;
 
 /** @brief Runtime budgets for shared world-space lighting data. */
 struct lighting_scene_config
