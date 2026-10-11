@@ -242,8 +242,8 @@ struct irradiance_probe_volume_instance
 {
     std::uint64_t stable_id{};
     const irradiance_probe_volume_descriptor* volume{};
-    /** World-space minimum corner corresponding to volume.local_bounds.min. */
-    math::vector3f world_origin{};
+    /** Axis-aligned world-space influence bounds after scene extraction. */
+    geometric::box3f world_bounds{};
     float intensity{1.0f};
     /** Added to the asset priority for deterministic overlapping-volume selection. */
     std::int32_t priority_bias{};
