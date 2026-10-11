@@ -101,7 +101,7 @@ struct asset_search_match_reason
     friend bool operator==(const asset_search_match_reason&, const asset_search_match_reason&) = default;
 };
 
-struct asset_search_result
+struct [[nodiscard]] asset_search_result
 {
     asset_guid guid{};
     float score{};
