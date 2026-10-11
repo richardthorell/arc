@@ -43,8 +43,6 @@ describe('Standard Lit shared channel functions', () => {
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
       'Normal Texture',
-      'Detail Normal Texture',
-      'Detail Normal Strength',
       'Clear Coat',
       'Clear Coat Roughness',
       'Clear Coat Texture',
@@ -55,6 +53,8 @@ describe('Standard Lit shared channel functions', () => {
       'UV Offset',
       'UV Pivot',
       'UV Rotation (radians)',
+      'Detail Normal Texture',
+      'Detail Normal Strength',
     ]);
   });
 });
