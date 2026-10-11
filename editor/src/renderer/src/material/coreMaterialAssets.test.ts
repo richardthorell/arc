@@ -78,7 +78,7 @@ describe('core built-in material families', () => {
         graph,
         customShader: false,
       }),
-    ).toBe('Deferred');
+    ).toBe('Clustered Forward');
 
     const baseColorSource = graph.nodes.find((node) => node.id === 'base-color-source');
     expect(baseColorSource).toMatchObject({
