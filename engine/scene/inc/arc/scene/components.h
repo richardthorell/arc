@@ -287,6 +287,8 @@ struct directional_light_component
     /** Angular diameter of the directional emitter in radians (Source Angle). Zero is an ideal sun/directional source.
      */
     float source_angle{0.0f};
+    /** Optional authored 2D cookie texture used by directional projection. */
+    assets::asset_reference cookie_asset{.expected_type = assets::asset_types::texture_2d};
 };
 
 /**
@@ -308,6 +310,8 @@ struct point_light_component
     float source_radius{0.0f};
     /** Optional emitter length in metres for elongated source semantics. */
     float source_length{0.0f};
+    /** Optional authored IES photometric profile. Point cookies remain explicitly unsupported. */
+    assets::asset_reference ies_profile{.expected_type = assets::asset_types::photometric_profile};
 };
 
 /**
@@ -331,6 +335,10 @@ struct spot_light_component
     float source_radius{0.0f};
     /** Optional emitter length in metres for elongated source semantics. */
     float source_length{0.0f};
+    /** Optional authored 2D cookie texture projected through the spotlight cone. */
+    assets::asset_reference cookie_asset{.expected_type = assets::asset_types::texture_2d};
+    /** Optional authored IES photometric profile. */
+    assets::asset_reference ies_profile{.expected_type = assets::asset_types::photometric_profile};
 };
 
 /**

@@ -573,7 +573,7 @@
                            "type":  "directional_light_component",
                            "id":  "a7c0000000000001000000000000000e",
                            "display":  "Directional Light",
-                           "version":  4,
+                           "version":  5,
                            "customSerialization":  true,
                            "description":  "Reflected scene data for the Directional Light component."
                        },
@@ -581,7 +581,7 @@
                            "type":  "point_light_component",
                            "id":  "a7c0000000000001000000000000000f",
                            "display":  "Point Light",
-                           "version":  4,
+                           "version":  5,
                            "customSerialization":  true,
                            "description":  "Reflected scene data for the Point Light component."
                        },
@@ -589,7 +589,7 @@
                            "type":  "spot_light_component",
                            "id":  "a7c00000000000010000000000000010",
                            "display":  "Spot Light",
-                           "version":  4,
+                           "version":  5,
                            "customSerialization":  true,
                            "description":  "Reflected scene data for the Spot Light component."
                        },

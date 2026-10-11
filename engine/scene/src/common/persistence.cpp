@@ -92,7 +92,8 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
     {
         return registry.register_component(type, 1, 2, component_upgrade) &&
                registry.register_component(type, 2, 3, component_upgrade) &&
-               registry.register_component(type, 3, 4, component_upgrade);
+               registry.register_component(type, 3, 4, component_upgrade) &&
+               registry.register_component(type, 4, 5, component_upgrade);
     };
     if (!register_light(ecs::component_metadata<directional_light_component>().id) ||
         !register_light(ecs::component_metadata<point_light_component>().id) ||

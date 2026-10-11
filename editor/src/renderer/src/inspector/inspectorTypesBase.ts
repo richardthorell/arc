@@ -40,6 +40,8 @@ export type InspectorLight = {
   sourceAngleDegrees: number;
   sourceRadius: number;
   sourceLength: number;
+  cookiePath: string;
+  iesProfilePath: string;
   innerAngleDegrees: number;
   outerAngleDegrees: number;
   width: number;
@@ -278,6 +280,8 @@ const hostSelectedEntitySchema = z.object({
       sourceAngleDegrees: finiteNumber.min(0).max(45).default(0),
       sourceRadius: finiteNumber.nonnegative().default(0),
       sourceLength: finiteNumber.nonnegative().default(0),
+      cookiePath: z.string().default(''),
+      iesProfilePath: z.string().default(''),
       innerAngleDegrees: finiteNumber.nonnegative(),
       outerAngleDegrees: finiteNumber.positive(),
       width: finiteNumber.positive(),

@@ -434,12 +434,18 @@ bool light_value(std::string_view json, std::string_view key, host_light_snapsho
         if (object.find(std::string{"\""} + std::string{name} + "\"") == std::string_view::npos) return true;
         return bool_value(object, name, value);
     };
+    const auto optional_string = [&](std::string_view name, std::string& value)
+    {
+        if (object.find(std::string{"\""} + std::string{name} + "\"") == std::string_view::npos) return true;
+        return string_value(object, name, value);
+    };
     std::uint32_t shadow_filter = out.shadow_filter;
     std::uint32_t cache_mode = out.shadow_cache_mode;
     std::uint32_t map_method = out.shadow_map_method;
     const bool valid =
         optional_number("sourceAngleDegrees", out.source_angle_degrees) &&
         optional_number("sourceRadius", out.source_radius) && optional_number("sourceLength", out.source_length) &&
+        optional_string("cookiePath", out.cookie_path) && optional_string("iesProfilePath", out.ies_profile_path) &&
         optional_number("shadowResolution", out.shadow_resolution) &&
         optional_number("shadowPriority", out.shadow_priority) &&
         optional_number("shadowStrength", out.shadow_strength) && optional_number("shadowBias", out.shadow_bias) &&
@@ -1454,6 +1460,8 @@ std::string to_json(const host_light_snapshot& light)
            << ",\"intensity\":" << light.intensity << ",\"range\":" << light.range
            << ",\"sourceAngleDegrees\":" << light.source_angle_degrees
            << ",\"sourceRadius\":" << light.source_radius << ",\"sourceLength\":" << light.source_length
+           << ",\"cookiePath\":" << quote(light.cookie_path)
+           << ",\"iesProfilePath\":" << quote(light.ies_profile_path)
            << ",\"innerAngleDegrees\":" << light.inner_angle_degrees
            << ",\"outerAngleDegrees\":" << light.outer_angle_degrees << ",\"width\":" << light.width
            << ",\"height\":" << light.height << ",\"twoSided\":" << bool_json(light.two_sided)
