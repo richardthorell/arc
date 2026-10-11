@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { z } from 'zod';
 
 import { EditorAgentHarness, type AgentHarnessHost, type AgentHostResponse } from './editorAgentHarness';
 import { AiGatewayServer } from './aiGatewayServer';
@@ -93,6 +94,23 @@ describe('AiGatewayServer security adapters', () => {
     const directory = mkdtempSync(path.join(os.tmpdir(), 'arc-ai-gateway-'));
     temporaryDirectories.push(directory);
     const core = new EditorAgentHarness(new ServerHost());
+    core.registerOperation({
+      id: 'test.inspect',
+      version: 1,
+      domain: 'test',
+      description: 'Test domain discovery',
+      permissions: ['editor.read'],
+      requiredCapabilities: [],
+      effects: { reads: ['test'], writes: [] },
+      concurrency: 'independent-read',
+      cache: 'revision',
+      transaction: 'none',
+      references: [],
+      creates: [],
+      input: z.object({ value: z.number() }).strict(),
+      output: z.object({ doubled: z.number() }).strict(),
+      execute: ({ value }) => ({ doubled: value * 2 }),
+    });
     const server = new AiGatewayServer(core, { appDataPath: directory });
     await server.start();
     const endpoint = server.status().endpoint;
@@ -119,6 +137,19 @@ describe('AiGatewayServer security adapters', () => {
       expect(tools.tools.some((tool) => tool.name === 'arc_debug_viewport')).toBe(true);
       expect(tools.tools.some((tool) => tool.name === 'arc_inspect_viewport_pixel')).toBe(true);
       expect(tools.tools.some((tool) => tool.name === 'arc_compare_viewport_captures')).toBe(true);
+      expect(tools.tools.find((tool) => tool.name === 'arc_test_inspect')?.inputSchema).toMatchObject({
+        properties: { value: { type: 'number' } },
+        required: ['value'],
+        additionalProperties: false,
+      });
+      const extension = await client.callTool({ name: 'arc_test_inspect', arguments: { value: 4 } });
+      expect(extension.structuredContent).toEqual({ doubled: 8 });
+      const httpExtension = await fetch(`${endpoint}/api/v1/operations/test.inspect`, {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({ value: 4 }),
+      });
+      expect(await httpExtension.json()).toMatchObject({ result: { doubled: 8 } });
       const mcpResult = await client.callTool({ name: 'arc_scene_overview', arguments: {} });
       expect(mcpResult.isError).not.toBe(true);
 
@@ -134,6 +165,9 @@ describe('AiGatewayServer security adapters', () => {
       const openApi = await fetch(`${endpoint}/openapi.json`, { headers });
       const document = (await openApi.json()) as { paths?: Record<string, unknown> };
       expect(document.paths?.['/api/v1/scene/overview']).toBeDefined();
+      expect(document.paths?.['/api/v1/operations/test.inspect']).toMatchObject({
+        post: { requestBody: { content: { 'application/json': { schema: { required: ['value'] } } } } },
+      });
     } finally {
       await client.close();
       await server.stop();

@@ -103,6 +103,7 @@ const successfulToolResult = (call: AiToolCall, result: BuiltInAgentToolExecutio
   content: result.content,
   truncated: result.truncated,
   originalBytes: result.originalBytes,
+  ...(result.isError ? { isError: true, errorCode: result.errorCode, retryable: result.retryable } : {}),
 });
 
 const positiveInteger = (value: number | undefined, fallback: number, name: string): number => {
@@ -115,9 +116,11 @@ const executeTool = async (
   call: AiToolCall,
   invokeTool: AiAgentToolInvoker,
   signal?: AbortSignal,
+  operationContract?: { version: number; catalogRevision: string },
 ): Promise<AiToolResult> => {
   try {
-    const result = signal ? await invokeTool(call, signal) : await invokeTool(call);
+    const invocation = operationContract ? { ...call, arguments: { ...call.arguments, operationContract } } : call;
+    const result = signal ? await invokeTool(invocation, signal) : await invokeTool(invocation);
     return successfulToolResult(call, result);
   } catch (error) {
     return normalizedToolFailure(call, error);
@@ -440,7 +443,12 @@ export async function* runAiAgentToolLoop(
     for (let index = 0; index < executionCalls.length; ++index) {
       if (request.signal?.aborted) return;
       const call = executionCalls[index]!;
-      const result = await executeTool(call, invokeTool, request.signal);
+      const result = await executeTool(
+        call,
+        invokeTool,
+        request.signal,
+        request.tools?.find((tool) => tool.name === call.name)?.operationContract,
+      );
       if (request.signal?.aborted) return;
       if (result.isError && !failedResult) failedResult = result;
       if (result.isError && semanticCallIds.has(call.id) && !failedSemanticResult) {

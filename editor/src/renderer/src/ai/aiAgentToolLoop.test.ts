@@ -27,6 +27,62 @@ afterEach(() => {
 });
 
 describe('AI agent tool loop', () => {
+  it('pins tool execution to the schema advertised for this request', async () => {
+    const operationContract = { version: 1, catalogRevision: 'catalog-before-provider-turn' };
+    const currentRequest = request();
+    currentRequest.tools = currentRequest.tools?.map((tool) => ({ ...tool, operationContract }));
+    const invoke = vi.fn(async () => ({
+      name: 'scene.findEntities',
+      operation: 'scene.findEntities',
+      content: '{}',
+      truncated: false,
+      originalBytes: 2,
+    }));
+    const execute = (input: AiRuntimeRequest) =>
+      (async function* () {
+        if (!input.messages.some((message) => message.role === 'tool')) {
+          yield { type: 'tool-call' as const, call: { id: 'pinned', name: 'scene.findEntities', arguments: {} } };
+          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+        } else yield { type: 'done' as const, finishReason: 'stop' as const };
+      })();
+    await collect(runAiAgentToolLoop(currentRequest, execute, invoke));
+    expect(invoke).toHaveBeenCalledWith({ id: 'pinned', name: 'scene.findEntities', arguments: { operationContract } });
+  });
+
+  it('preserves structured harness errors returned through Electron IPC', async () => {
+    const execute = (runtimeRequest: AiRuntimeRequest) =>
+      (async function* () {
+        const result = runtimeRequest.messages.find((message) => message.role === 'tool');
+        if (!result) {
+          yield { type: 'tool-call' as const, call: { id: 'schema-call', name: 'scene.findEntities', arguments: {} } };
+          yield { type: 'done' as const, finishReason: 'tool_calls' as const };
+        } else {
+          expect(result.toolResult).toMatchObject({ isError: true, errorCode: 'stale_catalog', retryable: true });
+          yield { type: 'done' as const, finishReason: 'stop' as const };
+        }
+      })();
+    const events = await collect(
+      runAiAgentToolLoop(request(), execute, async () => ({
+        name: 'scene.findEntities',
+        operation: 'scene.findEntities',
+        content: 'Catalog changed',
+        truncated: false,
+        originalBytes: 15,
+        isError: true,
+        errorCode: 'stale_catalog',
+        retryable: true,
+      })),
+    );
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'tool-result',
+          result: expect.objectContaining({ isError: true, errorCode: 'stale_catalog' }),
+        }),
+      ]),
+    );
+  });
+
   it('executes requested tools and continues the provider until it returns a final answer', async () => {
     const execute = vi.fn((runtimeRequest: AiRuntimeRequest) =>
       (async function* () {

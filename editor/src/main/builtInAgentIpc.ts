@@ -3,6 +3,7 @@ import { ipcMain, type WebContents } from 'electron';
 import type { BuiltInAgentInvokeRequest, BuiltInAgentToolInvokeRequest } from '../common/builtInAgentTypes';
 import { BuiltInAgentAdapter } from './builtInAgentAdapter';
 import { BuiltInAgentToolRegistry } from './builtInAgentToolRegistry';
+import { EditorOperationError } from '../common/editorOperationRegistry';
 
 const capabilitiesChannel = 'ai-runtime:agent-capabilities';
 const invokeChannel = 'ai-runtime:agent-invoke';
@@ -67,9 +68,26 @@ export const installBuiltInAgentIpc = (adapter: BuiltInAgentAdapter): (() => voi
     return adapter.invoke(request.method, request.params);
   });
   ipcMain.handle(toolsChannel, () => registry.definitions());
-  ipcMain.handle(invokeToolChannel, (_event, rawRequest: unknown) => {
+  ipcMain.handle(invokeToolChannel, async (_event, rawRequest: unknown) => {
     const request = toolInvokeRequest(rawRequest);
-    return registry.invoke(request.name, request.arguments);
+    try {
+      return await registry.invoke(request.name, request.arguments);
+    } catch (error) {
+      if (!(error instanceof EditorOperationError)) throw error;
+      const content = JSON.stringify({
+        error: { code: error.code, message: error.message, operation: error.operation },
+      });
+      return {
+        name: request.name,
+        operation: request.name,
+        content,
+        truncated: false,
+        originalBytes: Buffer.byteLength(content, 'utf8'),
+        isError: true,
+        errorCode: error.code,
+        retryable: error.code === 'stale_catalog',
+      };
+    }
   });
   ipcMain.handle(subscribeChannel, (event) => {
     subscribe(event.sender);

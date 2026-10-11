@@ -9,7 +9,10 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { EditorAgentHarness, type AgentHarnessStatus } from './editorAgentHarness';
-import { agentEditActions, gatewayHttpMethods, gatewayMethods } from './agentHarnessContract';
+import { gatewayHttpMethods } from './agentHarnessContract';
+
+import { operationMcpName } from './agentOperationCatalog';
+import { EditorOperationError } from '../common/editorOperationRegistry';
 
 type RequestContext = { clientId: string };
 export type GatewayStatus = AgentHarnessStatus & {
@@ -254,7 +257,7 @@ export class AiGatewayServer {
         sendJson(response, 200, { result: await this.invoke(body.method, body.params, clientId) });
         return;
       }
-      const apiMethod = gatewayHttpMethods[url.pathname as keyof typeof gatewayHttpMethods];
+      const apiMethod = this.httpOperations()[url.pathname];
       if (apiMethod && request.method === 'POST') {
         const params = await readBody(request);
         sendJson(response, 200, { result: await this.invoke(apiMethod, params, clientId) });
@@ -282,14 +285,23 @@ export class AiGatewayServer {
           sendJson(response, 200, {
             jsonrpc: '2.0',
             id: body.id ?? null,
-            error: { code: -32000, message: errorMessage(error) },
+            error: {
+              code: -32000,
+              message: errorMessage(error),
+              ...(error instanceof EditorOperationError
+                ? { data: { code: error.code, operation: error.operation } }
+                : {}),
+            },
           });
         }
         return;
       }
       sendJson(response, 404, { error: 'Gateway endpoint not found' });
     } catch (error) {
-      sendJson(response, 400, { error: errorMessage(error) });
+      sendJson(response, 400, {
+        error: errorMessage(error),
+        ...(error instanceof EditorOperationError ? { code: error.code, operation: error.operation } : {}),
+      });
     }
   }
 
@@ -316,410 +328,30 @@ export class AiGatewayServer {
         structuredContent: value && typeof value === 'object' ? (value as Record<string, unknown>) : { value },
       };
     };
-    const invoke = async (method: string, params: unknown) =>
-      result(await this.invoke(method, params, this.currentClient()));
+    const invoke = async (method: string, params: unknown) => {
+      try {
+        return result(await this.invoke(method, params, this.currentClient()));
+      } catch (error) {
+        if (!(error instanceof EditorOperationError)) throw error;
+        return {
+          ...result({ error: { code: error.code, message: error.message, operation: error.operation } }),
+          isError: true,
+        };
+      }
+    };
 
-    server.registerTool(
-      'arc_agent_capabilities',
-      {
-        description: 'Describe the operations, edit actions, entity kinds, and asset authoring available to agents.',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async () => invoke('agent.capabilities', {}),
-    );
-    server.registerTool(
-      'arc_scene_overview',
-      {
-        description: 'Read the current ARC scene, hierarchy, document state, and revisions.',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async () => invoke('scene.overview', {}),
-    );
-    server.registerTool(
-      'arc_find_entities',
-      {
-        description: 'Find scene entities by name or persistent GUID.',
-        inputSchema: {
-          search: z.string().optional(),
-          offset: z.number().int().nonnegative().optional(),
-          limit: z.number().int().min(1).max(200).optional(),
+    for (const { descriptor, input } of this.harness.operationTransportEntries(this.currentClient())) {
+      if (!descriptor.available) continue;
+      server.registerTool(
+        operationMcpName(descriptor.id),
+        {
+          description: descriptor.description,
+          inputSchema: input,
+          annotations: { readOnlyHint: descriptor.effects.writes.length === 0, openWorldHint: false },
         },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('scene.findEntities', params),
-    );
-    server.registerTool(
-      'arc_get_entity',
-      {
-        description: 'Inspect one scene entity and its components using a persistent GUID.',
-        inputSchema: { guid: z.string().min(1) },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('scene.getEntity', params),
-    );
-    server.registerTool(
-      'arc_component_schemas',
-      {
-        description: 'Read reflected ARC component and field schemas.',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async () => invoke('scene.componentSchemas', {}),
-    );
-    server.registerTool(
-      'arc_spatial_query',
-      {
-        description: 'Raycast or find nearby/bounds-overlapping entities using persistent GUID results.',
-        inputSchema: {
-          kind: z.enum(['raycast', 'nearby', 'bounds', 'frustum']),
-          origin: z.array(z.number()).length(3).optional(),
-          direction: z.array(z.number()).length(3).optional(),
-          center: z.array(z.number()).length(3).optional(),
-          extent: z.array(z.number()).length(3).optional(),
-          radius: z.number().nonnegative().optional(),
-          limit: z.number().int().min(1).max(500).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('scene.spatialQuery', params),
-    );
-    server.registerTool(
-      'arc_scene_changes',
-      {
-        description: 'Read scene changes since a known revision, with an explicit full-snapshot fallback.',
-        inputSchema: { sinceSceneRevision: z.number().int().nonnegative() },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('scene.changes', params),
-    );
-    server.registerTool(
-      'arc_list_assets',
-      {
-        description: 'List project assets available for validated scene and material bindings.',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async () => invoke('assets.list', {}),
-    );
-    server.registerTool(
-      'arc_viewport_state',
-      {
-        description: 'Read the live ARC viewport dimensions, frame revision, and performance state.',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async () => invoke('viewport.state', {}),
-    );
-    server.registerTool(
-      'arc_move_viewport',
-      {
-        description:
-          "Move ARC's editor camera. Look rotates in place, orbit rotates around the current pivot, and both use world +Y yaw with clamped camera-local +X pitch. Dolly translates linearly along camera Z.",
-        inputSchema: {
-          action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
-          x: z.number().optional(),
-          y: z.number().optional(),
-          amount: z.number().optional(),
-          guid: z.string().optional(),
-          position: z.array(z.number()).length(3).optional(),
-          target: z.array(z.number()).length(3).optional(),
-          waitFrames: z.number().int().min(0).max(120).optional(),
-          maxWidth: z.number().int().min(1).max(1920).optional(),
-          maxHeight: z.number().int().min(1).max(1080).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('viewport.move', params),
-    );
-    server.registerTool(
-      'arc_set_viewport_render_options',
-      {
-        description: 'Set non-persistent viewport visualization, overlay, shadow, and environment visibility options.',
-        inputSchema: {
-          renderMode: z.enum(['shaded', 'wireframe']).optional(),
-          visualization: z
-            .enum([
-              'standard',
-              'albedo',
-              'opacity',
-              'worldNormal',
-              'specularity',
-              'gloss',
-              'metalness',
-              'ao',
-              'emission',
-              'lighting',
-              'uv0',
-              'cascadeDebug',
-              'shadowMask',
-              'lightComplexity',
-              'clusterDebug',
-              'surfaceCards',
-              'surfaceCardResidency',
-              'surfaceMaterialCache',
-              'surfaceRadianceCache',
-              'meshDistanceFields',
-              'globalDistanceField',
-              'radianceProbes',
-              'lightingTraceSource',
-              'lightingHitDistance',
-              'lightingTemporalConfidence',
-              'indirectDiffuse',
-              'reflections',
-              'denoiserVariance',
-            ])
-            .optional(),
-          overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
-          selectionOutline: z.boolean().optional(),
-          hoverOutline: z.boolean().optional(),
-          selectionBounds: z.boolean().optional(),
-          componentGizmos: z.boolean().optional(),
-          selectionHierarchy: z.boolean().optional(),
-          shadows: z.boolean().optional(),
-          environment: z
-            .object({
-              sky: z.boolean().optional(),
-              fog: z.boolean().optional(),
-              terrain: z.boolean().optional(),
-              water: z.boolean().optional(),
-              vegetation: z.boolean().optional(),
-              decals: z.boolean().optional(),
-            })
-            .optional(),
-          waitFrames: z.number().int().min(0).max(120).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('viewport.setRenderOptions', params),
-    );
-    server.registerTool(
-      'arc_pick_viewport',
-      {
-        description: 'Request an entity pick at output viewport pixel coordinates.',
-        inputSchema: { x: z.number().int().nonnegative(), y: z.number().int().nonnegative() },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('viewport.pick', params),
-    );
-    server.registerTool(
-      'arc_observe_viewport',
-      {
-        description:
-          'Capture coherent color, linear depth, ObjectID, and world-normal channels from the live viewport.',
-        inputSchema: {
-          color: z.boolean().optional(),
-          depth: z.boolean().optional(),
-          objectId: z.boolean().optional(),
-          normals: z.boolean().optional(),
-          sceneColor: z.boolean().optional(),
-          baseColor: z.boolean().optional(),
-          materialProperties: z.boolean().optional(),
-          emissive: z.boolean().optional(),
-          indirectDiffuse: z.boolean().optional(),
-          reflections: z.boolean().optional(),
-          traceSource: z.boolean().optional(),
-          distanceField: z.boolean().optional(),
-          temporalConfidence: z.boolean().optional(),
-          waitFrames: z.number().int().min(0).max(120).optional(),
-          maxWidth: z.number().int().min(1).max(1920).optional(),
-          maxHeight: z.number().int().min(1).max(1080).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('viewport.observe', params),
-    );
-    server.registerTool(
-      'arc_debug_viewport',
-      {
-        description:
-          'Atomically configure the viewport, optionally move the camera, settle frames, capture coherent channels, and return effective renderer state plus anomaly diagnostics.',
-        inputSchema: {
-          renderOptions: z
-            .object({
-              renderMode: z.enum(['shaded', 'wireframe']).optional(),
-              visualization: z
-                .enum([
-                  'standard',
-                  'albedo',
-                  'opacity',
-                  'worldNormal',
-                  'specularity',
-                  'gloss',
-                  'metalness',
-                  'ao',
-                  'emission',
-                  'lighting',
-                  'uv0',
-                  'cascadeDebug',
-                  'shadowMask',
-                  'lightComplexity',
-                  'clusterDebug',
-                  'surfaceCards',
-                  'surfaceCardResidency',
-                  'surfaceMaterialCache',
-                  'surfaceRadianceCache',
-                  'meshDistanceFields',
-                  'globalDistanceField',
-                  'radianceProbes',
-                  'lightingTraceSource',
-                  'lightingHitDistance',
-                  'lightingTemporalConfidence',
-                  'indirectDiffuse',
-                  'reflections',
-                  'denoiserVariance',
-                ])
-                .optional(),
-              overlay: z.enum(['none', 'selectedWireframe', 'allWireframe']).optional(),
-              selectionOutline: z.boolean().optional(),
-              hoverOutline: z.boolean().optional(),
-              selectionBounds: z.boolean().optional(),
-              componentGizmos: z.boolean().optional(),
-              selectionHierarchy: z.boolean().optional(),
-              shadows: z.boolean().optional(),
-              environment: z
-                .object({
-                  sky: z.boolean().optional(),
-                  fog: z.boolean().optional(),
-                  terrain: z.boolean().optional(),
-                  water: z.boolean().optional(),
-                  vegetation: z.boolean().optional(),
-                  decals: z.boolean().optional(),
-                })
-                .optional(),
-            })
-            .optional(),
-          camera: z
-            .object({
-              action: z.enum(['orbit', 'look', 'pan', 'dolly', 'frame', 'place']),
-              x: z.number().optional(),
-              y: z.number().optional(),
-              amount: z.number().optional(),
-              guid: z.string().optional(),
-              position: z.array(z.number()).length(3).optional(),
-              target: z.array(z.number()).length(3).optional(),
-            })
-            .optional(),
-          capture: z
-            .object({
-              color: z.boolean().optional(),
-              depth: z.boolean().optional(),
-              objectId: z.boolean().optional(),
-              normals: z.boolean().optional(),
-              sceneColor: z.boolean().optional(),
-              baseColor: z.boolean().optional(),
-              materialProperties: z.boolean().optional(),
-              emissive: z.boolean().optional(),
-              indirectDiffuse: z.boolean().optional(),
-              reflections: z.boolean().optional(),
-              traceSource: z.boolean().optional(),
-              distanceField: z.boolean().optional(),
-              temporalConfidence: z.boolean().optional(),
-              maxWidth: z.number().int().min(1).max(1920).optional(),
-              maxHeight: z.number().int().min(1).max(1080).optional(),
-            })
-            .optional(),
-          samplePixels: z
-            .array(
-              z.object({
-                x: z.number().int().nonnegative(),
-                y: z.number().int().nonnegative(),
-              }),
-            )
-            .max(64)
-            .optional(),
-          baselineCaptureId: z.number().int().positive().optional(),
-          waitFrames: z.number().int().min(1).max(120).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('viewport.debug', params),
-    );
-    server.registerTool(
-      'arc_inspect_viewport_pixel',
-      {
-        description:
-          'Inspect exact color, linear depth, ObjectID/entity GUID, and world normal values at one output pixel.',
-        inputSchema: {
-          x: z.number().int().nonnegative(),
-          y: z.number().int().nonnegative(),
-          captureId: z.number().int().positive().optional(),
-          waitFrames: z.number().int().min(0).max(120).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('viewport.inspectPixel', params),
-    );
-    server.registerTool(
-      'arc_compare_viewport_captures',
-      {
-        description: 'Compare coherent viewport captures using per-channel mean error and changed-pixel fractions.',
-        inputSchema: {
-          baselineCaptureId: z.number().int().positive(),
-          currentCaptureId: z.number().int().positive().optional(),
-          waitFrames: z.number().int().min(0).max(120).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('viewport.compare', params),
-    );
-    server.registerTool(
-      'arc_diagnose_viewport',
-      {
-        description: 'Collect the current scene, viewport, renderer, render-graph, shadow, and history diagnostics.',
-        inputSchema: {},
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async () => invoke('diagnostics.get', {}),
-    );
-    server.registerTool(
-      'arc_wait_for_event',
-      {
-        description: 'Wait for a newer scene, frame, selection, or diagnostic event without polling the model client.',
-        inputSchema: {
-          kind: z.enum(['scene', 'frame', 'selection', 'diagnostic']),
-          afterSequence: z.number().int().nonnegative().optional(),
-          afterFrameRevision: z.number().int().nonnegative().optional(),
-          timeoutMs: z.number().int().min(1).max(30_000).optional(),
-        },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('events.wait', params),
-    );
-    server.registerTool(
-      'arc_request_edit_access',
-      {
-        description: 'Ask the user to grant a temporary ARC editor action scope.',
-        inputSchema: { label: z.string().optional(), clientName: z.string().optional() },
-        annotations: { readOnlyHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('edit.request', params),
-    );
-    server.registerTool(
-      'arc_begin_edit',
-      {
-        description: 'Begin one transactional AI editor action after the user grants access.',
-        inputSchema: { label: z.string(), expectedSceneRevision: z.number().int().positive() },
-        annotations: { destructiveHint: false, openWorldHint: false },
-      },
-      async (params) => invoke('edit.begin', params),
-    );
-    server.registerTool(
-      'arc_apply_edit',
-      {
-        description:
-          'Apply one validated scene operation or stage a material, Flow, or shader asset inside an active transaction.',
-        inputSchema: {
-          editSessionId: z.string(),
-          expectedSceneRevision: z.number().int().positive(),
-          action: z.enum(agentEditActions),
-          value: z.record(z.string(), z.unknown()),
-        },
-        annotations: { destructiveHint: true, openWorldHint: false },
-      },
-      async (params) => invoke('edit.apply', params),
-    );
+        async (params) => invoke(descriptor.id, params),
+      );
+    }
     server.registerTool(
       'arc_finish_edit',
       {
@@ -731,7 +363,11 @@ export class AiGatewayServer {
         },
         annotations: { destructiveHint: false, openWorldHint: false },
       },
-      async ({ action, ...params }) => invoke(action === 'commit' ? 'edit.commit' : 'edit.cancel', params),
+      async ({ action, ...params }) =>
+        invoke(
+          action === 'commit' ? 'edit.commit' : 'edit.cancel',
+          action === 'cancel' ? { editSessionId: params.editSessionId } : params,
+        ),
     );
     server.registerTool(
       'arc_history',
@@ -1059,23 +695,34 @@ export class AiGatewayServer {
   }
 
   private openApi(): Record<string, unknown> {
+    const descriptors = new Map(
+      this.harness.operationTransportEntries(this.currentClient()).map(({ descriptor }) => [descriptor.id, descriptor]),
+    );
+    const wireSchemas = new Map(
+      this.harness
+        .operationTransportEntries(this.currentClient())
+        .map(({ descriptor, input }) => [descriptor.id, z.toJSONSchema(input, { io: 'input' })]),
+    );
     const operationPaths = Object.fromEntries(
-      Object.entries(gatewayHttpMethods).map(([apiPath, method]) => [
+      Object.entries(this.httpOperations()).map(([apiPath, method]) => [
         apiPath,
         {
           post: {
             operationId: method.replace(/[.-](.)/g, (_match, character: string) => character.toUpperCase()),
-            summary: `Invoke ${method}`,
+            summary: descriptors.get(method)?.description ?? `Invoke ${method}`,
             requestBody: {
               required: false,
               content: {
                 'application/json': {
-                  schema: { type: 'object', additionalProperties: true },
+                  schema: wireSchemas.get(method),
                 },
               },
             },
             responses: {
-              200: { description: 'ARC gateway result' },
+              200: {
+                description: 'ARC gateway result',
+                content: { 'application/json': { schema: descriptors.get(method)?.outputSchema } },
+              },
               400: { description: 'Invalid or rejected operation' },
             },
           },
@@ -1119,7 +766,16 @@ export class AiGatewayServer {
           bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'ARC session token' },
         },
       },
-      'x-arc-methods': gatewayMethods,
+      'x-arc-methods': ['gateway.status', ...descriptors.keys()],
     };
+  }
+
+  private httpOperations(): Record<string, string> {
+    const legacy = new Map<string, string>(Object.entries(gatewayHttpMethods).map(([path, method]) => [method, path]));
+    return Object.fromEntries(
+      this.harness
+        .operationTransportEntries(this.currentClient())
+        .map(({ descriptor }) => [legacy.get(descriptor.id) ?? `/api/v1/operations/${descriptor.id}`, descriptor.id]),
+    );
   }
 }

@@ -1,6 +1,18 @@
 export * from './editorAgentHarnessCore';
 
 import {
+  EditorOperationRegistry,
+  EditorOperationError,
+  operationInvocationContract,
+  type EditorOperationContext,
+  type EditorOperationDefinition,
+} from '../common/editorOperationRegistry';
+import { legacyOperationOutput, operationMetadata, operationMcpName, registryEntries } from './agentOperationCatalog';
+import { providerToolName } from '../common/aiToolProviderProjection';
+
+export type AgentOperationContext = EditorOperationContext & { clientId: string };
+
+import {
   type AgentBatchEntityTarget,
   type AgentBatchMaterialTarget,
   type AgentEditorBatchOperation,
@@ -238,6 +250,20 @@ const batchOperationToEditApply = (
 export class EditorAgentHarness extends EditorAgentHarnessCore {
   private readonly assetWorkspace: AgentAssetWorkspace | undefined;
   private readonly batchCreatedAssets = new Map<string, BatchCreatedAssets>();
+  private readonly transportNames = new Set(['mcp:arc_finish_edit', 'mcp:arc_history']);
+  private readonly operationRegistry = new EditorOperationRegistry<AgentOperationContext>(
+    async (operation, context) => {
+      try {
+        await this.authorizeOperation(operation.permissions, context.clientId);
+      } catch (error) {
+        throw new EditorOperationError(
+          'permission_denied',
+          error instanceof Error ? error.message : String(error),
+          operation.id,
+        );
+      }
+    },
+  );
 
   constructor(
     private readonly selectionHost: AgentHarnessHost,
@@ -245,6 +271,40 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
   ) {
     super(selectionHost, options);
     this.assetWorkspace = options.assets;
+    for (const entry of registryEntries) {
+      this.registerOperation<unknown, unknown>({
+        ...operationMetadata(entry),
+        input: entry.schema,
+        output: legacyOperationOutput,
+        execute: (params, context) => this.invokeLegacy(entry.method, params, context.clientId),
+      });
+    }
+  }
+
+  /** Trusted startup registrations, never executable code from clients or project assets. */
+  registerOperation<TInput, TResult>(
+    definition: EditorOperationDefinition<AgentOperationContext, TInput, TResult>,
+  ): () => void {
+    const names = [`mcp:${operationMcpName(definition.id)}`, `provider:${providerToolName(definition.id)}`];
+    if (names.some((name) => this.transportNames.has(name)))
+      throw new Error(`Operation transport name collision: ${definition.id}`);
+    const unregister = this.operationRegistry.register(definition);
+    names.forEach((name) => this.transportNames.add(name));
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      unregister();
+      names.forEach((name) => this.transportNames.delete(name));
+    };
+  }
+
+  private operationContext(clientId: string): AgentOperationContext {
+    return { clientId, capabilities: new Set(this.assetWorkspace ? ['assets.authoring'] : []) };
+  }
+
+  operationTransportEntries(clientId: string) {
+    return this.operationRegistry.transportEntries(this.operationContext(clientId));
   }
 
   override async disconnectClient(clientId: string): Promise<void> {
@@ -256,26 +316,65 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
   }
 
   override async invoke(method: string, rawParams: unknown, clientId: string): Promise<unknown> {
+    this.touchClient(clientId);
+    try {
+      if (!this.operationRegistry.has(method))
+        throw new EditorOperationError('unknown_operation', `Unsupported agent harness method: ${method}`, method);
+      if (rawParams !== undefined && (rawParams === null || typeof rawParams !== 'object' || Array.isArray(rawParams)))
+        throw new EditorOperationError('invalid_arguments', 'Operation arguments must be an object', method);
+      const { operationContract, clientName, ...params } = asObject(rawParams);
+      const parsedContract =
+        operationContract === undefined ? undefined : operationInvocationContract.safeParse(operationContract);
+      if (parsedContract && !parsedContract.success)
+        throw new EditorOperationError('invalid_arguments', 'Invalid operationContract envelope', method);
+      const contract = parsedContract?.data;
+      this.touchClient(clientId, typeof clientName === 'string' ? clientName : undefined);
+      const metadata = this.operationRegistry.describe(method, this.operationContext(clientId));
+      const result = await this.operationRegistry.execute(method, params, this.operationContext(clientId), contract);
+      this.audit(clientId, metadata.effects.writes.length ? 'edit' : 'read', method, true, '');
+      return result;
+    } catch (error) {
+      this.audit(clientId, 'error', method, false, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  private async invokeLegacy(method: string, rawParams: unknown, clientId: string): Promise<unknown> {
+    if (method === 'agent.operations.list')
+      return this.operationRegistry.list(rawParams, this.operationContext(clientId));
+    if (method === 'agent.operations.describe')
+      return this.operationRegistry.describeMany(rawParams, this.operationContext(clientId));
+    if (method === 'agent.capabilities') {
+      const legacy = asObject(await this.dispatch(method, asObject(rawParams), clientId));
+      return {
+        ...legacy,
+        catalogRevision: this.operationRegistry.revision,
+        operations: this.operationTransportEntries(clientId)
+          .filter(({ descriptor }) => descriptor.available)
+          .map(({ descriptor }) => descriptor.id),
+      };
+    }
     if (method === 'selection.set') return this.setSelection(rawParams, clientId);
     if (method === 'selection.clear') return this.clearSelection(clientId);
     if (method === 'editor.applyBatch') return this.applyBatch(rawParams, clientId);
     if (method === 'edit.cancel') {
       const editSessionId = requireEditSessionId(rawParams);
-      const result = await super.invoke(method, rawParams, clientId);
+      const result = await this.dispatch(method, asObject(rawParams), clientId);
       await this.removeBatchCreatedAssets(editSessionId);
       return result;
     }
     if (method === 'edit.commit') {
       const editSessionId = requireEditSessionId(rawParams);
-      const result = await super.invoke(method, rawParams, clientId);
+      const result = await this.dispatch(method, asObject(rawParams), clientId);
       this.batchCreatedAssets.delete(editSessionId);
       return result;
     }
-    return super.invoke(method, rawParams, clientId);
+    return this.dispatch(method, asObject(rawParams), clientId);
   }
 
   private async applyBatch(rawParams: unknown, clientId: string): Promise<Record<string, unknown>> {
     const request = parseAgentEditorBatchRequest(rawParams);
+    this.validateBatchAuthority(request.editSessionId, clientId, request.expectedSceneRevision);
     const createdEntities = new Map<string, string>();
     const createdMaterials = new Map<string, string>();
     const createdResources: Record<string, { kind: 'entity'; guid: string } | { kind: 'material'; path: string }> = {};

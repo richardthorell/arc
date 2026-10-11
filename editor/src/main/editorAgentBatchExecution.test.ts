@@ -96,6 +96,29 @@ const beginApprovedEdit = async (harness: EditorAgentHarness) => {
 };
 
 describe('EditorAgentHarness editor.applyBatch', () => {
+  it('authorizes material-only batches before touching the workspace', async () => {
+    const host = new BatchHost();
+    const assets = new MemoryAssetWorkspace();
+    const harness = new EditorAgentHarness(host, { assets });
+    const params = {
+      editSessionId: 'fake',
+      expectedSceneRevision: 4,
+      operations: [{ type: 'material.create', tempId: 'mat', path: 'Test.arcmat', baseColor: [1, 0, 0, 1] }],
+    };
+    await expect(harness.invoke('editor.applyBatch', params, 'writer')).rejects.toThrow('permission');
+    expect(assets.files.size).toBe(0);
+    const session = await beginApprovedEdit(harness);
+    await expect(harness.invoke('editor.applyBatch', params, 'writer')).rejects.toThrow('session');
+    await expect(
+      harness.invoke('editor.applyBatch', { ...params, editSessionId: session.id, expectedSceneRevision: 9 }, 'writer'),
+    ).rejects.toThrow('revision');
+    await expect(
+      harness.invoke('editor.applyBatch', { ...params, editSessionId: session.id }, 'other-client'),
+    ).rejects.toThrow('permission');
+    expect(assets.files.size).toBe(0);
+    await harness.invoke('edit.cancel', { editSessionId: session.id }, 'writer');
+  });
+
   it('creates an entity and applies follow-up edits through one batch call', async () => {
     const host = new BatchHost();
     const harness = new EditorAgentHarness(host);

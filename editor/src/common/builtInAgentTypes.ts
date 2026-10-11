@@ -1,4 +1,5 @@
 import type { AiJsonObject, AiToolDefinition } from './aiRuntimeTypes';
+import type { EditorOperationErrorCode } from './editorOperationRegistry';
 
 export const BUILT_IN_AGENT_CLIENT_ID = 'arc.builtin-ai' as const;
 export const BUILT_IN_AGENT_CLIENT_NAME = 'ARC Built-in AI' as const;
@@ -34,6 +35,9 @@ export type BuiltInAgentToolExecutionResult = Readonly<{
   content: string;
   truncated: boolean;
   originalBytes: number;
+  isError?: boolean;
+  errorCode?: EditorOperationErrorCode;
+  retryable?: boolean;
 }>;
 
 export type BuiltInAgentRuntimeBridge = {

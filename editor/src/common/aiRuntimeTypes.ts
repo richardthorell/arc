@@ -27,6 +27,8 @@ export type AiToolDefinition = {
   name: string;
   description: string;
   inputSchema: AiJsonObject;
+  /** Trusted invocation metadata, never projected into provider-authored arguments. */
+  operationContract?: { version: number; catalogRevision: string };
 };
 
 export type AiToolCall = {
@@ -35,7 +37,8 @@ export type AiToolCall = {
   arguments: AiJsonObject;
 };
 
-export type AiToolResultErrorCode = 'revision_conflict' | 'tool_error';
+export type AiToolResultErrorCode =
+  'revision_conflict' | 'tool_error' | import('./editorOperationRegistry').EditorOperationErrorCode;
 
 export type AiToolResult = {
   toolCallId: string;
