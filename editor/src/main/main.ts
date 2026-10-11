@@ -210,6 +210,40 @@ const sharedViewportTargets = new Map<string, number>();
 const sharedViewportPresented = new Set<string>();
 const sharedViewportFailures = new Map<string, string>();
 const sharedViewportPresentationTails = new Map<string, Promise<void>>();
+const sharedViewportOutstandingReleases = new Map<string, Set<Promise<void>>>();
+const sharedViewportQuiescing = new Set<string>();
+
+const trackSharedViewportRelease = (viewportId: string): { released: Promise<void>; complete: () => void } => {
+  let completeRelease!: () => void;
+  const released = new Promise<void>((resolve) => {
+    completeRelease = resolve;
+  });
+  const releases = sharedViewportOutstandingReleases.get(viewportId) ?? new Set<Promise<void>>();
+  releases.add(released);
+  sharedViewportOutstandingReleases.set(viewportId, releases);
+  const complete = () => {
+    completeRelease();
+    releases.delete(released);
+    if (releases.size === 0) sharedViewportOutstandingReleases.delete(viewportId);
+  };
+  return { released, complete };
+};
+
+const waitForSharedViewportRelease = async (viewportIds: readonly string[], timeoutMs = 250): Promise<void> => {
+  const releases = viewportIds.flatMap((viewportId) => [...(sharedViewportOutstandingReleases.get(viewportId) ?? [])]);
+  if (releases.length === 0) return;
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      Promise.allSettled(releases).then(() => undefined),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
 
 const setWindowSharedViewportsVisible = (target: BrowserWindow, visible: boolean): void => {
   if (!hostClient || target.isDestroyed()) return;
@@ -218,6 +252,29 @@ const setWindowSharedViewportsVisible = (target: BrowserWindow, visible: boolean
     if (targetWebContentsId !== webContentsId) continue;
     void hostClient.command('viewport.setVisibility', { viewportId, visible }).catch(() => undefined);
   }
+};
+
+const quiesceSharedViewportsForWindow = async (target: BrowserWindow): Promise<void> => {
+  if (target.isDestroyed()) return;
+  const webContentsId = target.webContents.id;
+  const viewportIds = [...sharedViewportTargets]
+    .filter(([, targetWebContentsId]) => targetWebContentsId === webContentsId)
+    .map(([viewportId]) => viewportId);
+  if (viewportIds.length === 0) return;
+
+  viewportIds.forEach((viewportId) => sharedViewportQuiescing.add(viewportId));
+  if (hostClient)
+    await Promise.allSettled(
+      viewportIds.map((viewportId) => hostClient!.command('viewport.setVisibility', { viewportId, visible: false })),
+    );
+
+  // Drain sends that were already queued before visibility reached the native
+  // host, then wait briefly for Chromium to release renderer-side references.
+  const tails = viewportIds
+    .map((viewportId) => sharedViewportPresentationTails.get(viewportId))
+    .filter((tail): tail is Promise<void> => Boolean(tail));
+  if (tails.length > 0) await Promise.allSettled(tails);
+  await waitForSharedViewportRelease(viewportIds);
 };
 
 const setAllSharedViewportsVisible = (visible: boolean): void => {
@@ -234,6 +291,8 @@ const forgetSharedViewportsForWindow = (target: BrowserWindow): void => {
     sharedViewportPresented.delete(viewportId);
     sharedViewportFailures.delete(viewportId);
     sharedViewportPresentationTails.delete(viewportId);
+    sharedViewportOutstandingReleases.delete(viewportId);
+    sharedViewportQuiescing.delete(viewportId);
   }
 };
 
@@ -259,10 +318,12 @@ const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
     return;
 
   const frame = candidate as SharedViewportFrame;
+  const trackedRelease = trackSharedViewportRelease(frame.viewportId);
   let released = false;
   const release = () => {
     if (released) return;
     released = true;
+    trackedRelease.complete();
     void hostClient
       ?.command('viewport.frameReleased', {
         viewportId: frame.viewportId,
@@ -275,6 +336,7 @@ const presentSharedViewportFrame = async (event: HostEvent): Promise<void> => {
 
   const target = sharedViewportWindow(frame.viewportId);
   if (
+    sharedViewportQuiescing.has(frame.viewportId) ||
     !target ||
     target.isDestroyed() ||
     target.isMinimized() ||
@@ -601,9 +663,24 @@ export class ArcHostClient {
     this.process = null;
     this.reconnectRequired = true;
     child?.kill();
-    const error = new Error('arc_host_process was stopped');
-    for (const pending of this.pending.values()) pending.reject(error);
+
+    const message = 'arc_host_process was stopped';
+    for (const [requestId, pending] of this.pending) {
+      pending.finishTiming();
+      pending.resolve(this.failedResponse(requestId, message));
+    }
     this.pending.clear();
+
+    // Coalesced pointer moves can otherwise flush after restart and target the
+    // new host process. Settle queued callers while reconnect is still blocked.
+    for (const pending of this.pendingPointerMove.values())
+      for (const waiter of pending.waiters) waiter.resolve(this.failedResponse(0, message));
+    this.pendingPointerMove.clear();
+
+    // Run queued thumbnail jobs while reconnectRequired is true. send() will
+    // synchronously turn them into failed responses rather than leaking them
+    // into a later restarted host session.
+    while (this.thumbnailQueue.length > 0) this.thumbnailQueue.shift()?.();
   }
 
   restart(): void {
@@ -859,6 +936,7 @@ const confirmWindowClose = async (target: BrowserWindow): Promise<void> => {
         }
       }
     }
+    await quiesceSharedViewportsForWindow(target);
     allowWindowClose = true;
     target.close();
   } catch (error) {
@@ -1696,6 +1774,8 @@ app.on('before-quit', (event) => {
   shutdownPending = true;
   void (async () => {
     try {
+      const target = activeWindow();
+      if (target) await quiesceSharedViewportsForWindow(target);
       await aiGateway?.stop();
     } finally {
       disposeBuiltInAgentIpc?.();
