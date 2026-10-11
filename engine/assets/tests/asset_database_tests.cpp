@@ -281,6 +281,19 @@ public:
         record.dependencies = entries.at(guid);
         return record;
     }
+    std::vector<arc::assets::asset_database_record> records() const override
+    {
+        std::vector<arc::assets::asset_database_record> result;
+        result.reserve(entries.size());
+        for (const auto& [guid, dependencies] : entries)
+        {
+            arc::assets::asset_database_record record;
+            record.guid = guid;
+            record.dependencies = dependencies;
+            result.push_back(std::move(record));
+        }
+        return result;
+    }
     std::vector<arc::assets::asset_guid> dependencies(arc::assets::asset_guid guid) const override
     {
         const auto it = entries.find(guid);
