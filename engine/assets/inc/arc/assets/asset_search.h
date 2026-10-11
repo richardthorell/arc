@@ -23,6 +23,7 @@ namespace arc::assets
 {
 
 inline constexpr std::uint32_t asset_search_document_schema_version = 1;
+inline constexpr std::uint32_t asset_search_index_schema_version = 1;
 
 enum class asset_search_metadata_origin : std::uint8_t
 {
