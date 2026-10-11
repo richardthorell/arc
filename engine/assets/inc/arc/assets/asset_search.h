@@ -12,6 +12,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -21,6 +23,7 @@ namespace arc::assets
 {
 
 inline constexpr std::uint32_t asset_search_document_schema_version = 1;
+inline constexpr std::uint32_t asset_search_index_schema_version = 1;
 
 enum class asset_search_metadata_origin : std::uint8_t
 {
@@ -120,10 +123,41 @@ class asset_search_index
 public:
     virtual ~asset_search_index() = default;
 
-    virtual void reset(std::span<const asset_search_document> documents) = 0;
-    virtual void upsert(asset_search_document document) = 0;
-    virtual void erase(asset_guid guid) = 0;
+    [[nodiscard]] virtual asset_status reset(std::span<const asset_search_document> documents) = 0;
+    [[nodiscard]] virtual asset_status upsert(asset_search_document document) = 0;
+    [[nodiscard]] virtual asset_status erase(asset_guid guid) = 0;
     [[nodiscard]] virtual std::vector<asset_search_result> query(const asset_search_query& query) const = 0;
+};
+
+/**
+ * Persistent local search-document cache backed by SQLite.
+ *
+ * This backend intentionally provides only the S1 baseline matching needed to
+ * validate persistence and the query contract. S2 owns FTS/fuzzy search,
+ * facets, structured predicates and richer ranking.
+ */
+class persistent_asset_search_index final : public asset_search_index
+{
+public:
+    using open_result = core::result<std::unique_ptr<persistent_asset_search_index>, asset_error>;
+
+    [[nodiscard]] static open_result open(std::filesystem::path database_path);
+    ~persistent_asset_search_index() override;
+
+    persistent_asset_search_index(const persistent_asset_search_index&) = delete;
+    persistent_asset_search_index& operator=(const persistent_asset_search_index&) = delete;
+
+    [[nodiscard]] asset_status reset(std::span<const asset_search_document> documents) override;
+    [[nodiscard]] asset_status upsert(asset_search_document document) override;
+    [[nodiscard]] asset_status erase(asset_guid guid) override;
+    [[nodiscard]] std::vector<asset_search_result> query(const asset_search_query& query) const override;
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept;
+
+private:
+    struct implementation;
+    explicit persistent_asset_search_index(std::unique_ptr<implementation> implementation);
+    std::unique_ptr<implementation> implementation_;
 };
 
 /** Build the searchable logical document for an Asset Database record. */
@@ -143,8 +177,8 @@ public:
     {
     }
 
-    void rebuild();
-    void refresh();
+    [[nodiscard]] asset_status rebuild();
+    [[nodiscard]] asset_status refresh();
 
     [[nodiscard]] std::uint64_t cursor() const noexcept
     {

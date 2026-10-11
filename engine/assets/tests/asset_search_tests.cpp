@@ -3,6 +3,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 
 namespace
 {
@@ -64,13 +66,14 @@ public:
 class recording_search_index final : public arc::assets::asset_search_index
 {
 public:
-    void reset(std::span<const arc::assets::asset_search_document> documents) override
+    arc::assets::asset_status reset(std::span<const arc::assets::asset_search_document> documents) override
     {
         ++reset_count;
         documents_.assign(documents.begin(), documents.end());
+        return arc::assets::asset_status::success();
     }
 
-    void upsert(arc::assets::asset_search_document document) override
+    arc::assets::asset_status upsert(arc::assets::asset_search_document document) override
     {
         const auto it = std::find_if(documents_.begin(), documents_.end(),
                                      [&](const auto& existing) { return existing.guid == document.guid; });
@@ -78,11 +81,13 @@ public:
             documents_.push_back(std::move(document));
         else
             *it = std::move(document);
+        return arc::assets::asset_status::success();
     }
 
-    void erase(arc::assets::asset_guid guid) override
+    arc::assets::asset_status erase(arc::assets::asset_guid guid) override
     {
         std::erase_if(documents_, [&](const auto& document) { return document.guid == guid; });
+        return arc::assets::asset_status::success();
     }
 
     std::vector<arc::assets::asset_search_result> query(const arc::assets::asset_search_query&) const override
@@ -140,7 +145,7 @@ TEST_CASE("asset search indexer rebuilds from Asset Database records and replays
                         {.sequence = 2, .kind = asset_database_change_kind::added, .guid = barrel.guid}};
 
     asset_search_indexer indexer(database, index);
-    indexer.rebuild();
+    REQUIRE(indexer.rebuild());
 
     CHECK(index.reset_count == 1);
     CHECK(index.documents_.size() == 2);
@@ -158,12 +163,12 @@ TEST_CASE("asset search indexer incrementally upserts and removes logical assets
     database.events_ = {{.sequence = 1, .kind = asset_database_change_kind::added, .guid = bicycle.guid}};
 
     asset_search_indexer indexer(database, index);
-    indexer.rebuild();
+    REQUIRE(indexer.rebuild());
 
     auto chair = make_record("Chair", 4);
     database.records_.push_back(chair);
     database.events_.push_back({.sequence = 2, .kind = asset_database_change_kind::added, .guid = chair.guid});
-    indexer.refresh();
+    REQUIRE(indexer.refresh());
 
     REQUIRE(index.documents_.size() == 2);
     CHECK(std::any_of(index.documents_.begin(), index.documents_.end(),
@@ -172,7 +177,7 @@ TEST_CASE("asset search indexer incrementally upserts and removes logical assets
 
     std::erase_if(database.records_, [&](const auto& record) { return record.guid == bicycle.guid; });
     database.events_.push_back({.sequence = 3, .kind = asset_database_change_kind::removed, .guid = bicycle.guid});
-    indexer.refresh();
+    REQUIRE(indexer.refresh());
 
     REQUIRE(index.documents_.size() == 1);
     CHECK(index.documents_.front().guid == chair.guid);
@@ -190,7 +195,7 @@ TEST_CASE("asset search indexer recovers from lost incremental history with a fu
     database.events_ = {{.sequence = 1, .kind = asset_database_change_kind::added, .guid = bicycle.guid}};
 
     asset_search_indexer indexer(database, index);
-    indexer.rebuild();
+    REQUIRE(indexer.rebuild());
     REQUIRE(index.reset_count == 1);
 
     auto updated = bicycle;
@@ -200,11 +205,177 @@ TEST_CASE("asset search indexer recovers from lost incremental history with a fu
     database.events_.push_back({.sequence = 2, .kind = asset_database_change_kind::updated, .guid = bicycle.guid});
     database.history_lost_ = true;
 
-    indexer.refresh();
+    REQUIRE(indexer.refresh());
 
     CHECK(index.reset_count == 2);
     REQUIRE(index.documents_.size() == 1);
     CHECK(index.documents_.front().display_name == "Weathered Bicycle");
     CHECK(index.documents_.front().source_revision == 2);
     CHECK(indexer.cursor() == 2);
+}
+
+TEST_CASE("persistent asset search index survives reopen and ranks deterministic baseline matches")
+{
+    using namespace arc::assets;
+    const auto root = std::filesystem::temp_directory_path() / ("arc-search-index-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    const auto exact_guid = generate_asset_guid();
+    const auto prefix_guid = generate_asset_guid();
+    const auto path_guid = generate_asset_guid();
+
+    {
+        auto opened = persistent_asset_search_index::open(database_path);
+        REQUIRE(opened);
+        auto index = std::move(opened).value();
+
+        const std::vector<asset_search_document> documents{
+            {.guid = exact_guid,
+             .type = asset_types::static_mesh,
+             .display_name = "Bike",
+             .logical_path = "assets/props/bike.arcmesh",
+             .active_provider = std::string(asset_provider_ids::project_source),
+             .title = "Bike",
+             .description = "Modern bicycle",
+             .source_generation = 1,
+             .source_revision = 1},
+            {.guid = prefix_guid,
+             .type = asset_types::static_mesh,
+             .display_name = "Bike Rack",
+             .logical_path = "assets/props/bike-rack.arcmesh",
+             .active_provider = std::string(asset_provider_ids::project_source),
+             .title = "Bike Rack",
+             .description = "Metal rack",
+             .source_generation = 1,
+             .source_revision = 1},
+            {.guid = path_guid,
+             .type = asset_types::texture_2d,
+             .display_name = "Surface 01",
+             .logical_path = "assets/bikes/rusty-surface.png",
+             .active_provider = std::string(asset_provider_ids::project_source),
+             .title = "Surface 01",
+             .description = "Weathered surface",
+             .source_generation = 1,
+             .source_revision = 1}};
+        REQUIRE(index->reset(documents));
+
+        const auto results = index->query({.text = "bike"});
+        REQUIRE(results.size() == 3);
+        CHECK(results[0].guid == exact_guid);
+        CHECK(results[0].reasons.front().kind == asset_search_match_kind::exact_name);
+        CHECK(results[1].guid == prefix_guid);
+        CHECK(results[1].reasons.front().kind == asset_search_match_kind::prefix);
+        CHECK(results[2].guid == path_guid);
+    }
+
+    {
+        auto reopened = persistent_asset_search_index::open(database_path);
+        REQUIRE(reopened);
+        auto index = std::move(reopened).value();
+
+        const auto filtered = index->query({.text = "bike", .filters = {.type = asset_types::static_mesh}, .limit = 1});
+        REQUIRE(filtered.size() == 1);
+        CHECK(filtered.front().guid == exact_guid);
+
+        const auto second_page =
+            index->query({.text = "bike", .filters = {.type = asset_types::static_mesh}, .limit = 1, .offset = 1});
+        REQUIRE(second_page.size() == 1);
+        CHECK(second_page.front().guid == prefix_guid);
+    }
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search index rejects incompatible documents atomically")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-index-invalid-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    asset_search_document good{
+        .guid = generate_asset_guid(), .type = asset_types::material, .display_name = "Stone", .title = "Stone"};
+    REQUIRE(index->upsert(good));
+
+    auto incompatible = good;
+    incompatible.guid = generate_asset_guid();
+    incompatible.schema_version = asset_search_document_schema_version + 1;
+    CHECK_FALSE(index->upsert(incompatible));
+
+    const std::vector documents{good, incompatible};
+    CHECK_FALSE(index->reset(documents));
+
+    const auto results = index->query({.text = "Stone"});
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == good.guid);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search index removes documents and derived metadata together")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-index-erase-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    asset_search_document document{.guid = generate_asset_guid(),
+                                   .type = asset_types::material,
+                                   .display_name = "Rusty Metal",
+                                   .title = "Rusty Metal",
+                                   .authored_tags = {"metal"},
+                                   .generated_tags = {"rusty"},
+                                   .categories = {"Material/Metal"},
+                                   .metadata = {{"condition", "weathered", asset_search_metadata_origin::generated}}};
+    REQUIRE(index->upsert(document));
+    REQUIRE(index->query({.text = "Rusty"}).size() == 1);
+
+    REQUIRE(index->erase(document.guid));
+    CHECK(index->query({.text = "Rusty"}).empty());
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search index recreates a corrupt derived cache")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-index-corrupt-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+    std::filesystem::create_directories(root);
+
+    {
+        std::ofstream output(database_path, std::ios::binary | std::ios::trunc);
+        REQUIRE(output);
+        output << "not a sqlite database";
+    }
+
+    {
+        auto opened = persistent_asset_search_index::open(database_path);
+        REQUIRE(opened);
+        auto index = std::move(opened).value();
+
+        asset_search_document document{.guid = generate_asset_guid(),
+                                       .type = asset_types::static_mesh,
+                                       .display_name = "Recovered Bike",
+                                       .title = "Recovered Bike"};
+        REQUIRE(index->upsert(document));
+        const auto results = index->query({.text = "Recovered Bike"});
+        REQUIRE(results.size() == 1);
+        CHECK(results.front().guid == document.guid);
+    }
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
 }

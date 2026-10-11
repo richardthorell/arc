@@ -7,23 +7,24 @@ namespace arc::assets
 namespace
 {
 
-void apply_changes(const asset_database& database, asset_search_index& index, const asset_database_change_batch& batch)
+asset_status apply_changes(const asset_database& database, asset_search_index& index,
+                           const asset_database_change_batch& batch)
 {
     for (const auto& change : batch.events)
     {
         if (change.kind == asset_database_change_kind::catalog_reset || !change.guid.valid()) continue;
 
+        asset_status status = asset_status::success();
         if (change.kind == asset_database_change_kind::removed)
-        {
-            index.erase(change.guid);
-            continue;
-        }
-
-        if (const auto record = database.query(change.guid))
-            index.upsert(make_asset_search_document(*record));
+            status = index.erase(change.guid);
+        else if (const auto record = database.query(change.guid))
+            status = index.upsert(make_asset_search_document(*record));
         else
-            index.erase(change.guid);
+            status = index.erase(change.guid);
+
+        if (!status) return status;
     }
+    return asset_status::success();
 }
 
 } // namespace
@@ -43,9 +44,11 @@ asset_search_document make_asset_search_document(const asset_database_record& re
     return document;
 }
 
-void asset_search_indexer::rebuild()
+asset_status asset_search_indexer::rebuild()
 {
-    if (!database_ || !index_) return;
+    if (!database_ || !index_)
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Asset search indexer is not initialized"});
 
     const auto records = database_->records();
     std::vector<asset_search_document> documents;
@@ -53,32 +56,38 @@ void asset_search_indexer::rebuild()
     for (const auto& record : records)
         documents.push_back(make_asset_search_document(record));
 
-    index_->reset(documents);
+    auto status = index_->reset(documents);
+    if (!status) return status;
 
     // Replaying retained events after the snapshot is intentionally idempotent.
     // It closes the race between taking the database snapshot and observing the
     // latest change cursor. history_lost is harmless here because the complete
     // record snapshot is already the baseline.
     const auto batch = database_->changes_since(0);
-    apply_changes(*database_, *index_, batch);
+    status = apply_changes(*database_, *index_, batch);
+    if (!status) return status;
     cursor_ = batch.next_sequence;
+    return asset_status::success();
 }
 
-void asset_search_indexer::refresh()
+asset_status asset_search_indexer::refresh()
 {
-    if (!database_ || !index_) return;
+    if (!database_ || !index_)
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Asset search indexer is not initialized"});
 
     const auto batch = database_->changes_since(cursor_);
     if (batch.history_lost ||
         std::any_of(batch.events.begin(), batch.events.end(), [](const asset_database_change& change)
                     { return change.kind == asset_database_change_kind::catalog_reset; }))
     {
-        rebuild();
-        return;
+        return rebuild();
     }
 
-    apply_changes(*database_, *index_, batch);
+    auto status = apply_changes(*database_, *index_, batch);
+    if (!status) return status;
     cursor_ = batch.next_sequence;
+    return asset_status::success();
 }
 
 } // namespace arc::assets
