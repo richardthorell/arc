@@ -48,11 +48,11 @@ describe('core built-in material families', () => {
       'UV Offset',
       'UV Pivot',
       'UV Rotation (radians)',
+      'Detail Normal Texture',
+      'Detail Normal Strength',
       'Roughness Minimum',
       'Roughness Maximum',
       'Roughness Curve',
-      'Detail Normal Texture',
-      'Detail Normal Strength',
     ]);
     expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
