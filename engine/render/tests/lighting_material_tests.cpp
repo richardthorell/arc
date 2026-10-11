@@ -20,6 +20,120 @@
 #define ARC_RENDER_TEST_ASSET_ROOT "assets"
 #endif
 
+TEST_CASE("baked irradiance probe volumes cook and decode deterministically")
+{
+    arc::render::irradiance_probe_volume_descriptor volume;
+    volume.local_bounds = {arc::geometric::point3f{-1.0f, -1.0f, -1.0f},
+                           arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+    volume.dimensions = {2u, 2u, 2u};
+    volume.spacing = {2.0f, 2.0f, 2.0f};
+    volume.blend_distance = 0.5f;
+    volume.priority = 3;
+    volume.probes.resize(8u);
+    for (std::size_t index = 0; index < volume.probes.size(); ++index)
+    {
+        volume.probes[index].spherical_harmonics[0] =
+            {static_cast<float>(index + 1u), 0.5f, 0.25f};
+        volume.probes[index].validity = 1.0f;
+        volume.probes[index].visibility = 0.75f;
+        volume.probes[index].mean_distance = 4.0f;
+        volume.probes[index].distance_variance = 0.5f;
+    }
+
+    const auto first = arc::render::encode_irradiance_probe_volume(volume);
+    const auto second = arc::render::encode_irradiance_probe_volume(volume);
+    REQUIRE_FALSE(first.empty());
+    REQUIRE(first == second);
+
+    const auto decoded = arc::render::decode_irradiance_probe_volume(first);
+    REQUIRE(decoded);
+    REQUIRE(decoded.volume.format_version == arc::render::irradiance_probe_volume_descriptor::current_format_version);
+    REQUIRE(decoded.volume.dimensions == std::array<std::uint32_t, 3>{2u, 2u, 2u});
+    REQUIRE(decoded.volume.priority == 3);
+    REQUIRE(decoded.volume.probes.size() == 8u);
+    REQUIRE(decoded.volume.probes[7].spherical_harmonics[0][0] == Catch::Approx(8.0f));
+    REQUIRE(decoded.volume.content_hash != 0u);
+
+    auto truncated = first;
+    truncated.pop_back();
+    REQUIRE_FALSE(arc::render::decode_irradiance_probe_volume(truncated));
+}
+
+TEST_CASE("baked irradiance probe resolver uses trilinear validity and environment fallback")
+{
+    arc::render::irradiance_probe_volume_descriptor volume;
+    volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f},
+                           arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+    volume.dimensions = {2u, 2u, 2u};
+    volume.spacing = {1.0f, 1.0f, 1.0f};
+    volume.blend_distance = 0.1f;
+    volume.probes.resize(8u);
+    for (std::size_t index = 0; index < volume.probes.size(); ++index)
+    {
+        volume.probes[index].spherical_harmonics[0] = {static_cast<float>(index), 0.0f, 0.0f};
+        volume.probes[index].validity = 1.0f;
+        volume.probes[index].visibility = 1.0f;
+    }
+
+    arc::render::irradiance_probe_volume_instance instance{
+        .stable_id = 7u,
+        .volume = &volume,
+        .world_bounds = {arc::geometric::point3f{10.0f, 0.0f, 0.0f},
+                         arc::geometric::point3f{12.0f, 2.0f, 2.0f}}};
+
+    const std::array instances{instance};
+    const auto center = arc::render::resolve_irradiance_probe_volumes(
+        instances, arc::math::vector3f{11.0f, 1.0f, 1.0f});
+    REQUIRE_FALSE(center.fallback_to_environment);
+    REQUIRE(center.contributing_volumes == 1u);
+    REQUIRE(center.contributing_probes == 8u);
+    REQUIRE(center.spherical_harmonics[0][0] == Catch::Approx(3.5f));
+
+    const auto outside = arc::render::resolve_irradiance_probe_volumes(
+        instances, arc::math::vector3f{20.0f, 1.0f, 1.0f});
+    REQUIRE(outside.fallback_to_environment);
+    REQUIRE(outside.contributing_volumes == 0u);
+
+    for (auto& probe : volume.probes) probe.validity = 0.0f;
+    const auto invalid = arc::render::resolve_irradiance_probe_volumes(
+        instances, arc::math::vector3f{11.0f, 1.0f, 1.0f});
+    REQUIRE(invalid.fallback_to_environment);
+}
+
+TEST_CASE("overlapping irradiance volumes select highest priority and blend equals deterministically")
+{
+    const auto make_volume = [](float red, std::int32_t priority)
+    {
+        arc::render::irradiance_probe_volume_descriptor volume;
+        volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f},
+                               arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+        volume.dimensions = {1u, 1u, 1u};
+        volume.spacing = {1.0f, 1.0f, 1.0f};
+        volume.blend_distance = 0.25f;
+        volume.priority = priority;
+        volume.probes.resize(1u);
+        volume.probes[0].spherical_harmonics[0] = {red, 0.0f, 0.0f};
+        return volume;
+    };
+
+    auto low = make_volume(1.0f, 0);
+    auto high_a = make_volume(4.0f, 5);
+    auto high_b = make_volume(8.0f, 5);
+    const arc::geometric::box3f bounds{arc::geometric::point3f{-1.0f, -1.0f, -1.0f},
+                                      arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+    const std::array instances{
+        arc::render::irradiance_probe_volume_instance{.stable_id = 1u, .volume = &low, .world_bounds = bounds},
+        arc::render::irradiance_probe_volume_instance{.stable_id = 2u, .volume = &high_a, .world_bounds = bounds},
+        arc::render::irradiance_probe_volume_instance{.stable_id = 3u, .volume = &high_b, .world_bounds = bounds}};
+
+    const auto resolved =
+        arc::render::resolve_irradiance_probe_volumes(instances, arc::math::vector3f{0.0f, 0.0f, 0.0f});
+    REQUIRE_FALSE(resolved.fallback_to_environment);
+    REQUIRE(resolved.resolved_priority == 5);
+    REQUIRE(resolved.contributing_volumes == 2u);
+    REQUIRE(resolved.spherical_harmonics[0][0] == Catch::Approx(6.0f));
+}
+
 TEST_CASE("scene lighting data packs sorted capped light arrays")
 {
     std::vector<arc::render::directional_light_event> directional;
