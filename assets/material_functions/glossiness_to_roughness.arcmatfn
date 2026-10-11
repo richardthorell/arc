@@ -1,0 +1,113 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Glossiness to Roughness",
+  "description": "Convert glossiness/smoothness to roughness with saturate(1 - glossiness).",
+  "inputs": [
+    {
+      "id": "glossiness",
+      "name": "Glossiness",
+      "type": "float"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "roughness",
+      "name": "Roughness",
+      "type": "float"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-glossiness",
+        "type": "functionInput",
+        "position": [
+          30,
+          200
+        ],
+        "values": {
+          "input": "glossiness",
+          "name": "Glossiness",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "clamp",
+        "type": "saturate",
+        "position": [
+          300,
+          200
+        ],
+        "values": {}
+      },
+      {
+        "id": "invert",
+        "type": "oneMinus",
+        "position": [
+          610,
+          200
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          1040,
+          220
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "input",
+        "from": {
+          "nodeId": "input-glossiness",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clamp",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "invert",
+        "from": {
+          "nodeId": "clamp",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "invert",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "invert",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "roughness"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.8
+    }
+  }
+}
