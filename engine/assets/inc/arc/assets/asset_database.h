@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace arc::assets
@@ -26,6 +27,40 @@ enum class asset_provider_kind : std::uint8_t
     cooked_package,
     runtime_overlay
 };
+
+/**
+ * Stable provider identity vocabulary shared by every Asset Database backend.
+ *
+ * These IDs describe provider classes, not precedence. Cooked package instances
+ * append a package/build-specific suffix to cooked_package_prefix. C5 owns the
+ * eventual override/tombstone policy between providers.
+ */
+namespace asset_provider_ids
+{
+inline constexpr std::string_view project_source = "arc.project.source";
+inline constexpr std::string_view builtin_source = "arc.builtin.source";
+inline constexpr std::string_view virtual_builtin = "arc.builtin.virtual";
+inline constexpr std::string_view cooked_package_prefix = "arc.package.";
+inline constexpr std::string_view runtime_overlay = "arc.runtime.overlay";
+} // namespace asset_provider_ids
+
+[[nodiscard]] constexpr std::string_view asset_provider_kind_name(asset_provider_kind kind) noexcept
+{
+    switch (kind)
+    {
+    case asset_provider_kind::project_source:
+        return "project-source";
+    case asset_provider_kind::builtin_source:
+        return "builtin-source";
+    case asset_provider_kind::virtual_builtin:
+        return "virtual-builtin";
+    case asset_provider_kind::cooked_package:
+        return "cooked-package";
+    case asset_provider_kind::runtime_overlay:
+        return "runtime-overlay";
+    }
+    return "unknown";
+}
 
 struct asset_database_provider
 {
