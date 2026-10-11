@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "a9d5df86-49e5-4d60-a381-e7135f782f08",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "Roughness Remap",
+  "description": "Clamp roughness to [0,1], apply a configurable curve exponent, then remap to a minimum and maximum roughness."
+}
