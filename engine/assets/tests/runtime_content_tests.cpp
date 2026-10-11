@@ -132,6 +132,28 @@ TEST_CASE("cooked package catalog exposes logical assets through Asset Database"
     CHECK(catalog.database().revision() > 0);
 }
 
+TEST_CASE("cooked package unmount removes its logical records")
+{
+    package_fixture fixture;
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service native_files(jobs);
+    arc::io::virtual_file_system vfs(jobs);
+    auto files = std::make_shared<arc::io::filesystem_file_provider>(native_files, fixture.root / "package");
+    REQUIRE(vfs.mount({.root = path("package://base"), .provider = files}).succeeded());
+    arc::assets::cooked_asset_catalog catalog(vfs, path("artifact://game"));
+    REQUIRE(catalog.mount_package(path("package://base/" + fixture.manifest.filename().string()), 10));
+    const auto record = catalog.database().query(fixture.asset);
+    REQUIRE(record);
+    const auto cursor = catalog.database().changes_since(0).next_sequence;
+    REQUIRE(catalog.unmount_provider(record->active_provider));
+    CHECK_FALSE(catalog.database().query(fixture.asset));
+    const auto changes = catalog.database().changes_since(cursor);
+    CHECK(std::any_of(changes.events.begin(), changes.events.end(), [&](const auto& event)
+                      { return event.guid == fixture.asset &&
+                               event.kind == arc::assets::asset_database_change_kind::provider_changed; }));
+}
+
 TEST_CASE("cooked Asset Database change cursor tracks mounted providers")
 {
     package_fixture fixture;
