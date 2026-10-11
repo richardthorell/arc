@@ -1,0 +1,277 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "Fresnel Schlick",
+  "description": "Schlick Fresnel approximation F = F0 + (1-F0)(1-saturate(cosTheta))^5. Accepts scalar F0 and cosine of incidence angle.",
+  "inputs": [
+    {
+      "id": "f0",
+      "name": "F0",
+      "type": "float",
+      "default": 0.04
+    },
+    {
+      "id": "cosTheta",
+      "name": "Cosine of Incidence",
+      "type": "float",
+      "default": 1
+    }
+  ],
+  "outputs": [
+    {
+      "id": "fresnel",
+      "name": "Fresnel",
+      "type": "float"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-f0",
+        "type": "functionInput",
+        "position": [
+          30,
+          120
+        ],
+        "values": {
+          "input": "f0",
+          "name": "F0",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "input-cosTheta",
+        "type": "functionInput",
+        "position": [
+          30,
+          450
+        ],
+        "values": {
+          "input": "cosTheta",
+          "name": "Cosine of Incidence",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "clamp-f0",
+        "type": "saturate",
+        "position": [
+          270,
+          100
+        ],
+        "values": {}
+      },
+      {
+        "id": "clamp-cosine",
+        "type": "saturate",
+        "position": [
+          270,
+          440
+        ],
+        "values": {}
+      },
+      {
+        "id": "one-minus-f0",
+        "type": "oneMinus",
+        "position": [
+          500,
+          100
+        ],
+        "values": {}
+      },
+      {
+        "id": "one-minus-cosine",
+        "type": "oneMinus",
+        "position": [
+          490,
+          450
+        ],
+        "values": {}
+      },
+      {
+        "id": "five",
+        "type": "constant",
+        "position": [
+          510,
+          640
+        ],
+        "values": {
+          "value": 5
+        }
+      },
+      {
+        "id": "pow5",
+        "type": "power",
+        "position": [
+          710,
+          450
+        ],
+        "values": {}
+      },
+      {
+        "id": "scaled",
+        "type": "multiply",
+        "position": [
+          900,
+          300
+        ],
+        "values": {}
+      },
+      {
+        "id": "combined",
+        "type": "add",
+        "position": [
+          1080,
+          220
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          1290,
+          200
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "fresnel",
+              "name": "Fresnel",
+              "type": "float"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "f0",
+        "from": {
+          "nodeId": "input-f0",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clamp-f0",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "c",
+        "from": {
+          "nodeId": "input-cosTheta",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clamp-cosine",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "if0",
+        "from": {
+          "nodeId": "clamp-f0",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "one-minus-f0",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "ic",
+        "from": {
+          "nodeId": "clamp-cosine",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "one-minus-cosine",
+          "pin": "value"
+        }
+      },
+      {
+        "id": "pow-a",
+        "from": {
+          "nodeId": "one-minus-cosine",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "pow5",
+          "pin": "base"
+        }
+      },
+      {
+        "id": "pow-b",
+        "from": {
+          "nodeId": "five",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "pow5",
+          "pin": "exponent"
+        }
+      },
+      {
+        "id": "scale-a",
+        "from": {
+          "nodeId": "one-minus-f0",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "scaled",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "scale-b",
+        "from": {
+          "nodeId": "pow5",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "scaled",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "sum-a",
+        "from": {
+          "nodeId": "clamp-f0",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "combined",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "sum-b",
+        "from": {
+          "nodeId": "scaled",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "combined",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "out",
+        "from": {
+          "nodeId": "combined",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "fresnel"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.75
+    }
+  }
+}
