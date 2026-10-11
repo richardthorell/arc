@@ -117,6 +117,31 @@ struct asset_database_record
     friend bool operator==(const asset_database_record&, const asset_database_record&) = default;
 };
 
+/** Logical database change stream; sequence is independent of record revision. */
+enum class asset_database_change_kind : std::uint8_t
+{
+    added,
+    removed,
+    updated,
+    provider_changed,
+    catalog_reset
+};
+
+struct asset_database_change
+{
+    std::uint64_t sequence{};
+    asset_database_change_kind kind{asset_database_change_kind::updated};
+    asset_guid guid{};
+    std::string provider_id;
+};
+
+struct asset_database_change_batch
+{
+    std::uint64_t next_sequence{};
+    bool history_lost{};
+    std::vector<asset_database_change> events;
+};
+
 /**
  * Read-only logical catalog/query boundary shared by authoring and runtime
  * content backends. Loading, pinning, eviction and generation publication
@@ -132,6 +157,8 @@ public:
     [[nodiscard]] virtual std::vector<asset_guid> dependencies(asset_guid guid) const = 0;
     [[nodiscard]] virtual std::vector<asset_guid> reverse_dependencies(asset_guid guid) const = 0;
     [[nodiscard]] virtual std::uint64_t revision() const = 0;
+    /** Query events strictly after cursor; history_lost requires caller resnapshot. */
+    [[nodiscard]] virtual asset_database_change_batch changes_since(std::uint64_t cursor) const = 0;
 
     [[nodiscard]] std::optional<asset_database_record> query(const asset_reference& reference) const
     {
@@ -163,6 +190,7 @@ public:
     [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override;
     [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const override;
     [[nodiscard]] std::uint64_t revision() const override;
+    [[nodiscard]] asset_database_change_batch changes_since(std::uint64_t cursor) const override;
 
 private:
     const asset_manager* manager_{};
