@@ -74,7 +74,10 @@ struct [[nodiscard]] content_bundle_io_result
 struct [[nodiscard]] content_bundle_save_result
 {
     std::string error;
-    [[nodiscard]] bool succeeded() const noexcept { return error.empty(); }
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error.empty();
+    }
 };
 
 [[nodiscard]] content_bundle_save_result save_content_bundle(const std::filesystem::path& path,
