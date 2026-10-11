@@ -66,6 +66,23 @@ struct database_fixture
 
 } // namespace
 
+TEST_CASE("asset database provider vocabulary is stable across backends")
+{
+    using namespace arc::assets;
+
+    CHECK(asset_provider_ids::project_source == "arc.project.source");
+    CHECK(asset_provider_ids::builtin_source == "arc.builtin.source");
+    CHECK(asset_provider_ids::virtual_builtin == "arc.builtin.virtual");
+    CHECK(asset_provider_ids::cooked_package_prefix == "arc.package.");
+    CHECK(asset_provider_ids::runtime_overlay == "arc.runtime.overlay");
+
+    CHECK(asset_provider_kind_name(asset_provider_kind::project_source) == "project-source");
+    CHECK(asset_provider_kind_name(asset_provider_kind::builtin_source) == "builtin-source");
+    CHECK(asset_provider_kind_name(asset_provider_kind::virtual_builtin) == "virtual-builtin");
+    CHECK(asset_provider_kind_name(asset_provider_kind::cooked_package) == "cooked-package");
+    CHECK(asset_provider_kind_name(asset_provider_kind::runtime_overlay) == "runtime-overlay");
+}
+
 TEST_CASE("asset database queries logical authoring records by GUID")
 {
     using namespace arc::assets;
@@ -81,8 +98,9 @@ TEST_CASE("asset database queries logical authoring records by GUID")
     CHECK(record->guid == source->guid);
     CHECK(record->type == asset_types::material);
     CHECK(record->source_hint == "assets/materials/stone.arcmat");
-    CHECK(record->active_provider == "arc.project.source");
+    CHECK(record->active_provider == asset_provider_ids::project_source);
     REQUIRE(record->providers.size() == 1);
+    CHECK(record->providers.front().id == asset_provider_ids::project_source);
     CHECK(record->providers.front().kind == asset_provider_kind::project_source);
     CHECK(record->providers.front().active);
     CHECK(record->generation == source->generation);
@@ -124,9 +142,10 @@ TEST_CASE("asset database classifies built-in authoring providers")
     const auto record = manager.database().query(builtin_guid, asset_types::material);
     REQUIRE(record);
     REQUIRE(record->providers.size() == 1);
+    CHECK(record->providers.front().id == asset_provider_ids::builtin_source);
     CHECK(record->providers.front().kind == asset_provider_kind::builtin_source);
     CHECK(record->providers.front().read_only);
-    CHECK(record->active_provider == "arc.builtin.source");
+    CHECK(record->active_provider == asset_provider_ids::builtin_source);
 
     manager.on_shutdown(context);
 }
@@ -144,9 +163,10 @@ TEST_CASE("asset database classifies virtual built-in providers")
     const auto record = fixture.manager.database().query(guid, asset_types::binary_blob);
     REQUIRE(record);
     REQUIRE(record->providers.size() == 1);
+    CHECK(record->providers.front().id == asset_provider_ids::virtual_builtin);
     CHECK(record->providers.front().kind == asset_provider_kind::virtual_builtin);
     CHECK(record->providers.front().read_only);
-    CHECK(record->active_provider == "arc.builtin.virtual");
+    CHECK(record->active_provider == asset_provider_ids::virtual_builtin);
 }
 
 TEST_CASE("asset database reference queries never recover identity from path hints")

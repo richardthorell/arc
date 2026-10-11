@@ -110,7 +110,8 @@ TEST_CASE("cooked package catalog exposes logical assets through Asset Database"
     CHECK(record->type == arc::assets::asset_types::terrain);
     CHECK(record->state == arc::assets::asset_state::ready);
     CHECK(record->residency == arc::assets::asset_residency::metadata_only);
-    CHECK(record->active_provider.starts_with("package:base-build:"));
+    CHECK(record->active_provider.starts_with(std::string(arc::assets::asset_provider_ids::cooked_package_prefix) +
+                                              "base-build:"));
     REQUIRE(record->providers.size() == 1);
     CHECK(record->providers.front().kind == arc::assets::asset_provider_kind::cooked_package);
     CHECK(record->providers.front().priority == 25);
