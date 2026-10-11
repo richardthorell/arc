@@ -7,6 +7,9 @@
 #ifndef ARC_LOCAL_SHADOW_BINDING
 #define ARC_LOCAL_SHADOW_BINDING 17
 #endif
+#ifndef ARC_LTC_LOOKUP_BINDING
+#define ARC_LTC_LOOKUP_BINDING 23
+#endif
 
 struct directional_light_data
 {
@@ -75,6 +78,17 @@ layout(std430, set = 0, binding = ARC_LIGHT_BUFFER_BINDING) readonly buffer scen
     uint local_shadow_padding1;
     uint local_shadow_padding2;
 } lights;
+
+struct arc_ltc_sample
+{
+    vec4 inverse_transform;
+    vec4 amplitude_fresnel;
+};
+
+layout(std430, set = 0, binding = ARC_LTC_LOOKUP_BINDING) readonly buffer arc_ltc_lookup_buffer
+{
+    arc_ltc_sample samples[];
+} arc_ltc_lookup;
 
 layout(set = 0, binding = ARC_LOCAL_SHADOW_BINDING) uniform sampler2DShadow arc_local_shadow_atlas;
 
@@ -165,6 +179,157 @@ vec3 arc_evaluate_surface_light(
         max(dot(surface.normal, light_direction), 0.0) * visibility;
 }
 
+
+arc_ltc_sample arc_sample_ltc(float perceptual_roughness, float n_dot_v)
+{
+    const uint resolution = 32u;
+    float x = clamp(perceptual_roughness, 0.0, 1.0) * float(resolution - 1u);
+    float y = sqrt(clamp(1.0 - n_dot_v, 0.0, 1.0)) * float(resolution - 1u);
+    uvec2 p0 = uvec2(uint(floor(x)), uint(floor(y)));
+    uvec2 p1 = min(p0 + uvec2(1u), uvec2(resolution - 1u));
+    vec2 f = fract(vec2(x, y));
+
+    arc_ltc_sample s00 = arc_ltc_lookup.samples[p0.y * resolution + p0.x];
+    arc_ltc_sample s10 = arc_ltc_lookup.samples[p0.y * resolution + p1.x];
+    arc_ltc_sample s01 = arc_ltc_lookup.samples[p1.y * resolution + p0.x];
+    arc_ltc_sample s11 = arc_ltc_lookup.samples[p1.y * resolution + p1.x];
+
+    arc_ltc_sample result;
+    result.inverse_transform =
+        mix(mix(s00.inverse_transform, s10.inverse_transform, f.x),
+            mix(s01.inverse_transform, s11.inverse_transform, f.x), f.y);
+    result.amplitude_fresnel =
+        mix(mix(s00.amplitude_fresnel, s10.amplitude_fresnel, f.x),
+            mix(s01.amplitude_fresnel, s11.amplitude_fresnel, f.x), f.y);
+    return result;
+}
+
+mat3 arc_ltc_inverse_matrix(vec4 packed)
+{
+    // packed = (m11, m13, m31, m33), matching the CPU lookup contract.
+    return mat3(
+        packed.x, 0.0, packed.z,
+        0.0,      1.0, 0.0,
+        packed.y, 0.0, packed.w);
+}
+
+vec3 arc_ltc_edge_integral(vec3 a, vec3 b)
+{
+    float cosine = clamp(dot(a, b), -0.9999, 0.9999);
+    float theta = acos(cosine);
+    float sine = max(sin(theta), 1.0e-5);
+    return cross(a, b) * (theta / sine);
+}
+
+float arc_ltc_polygon_integral(
+    vec3 vertices[8],
+    int vertex_count,
+    vec3 basis_x,
+    vec3 basis_y,
+    vec3 basis_z,
+    mat3 inverse_transform)
+{
+    vec3 transformed[8];
+    for (int index = 0; index < vertex_count; ++index)
+    {
+        vec3 local = vec3(
+            dot(vertices[index], basis_x),
+            dot(vertices[index], basis_y),
+            dot(vertices[index], basis_z));
+        transformed[index] = normalize(inverse_transform * local);
+    }
+
+    vec3 sum = vec3(0.0);
+    for (int index = 0; index < vertex_count; ++index)
+        sum += arc_ltc_edge_integral(transformed[index], transformed[(index + 1) % vertex_count]);
+
+    // Emitter-facing culling is handled separately; absolute value keeps rectangle/disk
+    // winding conventions from changing the finite-emitter energy.
+    return clamp(abs(sum.z), 0.0, 2.0 * ARC_PI);
+}
+
+vec3 arc_evaluate_area_ltc(
+    area_light_data light,
+    arc_surface_data surface,
+    vec3 view_direction,
+    vec3 world_position)
+{
+    vec3 emitter_normal = normalize(light.direction_two_sided.xyz);
+    vec3 center_vector = light.position_shape.xyz - world_position;
+    float center_distance = length(center_vector);
+    if (center_distance <= 1.0e-5)
+        return vec3(0.0);
+
+    vec3 center_direction = center_vector / center_distance;
+    float emitter_facing = dot(emitter_normal, -center_direction);
+    if (light.direction_two_sided.w <= 0.5 && emitter_facing <= 0.0)
+        return vec3(0.0);
+
+    vec3 tangent = light.tangent_width.xyz;
+    tangent -= emitter_normal * dot(tangent, emitter_normal);
+    if (dot(tangent, tangent) < 1.0e-6)
+        tangent = abs(emitter_normal.y) < 0.99
+            ? normalize(cross(vec3(0.0, 1.0, 0.0), emitter_normal))
+            : normalize(cross(vec3(1.0, 0.0, 0.0), emitter_normal));
+    else
+        tangent = normalize(tangent);
+    vec3 bitangent = normalize(cross(emitter_normal, tangent));
+
+    float width = max(light.tangent_width.w, 1.0e-4);
+    float height = max(light.dimensions_shadow.y, 1.0e-4);
+    vec3 vertices[8];
+    int vertex_count = 4;
+
+    if (light.position_shape.w > 0.5)
+    {
+        vertex_count = 8;
+        float radius = 0.5 * width;
+        for (int index = 0; index < 8; ++index)
+        {
+            float angle = (2.0 * ARC_PI * float(index)) / 8.0;
+            vertices[index] = center_vector +
+                tangent * (cos(angle) * radius) +
+                bitangent * (sin(angle) * radius);
+        }
+    }
+    else
+    {
+        vec3 half_tangent = tangent * (0.5 * width);
+        vec3 half_bitangent = bitangent * (0.5 * height);
+        vertices[0] = center_vector - half_tangent - half_bitangent;
+        vertices[1] = center_vector + half_tangent - half_bitangent;
+        vertices[2] = center_vector + half_tangent + half_bitangent;
+        vertices[3] = center_vector - half_tangent + half_bitangent;
+    }
+
+    vec3 normal = normalize(surface.normal);
+    vec3 view = normalize(view_direction);
+    float n_dot_v = clamp(dot(normal, view), 0.0, 1.0);
+    vec3 basis_x = view - normal * n_dot_v;
+    if (dot(basis_x, basis_x) < 1.0e-6)
+        basis_x = abs(normal.y) < 0.99
+            ? normalize(cross(vec3(0.0, 1.0, 0.0), normal))
+            : normalize(cross(vec3(1.0, 0.0, 0.0), normal));
+    else
+        basis_x = normalize(basis_x);
+    vec3 basis_y = normalize(cross(normal, basis_x));
+
+    arc_ltc_sample lookup = arc_sample_ltc(surface.perceptual_roughness, n_dot_v);
+    float diffuse_integral = arc_ltc_polygon_integral(
+        vertices, vertex_count, basis_x, basis_y, normal, mat3(1.0));
+    float specular_integral = arc_ltc_polygon_integral(
+        vertices, vertex_count, basis_x, basis_y, normal, arc_ltc_inverse_matrix(lookup.inverse_transform));
+
+    vec3 diffuse_color = surface.base_color * (1.0 - surface.metallic) / ARC_PI;
+    vec3 f0 = mix(vec3(0.04), surface.base_color, surface.metallic);
+    vec3 specular_color = lookup.amplitude_fresnel.x *
+        mix(f0, vec3(1.0), clamp(lookup.amplitude_fresnel.y, 0.0, 1.0));
+
+    vec3 emitter_radiance = light.color_intensity.rgb * light.color_intensity.w;
+    return emitter_radiance *
+        (diffuse_color * diffuse_integral + specular_color * specular_integral);
+}
+
 vec3 arc_evaluate_scene_lights(
     arc_surface_data surface,
     vec3 view_direction,
@@ -233,24 +398,7 @@ vec3 arc_evaluate_scene_lights(
             arc_spot_shadow_visibility(lights.spot_lights[index], world_position));
     }
     for (uint index = 0u; index < min(lights.area_count, 32u); ++index)
-    {
-        vec3 to_light = lights.area_lights[index].position_shape.xyz - world_position;
-        float distance_squared = max(dot(to_light, to_light), 1.0e-4);
-        float distance_to_light = sqrt(distance_squared);
-        vec3 direction_to_light = to_light / distance_to_light;
-        float facing = dot(normalize(lights.area_lights[index].direction_two_sided.xyz), -direction_to_light);
-        facing = lights.area_lights[index].direction_two_sided.w > 0.5 ? abs(facing) : max(facing, 0.0);
-        float width = max(lights.area_lights[index].tangent_width.w, 1.0e-4);
-        float height = max(lights.area_lights[index].dimensions_shadow.y, 1.0e-4);
-        float area = lights.area_lights[index].position_shape.w > 0.5
-            ? ARC_PI * width * height * 0.25
-            : width * height;
-        vec3 radiance = lights.area_lights[index].color_intensity.rgb *
-            lights.area_lights[index].color_intensity.w *
-            min(area * facing / distance_squared, 2.0 * ARC_PI);
-        direct += arc_evaluate_surface_light(
-            surface, view_direction, direction_to_light, radiance, 1.0);
-    }
+        direct += arc_evaluate_area_ltc(lights.area_lights[index], surface, view_direction, world_position);
     return direct;
 }
 
