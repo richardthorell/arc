@@ -149,9 +149,11 @@ TEST_CASE("cooked package unmount removes its logical records")
     REQUIRE(catalog.unmount_provider(record->active_provider));
     CHECK_FALSE(catalog.database().query(fixture.asset));
     const auto changes = catalog.database().changes_since(cursor);
-    CHECK(std::any_of(changes.events.begin(), changes.events.end(), [&](const auto& event)
-                      { return event.guid == fixture.asset &&
-                               event.kind == arc::assets::asset_database_change_kind::provider_changed; }));
+    CHECK(std::any_of(changes.events.begin(), changes.events.end(),
+                      [&](const auto& event) {
+                          return event.guid == fixture.asset &&
+                                 event.kind == arc::assets::asset_database_change_kind::provider_changed;
+                      }));
 }
 
 TEST_CASE("cooked Asset Database change cursor tracks mounted providers")
@@ -317,8 +319,8 @@ TEST_CASE("cooked database projects overlay records and provider unmount")
                        .hash = arc::assets::hash_bytes(payload),
                        .size = payload.size()}}};
     arc::assets::runtime_update_receiver receiver(
-        overlay, {.cache_root = fixture.root / "overlay",
-                  .target_profile = "windows-test", .base_build_id = "base-build"});
+        overlay,
+        {.cache_root = fixture.root / "overlay", .target_profile = "windows-test", .base_build_id = "base-build"});
     const std::array blobs{std::pair{manifest.artifacts.front().hash, payload}};
     REQUIRE(receiver.ingest(manifest, blobs));
     static_cast<void>(catalog.poll_changes());

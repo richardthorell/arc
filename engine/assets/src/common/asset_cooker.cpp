@@ -478,12 +478,17 @@ asset_status save_cook_manifest(const std::filesystem::path& path, const cook_ma
     for (const auto& edge : manifest.dependency_edges)
     {
         json dependencies = json::array();
-        for (const auto dependency : edge.dependencies) dependencies.push_back(to_string(dependency));
+        for (const auto dependency : edge.dependencies)
+            dependencies.push_back(to_string(dependency));
         edges.push_back({{"asset", to_string(edge.asset)}, {"dependencies", std::move(dependencies)}});
     }
-    const json document{{"dependencyEdges", std::move(edges)}, {"format", "arc.cook-manifest"},    {"version", manifest.version},
-                        {"buildId", manifest.build_id},     {"target", target_json(manifest.target)},
-                        {"roots", std::move(roots)},        {"dependencyClosure", std::move(closure)},
+    const json document{{"dependencyEdges", std::move(edges)},
+                        {"format", "arc.cook-manifest"},
+                        {"version", manifest.version},
+                        {"buildId", manifest.build_id},
+                        {"target", target_json(manifest.target)},
+                        {"roots", std::move(roots)},
+                        {"dependencyClosure", std::move(closure)},
                         {"artifacts", std::move(artifacts)}};
     std::error_code filesystem_error;
     std::filesystem::create_directories(path.parent_path(), filesystem_error);

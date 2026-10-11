@@ -336,7 +336,10 @@ public:
                 if (artifact.address.asset == guid && !artifact.tombstone &&
                     (!expected_type.valid() || expected_type == artifact.type) &&
                     (!overlay || entry.priority > overlay->priority))
-                { overlay = &entry; overlay_artifact = &artifact; }
+                {
+                    overlay = &entry;
+                    overlay_artifact = &artifact;
+                }
         if (candidates.empty() && !overlay) return std::nullopt;
 
         const auto active = std::max_element(candidates.begin(), candidates.end(),
@@ -349,8 +352,7 @@ public:
 
         asset_database_record record;
         record.guid = guid;
-        const bool overlay_active = overlay &&
-            (candidates.empty() || overlay->priority > active->package->priority);
+        const bool overlay_active = overlay && (candidates.empty() || overlay->priority > active->package->priority);
         record.type = overlay_active ? overlay_artifact->type : active->type;
         record.state = asset_state::ready;
         record.residency = asset_residency::metadata_only;
@@ -359,7 +361,11 @@ public:
         record.active_provider = overlay_active ? overlay->id : active->package->provider_id;
         if (!candidates.empty())
             for (const auto& edge : active->package->manifest.dependency_edges)
-                if (edge.asset == guid) { record.dependencies = edge.dependencies; break; }
+                if (edge.asset == guid)
+                {
+                    record.dependencies = edge.dependencies;
+                    break;
+                }
         record.reverse_dependencies = reverse_dependencies(guid);
 
         if (overlay)
@@ -374,13 +380,15 @@ public:
             for (const auto& artifact : overlay->manifest.artifacts)
                 if (artifact.address.asset == guid && !artifact.tombstone)
                 {
-                    const auto locator = cooked_artifact_virtual_path(artifact.address, catalog_->artifact_root_.string());
-                    record.representations.push_back({.name = artifact.address.name,
-                                                      .provider_id = overlay->id,
-                                                      .content_hash = artifact.hash,
-                                                      .size = artifact.size,
-                                                      .residency = asset_residency::metadata_only,
-                                                      .locator_hint = locator ? locator.value().string() : std::string{}});
+                    const auto locator =
+                        cooked_artifact_virtual_path(artifact.address, catalog_->artifact_root_.string());
+                    record.representations.push_back(
+                        {.name = artifact.address.name,
+                         .provider_id = overlay->id,
+                         .content_hash = artifact.hash,
+                         .size = artifact.size,
+                         .residency = asset_residency::metadata_only,
+                         .locator_hint = locator ? locator.value().string() : std::string{}});
                 }
         }
         for (const auto& candidate : candidates)
@@ -503,24 +511,26 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     return asset_status::success();
 }
 
-asset_status cooked_asset_catalog::mount_overlay(std::shared_ptr<cas_overlay_provider> provider,
-                                                 std::int32_t priority)
+asset_status cooked_asset_catalog::mount_overlay(std::shared_ptr<cas_overlay_provider> provider, std::int32_t priority)
 {
     if (!provider) return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Null overlay"));
-    const auto id = std::string(asset_provider_ids::runtime_overlay) + ":" +
-                    std::to_string(logical_->revision + 1);
-    auto mounted = files_->mount({.root = artifact_root_, .priority = priority, .provider = provider, .debug_name = id});
+    const auto id = std::string(asset_provider_ids::runtime_overlay) + ":" + std::to_string(logical_->revision + 1);
+    auto mounted =
+        files_->mount({.root = artifact_root_, .priority = priority, .provider = provider, .debug_name = id});
     if (!mounted)
         return asset_status::failure(asset_failure(asset_error_code::invalid_request, mounted.error().message));
     mounts_.push_back(mounted.value());
     auto manifest = provider->active_manifest();
-    logical_->overlays.push_back({.id = id, .priority = priority, .mount = mounted.value(),
-                                  .provider = provider, .generation = provider->provider_generation(),
+    logical_->overlays.push_back({.id = id,
+                                  .priority = priority,
+                                  .mount = mounted.value(),
+                                  .provider = provider,
+                                  .generation = provider->provider_generation(),
                                   .manifest = manifest});
     ++logical_->revision;
     for (const auto& artifact : manifest.artifacts)
-        logical_->append_change({.kind = asset_database_change_kind::provider_changed,
-                                 .guid = artifact.address.asset, .provider_id = id});
+        logical_->append_change(
+            {.kind = asset_database_change_kind::provider_changed, .guid = artifact.address.asset, .provider_id = id});
     return asset_status::success();
 }
 
@@ -539,7 +549,8 @@ asset_status cooked_asset_catalog::unmount_provider(std::string_view provider_id
             return asset_status::failure(asset_failure(asset_error_code::invalid_request, unmounted.error().message));
         for (const auto& artifact : package->manifest.artifacts)
             logical_->append_change({.kind = asset_database_change_kind::provider_changed,
-                                     .guid = artifact.asset, .provider_id = package->provider_id});
+                                     .guid = artifact.asset,
+                                     .provider_id = package->provider_id});
         mounts_.erase(std::remove(mounts_.begin(), mounts_.end(), package->mount), mounts_.end());
         logical_->packages.erase(package);
         ++logical_->revision;
@@ -550,7 +561,8 @@ asset_status cooked_asset_catalog::unmount_provider(std::string_view provider_id
         return asset_status::failure(asset_failure(asset_error_code::invalid_request, unmounted.error().message));
     for (const auto& artifact : found->manifest.artifacts)
         logical_->append_change({.kind = asset_database_change_kind::provider_changed,
-                                 .guid = artifact.address.asset, .provider_id = found->id});
+                                 .guid = artifact.address.asset,
+                                 .provider_id = found->id});
     mounts_.erase(std::remove(mounts_.begin(), mounts_.end(), found->mount), mounts_.end());
     logical_->overlays.erase(found);
     ++logical_->revision;
@@ -621,16 +633,13 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
         result.events.insert(result.events.begin(), std::move(event));
     }
     if (!result.events.empty()) ++telemetry_.change_batches;
-    if (result.catalog_reset)
-        logical_->append_change(
-            {.kind = asset_database_change_kind::catalog_reset});
+    if (result.catalog_reset) logical_->append_change({.kind = asset_database_change_kind::catalog_reset});
     for (const auto& event : result.events)
     {
         if (!event.address.asset.valid()) continue;
         const auto kind = event.kind == cooked_artifact_change_kind::removed ? asset_database_change_kind::removed
                                                                              : asset_database_change_kind::updated;
-        logical_->append_change(
-            {.kind = kind, .guid = event.address.asset});
+        logical_->append_change({.kind = kind, .guid = event.address.asset});
     }
     for (auto& overlay : logical_->overlays)
     {
@@ -641,10 +650,12 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
         overlay.generation = generation;
         for (const auto& artifact : previous.artifacts)
             logical_->append_change({.kind = asset_database_change_kind::provider_changed,
-                                     .guid = artifact.address.asset, .provider_id = overlay.id});
+                                     .guid = artifact.address.asset,
+                                     .provider_id = overlay.id});
         for (const auto& artifact : overlay.manifest.artifacts)
             logical_->append_change({.kind = asset_database_change_kind::provider_changed,
-                                     .guid = artifact.address.asset, .provider_id = overlay.id});
+                                     .guid = artifact.address.asset,
+                                     .provider_id = overlay.id});
         ++logical_->revision;
     }
     if (!result.events.empty() || result.catalog_reset) ++logical_->revision;
