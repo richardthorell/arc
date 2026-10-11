@@ -38,8 +38,6 @@ describe('core built-in material families', () => {
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
       'Normal Texture',
-      'Detail Normal Texture',
-      'Detail Normal Strength',
       'Clear Coat',
       'Clear Coat Roughness',
       'Clear Coat Texture',
@@ -50,6 +48,8 @@ describe('core built-in material families', () => {
       'UV Offset',
       'UV Pivot',
       'UV Rotation (radians)',
+      'Detail Normal Texture',
+      'Detail Normal Strength',
     ]);
     expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
