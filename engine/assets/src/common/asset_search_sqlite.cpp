@@ -478,7 +478,7 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
 
         asset_search_result result{.guid = *guid, .score = match.score};
         if (!query_value.text.empty())
-            result.reasons.push_back({.kind = match.kind, .score = match.score, .detail = std::move(match.detail)});
+            result.reasons.push_back({.kind = match.kind, .score = match.score, .detail = match.detail});
         results.push_back(std::move(result));
     }
 
