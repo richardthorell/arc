@@ -299,7 +299,7 @@ TEST_CASE("cooked database projects overlay records and provider unmount")
                   .target_profile = "windows-test", .base_build_id = "base-build"});
     const std::array blobs{std::pair{manifest.artifacts.front().hash, payload}};
     REQUIRE(receiver.ingest(manifest, blobs));
-    catalog.poll_changes();
+    static_cast<void>(catalog.poll_changes());
 
     const auto record = catalog.database().query(overlay_only, arc::assets::asset_types::terrain);
     REQUIRE(record);
