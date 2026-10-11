@@ -53,6 +53,9 @@ describe('Standard Lit shared channel functions', () => {
       'UV Offset',
       'UV Pivot',
       'UV Rotation (radians)',
+      'Roughness Minimum',
+      'Roughness Maximum',
+      'Roughness Curve',
       'Detail Normal Texture',
       'Detail Normal Strength',
     ]);
