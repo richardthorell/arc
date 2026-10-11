@@ -423,17 +423,18 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     ++logical_->revision;
     for (const auto& artifact : manifest.artifacts)
     {
-        const auto was_present = std::any_of(
-            logical_->packages.begin(), logical_->packages.end() - 1,
-            [&](const auto& previous) {
-                return std::any_of(previous.manifest.artifacts.begin(), previous.manifest.artifacts.end(),
-                                   [&](const auto& entry) { return entry.asset == artifact.asset; });
-            });
-        logical_->changes.push_back({.sequence = ++logical_->change_sequence,
-                                     .kind = was_present ? asset_database_change_kind::provider_changed
-                                                         : asset_database_change_kind::added,
-                                     .guid = artifact.asset,
-                                     .provider_id = provider_id});
+        const auto was_present =
+            std::any_of(logical_->packages.begin(), logical_->packages.end() - 1,
+                        [&](const auto& previous)
+                        {
+                            return std::any_of(previous.manifest.artifacts.begin(), previous.manifest.artifacts.end(),
+                                               [&](const auto& entry) { return entry.asset == artifact.asset; });
+                        });
+        logical_->changes.push_back(
+            {.sequence = ++logical_->change_sequence,
+             .kind = was_present ? asset_database_change_kind::provider_changed : asset_database_change_kind::added,
+             .guid = artifact.asset,
+             .provider_id = provider_id});
     }
     return asset_status::success();
 }
@@ -503,17 +504,15 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
     }
     if (!result.events.empty()) ++telemetry_.change_batches;
     if (result.catalog_reset)
-        logical_->changes.push_back({.sequence = ++logical_->change_sequence,
-                                     .kind = asset_database_change_kind::catalog_reset});
+        logical_->changes.push_back(
+            {.sequence = ++logical_->change_sequence, .kind = asset_database_change_kind::catalog_reset});
     for (const auto& event : result.events)
     {
         if (!event.address.asset.valid()) continue;
-        const auto kind = event.kind == cooked_artifact_change_kind::removed
-                              ? asset_database_change_kind::removed
-                              : asset_database_change_kind::updated;
-        logical_->changes.push_back({.sequence = ++logical_->change_sequence,
-                                     .kind = kind,
-                                     .guid = event.address.asset});
+        const auto kind = event.kind == cooked_artifact_change_kind::removed ? asset_database_change_kind::removed
+                                                                             : asset_database_change_kind::updated;
+        logical_->changes.push_back(
+            {.sequence = ++logical_->change_sequence, .kind = kind, .guid = event.address.asset});
     }
     if (!result.events.empty() || result.catalog_reset) ++logical_->revision;
     return result;
