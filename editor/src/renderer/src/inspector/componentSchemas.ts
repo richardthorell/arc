@@ -654,7 +654,15 @@ export const inspectorComponentSchemas: ReadonlyArray<InspectorComponentSchema> 
       ...commonLightFieldsFor([
         { value: 'lumens', label: 'Lumens (lm)' },
         { value: 'nits', label: 'Nits (cd/m²)' },
-      ]),
+      ]).map((field) =>
+        field.id === 'shadows'
+          ? {
+              ...field,
+              tooltip:
+                'Rectangle/disk soft shadows are not approximated by the conventional punctual-light atlas. The request is preserved for the future virtualized area-shadow path.',
+            }
+          : field,
+      ),
       {
         id: 'width',
         label: 'Width',
