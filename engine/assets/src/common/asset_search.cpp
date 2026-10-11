@@ -66,6 +66,8 @@ asset_status asset_search_indexer::rebuild()
     const auto batch = database_->changes_since(0);
     status = apply_changes(*database_, *index_, batch);
     if (!status) return status;
+    status = index_->set_source_change_cursor(batch.next_sequence);
+    if (!status) return status;
     cursor_ = batch.next_sequence;
     return asset_status::success();
 }
@@ -86,8 +88,80 @@ asset_status asset_search_indexer::refresh()
 
     auto status = apply_changes(*database_, *index_, batch);
     if (!status) return status;
+    status = index_->set_source_change_cursor(batch.next_sequence);
+    if (!status) return status;
     cursor_ = batch.next_sequence;
     return asset_status::success();
+}
+
+
+asset_search_service::asset_search_service(const asset_database& database,
+                                           std::unique_ptr<persistent_asset_search_index> index)
+    : database_(&database), index_(std::move(index)),
+      indexer_(std::make_unique<asset_search_indexer>(database, *index_))
+{
+}
+
+asset_search_service::~asset_search_service() = default;
+
+asset_search_service::open_result
+asset_search_service::open(const asset_database& database, std::filesystem::path cache_path)
+{
+    auto opened = persistent_asset_search_index::open(std::move(cache_path));
+    if (!opened) return open_result::failure(std::move(opened).error());
+
+    auto service = std::unique_ptr<asset_search_service>(
+        new asset_search_service(database, std::move(opened).value()));
+    auto status = service->synchronize();
+    if (!status) return open_result::failure(std::move(status).error());
+    return open_result::success(std::move(service));
+}
+
+asset_status asset_search_service::synchronize()
+{
+    std::scoped_lock lock(mutex_);
+    if (!database_ || !index_ || !indexer_)
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Asset search service is not initialized"});
+
+    if (!index_->source_change_cursor()) return indexer_->rebuild();
+    return indexer_->refresh();
+}
+
+asset_status asset_search_service::rebuild()
+{
+    std::scoped_lock lock(mutex_);
+    if (!indexer_)
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Asset search service is not initialized"});
+    return indexer_->rebuild();
+}
+
+asset_status asset_search_service::refresh()
+{
+    std::scoped_lock lock(mutex_);
+    if (!indexer_)
+        return asset_status::failure(
+            {.code = asset_error_code::invalid_request, .message = "Asset search service is not initialized"});
+    return indexer_->refresh();
+}
+
+std::vector<asset_search_result> asset_search_service::query(const asset_search_query& query_value) const
+{
+    std::scoped_lock lock(mutex_);
+    return index_ ? index_->query(query_value) : std::vector<asset_search_result>{};
+}
+
+std::uint64_t asset_search_service::cursor() const
+{
+    std::scoped_lock lock(mutex_);
+    return indexer_ ? indexer_->cursor() : 0;
+}
+
+const std::filesystem::path& asset_search_service::path() const noexcept
+{
+    static const std::filesystem::path empty;
+    return index_ ? index_->path() : empty;
 }
 
 } // namespace arc::assets
