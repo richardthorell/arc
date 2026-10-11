@@ -283,6 +283,15 @@ struct cooked_asset_catalog::logical_catalog
     std::uint64_t revision{};
     std::uint64_t change_sequence{};
     std::vector<asset_database_change> changes;
+    static constexpr std::size_t maximum_changes = 4096;
+
+    void append_change(asset_database_change change)
+    {
+        change.sequence = ++change_sequence;
+        changes.push_back(std::move(change));
+        if (changes.size() > maximum_changes)
+            changes.erase(changes.begin(), changes.begin() + (changes.size() - maximum_changes));
+    }
 };
 
 class cooked_asset_database final : public asset_database
@@ -327,6 +336,9 @@ public:
         record.generation = active->package->generation;
         record.revision = catalog_->logical_->revision;
         record.active_provider = active->package->provider_id;
+        for (const auto& edge : active->package->manifest.dependency_edges)
+            if (edge.asset == guid) { record.dependencies = edge.dependencies; break; }
+        record.reverse_dependencies = reverse_dependencies(guid);
 
         for (const auto& candidate : candidates)
         {
@@ -357,16 +369,27 @@ public:
         return record;
     }
 
-    [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid) const override
+    [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override
     {
-        // Cook manifests currently retain closure membership but not per-asset
-        // edges. C2.5 can project exact edges once they are serialized.
+        if (!catalog_ || !guid.valid()) return {};
+        const auto& packages = catalog_->logical_->packages;
+        for (auto it = packages.rbegin(); it != packages.rend(); ++it)
+            for (const auto& edge : it->manifest.dependency_edges)
+                if (edge.asset == guid) return edge.dependencies;
         return {};
     }
 
-    [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid) const override
+    [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const override
     {
-        return {};
+        if (!catalog_ || !guid.valid()) return {};
+        std::vector<asset_guid> result;
+        for (const auto& package : catalog_->logical_->packages)
+            for (const auto& edge : package.manifest.dependency_edges)
+                if (std::find(edge.dependencies.begin(), edge.dependencies.end(), guid) != edge.dependencies.end() &&
+                    std::find(result.begin(), result.end(), edge.asset) == result.end())
+                    result.push_back(edge.asset);
+        std::sort(result.begin(), result.end());
+        return result;
     }
 
     [[nodiscard]] std::uint64_t revision() const override
@@ -381,6 +404,8 @@ public:
         if (!catalog_) return batch;
         const auto& logical = *catalog_->logical_;
         batch.next_sequence = std::max(cursor, logical.change_sequence);
+        batch.history_lost = !logical.changes.empty() && cursor < logical.changes.front().sequence - 1;
+        if (batch.history_lost) return batch;
         for (const auto& change : logical.changes)
             if (change.sequence > cursor) batch.events.push_back(change);
         return batch;
@@ -430,9 +455,8 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
                             return std::any_of(previous.manifest.artifacts.begin(), previous.manifest.artifacts.end(),
                                                [&](const auto& entry) { return entry.asset == artifact.asset; });
                         });
-        logical_->changes.push_back(
-            {.sequence = ++logical_->change_sequence,
-             .kind = was_present ? asset_database_change_kind::provider_changed : asset_database_change_kind::added,
+        logical_->append_change(
+            {             .kind = was_present ? asset_database_change_kind::provider_changed : asset_database_change_kind::added,
              .guid = artifact.asset,
              .provider_id = provider_id});
     }
@@ -504,14 +528,14 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
     }
     if (!result.events.empty()) ++telemetry_.change_batches;
     if (result.catalog_reset)
-        logical_->changes.push_back(
+        logical_->append_change(
             {.sequence = ++logical_->change_sequence, .kind = asset_database_change_kind::catalog_reset});
     for (const auto& event : result.events)
     {
         if (!event.address.asset.valid()) continue;
         const auto kind = event.kind == cooked_artifact_change_kind::removed ? asset_database_change_kind::removed
                                                                              : asset_database_change_kind::updated;
-        logical_->changes.push_back(
+        logical_->append_change(
             {.sequence = ++logical_->change_sequence, .kind = kind, .guid = event.address.asset});
     }
     if (!result.events.empty() || result.catalog_reset) ++logical_->revision;
