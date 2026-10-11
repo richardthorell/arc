@@ -265,6 +265,54 @@ TEST_CASE("CAS updates publish atomically persist and supersede resolved generat
     CHECK(vfs.read_all(preserved.value()).get().value() == replacement_two);
 }
 
+TEST_CASE("cooked database projects overlay records and provider unmount")
+{
+    package_fixture fixture;
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service native_files(jobs);
+    arc::io::virtual_file_system vfs(jobs);
+    auto files = std::make_shared<arc::io::filesystem_file_provider>(native_files, fixture.root / "package");
+    REQUIRE(vfs.mount({.root = path("package://base"), .provider = files}).succeeded());
+    arc::assets::cooked_asset_catalog catalog(vfs, path("artifact://game"));
+    REQUIRE(catalog.mount_package(path("package://base/" + fixture.manifest.filename().string()), 10));
+
+    auto overlay = std::make_shared<arc::assets::cas_overlay_provider>(native_files, fixture.root / "overlay");
+    REQUIRE(catalog.mount_overlay(overlay, 100));
+    auto before = catalog.database().query(fixture.asset);
+    REQUIRE(before);
+    REQUIRE(before->providers.size() == 1);
+
+    const auto overlay_only = arc::assets::generate_asset_guid();
+    const auto payload = bytes("overlay-only");
+    const arc::assets::runtime_update_manifest manifest{
+        .target_profile = "windows-test",
+        .base_build_id = "base-build",
+        .update_sequence = 1,
+        .artifacts = {{.address = {overlay_only, fixture.address.schema, "custom"},
+                       .type = arc::assets::asset_types::terrain,
+                       .schema_version = 1,
+                       .hash = arc::assets::hash_bytes(payload),
+                       .size = payload.size()}}};
+    arc::assets::runtime_update_receiver receiver(
+        overlay, {.cache_root = fixture.root / "overlay",
+                  .target_profile = "windows-test", .base_build_id = "base-build"});
+    const std::array blobs{std::pair{manifest.artifacts.front().hash, payload}};
+    REQUIRE(receiver.ingest(manifest, blobs));
+    catalog.poll_changes();
+
+    const auto record = catalog.database().query(overlay_only, arc::assets::asset_types::terrain);
+    REQUIRE(record);
+    CHECK(record->providers.size() == 1);
+    CHECK(record->providers.front().kind == arc::assets::asset_provider_kind::runtime_overlay);
+    CHECK(record->providers.front().active);
+    CHECK(record->active_provider == record->providers.front().id);
+    CHECK(record->representations.front().content_hash == manifest.artifacts.front().hash);
+
+    REQUIRE(catalog.unmount_provider(record->active_provider));
+    CHECK_FALSE(catalog.database().query(overlay_only));
+}
+
 TEST_CASE("CAS rejects corrupt incompatible and stale updates without replacing active content")
 {
     package_fixture fixture;
