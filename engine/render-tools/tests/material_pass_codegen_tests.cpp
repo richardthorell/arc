@@ -351,3 +351,32 @@ TEST_CASE("handwritten Material Shader pass sources compile with pinned Slang")
         require_compiles(compiler, generated.value(), pass);
     }
 }
+
+TEST_CASE("Material pass evaluator retains requested clear-coat normal specialization")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"coat","type":"vector3","values":{"value":[0.0,1.0,0.0]}}
+      ],
+      "connections":[
+        {"id":"coat-out","from":{"nodeId":"coat","pin":"value"},
+         "to":{"nodeId":"out","pin":"clearCoatNormal"}}
+      ]
+    })";
+    const auto compilation = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(compilation);
+    const auto default_evaluator = arc::render::tools::make_graph_material_evaluator(compilation.value());
+    const auto neutral_evaluator = arc::render::tools::make_graph_material_evaluator(
+        compilation.value(), {.independent_clear_coat_normal = false});
+    REQUIRE(default_evaluator);
+    REQUIRE(neutral_evaluator);
+    REQUIRE(default_evaluator.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") !=
+            std::string::npos);
+    REQUIRE(neutral_evaluator.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") ==
+            std::string::npos);
+    REQUIRE(neutral_evaluator.value().source.find("surface.clearCoatNormalWS = surface.normalWS;") !=
+            std::string::npos);
+    REQUIRE(default_evaluator.value().source != neutral_evaluator.value().source);
+}
