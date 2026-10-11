@@ -342,12 +342,14 @@ public:
                 const cooked_artifact_address address{
                     .asset = artifact.asset, .schema = artifact.schema, .name = artifact.name};
                 auto locator = cooked_artifact_virtual_path(address, catalog_->artifact_root_.string());
-                record.representations.push_back({.name = artifact.name,
-                                                  .provider_id = package.provider_id,
-                                                  .content_hash = artifact.hash,
-                                                  .size = artifact.size,
-                                                  .residency = asset_residency::metadata_only,
-                                                  .locator_hint = locator ? locator.value().string() : std::string{}});
+                asset_database_representation representation;
+                representation.name = artifact.name;
+                representation.provider_id = package.provider_id;
+                representation.content_hash = artifact.hash;
+                representation.size = artifact.size;
+                representation.residency = asset_residency::metadata_only;
+                representation.locator_hint = locator ? locator.value().string() : std::string{};
+                record.representations.push_back(std::move(representation));
             }
         }
         return record;
@@ -395,7 +397,7 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     const auto manifest = package->manifest();
     const auto provider_id = "package:" + (manifest.build_id.empty() ? std::string{"anonymous"} : manifest.build_id) +
                              ":" + std::to_string(logical_->revision + 1);
-    const auto status = mount_provider(package, priority, provider_id);
+    auto status = mount_provider(package, priority, provider_id);
     if (!status) return status;
 
     logical_->packages.push_back({.provider_id = provider_id,
