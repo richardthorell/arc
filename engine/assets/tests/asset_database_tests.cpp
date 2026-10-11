@@ -264,7 +264,6 @@ TEST_CASE("asset database exposes dependency graph through one logical contract"
     CHECK(fixture.manager.database().revision() >= record->revision);
 }
 
-
 namespace
 {
 class bundle_test_database final : public arc::assets::asset_database
@@ -272,8 +271,8 @@ class bundle_test_database final : public arc::assets::asset_database
 public:
     std::map<arc::assets::asset_guid, std::vector<arc::assets::asset_guid>> entries;
 
-    std::optional<arc::assets::asset_database_record> query(
-        arc::assets::asset_guid guid, arc::assets::asset_type_id = {}) const override
+    std::optional<arc::assets::asset_database_record> query(arc::assets::asset_guid guid,
+                                                            arc::assets::asset_type_id = {}) const override
     {
         if (!entries.contains(guid)) return std::nullopt;
         arc::assets::asset_database_record record;
@@ -299,8 +298,14 @@ public:
         const auto it = entries.find(guid);
         return it == entries.end() ? std::vector<arc::assets::asset_guid>{} : it->second;
     }
-    std::vector<arc::assets::asset_guid> reverse_dependencies(arc::assets::asset_guid) const override { return {}; }
-    std::uint64_t revision() const override { return 1; }
+    std::vector<arc::assets::asset_guid> reverse_dependencies(arc::assets::asset_guid) const override
+    {
+        return {};
+    }
+    std::uint64_t revision() const override
+    {
+        return 1;
+    }
     arc::assets::asset_database_change_batch changes_since(std::uint64_t cursor) const override
     {
         return {.next_sequence = cursor};
@@ -336,7 +341,7 @@ TEST_CASE("content bundles preserve shared GUIDs across nested dependency closur
     CHECK(resolved.assets.size() == 3);
     CHECK(resolved.bundles.size() == 2);
     CHECK(catalog.memberships(shared, database) ==
-          std::vector<content_bundle_id>{ "Level/Forest", std::string(builtin_bundle_ids::startup) });
+          std::vector<content_bundle_id>{"Level/Forest", std::string(builtin_bundle_ids::startup)});
     CHECK(catalog.closure("Level/Forest", database).assets == resolved.assets);
 }
 

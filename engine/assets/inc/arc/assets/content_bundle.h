@@ -74,7 +74,10 @@ struct bundle_closure_result
     /** Sorted, unique bundle IDs, including this bundle. */
     std::vector<content_bundle_id> bundles;
 
-    [[nodiscard]] bool succeeded() const noexcept { return error == bundle_error::none; }
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error == bundle_error::none;
+    }
 };
 
 /** Descriptor registry; no asset state mutation, cooking, or I/O. */
@@ -166,8 +169,7 @@ public:
         for (const auto& [id, descriptor] : bundles_)
         {
             const auto resolved = closure(id, database);
-            if (resolved.succeeded() &&
-                std::binary_search(resolved.assets.begin(), resolved.assets.end(), guid))
+            if (resolved.succeeded() && std::binary_search(resolved.assets.begin(), resolved.assets.end(), guid))
                 result.push_back(id);
         }
         return result;
