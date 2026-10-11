@@ -25,8 +25,10 @@ describe('built-in Material Functions', () => {
       'channel_mask.arcmatfn',
       'checker.arcmatfn',
       'default_base_color.arcmatfn',
+      'fresnel_schlick.arcmatfn',
       'glossiness_to_roughness.arcmatfn',
       'gradient.arcmatfn',
+      'ior_to_f0.arcmatfn',
       'noise.arcmatfn',
       'normal_blend.arcmatfn',
       'normal_map.arcmatfn',
@@ -52,6 +54,8 @@ describe('built-in Material Functions', () => {
     }
     const expectedOutputs: Record<string, Array<{ id: string; name: string; type: string }>> = {
       channel_mask: [{ id: 'value', name: 'Value', type: 'float' }],
+      fresnel_schlick: [{ id: 'fresnel', name: 'Fresnel', type: 'float' }],
+      ior_to_f0: [{ id: 'f0', name: 'F0', type: 'float' }],
       glossiness_to_roughness: [{ id: 'roughness', name: 'Roughness', type: 'float' }],
       roughness_remap: [{ id: 'roughness', name: 'Roughness', type: 'float' }],
       unpack_orm: [

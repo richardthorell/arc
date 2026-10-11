@@ -1,0 +1,240 @@
+{
+  "kind": "materialFunction",
+  "version": 1,
+  "name": "IOR to F0",
+  "description": "Normal-incidence dielectric reflectance: ((IOR - 1)/(IOR + 1)) squared. IOR is clamped to >= 1.",
+  "inputs": [
+    {
+      "id": "ior",
+      "name": "Index of Refraction",
+      "type": "float",
+      "default": 1.5
+    }
+  ],
+  "outputs": [
+    {
+      "id": "f0",
+      "name": "F0",
+      "type": "float"
+    }
+  ],
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "input-ior",
+        "type": "functionInput",
+        "position": [
+          30,
+          200
+        ],
+        "values": {
+          "input": "ior",
+          "name": "Index of Refraction",
+          "valueType": "float"
+        }
+      },
+      {
+        "id": "one",
+        "type": "constant",
+        "position": [
+          40,
+          430
+        ],
+        "values": {
+          "value": 1
+        }
+      },
+      {
+        "id": "safe-ior",
+        "type": "max",
+        "position": [
+          250,
+          200
+        ],
+        "values": {}
+      },
+      {
+        "id": "numerator",
+        "type": "subtract",
+        "position": [
+          450,
+          100
+        ],
+        "values": {}
+      },
+      {
+        "id": "denominator",
+        "type": "add",
+        "position": [
+          450,
+          330
+        ],
+        "values": {}
+      },
+      {
+        "id": "ratio",
+        "type": "divide",
+        "position": [
+          680,
+          200
+        ],
+        "values": {}
+      },
+      {
+        "id": "square",
+        "type": "multiply",
+        "position": [
+          850,
+          200
+        ],
+        "values": {}
+      },
+      {
+        "id": "out",
+        "type": "functionOutput",
+        "position": [
+          1090,
+          200
+        ],
+        "values": {
+          "pins": [
+            {
+              "id": "f0",
+              "name": "F0",
+              "type": "float"
+            }
+          ]
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "safe",
+        "from": {
+          "nodeId": "input-ior",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "safe-ior",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "lower",
+        "from": {
+          "nodeId": "one",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "safe-ior",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "n1",
+        "from": {
+          "nodeId": "safe-ior",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "numerator",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "n2",
+        "from": {
+          "nodeId": "one",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "numerator",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "d1",
+        "from": {
+          "nodeId": "safe-ior",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "denominator",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "d2",
+        "from": {
+          "nodeId": "one",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "denominator",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "r1",
+        "from": {
+          "nodeId": "numerator",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "ratio",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "r2",
+        "from": {
+          "nodeId": "denominator",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "ratio",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "s1",
+        "from": {
+          "nodeId": "ratio",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "square",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "s2",
+        "from": {
+          "nodeId": "ratio",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "square",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "o",
+        "from": {
+          "nodeId": "square",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "out",
+          "pin": "f0"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 20,
+      "y": 20,
+      "zoom": 0.8
+    }
+  }
+}
