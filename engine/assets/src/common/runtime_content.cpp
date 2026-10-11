@@ -369,6 +369,30 @@ public:
         return {};
     }
 
+    [[nodiscard]] std::vector<asset_database_record> records() const override
+    {
+        std::vector<asset_guid> guids;
+        if (!catalog_) return {};
+
+        for (const auto& package : catalog_->logical_->packages)
+        {
+            for (const auto& artifact : package.manifest.artifacts)
+            {
+                if (std::find(guids.begin(), guids.end(), artifact.asset) == guids.end())
+                    guids.push_back(artifact.asset);
+            }
+        }
+
+        std::sort(guids.begin(), guids.end(),
+                  [](asset_guid lhs, asset_guid rhs) { return to_string(lhs) < to_string(rhs); });
+
+        std::vector<asset_database_record> result;
+        result.reserve(guids.size());
+        for (const auto guid : guids)
+            if (auto record = query(guid)) result.push_back(std::move(*record));
+        return result;
+    }
+
     [[nodiscard]] std::uint64_t revision() const override
     {
         return catalog_ ? catalog_->logical_->revision : 0;
