@@ -66,7 +66,7 @@ enum class bundle_error : std::uint8_t
     missing_asset
 };
 
-struct bundle_closure_result
+struct [[nodiscard]] bundle_closure_result
 {
     bundle_error error{bundle_error::none};
     /** Sorted, unique asset GUIDs, including nested bundle membership. */
