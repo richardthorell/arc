@@ -122,9 +122,9 @@ class asset_search_index
 public:
     virtual ~asset_search_index() = default;
 
-    virtual void reset(std::span<const asset_search_document> documents) = 0;
-    virtual void upsert(asset_search_document document) = 0;
-    virtual void erase(asset_guid guid) = 0;
+    [[nodiscard]] virtual asset_status reset(std::span<const asset_search_document> documents) = 0;
+    [[nodiscard]] virtual asset_status upsert(asset_search_document document) = 0;
+    [[nodiscard]] virtual asset_status erase(asset_guid guid) = 0;
     [[nodiscard]] virtual std::vector<asset_search_result> query(const asset_search_query& query) const = 0;
 };
 
@@ -147,9 +147,9 @@ public:
     persistent_asset_search_index(const persistent_asset_search_index&) = delete;
     persistent_asset_search_index& operator=(const persistent_asset_search_index&) = delete;
 
-    void reset(std::span<const asset_search_document> documents) override;
-    void upsert(asset_search_document document) override;
-    void erase(asset_guid guid) override;
+    [[nodiscard]] asset_status reset(std::span<const asset_search_document> documents) override;
+    [[nodiscard]] asset_status upsert(asset_search_document document) override;
+    [[nodiscard]] asset_status erase(asset_guid guid) override;
     [[nodiscard]] std::vector<asset_search_result> query(const asset_search_query& query) const override;
 
     [[nodiscard]] const std::filesystem::path& path() const noexcept;
@@ -177,8 +177,8 @@ public:
     {
     }
 
-    void rebuild();
-    void refresh();
+    [[nodiscard]] asset_status rebuild();
+    [[nodiscard]] asset_status refresh();
 
     [[nodiscard]] std::uint64_t cursor() const noexcept
     {
