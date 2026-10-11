@@ -126,6 +126,32 @@ TEST_CASE("cooked package catalog exposes logical assets through Asset Database"
     CHECK(catalog.database().revision() > 0);
 }
 
+TEST_CASE("cooked Asset Database change cursor tracks mounted providers")
+{
+    package_fixture fixture;
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service native_files(jobs);
+    arc::io::virtual_file_system vfs(jobs);
+    auto files = std::make_shared<arc::io::filesystem_file_provider>(native_files, fixture.root / "package");
+    REQUIRE(vfs.mount({.root = path("package://base"), .provider = files}).succeeded());
+
+    arc::assets::cooked_asset_catalog catalog(vfs, path("artifact://game"));
+    const auto manifest = path("package://base/" + fixture.manifest.filename().string());
+    REQUIRE(catalog.mount_package(manifest, 10));
+    const auto first = catalog.database().changes_since(0);
+    REQUIRE(first.events.size() == 1);
+    CHECK(first.events.front().kind == arc::assets::asset_database_change_kind::added);
+    CHECK(first.events.front().guid == fixture.asset);
+
+    REQUIRE(catalog.mount_package(manifest, 20));
+    const auto second = catalog.database().changes_since(first.next_sequence);
+    REQUIRE(second.events.size() == 1);
+    CHECK(second.events.front().kind == arc::assets::asset_database_change_kind::provider_changed);
+    CHECK(second.events.front().guid == fixture.asset);
+    CHECK(catalog.database().changes_since(second.next_sequence).events.empty());
+}
+
 TEST_CASE("cooked Asset Database chooses the highest priority package provider")
 {
     package_fixture fixture;

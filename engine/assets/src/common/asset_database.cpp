@@ -1,5 +1,7 @@
 #include <arc/assets/asset_database.h>
 
+#include <algorithm>
+
 namespace arc::assets
 {
 namespace
@@ -87,6 +89,25 @@ std::vector<asset_guid> asset_manager_database::dependencies(asset_guid guid) co
 std::vector<asset_guid> asset_manager_database::reverse_dependencies(asset_guid guid) const
 {
     return manager_ ? manager_->reverse_dependencies(guid) : std::vector<asset_guid>{};
+}
+
+asset_database_change_batch asset_manager_database::changes_since(std::uint64_t cursor) const
+{
+    asset_database_change_batch batch;
+    batch.next_sequence = cursor;
+    if (!manager_) return batch;
+    const auto source_events = manager_->events_since(cursor);
+    for (const auto& event : source_events)
+    {
+        batch.next_sequence = std::max(batch.next_sequence, event.sequence);
+        if (!event.guid.valid()) continue;
+        auto kind = asset_database_change_kind::updated;
+        if (event.kind == asset_event_kind::discovered) kind = asset_database_change_kind::added;
+        // The manager currently exposes no explicit removed event.
+        // A future scan/tombstone event can map to removed without altering callers.
+        batch.events.push_back({.sequence = event.sequence, .kind = kind, .guid = event.guid});
+    }
+    return batch;
 }
 
 std::uint64_t asset_manager_database::revision() const
