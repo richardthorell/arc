@@ -53,6 +53,7 @@ describe('core built-in material families', () => {
       'Roughness Minimum',
       'Roughness Maximum',
       'Roughness Curve',
+      'Index of Refraction',
     ]);
     expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);

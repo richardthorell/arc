@@ -58,6 +58,7 @@ describe('Standard Lit shared channel functions', () => {
       'Roughness Minimum',
       'Roughness Maximum',
       'Roughness Curve',
+      'Index of Refraction',
     ]);
   });
 });

@@ -839,6 +839,25 @@
           "exposed": false,
           "name": "Roughness Remap"
         }
+      },
+      {
+        "id": "index-of-refraction",
+        "type": "constant",
+        "position": [
+          100,
+          780
+        ],
+        "values": {
+          "value": 1.5,
+          "min": 1.0001,
+          "max": 3
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Index of Refraction",
+          "group": "surface",
+          "order": 25
+        }
       }
     ],
     "connections": [
@@ -1424,6 +1443,17 @@
           "nodeId": "roughness-remap",
           "pin": "power"
         }
+      },
+      {
+        "id": "ior-out",
+        "from": {
+          "nodeId": "index-of-refraction",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "indexOfRefraction"
+        }
       }
     ],
     "viewport": {
@@ -1468,7 +1498,8 @@
           "roughness-remap-min",
           "roughness-remap-max",
           "roughness-remap-power",
-          "roughness-remap"
+          "roughness-remap",
+          "index-of-refraction"
         ],
         "position": [
           40,
