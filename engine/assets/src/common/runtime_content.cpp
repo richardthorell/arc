@@ -512,7 +512,8 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     return asset_status::success();
 }
 
-asset_status cooked_asset_catalog::mount_overlay(std::shared_ptr<cas_overlay_provider> provider, std::int32_t priority)
+asset_status cooked_asset_catalog::mount_overlay(const std::shared_ptr<cas_overlay_provider>& provider,
+                                                 std::int32_t priority)
 {
     if (!provider) return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Null overlay"));
     const auto id = std::string(asset_provider_ids::runtime_overlay) + ":" + std::to_string(logical_->revision + 1);
