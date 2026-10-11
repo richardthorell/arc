@@ -124,6 +124,12 @@ TEST_CASE("cooked package catalog exposes logical assets through Asset Database"
     CHECK(record->representations.front().locator_hint.starts_with("artifact://game/"));
     CHECK_FALSE(catalog.database().query(fixture.asset, arc::assets::asset_types::texture_2d));
     CHECK(catalog.database().revision() > 0);
+
+    const auto records = catalog.database().records();
+    REQUIRE(records.size() == 1);
+    CHECK(records.front().guid == fixture.asset);
+    CHECK(records.front().type == arc::assets::asset_types::terrain);
+    CHECK(records.front().active_provider == record->active_provider);
 }
 
 TEST_CASE("cooked Asset Database change cursor tracks mounted providers")
