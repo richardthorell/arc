@@ -38,6 +38,8 @@ describe('core built-in material families', () => {
       'Metallic Roughness Texture',
       'Ambient Occlusion Texture',
       'Normal Texture',
+      'Detail Normal Texture',
+      'Detail Normal Strength',
       'Clear Coat',
       'Clear Coat Roughness',
       'Clear Coat Texture',
