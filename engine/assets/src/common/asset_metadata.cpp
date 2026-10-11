@@ -204,6 +204,7 @@ std::optional<std::pair<asset_type_id, asset_importer_id>>
 classify_asset_path(const std::filesystem::path& path) noexcept
 {
     const std::string extension = lowercase(path.extension().string());
+    if (extension == ".arcbundle") return std::pair{asset_types::binary_blob, importer_ids::binary};
     if (extension == ".arcscene") return std::pair{asset_types::scene, importer_ids::scene};
     if (extension == ".arcprefab") return std::pair{asset_types::prefab, importer_ids::prefab};
     if (extension == ".arcmat") return std::pair{asset_types::material, importer_ids::material};
