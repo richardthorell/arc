@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "cd5d5aa2-c1f0-4619-8bc9-b938e4aa0111",
+  "importer": "a7ca55e7-0000-0002-0000-000000000012",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-000000000011",
+  "title": "IOR to F0",
+  "description": "Normal-incidence dielectric reflectance: ((IOR - 1)/(IOR + 1)) squared. IOR is clamped to >= 1."
+}
