@@ -12,11 +12,7 @@ const read = (name: string) =>
 
 const connected = (asset: MaterialFunctionAssetJson, from: string, fromPin: string, to: string, toPin: string) =>
   asset.graph.connections.some(
-    (edge) =>
-      edge.from.nodeId === from &&
-      edge.from.pin === fromPin &&
-      edge.to.nodeId === to &&
-      edge.to.pin === toPin,
+    (edge) => edge.from.nodeId === from && edge.from.pin === fromPin && edge.to.nodeId === to && edge.to.pin === toPin,
   );
 
 describe('reusable PBR roughness utilities', () => {
