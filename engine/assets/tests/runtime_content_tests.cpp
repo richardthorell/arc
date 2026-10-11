@@ -31,6 +31,7 @@ struct package_fixture
     std::filesystem::path root = std::filesystem::temp_directory_path() /
                                  ("arc-runtime-content-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
     arc::assets::asset_guid asset = arc::assets::generate_asset_guid();
+    arc::assets::asset_guid dependency = arc::assets::generate_asset_guid();
     arc::io::file_buffer packaged = bytes("packaged-payload");
     arc::assets::cooked_artifact_address address{asset, arc::assets::artifact_schemas::virtual_geometry,
                                                  "terrain/regions/0/0/virtual-geometry"};
@@ -48,6 +49,7 @@ struct package_fixture
         description.build_id = "base-build";
         description.roots.push_back(asset);
         description.dependency_closure.push_back(asset);
+        description.dependency_edges.push_back({.asset = asset, .dependencies = {dependency}});
         description.artifacts.push_back({.asset = asset,
                                          .type = asset_types::terrain,
                                          .name = address.name,
@@ -110,6 +112,10 @@ TEST_CASE("cooked package catalog exposes logical assets through Asset Database"
     CHECK(record->type == arc::assets::asset_types::terrain);
     CHECK(record->state == arc::assets::asset_state::ready);
     CHECK(record->residency == arc::assets::asset_residency::metadata_only);
+    CHECK(record->dependencies == std::vector<arc::assets::asset_guid>{fixture.dependency});
+    CHECK(catalog.database().dependencies(fixture.asset) == record->dependencies);
+    CHECK(catalog.database().reverse_dependencies(fixture.dependency) ==
+          std::vector<arc::assets::asset_guid>{fixture.asset});
     CHECK(record->active_provider.starts_with(std::string(arc::assets::asset_provider_ids::cooked_package_prefix) +
                                               "base-build:"));
     REQUIRE(record->providers.size() == 1);
