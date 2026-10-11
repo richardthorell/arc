@@ -356,8 +356,9 @@ public:
         record.generation = overlay_active ? overlay->generation : active->package->generation;
         record.revision = catalog_->logical_->revision;
         record.active_provider = overlay_active ? overlay->id : active->package->provider_id;
-        for (const auto& edge : active->package->manifest.dependency_edges)
-            if (edge.asset == guid) { record.dependencies = edge.dependencies; break; }
+        if (!candidates.empty())
+            for (const auto& edge : active->package->manifest.dependency_edges)
+                if (edge.asset == guid) { record.dependencies = edge.dependencies; break; }
         record.reverse_dependencies = reverse_dependencies(guid);
 
         if (overlay)
@@ -497,7 +498,7 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
                                                [&](const auto& entry) { return entry.asset == artifact.asset; });
                         });
         logical_->append_change(
-            {             .kind = was_present ? asset_database_change_kind::provider_changed : asset_database_change_kind::added,
+            {.kind = was_present ? asset_database_change_kind::provider_changed : asset_database_change_kind::added,
              .guid = artifact.asset,
              .provider_id = provider_id});
     }
@@ -609,14 +610,14 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
     if (!result.events.empty()) ++telemetry_.change_batches;
     if (result.catalog_reset)
         logical_->append_change(
-            {.sequence = ++logical_->change_sequence, .kind = asset_database_change_kind::catalog_reset});
+            {.kind = asset_database_change_kind::catalog_reset});
     for (const auto& event : result.events)
     {
         if (!event.address.asset.valid()) continue;
         const auto kind = event.kind == cooked_artifact_change_kind::removed ? asset_database_change_kind::removed
                                                                              : asset_database_change_kind::updated;
         logical_->append_change(
-            {.sequence = ++logical_->change_sequence, .kind = kind, .guid = event.address.asset});
+            {.kind = kind, .guid = event.address.asset});
     }
     for (auto& overlay : logical_->overlays)
     {
