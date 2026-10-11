@@ -268,8 +268,117 @@ const cook_manifest& package_artifact_provider::manifest() const noexcept
     return implementation_->manifest;
 }
 
+struct cooked_asset_catalog::logical_catalog
+{
+    struct package_record
+    {
+        std::string provider_id;
+        std::string debug_name;
+        std::int32_t priority{};
+        std::uint64_t generation{};
+        cook_manifest manifest;
+    };
+
+    std::vector<package_record> packages;
+    std::uint64_t revision{};
+};
+
+class cooked_asset_database final : public asset_database
+{
+public:
+    explicit cooked_asset_database(const cooked_asset_catalog& catalog) noexcept : catalog_(&catalog) {}
+
+    [[nodiscard]] std::optional<asset_database_record> query(asset_guid guid,
+                                                             asset_type_id expected_type = {}) const override
+    {
+        if (!catalog_ || !guid.valid()) return std::nullopt;
+
+        struct candidate
+        {
+            const cooked_asset_catalog::logical_catalog::package_record* package{};
+            asset_type_id type{};
+        };
+        std::vector<candidate> candidates;
+        for (const auto& package : catalog_->logical_->packages)
+        {
+            const auto artifact = std::find_if(package.manifest.artifacts.begin(), package.manifest.artifacts.end(),
+                                               [&](const auto& value) { return value.asset == guid; });
+            if (artifact == package.manifest.artifacts.end()) continue;
+            if (expected_type.valid() && artifact->type != expected_type) continue;
+            candidates.push_back({.package = &package, .type = artifact->type});
+        }
+        if (candidates.empty()) return std::nullopt;
+
+        const auto active = std::max_element(candidates.begin(), candidates.end(),
+                                             [](const candidate& lhs, const candidate& rhs)
+                                             {
+                                                 if (lhs.package->priority != rhs.package->priority)
+                                                     return lhs.package->priority < rhs.package->priority;
+                                                 return lhs.package->generation < rhs.package->generation;
+                                             });
+
+        asset_database_record record;
+        record.guid = guid;
+        record.type = active->type;
+        record.state = asset_state::ready;
+        record.residency = asset_residency::metadata_only;
+        record.generation = active->package->generation;
+        record.revision = catalog_->logical_->revision;
+        record.active_provider = active->package->provider_id;
+
+        for (const auto& candidate : candidates)
+        {
+            const auto& package = *candidate.package;
+            record.providers.push_back({.id = package.provider_id,
+                                        .kind = asset_provider_kind::cooked_package,
+                                        .debug_name = package.debug_name,
+                                        .priority = package.priority,
+                                        .generation = package.generation,
+                                        .active = package.provider_id == record.active_provider,
+                                        .read_only = true});
+            for (const auto& artifact : package.manifest.artifacts)
+            {
+                if (artifact.asset != guid) continue;
+                const cooked_artifact_address address{
+                    .asset = artifact.asset, .schema = artifact.schema, .name = artifact.name};
+                auto locator = cooked_artifact_virtual_path(address, catalog_->artifact_root_.string());
+                asset_database_representation representation;
+                representation.name = artifact.name;
+                representation.provider_id = package.provider_id;
+                representation.content_hash = artifact.hash;
+                representation.size = artifact.size;
+                representation.residency = asset_residency::metadata_only;
+                representation.locator_hint = locator ? locator.value().string() : std::string{};
+                record.representations.push_back(std::move(representation));
+            }
+        }
+        return record;
+    }
+
+    [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid) const override
+    {
+        // Cook manifests currently retain closure membership but not per-asset
+        // edges. C2.5 can project exact edges once they are serialized.
+        return {};
+    }
+
+    [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid) const override
+    {
+        return {};
+    }
+
+    [[nodiscard]] std::uint64_t revision() const override
+    {
+        return catalog_ ? catalog_->logical_->revision : 0;
+    }
+
+private:
+    const cooked_asset_catalog* catalog_{};
+};
+
 cooked_asset_catalog::cooked_asset_catalog(io::virtual_file_system& files, io::virtual_path artifact_root)
-    : files_(&files), artifact_root_(std::move(artifact_root))
+    : logical_(std::make_unique<logical_catalog>()), database_(std::make_unique<cooked_asset_database>(*this)),
+      files_(&files), artifact_root_(std::move(artifact_root))
 {
 }
 
@@ -283,7 +392,21 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
 {
     auto provider = package_artifact_provider::create(*files_, manifest_file);
     if (!provider) return asset_status::failure(std::move(provider).error());
-    return mount_provider(std::move(provider).value(), priority, "cooked package");
+
+    auto package = std::move(provider).value();
+    const auto manifest = package->manifest();
+    const auto provider_id = "package:" + (manifest.build_id.empty() ? std::string{"anonymous"} : manifest.build_id) +
+                             ":" + std::to_string(logical_->revision + 1);
+    auto status = mount_provider(package, priority, provider_id);
+    if (!status) return status;
+
+    logical_->packages.push_back({.provider_id = provider_id,
+                                  .debug_name = provider_id,
+                                  .priority = priority,
+                                  .generation = package->provider_generation(),
+                                  .manifest = manifest});
+    ++logical_->revision;
+    return asset_status::success();
 }
 
 asset_status cooked_asset_catalog::mount_provider(std::shared_ptr<io::virtual_file_provider> provider,
@@ -356,6 +479,11 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
 cooked_asset_catalog_telemetry cooked_asset_catalog::telemetry() const noexcept
 {
     return telemetry_;
+}
+
+const asset_database& cooked_asset_catalog::database() const noexcept
+{
+    return *database_;
 }
 
 } // namespace arc::assets

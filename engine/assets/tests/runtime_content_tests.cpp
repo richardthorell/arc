@@ -91,6 +91,66 @@ TEST_CASE("package artifacts resolve and range-read through logical VFS handles"
     CHECK(range.value() == arc::io::file_buffer(fixture.packaged.begin() + 2, fixture.packaged.begin() + 7));
 }
 
+TEST_CASE("cooked package catalog exposes logical assets through Asset Database")
+{
+    package_fixture fixture;
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service native_files(jobs);
+    arc::io::virtual_file_system vfs(jobs);
+    auto package_files = std::make_shared<arc::io::filesystem_file_provider>(native_files, fixture.root / "package");
+    REQUIRE(vfs.mount({.root = path("package://base"), .provider = package_files}).succeeded());
+
+    arc::assets::cooked_asset_catalog catalog(vfs, path("artifact://game"));
+    REQUIRE(catalog.mount_package(path("package://base/" + fixture.manifest.filename().string()), 25));
+
+    const auto record = catalog.database().query(fixture.asset, arc::assets::asset_types::terrain);
+    REQUIRE(record);
+    CHECK(record->guid == fixture.asset);
+    CHECK(record->type == arc::assets::asset_types::terrain);
+    CHECK(record->state == arc::assets::asset_state::ready);
+    CHECK(record->residency == arc::assets::asset_residency::metadata_only);
+    CHECK(record->active_provider.starts_with("package:base-build:"));
+    REQUIRE(record->providers.size() == 1);
+    CHECK(record->providers.front().kind == arc::assets::asset_provider_kind::cooked_package);
+    CHECK(record->providers.front().priority == 25);
+    CHECK(record->providers.front().active);
+    CHECK(record->providers.front().read_only);
+    REQUIRE(record->representations.size() == 1);
+    CHECK(record->representations.front().name == fixture.address.name);
+    CHECK(record->representations.front().content_hash == arc::assets::hash_bytes(fixture.packaged));
+    CHECK(record->representations.front().size == fixture.packaged.size());
+    CHECK(record->representations.front().locator_hint.starts_with("artifact://game/"));
+    CHECK_FALSE(catalog.database().query(fixture.asset, arc::assets::asset_types::texture_2d));
+    CHECK(catalog.database().revision() > 0);
+}
+
+TEST_CASE("cooked Asset Database chooses the highest priority package provider")
+{
+    package_fixture fixture;
+    arc::jobs::job_system jobs(
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false});
+    arc::io::async_file_service native_files(jobs);
+    arc::io::virtual_file_system vfs(jobs);
+    auto package_files = std::make_shared<arc::io::filesystem_file_provider>(native_files, fixture.root / "package");
+    REQUIRE(vfs.mount({.root = path("package://base"), .provider = package_files}).succeeded());
+
+    arc::assets::cooked_asset_catalog catalog(vfs, path("artifact://game"));
+    const auto manifest_path = path("package://base/" + fixture.manifest.filename().string());
+    REQUIRE(catalog.mount_package(manifest_path, 10));
+    REQUIRE(catalog.mount_package(manifest_path, 100));
+
+    const auto record = catalog.database().query(fixture.asset);
+    REQUIRE(record);
+    REQUIRE(record->providers.size() == 2);
+    const auto active = std::find_if(record->providers.begin(), record->providers.end(),
+                                     [](const auto& provider) { return provider.active; });
+    REQUIRE(active != record->providers.end());
+    CHECK(active->priority == 100);
+    CHECK(active->id == record->active_provider);
+    CHECK(record->representations.size() == 2);
+}
+
 TEST_CASE("CAS updates publish atomically persist and supersede resolved generations")
 {
     package_fixture fixture;

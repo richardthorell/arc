@@ -5,6 +5,7 @@
  */
 
 #include <arc/assets/package_artifact_reader.h>
+#include <arc/assets/asset_database.h>
 #include <arc/io/virtual_file_system.h>
 
 #include <cstdint>
@@ -85,6 +86,8 @@ struct cooked_asset_catalog_telemetry
     std::uint64_t resets{};
 };
 
+class cooked_asset_database;
+
 class cooked_asset_catalog
 {
 public:
@@ -97,13 +100,19 @@ public:
     [[nodiscard]] io::file_result<io::resolved_virtual_file> resolve(const cooked_artifact_address& address);
     [[nodiscard]] cooked_artifact_change_batch poll_changes();
     [[nodiscard]] cooked_asset_catalog_telemetry telemetry() const noexcept;
+    [[nodiscard]] const asset_database& database() const noexcept;
 
 private:
+    struct logical_catalog;
+    std::unique_ptr<logical_catalog> logical_;
+    std::unique_ptr<cooked_asset_database> database_;
     io::virtual_file_system* files_{};
     io::virtual_path artifact_root_;
     std::vector<io::mount_id> mounts_;
     std::uint64_t last_vfs_sequence_{};
     cooked_asset_catalog_telemetry telemetry_{};
+
+    friend class cooked_asset_database;
 };
 
 struct runtime_update_artifact
