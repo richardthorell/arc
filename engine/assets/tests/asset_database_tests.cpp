@@ -369,7 +369,6 @@ TEST_CASE("content bundles reject dependency cycles and missing references")
     CHECK(missing.closure("Only", database).error == bundle_error::missing_asset);
 }
 
-
 TEST_CASE("arcbundle descriptor round trips with GUID roots and policies")
 {
     using namespace arc::assets;
@@ -398,7 +397,11 @@ TEST_CASE("arcbundle parser rejects malformed formats and references")
     using namespace arc::assets;
     CHECK_FALSE(parse_content_bundle("{}").succeeded());
     CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":2,"id":"A","roots":[]})").succeeded());
-    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":["not-a-guid"]})").succeeded());
-    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":[],"bundleDependencies":["A"]})").succeeded());
-    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":[],"preload":"invalid"})").succeeded());
+    CHECK_FALSE(
+        parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":["not-a-guid"]})").succeeded());
+    CHECK_FALSE(
+        parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":[],"bundleDependencies":["A"]})")
+            .succeeded());
+    CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":[],"preload":"invalid"})")
+                    .succeeded());
 }

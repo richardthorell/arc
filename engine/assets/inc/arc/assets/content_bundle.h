@@ -62,14 +62,16 @@ struct [[nodiscard]] content_bundle_io_result
 {
     content_bundle_descriptor descriptor;
     std::string error;
-    [[nodiscard]] bool succeeded() const noexcept { return error.empty(); }
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error.empty();
+    }
 };
 
 [[nodiscard]] content_bundle_io_result parse_content_bundle(std::string_view json_text);
 [[nodiscard]] content_bundle_io_result load_content_bundle(const std::filesystem::path& path);
 [[nodiscard]] std::string serialize_content_bundle(const content_bundle_descriptor& descriptor);
-[[nodiscard]] bool save_content_bundle(const std::filesystem::path& path,
-                                       const content_bundle_descriptor& descriptor,
+[[nodiscard]] bool save_content_bundle(const std::filesystem::path& path, const content_bundle_descriptor& descriptor,
                                        std::string& error);
 
 enum class bundle_error : std::uint8_t
