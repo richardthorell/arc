@@ -45,6 +45,54 @@ enum class area_light_shape : std::uint8_t
 };
 
 /**
+ * @brief Executable shadow representation for finite area emitters.
+ *
+ * ARC's conventional local-shadow atlas is a punctual-light representation and therefore
+ * cannot produce physically meaningful rectangle/disk penumbrae. Until an executable
+ * VSM/source-shape path exists, area lights are explicitly unshadowed rather than silently
+ * pretending a hard punctual shadow is an area shadow.
+ */
+enum class area_shadow_representation : std::uint8_t
+{
+    none,
+    unsupported_conventional,
+    virtualized
+};
+
+/** @brief One fitted Linearly Transformed Cosine lookup sample. */
+struct ltc_lookup_sample
+{
+    /** Sparse inverse transform: (m11, m13, m31, m33). */
+    math::vector4f inverse_transform{1.0f, 0.0f, 0.0f, 1.0f};
+    /** x = GGX amplitude, y = Fresnel-weighted amplitude, z/w reserved. */
+    math::vector4f amplitude_fresnel{1.0f, 0.0f, 0.0f, 0.0f};
+};
+
+/**
+ * @brief Backend-neutral LTC lookup payload.
+ *
+ * Samples are row-major with roughness on X and sqrt(1 - NdotV) on Y. This is the
+ * canonical CPU representation that backends upload as two RGBA float LUTs.
+ */
+struct ltc_lookup_table
+{
+    std::uint32_t resolution{};
+    std::vector<ltc_lookup_sample> samples;
+};
+
+/**
+ * @brief Build ARC's deterministic LTC lookup payload.
+ *
+ * The v1 table uses a compact analytic GGX fit so generated data is reproducible and can
+ * later be replaced by an offline higher-resolution fit without changing shader bindings.
+ */
+[[nodiscard]] ltc_lookup_table build_ltc_lookup_table(std::uint32_t resolution = 32u);
+
+/** @brief Bilinearly sample the canonical LTC lookup parameterization on CPU. */
+[[nodiscard]] ltc_lookup_sample sample_ltc_lookup(const ltc_lookup_table& table, float perceptual_roughness,
+                                                  float n_dot_v) noexcept;
+
+/**
  * @brief Normalized LM-63 photometric distribution used by runtime and editor previews.
  *
  * Values are stored horizontal-major: horizontal angle index first, then vertical angle.
