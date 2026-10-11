@@ -48,16 +48,16 @@ inline constexpr std::string_view runtime_overlay = "arc.runtime.overlay";
 {
     switch (kind)
     {
-    case asset_provider_kind::project_source:
-        return "project-source";
-    case asset_provider_kind::builtin_source:
-        return "builtin-source";
-    case asset_provider_kind::virtual_builtin:
-        return "virtual-builtin";
-    case asset_provider_kind::cooked_package:
-        return "cooked-package";
-    case asset_provider_kind::runtime_overlay:
-        return "runtime-overlay";
+        case asset_provider_kind::project_source:
+            return "project-source";
+        case asset_provider_kind::builtin_source:
+            return "builtin-source";
+        case asset_provider_kind::virtual_builtin:
+            return "virtual-builtin";
+        case asset_provider_kind::cooked_package:
+            return "cooked-package";
+        case asset_provider_kind::runtime_overlay:
+            return "runtime-overlay";
     }
     return "unknown";
 }
