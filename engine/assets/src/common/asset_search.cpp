@@ -7,8 +7,7 @@ namespace arc::assets
 namespace
 {
 
-void apply_changes(const asset_database& database, asset_search_index& index,
-                   const asset_database_change_batch& batch)
+void apply_changes(const asset_database& database, asset_search_index& index, const asset_database_change_batch& batch)
 {
     for (const auto& change : batch.events)
     {
@@ -71,8 +70,7 @@ void asset_search_indexer::refresh()
 
     const auto batch = database_->changes_since(cursor_);
     if (batch.history_lost ||
-        std::any_of(batch.events.begin(), batch.events.end(),
-                    [](const asset_database_change& change)
+        std::any_of(batch.events.begin(), batch.events.end(), [](const asset_database_change& change)
                     { return change.kind == asset_database_change_kind::catalog_reset; }))
     {
         rebuild();

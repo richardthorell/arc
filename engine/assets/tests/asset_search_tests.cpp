@@ -13,8 +13,8 @@ public:
     std::optional<arc::assets::asset_database_record>
     query(arc::assets::asset_guid guid, arc::assets::asset_type_id expected_type = {}) const override
     {
-        const auto it = std::find_if(records_.begin(), records_.end(),
-                                     [&](const auto& record) { return record.guid == guid; });
+        const auto it =
+            std::find_if(records_.begin(), records_.end(), [&](const auto& record) { return record.guid == guid; });
         if (it == records_.end()) return std::nullopt;
         if (expected_type.valid() && it->type != expected_type) return std::nullopt;
         return *it;
@@ -85,8 +85,7 @@ public:
         std::erase_if(documents_, [&](const auto& document) { return document.guid == guid; });
     }
 
-    std::vector<arc::assets::asset_search_result>
-    query(const arc::assets::asset_search_query&) const override
+    std::vector<arc::assets::asset_search_result> query(const arc::assets::asset_search_query&) const override
     {
         return {};
     }
