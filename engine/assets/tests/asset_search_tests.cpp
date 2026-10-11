@@ -36,6 +36,7 @@ public:
 
     std::vector<arc::assets::asset_database_record> records() const override
     {
+        ++records_calls_;
         return records_;
     }
 
@@ -61,6 +62,7 @@ public:
     std::vector<arc::assets::asset_database_change> events_;
     std::uint64_t revision_{};
     bool history_lost_{};
+    mutable int records_calls_{};
 };
 
 class recording_search_index final : public arc::assets::asset_search_index
@@ -70,6 +72,7 @@ public:
     {
         ++reset_count;
         documents_.assign(documents.begin(), documents.end());
+        source_cursor_.reset();
         return arc::assets::asset_status::success();
     }
 
@@ -90,12 +93,24 @@ public:
         return arc::assets::asset_status::success();
     }
 
+    std::optional<std::uint64_t> source_change_cursor() const override
+    {
+        return source_cursor_;
+    }
+
+    arc::assets::asset_status set_source_change_cursor(std::uint64_t cursor) override
+    {
+        source_cursor_ = cursor;
+        return arc::assets::asset_status::success();
+    }
+
     std::vector<arc::assets::asset_search_result> query(const arc::assets::asset_search_query&) const override
     {
         return {};
     }
 
     int reset_count{};
+    std::optional<std::uint64_t> source_cursor_;
     std::vector<arc::assets::asset_search_document> documents_;
 };
 
@@ -150,6 +165,8 @@ TEST_CASE("asset search indexer rebuilds from Asset Database records and replays
     CHECK(index.reset_count == 1);
     CHECK(index.documents_.size() == 2);
     CHECK(indexer.cursor() == 2);
+    REQUIRE(index.source_change_cursor());
+    CHECK(*index.source_change_cursor() == 2);
 }
 
 TEST_CASE("asset search indexer incrementally upserts and removes logical assets")
@@ -374,6 +391,160 @@ TEST_CASE("persistent asset search index recreates a corrupt derived cache")
         const auto results = index->query({.text = "Recovered Bike"});
         REQUIRE(results.size() == 1);
         CHECK(results.front().guid == document.guid);
+    }
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+
+TEST_CASE("persistent asset search index persists the Asset Database change checkpoint")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-checkpoint-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    {
+        auto opened = persistent_asset_search_index::open(database_path);
+        REQUIRE(opened);
+        auto index = std::move(opened).value();
+        CHECK_FALSE(index->source_change_cursor());
+        REQUIRE(index->set_source_change_cursor(42));
+        REQUIRE(index->source_change_cursor());
+        CHECK(*index->source_change_cursor() == 42);
+    }
+
+    {
+        auto reopened = persistent_asset_search_index::open(database_path);
+        REQUIRE(reopened);
+        auto index = std::move(reopened).value();
+        REQUIRE(index->source_change_cursor());
+        CHECK(*index->source_change_cursor() == 42);
+    }
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search index rejects source revisions older than the cached document")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-stale-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto guid = generate_asset_guid();
+    asset_search_document current{.guid = guid,
+                                  .type = asset_types::static_mesh,
+                                  .display_name = "Current Bicycle",
+                                  .title = "Current Bicycle",
+                                  .source_generation = 7,
+                                  .source_revision = 12};
+    REQUIRE(index->upsert(current));
+
+    auto stale = current;
+    stale.display_name = "Stale Bicycle";
+    stale.title = "Stale Bicycle";
+    stale.source_generation = 99;
+    stale.source_revision = 11;
+    CHECK_FALSE(index->upsert(stale));
+
+    auto stale_generation = current;
+    stale_generation.display_name = "Older Generation Bicycle";
+    stale_generation.title = "Older Generation Bicycle";
+    stale_generation.source_generation = 6;
+    CHECK_FALSE(index->upsert(stale_generation));
+
+    const auto results = index->query({.text = "Current Bicycle"});
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == guid);
+    CHECK(index->query({.text = "Stale Bicycle"}).empty());
+    CHECK(index->query({.text = "Older Generation Bicycle"}).empty());
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("asset search service resumes incrementally from its persisted checkpoint")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-service-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    fake_asset_database database;
+    auto bicycle = make_record("Bicycle", 1);
+    database.records_ = {bicycle};
+    database.events_ = {{.sequence = 1, .kind = asset_database_change_kind::added, .guid = bicycle.guid}};
+
+    {
+        auto opened = asset_search_service::open(database, database_path);
+        REQUIRE(opened);
+        auto service = std::move(opened).value();
+        CHECK(service->cursor() == 1);
+        REQUIRE(service->query({.text = "Bicycle"}).size() == 1);
+        CHECK(database.records_calls_ == 1);
+    }
+
+    auto chair = make_record("Chair", 2);
+    database.records_.push_back(chair);
+    database.events_.push_back({.sequence = 2, .kind = asset_database_change_kind::added, .guid = chair.guid});
+
+    {
+        auto reopened = asset_search_service::open(database, database_path);
+        REQUIRE(reopened);
+        auto service = std::move(reopened).value();
+
+        CHECK(service->cursor() == 2);
+        REQUIRE(service->query({.text = "Bicycle"}).size() == 1);
+        REQUIRE(service->query({.text = "Chair"}).size() == 1);
+        // A second full records() snapshot would mean startup ignored the
+        // persisted cursor and rebuilt rather than resuming incrementally.
+        CHECK(database.records_calls_ == 1);
+    }
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("asset search service rebuilds when persisted change history is no longer available")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-service-history-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    fake_asset_database database;
+    auto bicycle = make_record("Bicycle", 1);
+    database.records_ = {bicycle};
+    database.events_ = {{.sequence = 1, .kind = asset_database_change_kind::added, .guid = bicycle.guid}};
+
+    {
+        auto opened = asset_search_service::open(database, database_path);
+        REQUIRE(opened);
+        auto service = std::move(opened).value();
+        CHECK(database.records_calls_ == 1);
+    }
+
+    auto replacement = make_record("Replacement", 2);
+    database.records_ = {replacement};
+    database.events_.push_back(
+        {.sequence = 2, .kind = asset_database_change_kind::catalog_reset, .guid = {}});
+    database.history_lost_ = true;
+
+    {
+        auto reopened = asset_search_service::open(database, database_path);
+        REQUIRE(reopened);
+        auto service = std::move(reopened).value();
+
+        CHECK(database.records_calls_ == 2);
+        CHECK(service->query({.text = "Bicycle"}).empty());
+        REQUIRE(service->query({.text = "Replacement"}).size() == 1);
     }
 
     std::error_code error;
