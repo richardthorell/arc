@@ -40,9 +40,13 @@ content_bundle_io_result parse_content_bundle(std::string_view text)
 {
     content_bundle_io_result result;
     const auto document = json::parse(text.begin(), text.end(), nullptr, false);
-    if (!document.is_object() || document.value("format", std::string{}) != "arc.bundle" ||
+    if (!document.is_object() || !document.contains("format") ||
+        !document["format"].is_string() || document["format"] != "arc.bundle" ||
         !document.contains("version") || !document["version"].is_number_unsigned() ||
-        !document.contains("id") || !document["id"].is_string())
+        document["version"].get<std::uint64_t>() > content_bundle_descriptor::current_version ||
+        !document.contains("id") || !document["id"].is_string() ||
+        (document.contains("preload") && !document["preload"].is_string()) ||
+        (document.contains("closure") && !document["closure"].is_string()))
     {
         result.error = "Invalid .arcbundle format, version or ID";
         return result;
