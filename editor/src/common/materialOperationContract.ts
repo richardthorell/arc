@@ -26,6 +26,19 @@ export const assetInspectOutput = z
     readOnly: z.boolean(),
     generation: unsignedId,
     revision: unsignedId,
+    catalogRevision: unsignedId,
+    activeProvider: z.string(),
+    providers: z.array(
+      z
+        .object({
+          id: z.string(),
+          kind: z.enum(['project-source', 'builtin-source', 'virtual-builtin', 'cooked-package', 'runtime-overlay']),
+          active: z.boolean(),
+          readOnly: z.boolean(),
+          generation: unsignedId,
+        })
+        .strict(),
+    ),
     sourceMissing: z.boolean(),
     hasLastGood: z.boolean(),
     dependencies: z.array(guid),

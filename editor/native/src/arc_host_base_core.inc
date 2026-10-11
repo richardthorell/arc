@@ -6924,15 +6924,24 @@ host_response arc_host::query(const host_query_envelope& query) const
                     return {.request_id = request_id, .succeeded = false, .error = "No project asset registry is active"};
                 const auto guid = assets::parse_asset_guid(payload.guid);
                 const auto asset = guid ? state_->asset_registry->find(*guid) : std::nullopt;
-                if (!asset) return {.request_id = request_id, .succeeded = false, .error = "Asset GUID was not found"};
-                nlohmann::json result{{"guid", assets::to_string(asset->guid)},
-                    {"typeId", assets::to_string(asset->type)}, {"title", asset->title},
-                    {"sourcePath", assets::normalize_asset_path(asset->source_path)},
+                const auto& database = state_->asset_registry->database();
+                const auto record = guid ? database.query(*guid) : std::nullopt;
+                if (!record || !asset) return {.request_id = request_id, .succeeded = false, .error = "Asset GUID was not found"};
+                nlohmann::json result{{"guid", assets::to_string(record->guid)},
+                    {"typeId", assets::to_string(record->type)}, {"title", record->title},
+                    {"sourcePath", record->source_hint},
                     {"scope", asset->read_only ? "builtin" : "project"}, {"readOnly", asset->read_only},
-                    {"generation", std::to_string(asset->generation)}, {"revision", std::to_string(asset->revision)},
-                    {"sourceMissing", asset->source_missing}, {"hasLastGood", asset->has_last_good},
+                    {"generation", std::to_string(record->generation)}, {"revision", std::to_string(record->revision)},
+                    {"catalogRevision", std::to_string(database.revision())},
+                    {"activeProvider", record->active_provider}, {"providers", nlohmann::json::array()},
+                    {"sourceMissing", asset->source_missing}, {"hasLastGood", record->has_last_good},
                     {"dependencies", nlohmann::json::array()}, {"diagnostics", nlohmann::json::array()}};
-                for (const auto dependency : asset->dependencies)
+                for (const auto& provider : record->providers)
+                    result["providers"].push_back({{"id", provider.id},
+                        {"kind", assets::asset_provider_kind_name(provider.kind)},
+                        {"active", provider.active}, {"readOnly", provider.read_only},
+                        {"generation", std::to_string(provider.generation)}});
+                for (const auto dependency : record->dependencies)
                     result["dependencies"].push_back(assets::to_string(dependency));
                 for (const auto& diagnostic : asset->diagnostics)
                     result["diagnostics"].push_back(diagnostic.message);
@@ -6942,16 +6951,17 @@ host_response arc_host::query(const host_query_envelope& query) const
             {
                 if (!state_->asset_registry)
                     return {.request_id = request_id, .succeeded = false, .error = "No project asset registry is active"};
-                const auto catalog = state_->asset_registry->search();
+                const auto& database = state_->asset_registry->database();
+                const auto catalog = database.records();
                 const material_inspection_resolver resolve = [&](std::string_view guid, std::string_view hint)
                     -> std::optional<material_inspection_source>
                 {
-                    std::optional<assets::asset_snapshot> asset;
+                    std::optional<assets::asset_database_record> asset;
                     if (!guid.empty())
                     {
                         const auto parsed = assets::parse_asset_guid(guid);
                         if (!parsed) return std::nullopt;
-                        asset = state_->asset_registry->find(*parsed);
+                        asset = database.query(*parsed);
                     }
                     else
                     {
@@ -6960,7 +6970,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                         const auto normalized = assets::normalize_asset_path(std::filesystem::path(hint));
                         for (const auto& candidate : catalog)
                         {
-                            const auto path = assets::normalize_asset_path(candidate.source_path);
+                            const auto path = assets::normalize_asset_path(candidate.source_hint);
                             if (path != normalized && !path.ends_with("/" + normalized)) continue;
                             if (asset) return std::nullopt;
                             asset = candidate;
@@ -6983,7 +6993,7 @@ host_response arc_host::query(const host_query_envelope& query) const
                     stream.read(source.data(), static_cast<std::streamsize>(size));
                     if (!stream || stream.peek() != std::char_traits<char>::eof()) return std::nullopt;
                     return material_inspection_source{.guid = assets::to_string(asset->guid),
-                        .path = assets::normalize_asset_path(asset->source_path), .kind = kind, .source = std::move(source)};
+                        .path = asset->source_hint, .kind = kind, .source = std::move(source)};
                 };
                 const auto source = resolve(payload.guid, {});
                 if (!source) return {.request_id = request_id, .succeeded = false,
