@@ -177,7 +177,7 @@ private:
 class asset_search_indexer
 {
 public:
-    asset_search_indexer(const asset_database& database, asset_search_index& index) noexcept
+    asset_search_indexer(const asset_database& database, asset_search_index& index)
         : database_(&database), index_(&index), cursor_(index.source_change_cursor().value_or(0))
     {
     }
@@ -221,7 +221,7 @@ public:
     [[nodiscard]] asset_status refresh();
     [[nodiscard]] std::vector<asset_search_result> query(const asset_search_query& query) const;
 
-    [[nodiscard]] std::uint64_t cursor() const noexcept;
+    [[nodiscard]] std::uint64_t cursor() const;
     [[nodiscard]] const std::filesystem::path& path() const noexcept;
 
 private:
