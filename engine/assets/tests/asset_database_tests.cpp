@@ -1,4 +1,7 @@
 #include <arc/assets/asset_database.h>
+#include <arc/assets/content_bundle.h>
+
+#include <map>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -259,4 +262,109 @@ TEST_CASE("asset database exposes dependency graph through one logical contract"
     REQUIRE(record);
     CHECK(record->dependencies == std::vector<asset_guid>{b->guid});
     CHECK(fixture.manager.database().revision() >= record->revision);
+}
+
+namespace
+{
+class bundle_test_database final : public arc::assets::asset_database
+{
+public:
+    std::map<arc::assets::asset_guid, std::vector<arc::assets::asset_guid>> entries;
+
+    std::optional<arc::assets::asset_database_record> query(arc::assets::asset_guid guid,
+                                                            arc::assets::asset_type_id = {}) const override
+    {
+        if (!entries.contains(guid)) return std::nullopt;
+        arc::assets::asset_database_record record;
+        record.guid = guid;
+        record.dependencies = entries.at(guid);
+        return record;
+    }
+    std::vector<arc::assets::asset_database_record> records() const override
+    {
+        std::vector<arc::assets::asset_database_record> result;
+        result.reserve(entries.size());
+        for (const auto& [guid, dependencies] : entries)
+        {
+            arc::assets::asset_database_record record;
+            record.guid = guid;
+            record.dependencies = dependencies;
+            result.push_back(std::move(record));
+        }
+        return result;
+    }
+    std::vector<arc::assets::asset_guid> dependencies(arc::assets::asset_guid guid) const override
+    {
+        const auto it = entries.find(guid);
+        return it == entries.end() ? std::vector<arc::assets::asset_guid>{} : it->second;
+    }
+    std::vector<arc::assets::asset_guid> reverse_dependencies(arc::assets::asset_guid) const override
+    {
+        return {};
+    }
+    std::uint64_t revision() const override
+    {
+        return 1;
+    }
+    arc::assets::asset_database_change_batch changes_since(std::uint64_t cursor) const override
+    {
+        return {.next_sequence = cursor};
+    }
+};
+} // namespace
+
+TEST_CASE("content bundles preserve shared GUIDs across nested dependency closures")
+{
+    using namespace arc::assets;
+    bundle_test_database database;
+    const auto scene = generate_asset_guid();
+    const auto audio = generate_asset_guid();
+    const auto shared = generate_asset_guid();
+    database.entries.emplace(scene, std::vector<asset_guid>{shared});
+    database.entries.emplace(audio, std::vector<asset_guid>{shared});
+    database.entries.emplace(shared, std::vector<asset_guid>{});
+
+    content_bundle_catalog catalog;
+    content_bundle_descriptor common;
+    common.id = std::string(builtin_bundle_ids::startup);
+    common.roots = {shared};
+    REQUIRE(catalog.add(std::move(common)) == bundle_error::none);
+
+    content_bundle_descriptor forest;
+    forest.id = "Level/Forest";
+    forest.roots = {scene, audio};
+    forest.bundle_dependencies = {std::string(builtin_bundle_ids::startup)};
+    REQUIRE(catalog.add(std::move(forest)) == bundle_error::none);
+
+    const auto resolved = catalog.closure("Level/Forest", database);
+    REQUIRE(resolved.succeeded());
+    CHECK(resolved.assets.size() == 3);
+    CHECK(resolved.bundles.size() == 2);
+    CHECK(catalog.memberships(shared, database) ==
+          std::vector<content_bundle_id>{"Level/Forest", std::string(builtin_bundle_ids::startup)});
+    CHECK(catalog.closure("Level/Forest", database).assets == resolved.assets);
+}
+
+TEST_CASE("content bundles reject dependency cycles and missing references")
+{
+    using namespace arc::assets;
+    bundle_test_database database;
+    content_bundle_catalog catalog;
+    content_bundle_descriptor first;
+    first.id = "A";
+    first.bundle_dependencies = {"B"};
+    content_bundle_descriptor second;
+    second.id = "B";
+    second.bundle_dependencies = {"A"};
+    REQUIRE(catalog.add(std::move(first)) == bundle_error::none);
+    REQUIRE(catalog.add(std::move(second)) == bundle_error::none);
+    CHECK(catalog.closure("A", database).error == bundle_error::cyclic_bundle_dependency);
+    CHECK(catalog.closure("Unknown", database).error == bundle_error::missing_bundle);
+
+    content_bundle_catalog missing;
+    content_bundle_descriptor root;
+    root.id = "Only";
+    root.roots = {generate_asset_guid()};
+    REQUIRE(missing.add(std::move(root)) == bundle_error::none);
+    CHECK(missing.closure("Only", database).error == bundle_error::missing_asset);
 }
