@@ -279,6 +279,16 @@ struct cooked_asset_catalog::logical_catalog
         cook_manifest manifest;
     };
 
+    struct overlay_record
+    {
+        std::string id;
+        std::int32_t priority{};
+        io::mount_id mount{};
+        std::shared_ptr<cas_overlay_provider> provider;
+        std::uint64_t generation{};
+        runtime_update_manifest manifest;
+    };
+    std::vector<overlay_record> overlays;
     std::vector<package_record> packages;
     std::uint64_t revision{};
     std::uint64_t change_sequence{};
@@ -318,7 +328,15 @@ public:
             if (expected_type.valid() && artifact->type != expected_type) continue;
             candidates.push_back({.package = &package, .type = artifact->type});
         }
-        if (candidates.empty()) return std::nullopt;
+        const auto* overlay = static_cast<const cooked_asset_catalog::logical_catalog::overlay_record*>(nullptr);
+        const runtime_update_artifact* overlay_artifact = nullptr;
+        for (const auto& entry : catalog_->logical_->overlays)
+            for (const auto& artifact : entry.manifest.artifacts)
+                if (artifact.address.asset == guid && !artifact.tombstone &&
+                    (!expected_type.valid() || expected_type == artifact.type) &&
+                    (!overlay || entry.priority > overlay->priority))
+                { overlay = &entry; overlay_artifact = &artifact; }
+        if (candidates.empty() && !overlay) return std::nullopt;
 
         const auto active = std::max_element(candidates.begin(), candidates.end(),
                                              [](const candidate& lhs, const candidate& rhs)
@@ -330,16 +348,39 @@ public:
 
         asset_database_record record;
         record.guid = guid;
-        record.type = active->type;
+        const bool overlay_active = overlay &&
+            (candidates.empty() || overlay->priority > active->package->priority);
+        record.type = overlay_active ? overlay_artifact->type : active->type;
         record.state = asset_state::ready;
         record.residency = asset_residency::metadata_only;
-        record.generation = active->package->generation;
+        record.generation = overlay_active ? overlay->generation : active->package->generation;
         record.revision = catalog_->logical_->revision;
-        record.active_provider = active->package->provider_id;
+        record.active_provider = overlay_active ? overlay->id : active->package->provider_id;
         for (const auto& edge : active->package->manifest.dependency_edges)
             if (edge.asset == guid) { record.dependencies = edge.dependencies; break; }
         record.reverse_dependencies = reverse_dependencies(guid);
 
+        if (overlay)
+        {
+            record.providers.push_back({.id = overlay->id,
+                                        .kind = asset_provider_kind::runtime_overlay,
+                                        .debug_name = overlay->id,
+                                        .priority = overlay->priority,
+                                        .generation = overlay->generation,
+                                        .active = overlay_active,
+                                        .read_only = true});
+            for (const auto& artifact : overlay->manifest.artifacts)
+                if (artifact.address.asset == guid && !artifact.tombstone)
+                {
+                    const auto locator = cooked_artifact_virtual_path(artifact.address, catalog_->artifact_root_.string());
+                    record.representations.push_back({.name = artifact.address.name,
+                                                      .provider_id = overlay->id,
+                                                      .content_hash = artifact.hash,
+                                                      .size = artifact.size,
+                                                      .residency = asset_residency::metadata_only,
+                                                      .locator_hint = locator ? locator.value().string() : std::string{}});
+                }
+        }
         for (const auto& candidate : candidates)
         {
             const auto& package = *candidate.package;
@@ -463,6 +504,45 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     return asset_status::success();
 }
 
+asset_status cooked_asset_catalog::mount_overlay(std::shared_ptr<cas_overlay_provider> provider,
+                                                 std::int32_t priority)
+{
+    if (!provider) return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Null overlay"));
+    const auto id = std::string(asset_provider_ids::runtime_overlay) + ":" +
+                    std::to_string(logical_->revision + 1);
+    auto mounted = files_->mount({.root = artifact_root_, .priority = priority, .provider = provider, .debug_name = id});
+    if (!mounted)
+        return asset_status::failure(asset_failure(asset_error_code::invalid_request, mounted.error().message));
+    mounts_.push_back(mounted.value());
+    auto manifest = provider->active_manifest();
+    logical_->overlays.push_back({.id = id, .priority = priority, .mount = mounted.value(),
+                                  .provider = provider, .generation = provider->provider_generation(),
+                                  .manifest = manifest});
+    ++logical_->revision;
+    for (const auto& artifact : manifest.artifacts)
+        logical_->append_change({.kind = asset_database_change_kind::provider_changed,
+                                 .guid = artifact.address.asset, .provider_id = id});
+    return asset_status::success();
+}
+
+asset_status cooked_asset_catalog::unmount_provider(std::string_view provider_id)
+{
+    const auto found = std::find_if(logical_->overlays.begin(), logical_->overlays.end(),
+                                    [&](const auto& entry) { return entry.id == provider_id; });
+    if (found == logical_->overlays.end())
+        return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Unknown overlay provider"));
+    const auto unmounted = files_->unmount(found->mount);
+    if (!unmounted)
+        return asset_status::failure(asset_failure(asset_error_code::invalid_request, unmounted.error().message));
+    for (const auto& artifact : found->manifest.artifacts)
+        logical_->append_change({.kind = asset_database_change_kind::provider_changed,
+                                 .guid = artifact.address.asset, .provider_id = found->id});
+    mounts_.erase(std::remove(mounts_.begin(), mounts_.end(), found->mount), mounts_.end());
+    logical_->overlays.erase(found);
+    ++logical_->revision;
+    return asset_status::success();
+}
+
 asset_status cooked_asset_catalog::mount_provider(std::shared_ptr<io::virtual_file_provider> provider,
                                                   std::int32_t priority, std::string debug_name)
 {
@@ -537,6 +617,21 @@ cooked_artifact_change_batch cooked_asset_catalog::poll_changes()
                                                                              : asset_database_change_kind::updated;
         logical_->append_change(
             {.sequence = ++logical_->change_sequence, .kind = kind, .guid = event.address.asset});
+    }
+    for (auto& overlay : logical_->overlays)
+    {
+        const auto generation = overlay.provider->provider_generation();
+        if (generation == overlay.generation) continue;
+        const auto previous = overlay.manifest;
+        overlay.manifest = overlay.provider->active_manifest();
+        overlay.generation = generation;
+        for (const auto& artifact : previous.artifacts)
+            logical_->append_change({.kind = asset_database_change_kind::provider_changed,
+                                     .guid = artifact.address.asset, .provider_id = overlay.id});
+        for (const auto& artifact : overlay.manifest.artifacts)
+            logical_->append_change({.kind = asset_database_change_kind::provider_changed,
+                                     .guid = artifact.address.asset, .provider_id = overlay.id});
+        ++logical_->revision;
     }
     if (!result.events.empty() || result.catalog_reset) ++logical_->revision;
     return result;
