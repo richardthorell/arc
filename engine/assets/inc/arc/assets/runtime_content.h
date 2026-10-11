@@ -87,6 +87,7 @@ struct cooked_asset_catalog_telemetry
 };
 
 class cooked_asset_database;
+class cas_overlay_provider;
 
 class cooked_asset_catalog
 {
@@ -97,6 +98,9 @@ public:
     [[nodiscard]] asset_status mount_package(const io::virtual_path& manifest_file, std::int32_t priority = 0);
     [[nodiscard]] asset_status mount_provider(std::shared_ptr<io::virtual_file_provider> provider,
                                               std::int32_t priority, std::string debug_name);
+    [[nodiscard]] asset_status mount_overlay(std::shared_ptr<cas_overlay_provider> provider,
+                                             std::int32_t priority = 100);
+    [[nodiscard]] asset_status unmount_provider(std::string_view provider_id);
     [[nodiscard]] io::file_result<io::resolved_virtual_file> resolve(const cooked_artifact_address& address);
     [[nodiscard]] cooked_artifact_change_batch poll_changes();
     [[nodiscard]] cooked_asset_catalog_telemetry telemetry() const noexcept;
@@ -177,6 +181,7 @@ public:
 
     [[nodiscard]] const std::filesystem::path& cache_root() const noexcept;
     [[nodiscard]] std::uint64_t active_sequence() const noexcept;
+    [[nodiscard]] runtime_update_manifest active_manifest() const;
 
 private:
     struct implementation;
