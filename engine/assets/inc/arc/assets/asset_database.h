@@ -156,6 +156,8 @@ public:
                                                                      asset_type_id expected_type = {}) const = 0;
     [[nodiscard]] virtual std::vector<asset_guid> dependencies(asset_guid guid) const = 0;
     [[nodiscard]] virtual std::vector<asset_guid> reverse_dependencies(asset_guid guid) const = 0;
+    /** Snapshot all logical records for cache rebuilds and indexed consumers. */
+    [[nodiscard]] virtual std::vector<asset_database_record> records() const = 0;
     [[nodiscard]] virtual std::uint64_t revision() const = 0;
     /** Query events strictly after cursor; history_lost requires caller resnapshot. */
     [[nodiscard]] virtual asset_database_change_batch changes_since(std::uint64_t cursor) const = 0;
@@ -189,6 +191,7 @@ public:
                                                              asset_type_id expected_type = {}) const override;
     [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override;
     [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const override;
+    [[nodiscard]] std::vector<asset_database_record> records() const override;
     [[nodiscard]] std::uint64_t revision() const override;
     [[nodiscard]] asset_database_change_batch changes_since(std::uint64_t cursor) const override;
 
