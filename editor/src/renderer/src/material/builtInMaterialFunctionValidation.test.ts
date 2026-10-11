@@ -25,11 +25,13 @@ describe('built-in Material Functions', () => {
       'channel_mask.arcmatfn',
       'checker.arcmatfn',
       'default_base_color.arcmatfn',
+      'glossiness_to_roughness.arcmatfn',
       'gradient.arcmatfn',
       'noise.arcmatfn',
       'normal_blend.arcmatfn',
       'normal_map.arcmatfn',
       'reoriented_normal_blend.arcmatfn',
+      'roughness_remap.arcmatfn',
       'texture_tint.arcmatfn',
       'tint_rgb.arcmatfn',
       'unpack_orm.arcmatfn',
@@ -50,6 +52,8 @@ describe('built-in Material Functions', () => {
     }
     const expectedOutputs: Record<string, Array<{ id: string; name: string; type: string }>> = {
       channel_mask: [{ id: 'value', name: 'Value', type: 'float' }],
+      glossiness_to_roughness: [{ id: 'roughness', name: 'Roughness', type: 'float' }],
+      roughness_remap: [{ id: 'roughness', name: 'Roughness', type: 'float' }],
       unpack_orm: [
         { id: 'ao', name: 'Ambient Occlusion', type: 'float' },
         { id: 'roughness', name: 'Roughness', type: 'float' },
