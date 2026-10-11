@@ -858,6 +858,36 @@
           "group": "surface",
           "order": 25
         }
+      },
+      {
+        "id": "clear-coat-normal-texture",
+        "type": "textureSample2D",
+        "position": [
+          400,
+          2200
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d",
+          "semantic": "normal"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat Normal Texture",
+          "group": "clear-coat",
+          "order": 40
+        }
+      },
+      {
+        "id": "clear-coat-normal-map",
+        "type": "normalMap",
+        "position": [
+          900,
+          2200
+        ],
+        "values": {
+          "strength": 1
+        }
       }
     ],
     "connections": [
@@ -1454,6 +1484,39 @@
           "nodeId": "material-output",
           "pin": "indexOfRefraction"
         }
+      },
+      {
+        "id": "clear-coat-normal-rgb",
+        "from": {
+          "nodeId": "clear-coat-normal-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "clear-coat-normal-map",
+          "pin": "texture"
+        }
+      },
+      {
+        "id": "clear-coat-normal-out",
+        "from": {
+          "nodeId": "clear-coat-normal-map",
+          "pin": "normal"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "clearCoatNormal"
+        }
+      },
+      {
+        "id": "clear-coat-normal-uv",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "clear-coat-normal-texture",
+          "pin": "uv"
+        }
       }
     ],
     "viewport": {
@@ -1548,7 +1611,9 @@
           "clear-coat-roughness",
           "clear-coat-texture",
           "clear-coat-multiply",
-          "clear-coat-roughness-multiply"
+          "clear-coat-roughness-multiply",
+          "clear-coat-normal-texture",
+          "clear-coat-normal-map"
         ],
         "position": [
           40,

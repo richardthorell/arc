@@ -54,6 +54,7 @@ describe('core built-in material families', () => {
       'Roughness Maximum',
       'Roughness Curve',
       'Index of Refraction',
+      'Clear Coat Normal Texture',
     ]);
     expect(materialGraphOutputConnected(graph, 'metallic')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'roughness')).toBe(true);
@@ -77,7 +78,7 @@ describe('core built-in material families', () => {
         graph,
         customShader: false,
       }),
-    ).toBe('Deferred');
+    ).toBe('Clustered Forward');
 
     const baseColorSource = graph.nodes.find((node) => node.id === 'base-color-source');
     expect(baseColorSource).toMatchObject({

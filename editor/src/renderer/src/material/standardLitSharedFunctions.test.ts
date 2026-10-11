@@ -59,6 +59,7 @@ describe('Standard Lit shared channel functions', () => {
       'Roughness Maximum',
       'Roughness Curve',
       'Index of Refraction',
+      'Clear Coat Normal Texture',
     ]);
   });
 });
