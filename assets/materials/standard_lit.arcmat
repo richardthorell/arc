@@ -731,6 +731,114 @@
           "exposed": false,
           "name": "Reoriented Normal Blend"
         }
+      },
+      {
+        "id": "roughness-remap-min",
+        "type": "constant",
+        "position": [
+          110,
+          850
+        ],
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness Minimum",
+          "group": "surface",
+          "order": 35
+        }
+      },
+      {
+        "id": "roughness-remap-max",
+        "type": "constant",
+        "position": [
+          110,
+          1010
+        ],
+        "values": {
+          "value": 1,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness Maximum",
+          "group": "surface",
+          "order": 36
+        }
+      },
+      {
+        "id": "roughness-remap-power",
+        "type": "constant",
+        "position": [
+          110,
+          1170
+        ],
+        "values": {
+          "value": 1,
+          "min": 0.0001,
+          "max": 8
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness Curve",
+          "group": "surface",
+          "order": 37
+        }
+      },
+      {
+        "id": "roughness-remap",
+        "type": "functionCall",
+        "position": [
+          1120,
+          670
+        ],
+        "values": {
+          "slotId": "roughness-remap",
+          "path": "material_functions/roughness_remap.arcmatfn",
+          "name": "Roughness Remap",
+          "functions": [
+            {
+              "path": "material_functions/roughness_remap.arcmatfn"
+            }
+          ],
+          "inputPins": [
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            },
+            {
+              "id": "min",
+              "name": "Minimum Roughness",
+              "type": "float"
+            },
+            {
+              "id": "max",
+              "name": "Maximum Roughness",
+              "type": "float"
+            },
+            {
+              "id": "power",
+              "name": "Curve Exponent",
+              "type": "float"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            }
+          ]
+        },
+        "parameter": {
+          "exposed": false,
+          "name": "Roughness Remap"
+        }
       }
     ],
     "connections": [
@@ -792,8 +900,8 @@
       {
         "id": "roughness-out",
         "from": {
-          "nodeId": "roughness-multiply",
-          "pin": "result"
+          "nodeId": "roughness-remap",
+          "pin": "roughness"
         },
         "to": {
           "nodeId": "material-output",
@@ -1272,6 +1380,50 @@
           "nodeId": "detail-normal-texture",
           "pin": "uv"
         }
+      },
+      {
+        "id": "remap-input",
+        "from": {
+          "nodeId": "roughness-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "roughness"
+        }
+      },
+      {
+        "id": "remap-min",
+        "from": {
+          "nodeId": "roughness-remap-min",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "min"
+        }
+      },
+      {
+        "id": "remap-max",
+        "from": {
+          "nodeId": "roughness-remap-max",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "max"
+        }
+      },
+      {
+        "id": "remap-power",
+        "from": {
+          "nodeId": "roughness-remap-power",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "power"
+        }
       }
     ],
     "viewport": {
@@ -1312,7 +1464,11 @@
           "uv-offset",
           "uv-pivot",
           "uv-rotation",
-          "shared-uv-transform"
+          "shared-uv-transform",
+          "roughness-remap-min",
+          "roughness-remap-max",
+          "roughness-remap-power",
+          "roughness-remap"
         ],
         "position": [
           40,
