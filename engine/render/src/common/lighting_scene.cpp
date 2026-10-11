@@ -329,13 +329,16 @@ sampled_probe_volume sample_probe_volume(const irradiance_probe_volume_descripto
         const float weight = wx * wy * wz * probe.validity * probe.visibility;
         if (weight <= 0.0f) continue;
         for (std::size_t coefficient = 0; coefficient < result.spherical_harmonics.size(); ++coefficient)
-            result.spherical_harmonics[coefficient] += probe.spherical_harmonics[coefficient] * weight;
+            result.spherical_harmonics[coefficient] =
+                math::add(result.spherical_harmonics[coefficient],
+                          math::mul(probe.spherical_harmonics[coefficient], weight));
         total_weight += weight;
         ++result.contributing_probes;
     }
 
     if (total_weight <= 0.0f) return {};
-    for (auto& coefficient : result.spherical_harmonics) coefficient /= total_weight;
+    for (auto& coefficient : result.spherical_harmonics)
+        coefficient = math::mul(coefficient, 1.0f / total_weight);
     result.weight = total_weight;
     return result;
 }
@@ -465,14 +468,17 @@ resolve_irradiance_probe_volumes(std::span<const irradiance_probe_volume_instanc
         if (sampled.weight <= 0.0f) continue;
         const float volume_weight = influence * instance.intensity;
         for (std::size_t coefficient = 0; coefficient < result.spherical_harmonics.size(); ++coefficient)
-            result.spherical_harmonics[coefficient] += sampled.spherical_harmonics[coefficient] * volume_weight;
+            result.spherical_harmonics[coefficient] =
+                math::add(result.spherical_harmonics[coefficient],
+                          math::mul(sampled.spherical_harmonics[coefficient], volume_weight));
         total_volume_weight += volume_weight;
         result.contributing_probes += sampled.contributing_probes;
         ++result.contributing_volumes;
     }
 
     if (total_volume_weight <= 0.0f) return result;
-    for (auto& coefficient : result.spherical_harmonics) coefficient /= total_volume_weight;
+    for (auto& coefficient : result.spherical_harmonics)
+        coefficient = math::mul(coefficient, 1.0f / total_volume_weight);
     result.accumulated_weight = total_volume_weight;
     result.resolved_priority = best_priority;
     result.fallback_to_environment = false;
@@ -500,7 +506,8 @@ math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& sh,
         c2 * x * z,
         c4 * (x * x - y * y)};
     math::vector3f irradiance{};
-    for (std::size_t index = 0; index < sh.size(); ++index) irradiance += sh[index] * basis[index];
+    for (std::size_t index = 0; index < sh.size(); ++index)
+        irradiance = math::add(irradiance, math::mul(sh[index], basis[index]));
     return {std::max(irradiance[0], 0.0f), std::max(irradiance[1], 0.0f), std::max(irradiance[2], 0.0f)};
 }
 
