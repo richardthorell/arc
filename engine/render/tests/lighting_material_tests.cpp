@@ -233,6 +233,32 @@ TEST_CASE("PBR reference functions stay finite and preserve physical limits")
     REQUIRE(absorption[2] == Catch::Approx(1.0f));
 }
 
+TEST_CASE("LTC lookup generation is deterministic and bilinear sampling is bounded")
+{
+    const auto table = arc::render::build_ltc_lookup_table(16u);
+    REQUIRE(table.resolution == 16u);
+    REQUIRE(table.samples.size() == 256u);
+
+    const auto smooth_front = arc::render::sample_ltc_lookup(table, 0.0f, 1.0f);
+    const auto rough_front = arc::render::sample_ltc_lookup(table, 1.0f, 1.0f);
+    const auto grazing = arc::render::sample_ltc_lookup(table, 0.25f, 0.05f);
+
+    REQUIRE(std::isfinite(smooth_front.inverse_transform[0]));
+    REQUIRE(std::isfinite(grazing.inverse_transform[1]));
+    REQUIRE(smooth_front.amplitude_fresnel[0] >= rough_front.amplitude_fresnel[0]);
+    REQUIRE(grazing.amplitude_fresnel[1] >= smooth_front.amplitude_fresnel[1]);
+
+    const auto clamped = arc::render::sample_ltc_lookup(table, 4.0f, -2.0f);
+    REQUIRE(std::isfinite(clamped.inverse_transform[0]));
+    REQUIRE(clamped.amplitude_fresnel[0] >= 0.0f);
+    REQUIRE(clamped.amplitude_fresnel[0] <= 1.0f);
+
+    const arc::render::ltc_lookup_table empty;
+    const auto identity = arc::render::sample_ltc_lookup(empty, 0.5f, 0.5f);
+    REQUIRE(identity.inverse_transform[0] == Catch::Approx(1.0f));
+    REQUIRE(identity.inverse_transform[3] == Catch::Approx(1.0f));
+}
+
 TEST_CASE("physical attenuation exposure and area light packing are stable")
 {
     REQUIRE(arc::render::inverse_square_attenuation(2.0f, 0.0f) == Catch::Approx(0.25f));
@@ -254,8 +280,12 @@ TEST_CASE("physical attenuation exposure and area light packing are stable")
                                                       .width = 2.0f,
                                                       .height = 1.0f,
                                                       .shape = arc::render::area_light_shape::rectangle,
+                                                      .casts_shadows = true,
                                                       .intensity_unit = arc::render::light_intensity_unit::lumen}};
     const auto lighting = arc::render::pack_scene_lighting({}, {}, {}, nullptr, 0, 0, areas);
     REQUIRE(lighting.area_count == 1);
     REQUIRE(lighting.area_lights[0].color_intensity[3] == Catch::Approx(1000.0f / (2.0f * arc::math::pi<float>)));
+    REQUIRE(lighting.area_lights[0].dimensions_shadow[2] == Catch::Approx(1.0f));
+    REQUIRE(lighting.area_lights[0].dimensions_shadow[3] ==
+            Catch::Approx(static_cast<float>(arc::render::area_shadow_representation::unsupported_conventional)));
 }
