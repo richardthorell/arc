@@ -27,6 +27,49 @@ find_parameter(const arc::render::tools::material_graph_descriptor& descriptor, 
 }
 } // namespace
 
+TEST_CASE("material presentation survives function inlining without changing parameter identity")
+{
+    constexpr std::string_view graph = R"({"version":1,
+      "groups":[{"id":"appearance","name":"Parent group","order":99}],
+      "nodes":[{"id":"out","type":"output","values":{}},
+        {"id":"slot","type":"functionCall","values":{"path":"function.arcmatfn"}}],
+      "connections":[{"from":{"nodeId":"slot","pin":"result"},
+                      "to":{"nodeId":"out","pin":"baseColor"}}]})";
+    const std::array functions{arc::render::tools::material_function_source{
+        .path = "function.arcmatfn", .identity = "function-guid", .source = R"({
+      "kind":"materialFunction","version":1,"name":"Function",
+      "inputs":[],"outputs":[{"id":"result","name":"Result","type":"vec4"}],
+      "graph":{"version":1,"groups":[{"id":"appearance","name":"Artist controls","order":2}],
+        "nodes":[{"id":"tint","type":"colorRgba","values":{"value":[1,0,0,1]},
+          "parameter":{"exposed":true,"name":"Unusual name","group":"appearance","order":3}},
+          {"id":"out","type":"functionOutput","values":{}}],
+        "connections":[{"from":{"nodeId":"tint","pin":"value"},
+                        "to":{"nodeId":"out","pin":"result"}}]}})"}};
+    const auto compiled = arc::render::tools::compile_material_graph_json(graph, functions);
+    REQUIRE(compiled);
+    REQUIRE(compiled.value().parameter_presentation.size() == 1);
+    const auto& presentation = compiled.value().parameter_presentation.front();
+    CHECK(presentation.id == arc::render::make_shader_parameter_id("slot::tint"));
+    CHECK(presentation.editor_kind == "color");
+    CHECK(presentation.group_id == "slot::appearance");
+    CHECK(presentation.group_label == "Artist controls");
+    CHECK(presentation.group_order == 2);
+    CHECK(presentation.order == 3);
+    CHECK(compiled.value().descriptor.parameters.front().id == presentation.id);
+    auto renamed = functions;
+    const auto label = renamed[0].source.find("Artist controls");
+    REQUIRE(label != std::string::npos);
+    renamed[0].source.replace(label, std::string_view("Artist controls").size(), "Renamed group");
+    const auto relabeled = arc::render::tools::compile_material_graph_json(graph, renamed);
+    REQUIRE(relabeled);
+    CHECK(relabeled.value().parameter_presentation.front().group_label == "Renamed group");
+    const auto shader = arc::render::tools::generate_material_slang(compiled.value());
+    const auto relabeled_shader = arc::render::tools::generate_material_slang(relabeled.value());
+    REQUIRE(shader);
+    REQUIRE(relabeled_shader);
+    CHECK(shader.value().source == relabeled_shader.value().source);
+}
+
 TEST_CASE("native material graph compiler emits deterministic backend-neutral IR and descriptor")
 {
     constexpr std::string_view graph = R"({

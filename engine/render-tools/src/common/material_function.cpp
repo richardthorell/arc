@@ -607,6 +607,19 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
             function_output = id;
     }
 
+    // Group IDs are local to a function document just like node IDs. Preserve
+    // their labels/order while namespacing them at each inlined call site.
+    if (function_graph.contains("groups") && function_graph["groups"].is_array())
+    {
+        if (!graph.contains("groups") || !graph["groups"].is_array()) graph["groups"] = json::array();
+        for (const auto& group : function_graph["groups"])
+        {
+            if (!group.is_object() || !group.contains("id") || !group["id"].is_string()) continue;
+            auto clone = group;
+            clone["id"] = concatenate({call_id, "::", group["id"].get<std::string>()});
+            graph["groups"].push_back(std::move(clone));
+        }
+    }
     json added_nodes = json::array();
     for (const auto& node : function_graph["nodes"])
     {
@@ -614,6 +627,11 @@ graph_expand_result inline_graph_function(json graph, const json& call, const pa
         if (type == "functionInput" || type == "functionOutput") continue;
         auto clone = node;
         clone["id"] = concatenate({call_id, "::", node.value("id", "")});
+        if (clone.contains("parameter") && clone["parameter"].is_object())
+        {
+            const auto group = clone["parameter"].value("group", std::string{});
+            if (!group.empty()) clone["parameter"]["group"] = concatenate({call_id, "::", group});
+        }
         added_nodes.push_back(std::move(clone));
     }
 

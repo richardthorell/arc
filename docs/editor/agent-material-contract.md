@@ -22,6 +22,12 @@ The legacy batch `entity.setBaseColor` operation is a compatibility adapter to `
 
 ## Remaining acceptance work before closing #986
 
+### Inspector parity migration checkpoint
+
+Native graph compilation now returns authoring-only parameter presentation separately from shader layout: editor kind, group identity/label/order, and parameter order. Function inlining namespaces group identities and retains their presentation. Material inspection projects this data by stable parameter ID, exposes explicit local parameter values, and distinguishes inherited function selections from entity overrides. These additive fields are optional during the contract rollout; the future Inspector migration must require the completed, versioned contract rather than guess missing metadata.
+
+The restored Inspector is unchanged at this checkpoint. Texture defaults/clearing, function reset and paginated discovery, atomic multi-selection, revision-safe Inspector integration, and legacy command retirement remain required before removing its compatibility path. Existing saved scene data must remain readable.
+
 - Complete texture requirement/default-source reflection and confirm inherited values across every function/instance realization path.
 - Audit saved-definition versus cached/dirty runtime generations on assignment, dependency rename/move recovery, and parameter-update specialization caching.
 - Validate native compilation, undo/reopen, function/texture last-good behavior and the seeded multipart rendered scenario on an updated editor build. Native reflection and parameter isolation/rejection regression tests are included, but are not a substitute for rendered acceptance.

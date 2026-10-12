@@ -12,6 +12,7 @@
 #include <array>
 #include <compare>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -290,6 +291,17 @@ struct material_graph_descriptor
     material_feature_requirements requirements;
 };
 
+/** @brief Authoring-only presentation; never participates in GPU parameter layout. */
+struct material_parameter_presentation
+{
+    shader_parameter_id id{};
+    std::string editor_kind;
+    std::string group_id;
+    std::string group_label;
+    std::optional<double> group_order;
+    std::optional<double> order;
+};
+
 /** @brief Native material graph compilation output prior to shader code generation. */
 struct material_graph_compilation
 {
@@ -301,6 +313,7 @@ struct material_graph_compilation
      */
     std::uint64_t function_specialization_key{};
     std::vector<shader_diagnostic> diagnostics;
+    std::vector<material_parameter_presentation> parameter_presentation;
 };
 
 /** @brief Deterministic generated Slang source implementing the Material ABI v1 evaluator. */

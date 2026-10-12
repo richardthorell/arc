@@ -202,6 +202,7 @@ std::string inspect_saved_material(const material_inspection_source& source,
             std::vector<rt::material_function_source> functions;
             state.functions(graph, functions);
             std::vector<rt::material_function_slot_override> selections;
+            std::map<std::string, std::string> inherited_functions;
             if (instance)
                 for (const auto& selection : instance->function_overrides)
                 {
@@ -216,6 +217,7 @@ std::string inspect_saved_material(const material_inspection_source& source,
                         }
                     state.function(path, selected.guid, functions);
                     selections.push_back({.slot_id = selection.slot_id, .function_path = path});
+                    inherited_functions.emplace(selection.slot_id, selected.guid);
                 }
             for (const auto& entry : local)
             {
@@ -285,6 +287,7 @@ std::string inspect_saved_material(const material_inspection_source& source,
                 }
                 const auto inherited = resolved;
                 bool overridden = false;
+                json local_value = nullptr;
                 for (const auto& entry : local)
                     if (entry.value("kind", std::string{}) != "function" &&
                         entry.value("parameterId", std::string{}) == std::to_string(parameter.id.representation()))
@@ -296,6 +299,7 @@ std::string inspect_saved_material(const material_inspection_source& source,
                                                                   : entry.at("value"),
                                               parameter);
                             overridden = true;
+                            local_value = resolved;
                         }
                         catch (const std::exception& error)
                         {
@@ -317,6 +321,18 @@ std::string inspect_saved_material(const material_inspection_source& source,
                         for (const auto& node : compiled.value().ir.nodes)
                             if (node.id == output.source_node && node.parameter_id == parameter.id)
                                 semantic = "baseColor";
+                json presentation = nullptr;
+                for (const auto& metadata : compiled.value().parameter_presentation)
+                    if (metadata.id == parameter.id)
+                    {
+                        presentation = {
+                            {"editorKind", metadata.editor_kind},
+                            {"groupId", metadata.group_id},
+                            {"groupLabel", metadata.group_label},
+                            {"groupOrder", metadata.group_order ? json(*metadata.group_order) : json(nullptr)},
+                            {"order", metadata.order ? json(*metadata.order) : json(nullptr)}};
+                        break;
+                    }
                 result["parameters"].push_back(
                     {{"id", std::to_string(parameter.id.representation())},
                      {"name", parameter.name},
@@ -324,8 +340,10 @@ std::string inspect_saved_material(const material_inspection_source& source,
                      {"defaultValue", default_value},
                      {"inheritedValue", inherited},
                      {"overridden", overridden},
+                     {"localValue", local_value},
                      {"slotId", slot_id},
                      {"semantic", semantic},
+                     {"presentation", presentation},
                      {"resolvedValue", resolved},
                      {"valueStatus", resolved.is_null() ? "unavailable" : "resolved"},
                      {"range", parameter.has_range ? json{{"min", parameter.minimum}, {"max", parameter.maximum}}
@@ -374,6 +392,14 @@ std::string inspect_saved_material(const material_inspection_source& source,
                      {"name", slot.name},
                      {"defaultFunctionGuid", state.aliases.at(slot.default_function_path)},
                      {"selectedFunctionGuid", slot.selected_function_identity},
+                     {"inheritedFunctionGuid", inherited_functions.contains(slot.id)
+                                                   ? inherited_functions.at(slot.id)
+                                                   : state.aliases.at(slot.default_function_path)},
+                     {"overridden", std::ranges::any_of(local,
+                                                        [&](const auto& entry) {
+                                                            return entry.value("kind", std::string{}) == "function" &&
+                                                                   entry.value("slotId", std::string{}) == slot.id;
+                                                        })},
                      {"inputs", inputs},
                      {"outputs", outputs},
                      {"alternatives", alternatives},

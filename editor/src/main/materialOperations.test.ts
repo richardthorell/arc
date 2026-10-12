@@ -20,6 +20,13 @@ const description = {
       overridden: false,
       slotId: '',
       semantic: 'none',
+      presentation: {
+        editorKind: 'vector',
+        groupId: 'surface',
+        groupLabel: 'Artist controls',
+        groupOrder: 2,
+        order: 3,
+      },
       resolvedValue: [0.2, 0.3, 0.4],
       range: null,
       valueStatus: 'resolved',
@@ -48,6 +55,27 @@ function setup(payload: unknown = description) {
 }
 
 describe('native material discovery operations', () => {
+  it('preserves authored presentation independently of material semantics', () => {
+    const parameter = {
+      ...description.parameters[0],
+      type: 'vec4',
+      semantic: 'none',
+      defaultValue: [1, 0, 0, 1],
+      inheritedValue: [1, 0, 0, 1],
+      resolvedValue: [1, 0, 0, 1],
+      localValue: null,
+      presentation: { ...description.parameters[0].presentation, editorKind: 'color' },
+    };
+    const result = materialDescribeOutput.parse({ ...description, parameters: [parameter] });
+    expect(result.parameters[0]).toEqual(parameter);
+    expect(
+      materialDescribeOutput.safeParse({
+        ...description,
+        parameters: [{ ...parameter, presentation: { ...parameter.presentation, order: Infinity } }],
+      }).success,
+    ).toBe(false);
+  });
+
   const editParams = {
     editSessionId: 'unapproved',
     entityGuid: guid,
