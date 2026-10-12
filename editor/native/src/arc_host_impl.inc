@@ -1140,6 +1140,29 @@ template <class HostState> bool ensure_photometric_profile_importer(HostState& h
     return scene::register_photometric_profile_importer(*host.asset_registry);
 }
 
+template <class HostState> bool ensure_irradiance_probe_volume_importer(HostState& host)
+{
+    if (!host.asset_registry) return false;
+    const auto importers = host.asset_registry->importers();
+    if (std::any_of(importers.begin(), importers.end(), [](const auto& importer)
+                    { return importer.id == assets::importer_ids::irradiance_probe_volume; }))
+        return true;
+    return scene::register_irradiance_probe_volume_importer(*host.asset_registry);
+}
+
+template <class HostState> void refresh_scene_irradiance_probe_volumes(HostState& host)
+{
+    if (!host.asset_registry) return;
+    for (const auto entity : host.scene.scene.entities())
+    {
+        auto* probe = host.scene.scene.template try_get<scene::irradiance_probe_volume_component>(entity);
+        if (!probe || (!probe->asset.guid.valid() && probe->asset.path_hint.empty())) continue;
+        const auto binding = scene::refresh_irradiance_probe_volume_binding(*probe, *host.asset_registry);
+        if (!binding.succeeded)
+            arc::diagnostics::warn("editor.lighting", "Irradiance probe-volume refresh failed: " + binding.message);
+    }
+}
+
 template <class HostState> void refresh_scene_terrain_assets(HostState& host)
 {
     if (!host.asset_registry) return;
@@ -1189,6 +1212,8 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     if (response.succeeded && ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
     if (response.succeeded && ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
     if (response.succeeded) (void)ensure_photometric_profile_importer(*state_);
+    if (response.succeeded && ensure_irradiance_probe_volume_importer(*state_))
+        refresh_scene_irradiance_probe_volumes(*state_);
     return response;
 }
 
@@ -1378,6 +1403,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
                 if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
                 (void)ensure_photometric_profile_importer(*state_);
+                if (ensure_irradiance_probe_volume_importer(*state_))
+                    refresh_scene_irradiance_probe_volumes(*state_);
             }
             if (std::holds_alternative<host_open_project_command>(command.payload) ||
                 std::holds_alternative<host_open_scene_command>(command.payload) ||
@@ -1387,6 +1414,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 state_->terrain_preview_dirty.clear();
                 if (ensure_terrain_asset_importer(*state_)) refresh_scene_terrain_assets(*state_);
                 if (ensure_water_asset_importer(*state_)) refresh_scene_water_assets(*state_);
+                if (ensure_irradiance_probe_volume_importer(*state_))
+                    refresh_scene_irradiance_probe_volumes(*state_);
             }
         }
         capture_viewport_surface(*state_, *viewport_surface);
