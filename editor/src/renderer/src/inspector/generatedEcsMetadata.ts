@@ -823,7 +823,11 @@ export const generatedEcsComponents = [
         "unit": "none",
         "constraints": {},
         "kind": "asset",
-        "flags": ["serialized","editable","prefab_override"]
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
       },
       {
         "id": "0000000000000002",
@@ -831,9 +835,15 @@ export const generatedEcsComponents = [
         "displayName": "Intensity",
         "description": "Scales this volume's indirect diffuse contribution.",
         "unit": "multiplier",
-        "constraints": {"minimum": 0},
+        "constraints": {
+          "minimum": 0
+        },
         "kind": "float",
-        "flags": ["serialized","editable","prefab_override"]
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
       },
       {
         "id": "0000000000000003",
@@ -843,7 +853,11 @@ export const generatedEcsComponents = [
         "unit": "none",
         "constraints": {},
         "kind": "int",
-        "flags": ["serialized","editable","prefab_override"]
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
       },
       {
         "id": "0000000000000004",
@@ -853,7 +867,11 @@ export const generatedEcsComponents = [
         "unit": "none",
         "constraints": {},
         "kind": "bool",
-        "flags": ["serialized","editable","prefab_override"]
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
       }
     ]
   },
