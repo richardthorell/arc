@@ -214,6 +214,8 @@ classify_asset_path(const std::filesystem::path& path) noexcept
     if (extension == ".arcflow") return std::pair{asset_types::flow_graph, importer_ids::flow};
     if (extension == ".terrain") return std::pair{asset_types::terrain, importer_ids::terrain};
     if (extension == ".arcwater") return std::pair{asset_types::water_preset, importer_ids::water_preset};
+    if (extension == ".arcprobe")
+        return std::pair{asset_types::irradiance_probe_volume, importer_ids::irradiance_probe_volume};
     const bool shader_include =
         extension == ".inc" || std::any_of(path.begin(), path.end(), [](const auto& component)
                                            { return component == std::filesystem::path("include"); });
