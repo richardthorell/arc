@@ -423,6 +423,7 @@ void prepare_render_scene_queries(ecs::world& scene)
     scene.prepare_query<transform_component, area_light_component>();
     scene.prepare_query<transform_component, reflection_probe_component>();
     scene.prepare_query<transform_component, irradiance_probe_component>();
+    scene.prepare_query<transform_component, irradiance_probe_volume_component>();
     scene.prepare_query<baked_lighting_component>();
 }
 
@@ -940,6 +941,21 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
                                                       .spherical_harmonics = probe.spherical_harmonics,
                                                       .label = entity_label(scene, value)});
             ++result.irradiance_probe_count;
+        });
+
+    scene.view<transform_component, irradiance_probe_volume_component>().each(
+        [&](entity value, const transform_component& transform, const irradiance_probe_volume_component& probe)
+        {
+            if (!entity_is_active(scene, value) || !probe.enabled || !probe.runtime_volume) return;
+            const math::matrix4f world = transform.dirty ? local_matrix(transform) : transform.world;
+            world_packet.irradiance_probe_volumes.push_back(
+                {.stable_id = (static_cast<std::uint64_t>(value.generation) << 32u) |
+                              static_cast<std::uint64_t>(value.index),
+                 .world_bounds = transform_bounds(probe.runtime_volume->local_bounds, world),
+                 .volume = probe.runtime_volume,
+                 .intensity = probe.intensity,
+                 .priority_bias = probe.priority_bias,
+                 .label = entity_label(scene, value)});
         });
 
     scene.view<baked_lighting_component>().each(
