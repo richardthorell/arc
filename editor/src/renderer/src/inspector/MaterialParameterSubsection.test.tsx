@@ -1,132 +1,488 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
+
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MaterialParameterSubsection } from './MaterialParameterSubsection';
 
-const entityGuid = '11111111-1111-4111-8111-111111111111';
-const materialGuid = '22222222-2222-4222-8222-222222222222';
-const parameterId = '18446744073709551615';
+vi.mock('../editors/editorRegistry', () => ({ openAssetEditorDocument: vi.fn() }));
+
+import { MaterialPicker } from './AssetPicker';
+
+const readText = vi.fn();
+const snapshot = vi.fn();
 const query = vi.fn();
 const command = vi.fn();
-const readText = vi.fn();
-let onEvent: (event: { type: string }) => void;
-const response = (payload: unknown) => ({ succeeded: true, payload, sceneRevision: 8, worldEpoch: 3 });
-const description = () => ({
-  guid: materialGuid,
+const material = {
+  id: 'default-phong',
+  guid: 'default-phong-guid',
+  name: 'default_phong.arcmat',
+  path: 'assets/materials/default_phong.arcmat',
   kind: 'material',
-  provenance: 'savedSource',
-  definitionRevision: 'a'.repeat(64),
-  parentGuid: null,
-  dependencies: [],
-  functionSlots: [],
-  functionInterface: null,
-  diagnostics: [],
-  definitionReady: true,
-  runtimeStatus: 'notInspected',
-  entity: { guid: entityGuid, materialGuid, runtimeHandle: { index: 5, generation: 2 }, resourceAlive: true },
-  parameters: [
-    {
-      id: parameterId,
-      name: 'Artist Control',
-      type: 'float',
-      defaultValue: [0.25],
-      inheritedValue: [0.25],
-      resolvedValue: [0.5],
-      overridden: true,
-      slotId: '',
-      semantic: 'none',
-      range: { min: 0, max: 1 },
-      valueStatus: 'resolved',
-    },
-  ],
-});
+  status: 'ready' as const,
+  scope: 'builtin' as const,
+  readOnly: true,
+};
+const texture = {
+  id: 'albedo',
+  guid: 'aaaaaaaa11111111bbbbbbbb22222222',
+  typeId: 'a7ca55e7000000010000000000000005',
+  name: 'albedo.png',
+  path: 'assets/textures/albedo.png',
+  kind: 'texture',
+  status: 'ready' as const,
+  scope: 'project' as const,
+};
+
 beforeEach(() => {
-  vi.clearAllMocks();
-  query.mockImplementation(async (type) =>
-    response(type === 'entity.selected' ? { guid: entityGuid, selectionCount: 1 } : description()),
-  );
-  command.mockResolvedValue(response({ applied: true }));
-  Object.defineProperty(window, 'arc', {
-    configurable: true,
-    value: {
-      projects: { readText },
-      host: {
-        query,
-        command,
-        onEvent: (callback: typeof onEvent) => {
-          onEvent = callback;
-          return () => {};
-        },
+  readText.mockReset();
+  snapshot.mockReset();
+  query.mockReset();
+  command.mockReset();
+  snapshot.mockResolvedValue({
+    activeProject: {
+      projectRoot: 'D:/Project',
+      descriptor: {
+        paths: { content: 'Content' },
+        assetRoots: ['Content'],
       },
     },
   });
-});
-afterEach(cleanup);
-const show = () => render(<MaterialParameterSubsection assets={[]} value={materialGuid} />);
-
-describe('native-backed entity material controls', () => {
-  it('renders dynamic compiler metadata without reading or evaluating a graph document', async () => {
-    show();
-    expect(await screen.findByLabelText('Artist Control')).toHaveValue('0.500');
-    expect(query).toHaveBeenCalledWith('materials.describe', { entityGuid });
-    expect(readText).not.toHaveBeenCalled();
-    expect(command).not.toHaveBeenCalled();
+  query.mockResolvedValue({
+    succeeded: true,
+    payload: {
+      entity: { index: 7, generation: 2 },
+      selectionCount: 1,
+      meshRenderer: { materialName: 'Default Phong' },
+    },
   });
-  it('commits a typed 64-bit override with inspected scene, world and definition authority', async () => {
-    show();
-    const input = await screen.findByLabelText('Artist Control');
-    fireEvent.change(input, { target: { value: '0.75' } });
-    fireEvent.blur(input);
-    await waitFor(() =>
-      expect(command).toHaveBeenCalledWith('materials.edit', {
-        operation: 'setOverride',
-        entityGuid,
-        parameterId,
-        value: [0.75],
-        definitionRevision: 'a'.repeat(64),
-        expectedSceneRevision: 8,
-        worldEpoch: 3,
+  command.mockResolvedValue({ succeeded: true });
+  readText.mockResolvedValue({
+    text: JSON.stringify({
+      version: 4,
+      name: 'Default Phong',
+      graph: {
+        version: 1,
+        nodes: [
+          {
+            id: 'base-color',
+            type: 'colorRgba',
+            position: [0, 0],
+            values: { value: [0.82, 0.84, 0.78, 1] },
+            parameter: { exposed: true, name: 'Base Color' },
+          },
+          {
+            id: 'roughness',
+            type: 'constant',
+            position: [0, 100],
+            values: { value: 0.62, min: 0, max: 1 },
+            parameter: { exposed: true, name: 'Roughness' },
+          },
+          {
+            id: 'albedo',
+            type: 'textureSample',
+            position: [0, 200],
+            values: { texture: 'assets/textures/default.png' },
+            parameter: { exposed: true, name: 'Albedo' },
+          },
+          {
+            id: 'fixed-utility',
+            type: 'functionCall',
+            position: [100, 120],
+            parameter: { exposed: false, name: 'Fixed Utility' },
+            values: {
+              slotId: 'fixed-utility',
+              name: 'Fixed Utility',
+              path: 'material_functions/checker.arcmatfn',
+              functions: [{ path: 'material_functions/checker.arcmatfn' }],
+              inputPins: [],
+              outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+            },
+          },
+          { id: 'material-output', type: 'output', position: [300, 0], values: {} },
+        ],
+        connections: [
+          {
+            id: 'base-color-output',
+            from: { nodeId: 'base-color', pin: 'rgb' },
+            to: { nodeId: 'material-output', pin: 'baseColor' },
+          },
+          {
+            id: 'roughness-output',
+            from: { nodeId: 'roughness', pin: 'value' },
+            to: { nodeId: 'material-output', pin: 'roughness' },
+          },
+          {
+            id: 'albedo-output',
+            from: { nodeId: 'albedo', pin: 'rgb' },
+            to: { nodeId: 'material-output', pin: 'emissive' },
+          },
+        ],
+      },
+    }),
+  });
+  Object.defineProperty(window, 'arc', {
+    configurable: true,
+    value: { projects: { readText, snapshot }, host: { query, command } },
+  });
+});
+
+afterEach(cleanup);
+
+describe('MaterialPicker exported parameters', () => {
+  it('renders editable scalar, color, and texture instance controls', async () => {
+    render(
+      <MaterialPicker assets={[material, texture]} label="Material" value={material.path} onChange={() => undefined} />,
+    );
+
+    expect(screen.getByRole('region', { name: 'Material parameters' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('3 exposed')).toBeVisible());
+
+    expect(readText).toHaveBeenCalledWith(material.path, 'builtin');
+    expect(screen.getByRole('button', { name: 'Open Base Color color picker' })).toBeVisible();
+    expect(screen.getByLabelText('Roughness')).toHaveValue('0.620');
+    expect(screen.getByRole('slider', { name: 'Roughness slider' })).toHaveValue('0.62');
+    expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
+    expect(screen.getByLabelText('Roughness').closest('.ui-panel-card-row')).toHaveTextContent('Roughness');
+    expect(
+      screen.getByRole('button', { name: 'Open Base Color color picker' }).closest('.ui-panel-card-row'),
+    ).toHaveTextContent('Base Color');
+    expect(screen.getByRole('button', { name: 'Choose Albedo asset' }).closest('.ui-panel-card-row')).toHaveTextContent(
+      'Albedo',
+    );
+  });
+
+  it('groups exposed parameters using material graph group metadata', async () => {
+    readText.mockResolvedValue({
+      text: JSON.stringify({
+        version: 4,
+        name: 'Grouped',
+        graph: {
+          version: 1,
+          groups: [
+            { id: 'surface', name: 'Surface', nodeIds: ['roughness'], order: 10 },
+            { id: 'emission', name: 'Emission', nodeIds: ['emissive'], order: 20 },
+          ],
+          nodes: [
+            {
+              id: 'roughness',
+              type: 'constant',
+              position: [0, 0],
+              values: { value: 0.5, min: 0, max: 1 },
+              parameter: { exposed: true, name: 'Roughness', group: 'surface', order: 10 },
+            },
+            {
+              id: 'emissive',
+              type: 'colorRgba',
+              position: [0, 200],
+              values: { value: [1, 1, 1, 1] },
+              parameter: { exposed: true, name: 'Emissive Color', group: 'emission', order: 10 },
+            },
+            { id: 'material-output', type: 'output', position: [400, 0], values: {} },
+          ],
+          connections: [
+            {
+              id: 'roughness-out',
+              from: { nodeId: 'roughness', pin: 'value' },
+              to: { nodeId: 'material-output', pin: 'roughness' },
+            },
+            {
+              id: 'emissive-out',
+              from: { nodeId: 'emissive', pin: 'rgb' },
+              to: { nodeId: 'material-output', pin: 'emissive' },
+            },
+          ],
+        },
+      }),
+    });
+
+    render(<MaterialPicker assets={[material]} label="Material" value={material.path} onChange={() => undefined} />);
+
+    expect(await screen.findByText('Surface')).toBeVisible();
+    expect(screen.getByText('Emission')).toBeVisible();
+    expect(screen.getByLabelText('Roughness')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open Emissive Color color picker' })).toBeVisible();
+  });
+
+  it('shows authored Function Call choices and swaps function-specific parameters', async () => {
+    const defaultFunction = {
+      id: 'default-base-color',
+      guid: 'default-base-color-guid',
+      name: 'default_base_color.arcmatfn',
+      path: 'material_functions/default_base_color.arcmatfn',
+      sourcePath: 'assets/material_functions/default_base_color.arcmatfn',
+      kind: 'materialFunction',
+      status: 'ready' as const,
+      scope: 'builtin' as const,
+    };
+    const checkerFunction = {
+      id: 'checker',
+      guid: 'checker-guid',
+      name: 'checker.arcmatfn',
+      path: 'material_functions/checker.arcmatfn',
+      sourcePath: 'assets/material_functions/checker.arcmatfn',
+      kind: 'materialFunction',
+      status: 'ready' as const,
+      scope: 'builtin' as const,
+    };
+    const functionDocument = (name: string, inputs: unknown[]) =>
+      JSON.stringify({
+        kind: 'materialFunction',
+        version: 1,
+        name,
+        inputs,
+        outputs: [{ id: 'color', name: 'Color', type: 'vec3' }],
+        graph:
+          name === 'Color'
+            ? {
+                version: 1,
+                nodes: [
+                  {
+                    id: 'base-color-texture',
+                    type: 'textureSample2D',
+                    position: [0, 0],
+                    values: { texture: '', dimension: '2d' },
+                    parameter: { exposed: true, name: 'Base Color Texture' },
+                  },
+                  {
+                    id: 'function-output',
+                    type: 'functionOutput',
+                    position: [300, 0],
+                    values: { pins: [{ id: 'color', name: 'Color', type: 'vec3' }] },
+                  },
+                ],
+                connections: [
+                  {
+                    id: 'texture-out',
+                    from: { nodeId: 'base-color-texture', pin: 'rgb' },
+                    to: { nodeId: 'function-output', pin: 'color' },
+                  },
+                ],
+              }
+            : { version: 1, nodes: [], connections: [] },
+      });
+    const materialWithSlot = JSON.stringify({
+      version: 4,
+      name: 'Standard Lit',
+      graph: {
+        version: 1,
+        nodes: [
+          {
+            id: 'base-color-source',
+            type: 'functionCall',
+            position: [100, 0],
+            parameter: { exposed: true, name: 'Base Color Source' },
+            values: {
+              slotId: 'base-color-source',
+              name: 'Base Color Source',
+              path: 'material_functions/default_base_color.arcmatfn',
+              functions: [
+                { path: 'material_functions/default_base_color.arcmatfn' },
+                { path: 'material_functions/checker.arcmatfn' },
+              ],
+              inputPins: [],
+              outputPins: [{ id: 'color', name: 'Color', type: 'vec3' }],
+            },
+          },
+          { id: 'material-output', type: 'output', position: [300, 0], values: {} },
+        ],
+        connections: [],
+      },
+    });
+
+    readText.mockImplementation(async (path: string) => {
+      if (path.endsWith('default_base_color.arcmatfn'))
+        return {
+          text: functionDocument('Color', []),
+        };
+      if (path.endsWith('checker.arcmatfn'))
+        return {
+          text: functionDocument('Checker', [
+            { id: 'colorA', name: 'Color A', type: 'vec3', default: [0.8, 0.8, 0.8] },
+            { id: 'colorB', name: 'Color B', type: 'vec3', default: [0.2, 0.2, 0.2] },
+            { id: 'cellSize', name: 'Cell Size', type: 'float', default: 1 },
+          ]),
+        };
+      return { text: materialWithSlot };
+    });
+
+    render(
+      <MaterialPicker
+        assets={[material, defaultFunction, checkerFunction]}
+        label="Material"
+        value={material.path}
+        onChange={() => undefined}
+      />,
+    );
+
+    const selector = await screen.findByRole('combobox', { name: 'Base Color Source function' });
+    expect(selector).toHaveTextContent('Color');
+    expect(screen.queryByRole('combobox', { name: 'Fixed Utility function' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Cell Size')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Choose Base Color Texture asset' })).toBeVisible();
+
+    fireEvent.click(selector);
+    fireEvent.click(await screen.findByRole('option', { name: 'Checker' }));
+
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
+    expect(command).toHaveBeenCalledWith(
+      'entity.setMaterial',
+      expect.objectContaining({
+        path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_function__[0-9a-f]+\/0$/),
       }),
     );
-    await waitFor(() => expect(query.mock.calls.filter(([type]) => type === 'materials.describe')).toHaveLength(2));
-    expect(readText).not.toHaveBeenCalled();
-  });
-  it('resets only the selected entity parameter through the same typed service', async () => {
-    show();
-    fireEvent.click(await screen.findByLabelText('Reset Artist Control'));
-    await waitFor(() =>
-      expect(command).toHaveBeenCalledWith(
-        'materials.edit',
-        expect.objectContaining({
-          operation: 'resetOverride',
-          parameterId,
-          entityGuid,
-        }),
+    const functionPath = command.mock.calls[0]?.[1]?.path as string;
+    const encodedFunction = functionPath.match(/__arc_material_function__([0-9a-f]+)\/0$/)?.[1] ?? '';
+    const decodedFunction = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(encodedFunction.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []),
       ),
     );
+    expect(decodedFunction.function.pathHint).toBe('material_functions/checker.arcmatfn');
+    expect(await screen.findByRole('button', { name: 'Open Color A color picker' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open Color B color picker' })).toBeVisible();
+    expect(screen.getByLabelText('Cell Size')).toHaveValue('1.000');
+    expect(selector.closest('.ui-panel-card-row')).toHaveTextContent('Base Color Source');
+    const cellSize = screen.getByLabelText('Cell Size');
+    expect(cellSize.closest('.inspector-material-function-parameters')).not.toBeNull();
+    expect(cellSize.closest('.ui-panel-card-row')).toHaveTextContent('Cell Size');
+    fireEvent.change(cellSize, { target: { value: '2' } });
+    fireEvent.blur(cellSize);
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('button', { name: 'Reset Base Color Source Cell Size' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset Base Color Source Cell Size' }));
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(3));
+    expect(screen.getByLabelText('Cell Size')).toHaveValue('1.000');
   });
-  it('reports a rejected generation and refreshes last-good authority without claiming success', async () => {
-    command.mockResolvedValue({ succeeded: false, error: 'Material definition revision is stale' });
-    show();
-    fireEvent.click(await screen.findByLabelText('Reset Artist Control'));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Material definition revision is stale');
-    await waitFor(() => expect(query.mock.calls.filter(([type]) => type === 'materials.describe')).toHaveLength(2));
-    expect(screen.getByLabelText('Artist Control')).toHaveValue('0.500');
+
+  it('uses the shared texture asset picker for texture overrides', async () => {
+    render(
+      <MaterialPicker assets={[material, texture]} label="Material" value={material.path} onChange={() => undefined} />,
+    );
+
+    const texturePicker = await screen.findByRole('button', { name: 'Choose Albedo asset' });
+    fireEvent.click(texturePicker);
+    fireEvent.click(await screen.findByRole('button', { name: 'Select albedo' }));
+
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
+    expect(command).toHaveBeenCalledWith(
+      'entity.setMaterial',
+      expect.objectContaining({
+        path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_parameter__[0-9a-f]+\/0$/),
+      }),
+    );
+    const parameterPath = command.mock.calls[0]?.[1]?.path as string;
+    const encodedParameter = parameterPath.match(/__arc_material_parameter__([0-9a-f]+)\/0$/)?.[1] ?? '';
+    const decodedParameter = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(encodedParameter.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []),
+      ),
+    );
+    expect(decodedParameter.textureReference).toEqual({
+      guid: 'aaaaaaaa11111111bbbbbbbb22222222',
+      expectedType: 'a7ca55e7000000010000000000000005',
+      pathHint: 'assets/textures/albedo.png',
+    });
   });
-  it('refreshes resolved values on undo or external asset changes', async () => {
-    show();
-    await screen.findByLabelText('Artist Control');
-    onEvent({ type: 'scene.changed' });
-    await waitFor(() => expect(query.mock.calls.filter(([type]) => type === 'materials.describe')).toHaveLength(2));
+
+  it('clears a texture and resets back to its authored default', async () => {
+    render(
+      <MaterialPicker assets={[material, texture]} label="Material" value={material.path} onChange={() => undefined} />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear Albedo' }));
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('None');
+    fireEvent.click(screen.getByRole('button', { name: 'Reset Albedo' }));
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('button', { name: 'Choose Albedo asset' })).toHaveTextContent('default');
   });
-  it('does not edit a hidden multi-selection or route procedural controls through material APIs', async () => {
-    query.mockResolvedValue(response({ guid: entityGuid, selectionCount: 2 }));
-    const view = show();
-    expect(await screen.findByRole('alert')).toHaveTextContent('Select one entity');
-    expect(command).not.toHaveBeenCalled();
-    query.mockClear();
-    view.rerender(<MaterialParameterSubsection assets={[]} value="__arc_primitive_parameter__/width/2" />);
-    expect(query).not.toHaveBeenCalled();
+
+  it('retains parameter editing for a same-material multi-selection', async () => {
+    query.mockResolvedValue({
+      succeeded: true,
+      payload: {
+        entity: { index: 7, generation: 2 },
+        selectionCount: 2,
+        meshRenderer: { materialName: 'Default Phong' },
+      },
+    });
+    render(<MaterialPicker assets={[material]} label="Material" value={material.path} onChange={() => undefined} />);
+    const scalar = await screen.findByLabelText('Roughness');
+    fireEvent.change(scalar, { target: { value: '0.75' } });
+    fireEvent.blur(scalar);
+    await waitFor(() =>
+      expect(command).toHaveBeenCalledWith('entity.setMaterial', expect.objectContaining({ applyToSelection: true })),
+    );
+  });
+
+  it('creates a sparse instance override when a scalar changes', async () => {
+    render(<MaterialPicker assets={[material]} label="Material" value={material.path} onChange={() => undefined} />);
+
+    const roughness = await screen.findByLabelText('Roughness');
+    fireEvent.change(roughness, { target: { value: '0.25' } });
+    fireEvent.blur(roughness);
+
+    await waitFor(() => expect(command).toHaveBeenCalledTimes(1));
+    expect(command).toHaveBeenCalledWith(
+      'entity.setMaterial',
+      expect.objectContaining({
+        entity: { index: 7, generation: 2 },
+        applyToSelection: false,
+        path: expect.stringMatching(/^__arc_primitive_parameter__\/__arc_material_parameter__[0-9a-f]+\/0$/),
+      }),
+    );
+    const parameterPath = command.mock.calls[0]?.[1]?.path as string;
+    const encodedParameter = parameterPath.match(/__arc_material_parameter__([0-9a-f]+)\/0$/)?.[1] ?? '';
+    const decodedParameter = JSON.parse(
+      new TextDecoder().decode(
+        new Uint8Array(encodedParameter.match(/../g)?.map((byte) => Number.parseInt(byte, 16)) ?? []),
+      ),
+    );
+    expect(decodedParameter.parameterId).toMatch(/^\d+$/);
+    expect(decodedParameter.parameterId).not.toBe('roughness');
+    expect(decodedParameter.name).toBe('Roughness');
+    expect(await screen.findByRole('button', { name: 'Reset Roughness' })).toBeVisible();
+  });
+
+  it('reads path-backed project parameters even before the asset list refreshes', async () => {
+    const path = 'Content/Materials/New Material.arcmat';
+    render(<MaterialPicker assets={[]} label="Material" value={path} onChange={() => undefined} />);
+
+    expect(screen.getByRole('region', { name: 'Material parameters' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('3 exposed')).toBeVisible());
+    expect(readText).toHaveBeenCalledWith(path, 'project');
+    expect(screen.getByLabelText('Roughness')).toBeVisible();
+  });
+
+  it('resolves a native asset-root-relative project material before reading parameters', async () => {
+    const registryMaterial = {
+      id: 'material-guid',
+      guid: 'material-guid',
+      name: 'pr2.arcmat',
+      path: 'pr2.arcmat',
+      kind: 'material',
+      status: 'ready' as const,
+      scope: 'project' as const,
+    };
+    render(
+      <MaterialPicker
+        assets={[registryMaterial]}
+        label="Material"
+        value={registryMaterial.path}
+        onChange={() => undefined}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText('3 exposed')).toBeVisible());
+    expect(snapshot).toHaveBeenCalled();
+    expect(readText).toHaveBeenCalledWith('Content/pr2.arcmat', 'project');
+  });
+
+  it('does not show material parameters for a mixed assignment', () => {
+    render(
+      <MaterialPicker assets={[material]} label="Material" mixed value={material.path} onChange={() => undefined} />,
+    );
+
+    expect(screen.queryByRole('region', { name: 'Material parameters' })).not.toBeInTheDocument();
+    expect(readText).not.toHaveBeenCalled();
   });
 });
