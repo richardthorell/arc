@@ -696,9 +696,10 @@ shader_compile_error custom_shader_error(std::string_view source_path, std::stri
 
 } // namespace
 
-material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation)
+material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation,
+                                                        material_shader_codegen_options options)
 {
-    auto generated = generate_material_slang(compilation);
+    auto generated = generate_material_slang(compilation, options);
     if (!generated) return material_evaluator_result::failure(generated.error());
 
     auto evaluator = std::move(generated).value();
@@ -712,6 +713,11 @@ material_evaluator_result make_graph_material_evaluator(const material_graph_com
                                                .generated_line_nodes = std::move(evaluator.generated_line_nodes),
                                                .parameters = std::move(evaluator.parameters),
                                                .diagnostics = std::move(evaluator.diagnostics)});
+}
+
+material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation)
+{
+    return make_graph_material_evaluator(compilation, {});
 }
 
 material_evaluator_result make_custom_material_evaluator(std::string_view source, std::string_view source_path)
