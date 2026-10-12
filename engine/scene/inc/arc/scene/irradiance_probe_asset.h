@@ -17,6 +17,9 @@ struct [[nodiscard]] irradiance_probe_volume_binding_result
     std::string message;
 };
 
+/** Construct the canonical .arcprobe baked irradiance-volume importer. */
+[[nodiscard]] std::unique_ptr<assets::asset_importer> make_irradiance_probe_volume_importer();
+
 /** Register the canonical .arcprobe baked irradiance-volume importer. */
 bool register_irradiance_probe_volume_importer(assets::asset_manager& manager);
 
