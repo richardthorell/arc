@@ -4,6 +4,7 @@
 #include <arc/scene/components.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace arc::scene
