@@ -215,20 +215,20 @@ export function MaterialParameterSubsection({
                     <div className="inspector-material-parameter-values">
                       {values.map((number, i) => (
                         <UiNumericInput
-                      key={`${parameter.id}-${i}-${number}`}
-                      precision={3}
-                      step={0.01}
-                      scrubSensitivity={0.01}
-                      ariaLabel={values.length === 1 ? parameter.name : `${parameter.name} ${['X', 'Y', 'Z', 'W'][i]}`}
-                      value={number}
-                      min={parameter.range?.min}
-                      max={parameter.range?.max}
-                      onCommit={(next) => {
+                          key={`${parameter.id}-${i}-${number}`}
+                          precision={3}
+                          step={0.01}
+                          scrubSensitivity={0.01}
+                          ariaLabel={values.length === 1 ? parameter.name : `${parameter.name} ${['X', 'Y', 'Z', 'W'][i]}`}
+                          value={number}
+                          min={parameter.range?.min}
+                          max={parameter.range?.max}
+                          onCommit={(next) => {
                         if (!Number.isFinite(next) || next === number) return;
                         const updated = [...values];
                         updated[i] = next;
                         void mutate('setOverride', { parameterId: parameter.id, value: updated });
-                      }}
+                        }}
                         />
                       ))}
                     </div>
