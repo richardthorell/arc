@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -192,7 +193,322 @@ float sample_field(const mesh_distance_field_descriptor& field, const math::vect
     return static_cast<float>(encoded) / 32767.0f * field.distance_scale;
 }
 
+constexpr std::uint32_t irradiance_volume_magic = 0x56504941u; // AIPV
+constexpr std::uint32_t irradiance_volume_version = 1u;
+constexpr std::uint64_t maximum_probe_count = 16ull * 1024ull * 1024ull;
+
+bool finite3(const math::vector3f& value) noexcept
+{
+    return std::isfinite(value[0]) && std::isfinite(value[1]) && std::isfinite(value[2]);
+}
+
+bool valid_irradiance_volume(const irradiance_probe_volume_descriptor& volume) noexcept
+{
+    if (volume.format_version != irradiance_probe_volume_descriptor::current_format_version) return false;
+    if (volume.dimensions[0] == 0u || volume.dimensions[1] == 0u || volume.dimensions[2] == 0u) return false;
+    const std::uint64_t probe_count =
+        static_cast<std::uint64_t>(volume.dimensions[0]) * volume.dimensions[1] * volume.dimensions[2];
+    if (probe_count == 0u || probe_count > maximum_probe_count || probe_count != volume.probes.size()) return false;
+    if (!finite3(volume.local_bounds.min.as_vector()) || !finite3(volume.local_bounds.max.as_vector()) ||
+        !finite3(volume.spacing) || !std::isfinite(volume.blend_distance) || volume.blend_distance < 0.0f)
+        return false;
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (volume.local_bounds.max[axis] < volume.local_bounds.min[axis] || volume.spacing[axis] <= 0.0f) return false;
+
+    for (const auto& probe : volume.probes)
+    {
+        if (!std::isfinite(probe.validity) || probe.validity < 0.0f || probe.validity > 1.0f ||
+            !std::isfinite(probe.visibility) || probe.visibility < 0.0f || probe.visibility > 1.0f ||
+            !std::isfinite(probe.mean_distance) || probe.mean_distance < 0.0f ||
+            !std::isfinite(probe.distance_variance) || probe.distance_variance < 0.0f)
+            return false;
+        for (const auto& coefficient : probe.spherical_harmonics)
+            if (!finite3(coefficient)) return false;
+    }
+    return true;
+}
+
+void append_u32(std::vector<std::byte>& output, std::uint32_t value)
+{
+    output.push_back(static_cast<std::byte>(value & 0xffu));
+    output.push_back(static_cast<std::byte>((value >> 8u) & 0xffu));
+    output.push_back(static_cast<std::byte>((value >> 16u) & 0xffu));
+    output.push_back(static_cast<std::byte>((value >> 24u) & 0xffu));
+}
+
+void append_f32(std::vector<std::byte>& output, float value)
+{
+    append_u32(output, std::bit_cast<std::uint32_t>(value));
+}
+
+bool read_u32(std::span<const std::byte> bytes, std::size_t& offset, std::uint32_t& value) noexcept
+{
+    if (offset + 4u > bytes.size()) return false;
+    value = static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(bytes[offset])) |
+            (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(bytes[offset + 1u])) << 8u) |
+            (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(bytes[offset + 2u])) << 16u) |
+            (static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(bytes[offset + 3u])) << 24u);
+    offset += 4u;
+    return true;
+}
+
+bool read_f32(std::span<const std::byte> bytes, std::size_t& offset, float& value) noexcept
+{
+    std::uint32_t bits{};
+    if (!read_u32(bytes, offset, bits)) return false;
+    value = std::bit_cast<float>(bits);
+    return true;
+}
+
+bool contains(const geometric::box3f& bounds, const math::vector3f& point) noexcept
+{
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (point[axis] < bounds.min[axis] || point[axis] > bounds.max[axis]) return false;
+    return true;
+}
+
+float volume_influence(const geometric::box3f& bounds, float blend_distance, const math::vector3f& point) noexcept
+{
+    if (!contains(bounds, point)) return 0.0f;
+    if (blend_distance <= 0.0f) return 1.0f;
+    float edge_distance = std::numeric_limits<float>::max();
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        edge_distance =
+            std::min(edge_distance, std::min(point[axis] - bounds.min[axis], bounds.max[axis] - point[axis]));
+    return std::clamp(edge_distance / blend_distance, 0.0f, 1.0f);
+}
+
+std::size_t probe_index(std::uint32_t x, std::uint32_t y, std::uint32_t z,
+                        const std::array<std::uint32_t, 3>& dimensions) noexcept
+{
+    return (static_cast<std::size_t>(z) * dimensions[1] + y) * dimensions[0] + x;
+}
+
+struct sampled_probe_volume
+{
+    std::array<math::vector3f, 9> spherical_harmonics{};
+    float weight{};
+    std::uint32_t contributing_probes{};
+};
+
+sampled_probe_volume sample_probe_volume(const irradiance_probe_volume_descriptor& volume,
+                                         const geometric::box3f& world_bounds,
+                                         const math::vector3f& world_position) noexcept
+{
+    sampled_probe_volume result;
+    if (!valid_irradiance_volume(volume) || !contains(world_bounds, world_position)) return result;
+
+    std::array<float, 3> grid_position{};
+    std::array<std::uint32_t, 3> lower{};
+    std::array<std::uint32_t, 3> upper{};
+    std::array<float, 3> fraction{};
+    for (std::size_t axis = 0; axis < 3; ++axis)
+    {
+        const float extent = world_bounds.max[axis] - world_bounds.min[axis];
+        const float normalized = extent > distance_epsilon
+                                     ? std::clamp((world_position[axis] - world_bounds.min[axis]) / extent, 0.0f, 1.0f)
+                                     : 0.0f;
+        grid_position[axis] = normalized * static_cast<float>(volume.dimensions[axis] - 1u);
+        lower[axis] = static_cast<std::uint32_t>(std::floor(grid_position[axis]));
+        upper[axis] = std::min(lower[axis] + 1u, volume.dimensions[axis] - 1u);
+        fraction[axis] = grid_position[axis] - static_cast<float>(lower[axis]);
+    }
+
+    float total_weight{};
+    for (std::uint32_t corner = 0u; corner < 8u; ++corner)
+    {
+        const std::uint32_t x = (corner & 1u) != 0u ? upper[0] : lower[0];
+        const std::uint32_t y = (corner & 2u) != 0u ? upper[1] : lower[1];
+        const std::uint32_t z = (corner & 4u) != 0u ? upper[2] : lower[2];
+        const float wx = (corner & 1u) != 0u ? fraction[0] : 1.0f - fraction[0];
+        const float wy = (corner & 2u) != 0u ? fraction[1] : 1.0f - fraction[1];
+        const float wz = (corner & 4u) != 0u ? fraction[2] : 1.0f - fraction[2];
+        const auto& probe = volume.probes[probe_index(x, y, z, volume.dimensions)];
+        const float weight = wx * wy * wz * probe.validity * probe.visibility;
+        if (weight <= 0.0f) continue;
+        for (std::size_t coefficient = 0; coefficient < result.spherical_harmonics.size(); ++coefficient)
+            result.spherical_harmonics[coefficient] = math::add(
+                result.spherical_harmonics[coefficient], math::mul(probe.spherical_harmonics[coefficient], weight));
+        total_weight += weight;
+        ++result.contributing_probes;
+    }
+
+    if (total_weight <= 0.0f) return {};
+    for (auto& coefficient : result.spherical_harmonics)
+        coefficient = math::mul(coefficient, 1.0f / total_weight);
+    result.weight = total_weight;
+    return result;
+}
+
 } // namespace
+
+std::vector<std::byte> encode_irradiance_probe_volume(const irradiance_probe_volume_descriptor& volume)
+{
+    if (!valid_irradiance_volume(volume)) return {};
+
+    constexpr std::size_t fixed_float_count = 10u;
+    constexpr std::size_t probe_float_count = 31u;
+    const std::uint32_t probe_count = static_cast<std::uint32_t>(volume.probes.size());
+    std::vector<std::byte> output;
+    output.reserve((7u * sizeof(std::uint32_t)) +
+                   (fixed_float_count + static_cast<std::size_t>(probe_count) * probe_float_count) * sizeof(float));
+
+    append_u32(output, irradiance_volume_magic);
+    append_u32(output, irradiance_volume_version);
+    append_u32(output, volume.dimensions[0]);
+    append_u32(output, volume.dimensions[1]);
+    append_u32(output, volume.dimensions[2]);
+    append_u32(output, std::bit_cast<std::uint32_t>(volume.priority));
+    append_u32(output, probe_count);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        append_f32(output, volume.local_bounds.min[axis]);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        append_f32(output, volume.local_bounds.max[axis]);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        append_f32(output, volume.spacing[axis]);
+    append_f32(output, volume.blend_distance);
+
+    for (const auto& probe : volume.probes)
+    {
+        for (const auto& coefficient : probe.spherical_harmonics)
+            for (std::size_t channel = 0; channel < 3; ++channel)
+                append_f32(output, coefficient[channel]);
+        append_f32(output, probe.validity);
+        append_f32(output, probe.visibility);
+        append_f32(output, probe.mean_distance);
+        append_f32(output, probe.distance_variance);
+    }
+    return output;
+}
+
+irradiance_probe_volume_decode_result decode_irradiance_probe_volume(std::span<const std::byte> bytes)
+{
+    const auto failure = [](std::string message)
+    { return irradiance_probe_volume_decode_result{.error = std::move(message)}; };
+
+    constexpr std::size_t fixed_header_bytes = 7u * sizeof(std::uint32_t) + 10u * sizeof(float);
+    constexpr std::size_t probe_bytes = 31u * sizeof(float);
+    if (bytes.size() < fixed_header_bytes) return failure("Irradiance probe volume artifact is truncated");
+
+    std::size_t offset{};
+    std::uint32_t magic{}, version{}, count_x{}, count_y{}, count_z{}, priority_bits{}, probe_count{};
+    if (!read_u32(bytes, offset, magic) || !read_u32(bytes, offset, version) || !read_u32(bytes, offset, count_x) ||
+        !read_u32(bytes, offset, count_y) || !read_u32(bytes, offset, count_z) ||
+        !read_u32(bytes, offset, priority_bits) || !read_u32(bytes, offset, probe_count))
+        return failure("Irradiance probe volume header is truncated");
+    if (magic != irradiance_volume_magic) return failure("Irradiance probe volume artifact has invalid magic");
+    if (version != irradiance_volume_version) return failure("Irradiance probe volume version is unsupported");
+
+    const std::uint64_t expected_count = static_cast<std::uint64_t>(count_x) * count_y * count_z;
+    if (count_x == 0u || count_y == 0u || count_z == 0u || expected_count != probe_count ||
+        expected_count > maximum_probe_count)
+        return failure("Irradiance probe volume dimensions are invalid");
+    if (bytes.size() != fixed_header_bytes + static_cast<std::size_t>(probe_count) * probe_bytes)
+        return failure("Irradiance probe volume byte size does not match its dimensions");
+
+    irradiance_probe_volume_descriptor volume;
+    volume.format_version = version;
+    volume.dimensions = {count_x, count_y, count_z};
+    volume.priority = std::bit_cast<std::int32_t>(priority_bits);
+    math::vector3f minimum{}, maximum{};
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (!read_f32(bytes, offset, minimum[axis])) return failure("Irradiance probe minimum bounds are truncated");
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (!read_f32(bytes, offset, maximum[axis])) return failure("Irradiance probe maximum bounds are truncated");
+    volume.local_bounds = {geometric::point3f{minimum}, geometric::point3f{maximum}};
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (!read_f32(bytes, offset, volume.spacing[axis])) return failure("Irradiance probe spacing is truncated");
+    if (!read_f32(bytes, offset, volume.blend_distance)) return failure("Irradiance probe blend distance is truncated");
+
+    volume.probes.resize(probe_count);
+    for (auto& probe : volume.probes)
+    {
+        for (auto& coefficient : probe.spherical_harmonics)
+            for (std::size_t channel = 0; channel < 3; ++channel)
+                if (!read_f32(bytes, offset, coefficient[channel]))
+                    return failure("Irradiance probe SH data is truncated");
+        if (!read_f32(bytes, offset, probe.validity) || !read_f32(bytes, offset, probe.visibility) ||
+            !read_f32(bytes, offset, probe.mean_distance) || !read_f32(bytes, offset, probe.distance_variance))
+            return failure("Irradiance probe metadata is truncated");
+    }
+    if (!valid_irradiance_volume(volume)) return failure("Irradiance probe volume failed validation");
+    volume.content_hash = hash_bytes(bytes);
+    return {.volume = std::move(volume)};
+}
+
+irradiance_probe_resolve_result
+resolve_irradiance_probe_volumes(std::span<const irradiance_probe_volume_instance> volumes,
+                                 const math::vector3f& world_position) noexcept
+{
+    irradiance_probe_resolve_result result;
+    std::int32_t best_priority = std::numeric_limits<std::int32_t>::min();
+
+    for (const auto& instance : volumes)
+    {
+        if (!instance.enabled || instance.volume == nullptr || !std::isfinite(instance.intensity) ||
+            instance.intensity <= 0.0f || !contains(instance.world_bounds, world_position))
+            continue;
+        const std::int32_t effective_priority = instance.volume->priority + instance.priority_bias;
+        if (effective_priority > best_priority) best_priority = effective_priority;
+    }
+    if (best_priority == std::numeric_limits<std::int32_t>::min()) return result;
+
+    float total_volume_weight{};
+    for (const auto& instance : volumes)
+    {
+        if (!instance.enabled || instance.volume == nullptr || !std::isfinite(instance.intensity) ||
+            instance.intensity <= 0.0f)
+            continue;
+        const std::int32_t effective_priority = instance.volume->priority + instance.priority_bias;
+        if (effective_priority != best_priority) continue;
+        const float influence =
+            volume_influence(instance.world_bounds, instance.volume->blend_distance, world_position);
+        if (influence <= 0.0f) continue;
+
+        const auto sampled = sample_probe_volume(*instance.volume, instance.world_bounds, world_position);
+        if (sampled.weight <= 0.0f) continue;
+        const float volume_weight = influence * instance.intensity;
+        for (std::size_t coefficient = 0; coefficient < result.spherical_harmonics.size(); ++coefficient)
+            result.spherical_harmonics[coefficient] =
+                math::add(result.spherical_harmonics[coefficient],
+                          math::mul(sampled.spherical_harmonics[coefficient], volume_weight));
+        total_volume_weight += volume_weight;
+        result.contributing_probes += sampled.contributing_probes;
+        ++result.contributing_volumes;
+    }
+
+    if (total_volume_weight <= 0.0f) return result;
+    for (auto& coefficient : result.spherical_harmonics)
+        coefficient = math::mul(coefficient, 1.0f / total_volume_weight);
+    result.accumulated_weight = total_volume_weight;
+    result.resolved_priority = best_priority;
+    result.fallback_to_environment = false;
+    return result;
+}
+
+math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& sh, const math::vector3f& normal) noexcept
+{
+    const auto n = math::normalize(normal);
+    const float x = n[0], y = n[1], z = n[2];
+    constexpr float c0 = 0.282095f;
+    constexpr float c1 = 0.488603f;
+    constexpr float c2 = 1.092548f;
+    constexpr float c3 = 0.315392f;
+    constexpr float c4 = 0.546274f;
+    const std::array<float, 9> basis{c0,
+                                     c1 * y,
+                                     c1 * z,
+                                     c1 * x,
+                                     c2 * x * y,
+                                     c2 * y * z,
+                                     c3 * (3.0f * z * z - 1.0f),
+                                     c2 * x * z,
+                                     c4 * (x * x - y * y)};
+    math::vector3f irradiance{};
+    for (std::size_t index = 0; index < sh.size(); ++index)
+        irradiance = math::add(irradiance, math::mul(sh[index], basis[index]));
+    return {std::max(irradiance[0], 0.0f), std::max(irradiance[1], 0.0f), std::max(irradiance[2], 0.0f)};
+}
 
 lighting_geometry_build_result build_lighting_geometry(const mesh_data& mesh,
                                                        const lighting_geometry_build_options& options)

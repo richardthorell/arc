@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <limits>
 #include <span>
 #include <string>
 #include <vector>
@@ -200,6 +201,99 @@ struct lighting_scene_update_batch
     std::vector<lighting_scene_update> updates;
     std::vector<geometric::box3f> dirty_world_regions;
 };
+
+/** @brief Low-order diffuse irradiance stored at one baked probe. */
+struct irradiance_probe_sample
+{
+    std::array<math::vector3f, 9> spherical_harmonics{};
+    /** [0,1] bake confidence. Zero probes never participate in interpolation. */
+    float validity{1.0f};
+    /** [0,1] conservative visibility/leak-control weight authored by the baker. */
+    float visibility{1.0f};
+    /** Mean hit distance in metres for later leak reduction. */
+    float mean_distance{};
+    /** Hit-distance variance in square metres for later leak reduction. */
+    float distance_variance{};
+};
+
+/**
+ * @brief Versioned backend-neutral baked irradiance volume.
+ *
+ * Probe order is X-major, then Y, then Z: ((z * dimensions.y) + y) * dimensions.x + x.
+ * Bounds and spacing are stored explicitly so cooked assets remain deterministic and
+ * independently streamable in a later milestone.
+ */
+struct irradiance_probe_volume_descriptor
+{
+    static constexpr std::uint32_t current_format_version = 1u;
+
+    std::uint32_t format_version{current_format_version};
+    geometric::box3f local_bounds{};
+    std::array<std::uint32_t, 3> dimensions{1u, 1u, 1u};
+    math::vector3f spacing = math::vector3f::one;
+    float blend_distance{1.0f};
+    std::int32_t priority{};
+    std::vector<irradiance_probe_sample> probes;
+    std::uint64_t content_hash{};
+};
+
+/** @brief One resolved scene instance of a baked probe-volume asset. */
+struct irradiance_probe_volume_instance
+{
+    std::uint64_t stable_id{};
+    const irradiance_probe_volume_descriptor* volume{};
+    /** Axis-aligned world-space influence bounds after scene extraction. */
+    geometric::box3f world_bounds{};
+    float intensity{1.0f};
+    /** Added to the asset priority for deterministic overlapping-volume selection. */
+    std::int32_t priority_bias{};
+    bool enabled{true};
+};
+
+/** @brief Deterministic receiver query result from one or more baked probe volumes. */
+struct [[nodiscard]] irradiance_probe_resolve_result
+{
+    std::array<math::vector3f, 9> spherical_harmonics{};
+    float accumulated_weight{};
+    std::uint32_t contributing_probes{};
+    std::uint32_t contributing_volumes{};
+    std::int32_t resolved_priority{std::numeric_limits<std::int32_t>::min()};
+    /** True when no valid baked contribution exists and environment lighting should be used. */
+    bool fallback_to_environment{true};
+};
+
+/** @brief Structured decode result for the versioned cooked irradiance-volume representation. */
+struct [[nodiscard]] irradiance_probe_volume_decode_result
+{
+    irradiance_probe_volume_descriptor volume;
+    std::string error;
+
+    [[nodiscard]] explicit operator bool() const noexcept
+    {
+        return error.empty();
+    }
+};
+
+/** @brief Encode a deterministic little-endian baked irradiance-volume artifact. */
+[[nodiscard]] std::vector<std::byte> encode_irradiance_probe_volume(const irradiance_probe_volume_descriptor& volume);
+
+/** @brief Decode and validate one cooked baked irradiance-volume artifact. */
+[[nodiscard]] irradiance_probe_volume_decode_result decode_irradiance_probe_volume(std::span<const std::byte> bytes);
+
+/**
+ * @brief Resolve trilinear baked irradiance for a world-space receiver.
+ *
+ * Only the highest effective priority tier contributes. Equal-priority overlapping volumes
+ * blend by deterministic boundary influence; invalid probes are removed and remaining weights
+ * are renormalized. No contribution means explicit environment fallback.
+ */
+[[nodiscard]] irradiance_probe_resolve_result
+resolve_irradiance_probe_volumes(std::span<const irradiance_probe_volume_instance> volumes,
+                                 const math::vector3f& world_position) noexcept;
+
+/** @brief Evaluate ARC's SH9 irradiance convention for one normalized surface normal. */
+[[nodiscard]] math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& spherical_harmonics,
+                                                     const math::vector3f& normal) noexcept;
 
 /** @brief Runtime budgets for shared world-space lighting data. */
 struct lighting_scene_config

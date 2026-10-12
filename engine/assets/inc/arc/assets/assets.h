@@ -106,6 +106,7 @@ inline constexpr asset_type_id flow_graph{0xa7ca55e700000001ull, 0x0000000000000
 inline constexpr asset_type_id material_function{0xa7ca55e700000001ull, 0x0000000000000011ull};
 inline constexpr asset_type_id sound{0xa7ca55e700000001ull, 0x0000000000000012ull};
 inline constexpr asset_type_id photometric_profile{0xa7ca55e700000001ull, 0x0000000000000013ull};
+inline constexpr asset_type_id irradiance_probe_volume{0xa7ca55e700000001ull, 0x0000000000000014ull};
 inline constexpr asset_type_id unknown{0xa7ca55e700000001ull, 0xffffffffffffffffull};
 } // namespace asset_types
 
@@ -130,6 +131,7 @@ inline constexpr asset_importer_id flow{0xa7ca55e700000002ull, 0x000000000000001
 inline constexpr asset_importer_id material_function{0xa7ca55e700000002ull, 0x0000000000000012ull};
 inline constexpr asset_importer_id sound{0xa7ca55e700000002ull, 0x0000000000000013ull};
 inline constexpr asset_importer_id photometric_profile{0xa7ca55e700000002ull, 0x0000000000000014ull};
+inline constexpr asset_importer_id irradiance_probe_volume{0xa7ca55e700000002ull, 0x0000000000000015ull};
 } // namespace importer_ids
 
 namespace fallback_assets
