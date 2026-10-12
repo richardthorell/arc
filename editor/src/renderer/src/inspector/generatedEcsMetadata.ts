@@ -809,6 +809,73 @@ export const generatedEcsComponents = [
     "fields": []
   },
   {
+    "id": "a7c0000000000001000000000000002a",
+    "canonicalName": "arc::scene.irradiance_probe_volume_component",
+    "displayName": "Irradiance Probe Volume",
+    "description": "Authored instance of a baked irradiance probe-volume asset.",
+    "schemaVersion": 1,
+    "fields": [
+      {
+        "id": "0000000000000001",
+        "name": "asset",
+        "displayName": "Probe Volume",
+        "description": "Baked .arcprobe volume asset.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "asset",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000002",
+        "name": "intensity",
+        "displayName": "Intensity",
+        "description": "Scales this volume's indirect diffuse contribution.",
+        "unit": "multiplier",
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000003",
+        "name": "priority_bias",
+        "displayName": "Priority Bias",
+        "description": "Added to the baked volume priority when overlapping volumes resolve.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "int",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000004",
+        "name": "enabled",
+        "displayName": "Enabled",
+        "description": "Registers this volume for baked indirect lighting.",
+        "unit": "none",
+        "constraints": {},
+        "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      }
+    ]
+  },
+  {
     "id": "a7c00000000000010000000000000028",
     "canonicalName": "arc::scene.baked_lighting_component",
     "displayName": "Baked Lighting",

@@ -606,6 +606,20 @@
                            "description":  "Reflected scene data for the Irradiance Probe component."
                        },
                        {
+                           "type":  "irradiance_probe_volume_component",
+                           "id":  "a7c0000000000001000000000000002a",
+                           "display":  "Irradiance Probe Volume",
+                           "version":  1,
+                           "customSerialization":  true,
+                           "description":  "Authored instance of a baked irradiance probe-volume asset.",
+                           "fields":  [
+                               { "name": "asset", "id": "0000000000000001", "kind": "asset", "display": "Probe Volume", "description": "Baked .arcprobe volume asset.", "unit": "none", "constraints": {} },
+                               { "name": "intensity", "id": "0000000000000002", "kind": "float", "display": "Intensity", "description": "Scales this volume's indirect diffuse contribution.", "unit": "multiplier", "constraints": { "minimum": 0 } },
+                               { "name": "priority_bias", "id": "0000000000000003", "kind": "int", "display": "Priority Bias", "description": "Added to the baked volume priority when overlapping volumes resolve.", "unit": "none", "constraints": {} },
+                               { "name": "enabled", "id": "0000000000000004", "kind": "bool", "display": "Enabled", "description": "Registers this volume for baked indirect lighting.", "unit": "none", "constraints": {} }
+                           ]
+                       },
+                       {
                            "type":  "baked_lighting_component",
                            "id":  "a7c00000000000010000000000000028",
                            "display":  "Baked Lighting",

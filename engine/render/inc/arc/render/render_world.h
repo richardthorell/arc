@@ -5,6 +5,7 @@
 #include <arc/render/events.h>
 #include <arc/render/gpu_scene.h>
 #include <arc/render/handles.h>
+#include <arc/render/lighting_scene.h>
 #include <arc/render/material.h>
 #include <arc/render/render_backend.h>
 #include <arc/render/render_graph.h>
@@ -14,6 +15,7 @@
 #include <arc/math/vector.h>
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -200,6 +202,17 @@ struct indirect_lighting_data
     float maximum_trace_distance{100.0f};
     float surface_cache_detail{1.0f};
     bool allow_hardware_ray_tracing{true};
+};
+
+/** @brief One resolved baked irradiance volume registered for the current render world. */
+struct irradiance_probe_volume_data
+{
+    std::uint64_t stable_id{};
+    geometric::box3f world_bounds{};
+    std::shared_ptr<const irradiance_probe_volume_descriptor> volume;
+    float intensity{1.0f};
+    std::int32_t priority_bias{};
+    std::string label;
 };
 
 /** @brief Lightmap binding extracted for one renderable object. */
@@ -467,6 +480,7 @@ struct render_world_packet
     std::vector<area_light_event> area_lights;
     std::vector<reflection_probe_data> reflection_probes;
     std::vector<irradiance_probe_data> irradiance_probes;
+    std::vector<irradiance_probe_volume_data> irradiance_probe_volumes;
     std::vector<baked_lighting_data> baked_lighting;
     world_environment_data environment;
     std::vector<fluid_surface_render_instance> fluid_surfaces;
