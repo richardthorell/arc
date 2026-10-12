@@ -7,7 +7,6 @@
 #include <chrono>
 #include <cctype>
 #include <filesystem>
-#include <sstream>
 #include <string_view>
 
 namespace arc::assets
@@ -139,10 +138,10 @@ std::string fts_query(std::string_view text)
         result.push_back('"');
         for (const auto character : value)
         {
-            if (character == '"') result += """";
+            if (character == '"') result += "\"\"";
             else result.push_back(character);
         }
-        result += ""*";
+        result += "\"*";
     }
     return result;
 }
