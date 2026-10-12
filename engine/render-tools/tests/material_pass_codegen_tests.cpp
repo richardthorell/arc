@@ -409,4 +409,5 @@ TEST_CASE("Graph material pass codegen selects the authored coat-normal shader v
     REQUIRE(neutral.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") == std::string::npos);
     REQUIRE(neutral.value().source.find("surface.clearCoatNormalWS = surface.normalWS;") != std::string::npos);
     REQUIRE(active.value().source != neutral.value().source);
+    REQUIRE(active.value().permutation != neutral.value().permutation);
 }
