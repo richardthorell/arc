@@ -24,7 +24,7 @@ namespace arc::assets
 {
 
 inline constexpr std::uint32_t asset_search_document_schema_version = 1;
-inline constexpr std::uint32_t asset_search_index_schema_version = 1;
+inline constexpr std::uint32_t asset_search_index_schema_version = 2;
 
 enum class asset_search_metadata_origin : std::uint8_t
 {
@@ -135,9 +135,9 @@ public:
 /**
  * Persistent local search-document cache backed by SQLite.
  *
- * This backend intentionally provides only the S1 baseline matching needed to
- * validate persistence and the query contract. S2 owns FTS/fuzzy search,
- * facets, structured predicates and richer ranking.
+ * The local backend provides indexed lexical candidate retrieval through
+ * SQLite FTS5 while preserving explicit ARC ranking and match reasons. Fuzzy
+ * edit-distance, facets and structured query predicates are layered on top.
  *
  * The SQLite connection uses serialized mode, but compound synchronization
  * ownership belongs to asset_search_service. Production callers should prefer
