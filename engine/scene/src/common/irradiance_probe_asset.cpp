@@ -53,9 +53,14 @@ private:
 
 } // namespace
 
+std::unique_ptr<assets::asset_importer> make_irradiance_probe_volume_importer()
+{
+    return std::make_unique<irradiance_probe_volume_importer>();
+}
+
 bool register_irradiance_probe_volume_importer(assets::asset_manager& manager)
 {
-    return manager.register_importer(std::make_unique<irradiance_probe_volume_importer>());
+    return manager.register_importer(make_irradiance_probe_volume_importer());
 }
 
 irradiance_probe_volume_binding_result
