@@ -547,3 +547,107 @@ TEST_CASE("asset search service rebuilds when persisted change history is no lon
     std::error_code error;
     std::filesystem::remove_all(root, error);
 }
+
+
+TEST_CASE("persistent asset search index finds tags categories and metadata through FTS")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-fts-metadata-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto bicycle_guid = generate_asset_guid();
+    const auto barrel_guid = generate_asset_guid();
+
+    const std::vector<asset_search_document> documents{
+        {.guid = bicycle_guid,
+         .type = asset_types::static_mesh,
+         .display_name = "SM_PROP_BCY_03_FINAL_v7",
+         .logical_path = "assets/props/vehicle-03.arcmesh",
+         .active_provider = std::string(asset_provider_ids::project_source),
+         .title = "SM_PROP_BCY_03_FINAL_v7",
+         .description = "Outdoor prop",
+         .authored_tags = {"bicycle"},
+         .generated_tags = {"weathered", "rusty"},
+         .categories = {"Vehicle/Bicycle"},
+         .metadata = {{"material", "metal", asset_search_metadata_origin::generated},
+                      {"style", "rustic", asset_search_metadata_origin::authored}},
+         .source_generation = 1,
+         .source_revision = 1},
+        {.guid = barrel_guid,
+         .type = asset_types::static_mesh,
+         .display_name = "Barrel",
+         .logical_path = "assets/props/barrel.arcmesh",
+         .active_provider = std::string(asset_provider_ids::project_source),
+         .title = "Barrel",
+         .description = "Industrial storage prop",
+         .generated_tags = {"rusty"},
+         .categories = {"Prop/Container"},
+         .metadata = {{"material", "metal", asset_search_metadata_origin::generated}},
+         .source_generation = 1,
+         .source_revision = 1}};
+    REQUIRE(index->reset(documents));
+
+    const auto tag = index->query({.text = "bicycle"});
+    REQUIRE(tag.size() == 1);
+    CHECK(tag.front().guid == bicycle_guid);
+    CHECK(tag.front().reasons.front().kind == asset_search_match_kind::metadata);
+    CHECK(tag.front().reasons.front().detail == "authored tag");
+
+    const auto category = index->query({.text = "Vehicle"});
+    REQUIRE(category.size() == 1);
+    CHECK(category.front().guid == bicycle_guid);
+    CHECK(category.front().reasons.front().detail == "category");
+
+    const auto metadata = index->query({.text = "rustic"});
+    REQUIRE(metadata.size() == 1);
+    CHECK(metadata.front().guid == bicycle_guid);
+    CHECK(metadata.front().reasons.front().detail == "metadata");
+
+    const auto multi_token = index->query({.text = "rusty bicycle"});
+    REQUIRE(multi_token.size() == 1);
+    CHECK(multi_token.front().guid == bicycle_guid);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search FTS supports token prefixes without a full document scan")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-fts-prefix-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto bicycle_guid = generate_asset_guid();
+    const auto chair_guid = generate_asset_guid();
+    REQUIRE(index->reset(std::vector<asset_search_document>{
+        {.guid = bicycle_guid,
+         .type = asset_types::static_mesh,
+         .display_name = "Bicycle",
+         .title = "Bicycle",
+         .source_generation = 1,
+         .source_revision = 1},
+        {.guid = chair_guid,
+         .type = asset_types::static_mesh,
+         .display_name = "Chair",
+         .title = "Chair",
+         .source_generation = 1,
+         .source_revision = 1}}));
+
+    const auto results = index->query({.text = "bicy"});
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == bicycle_guid);
+    CHECK(results.front().reasons.front().kind == asset_search_match_kind::prefix);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
