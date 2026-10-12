@@ -1,3 +1,4 @@
+import { forgetWindowViewportEntries } from './sharedViewportLifecycle';
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, screen, sharedTexture, shell } from 'electron';
 import type { WebFrameMain } from 'electron';
 import { spawn } from 'node:child_process';
@@ -24,7 +25,7 @@ import { resolveAndroidSdkManagerLauncher } from './androidSdkManager';
 
 const isDevelopment = !app.isPackaged;
 const performanceDiagnostics = new PerformanceDiagnostics({
-  enabled: isDevelopment || process.env.ARC_EDITOR_PERF === '1' || app.commandLine.hasSwitch('perf-diagnostics'),
+  enabled: process.env.ARC_EDITOR_PERF === '1' || app.commandLine.hasSwitch('perf-diagnostics'),
   slowOperationMs: Number(process.env.ARC_EDITOR_PERF_SLOW_MS ?? 50),
 });
 performanceDiagnostics.mark('main process started');
@@ -283,17 +284,14 @@ const setAllSharedViewportsVisible = (visible: boolean): void => {
     void hostClient.command('viewport.setVisibility', { viewportId, visible }).catch(() => undefined);
 };
 
-const forgetSharedViewportsForWindow = (target: BrowserWindow): void => {
-  const webContentsId = target.webContents.id;
-  for (const [viewportId, targetWebContentsId] of [...sharedViewportTargets]) {
-    if (targetWebContentsId !== webContentsId) continue;
-    sharedViewportTargets.delete(viewportId);
-    sharedViewportPresented.delete(viewportId);
-    sharedViewportFailures.delete(viewportId);
-    sharedViewportPresentationTails.delete(viewportId);
-    sharedViewportOutstandingReleases.delete(viewportId);
-    sharedViewportQuiescing.delete(viewportId);
-  }
+const forgetSharedViewportsForWindow = (webContentsId: number): void => {
+  forgetWindowViewportEntries(webContentsId, sharedViewportTargets, [
+    sharedViewportPresented,
+    sharedViewportFailures,
+    sharedViewportPresentationTails,
+    sharedViewportOutstandingReleases,
+    sharedViewportQuiescing,
+  ]);
 };
 
 const sharedViewportWindow = (viewportId: string): BrowserWindow | null => {
@@ -1033,6 +1031,8 @@ const createMainWindow = (): void => {
   });
 
   const rendererWindow = mainWindow;
+  // Keep the identity before Electron destroys webContents on the 'closed' event.
+  const rendererWebContentsId = rendererWindow.webContents.id;
   rendererWindow.webContents.on('did-start-loading', () => {
     setWindowSharedViewportsVisible(rendererWindow, false);
     sharedViewportPresented.clear();
@@ -1063,7 +1063,7 @@ const createMainWindow = (): void => {
   rendererWindow.on('show', () => {
     if (!rendererWindow.isMinimized()) setWindowSharedViewportsVisible(rendererWindow, true);
   });
-  rendererWindow.on('closed', () => forgetSharedViewportsForWindow(rendererWindow));
+  rendererWindow.on('closed', () => forgetSharedViewportsForWindow(rendererWebContentsId));
 
   mainWindow.on('maximize', () => sendToActiveRenderer('nativeWindow:maximizedChanged', true));
   mainWindow.on('unmaximize', () => sendToActiveRenderer('nativeWindow:maximizedChanged', false));
