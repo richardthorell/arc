@@ -1,4 +1,5 @@
 #include <arc/assets/cook.h>
+#include <arc/assets/content_bundle.h>
 
 #include <nlohmann/json.hpp>
 
@@ -195,6 +196,28 @@ bool asset_cooker::register_processor(std::unique_ptr<asset_cook_processor> proc
         if (implementation_->processor_for(type)) return false;
     implementation_->processors.push_back(std::move(processor));
     return true;
+}
+
+bundle_cook_request_result resolve_bundle_cook_roots(
+    const content_bundle_catalog& bundles, std::string_view bundle_id, const asset_database& database)
+{
+    const auto closure = bundles.closure(bundle_id, database);
+    if (!closure.succeeded())
+    {
+        std::string error;
+        switch (closure.error)
+        {
+            case bundle_error::invalid_descriptor: error = "Invalid bundle descriptor"; break;
+            case bundle_error::duplicate_bundle: error = "Duplicate bundle ID"; break;
+            case bundle_error::missing_bundle: error = "Missing bundle dependency"; break;
+            case bundle_error::cyclic_bundle_dependency: error = "Bundle dependency cycle"; break;
+            case bundle_error::missing_asset: error = "Bundle references missing asset GUID"; break;
+            case bundle_error::none: break;
+        }
+        return {.error = std::move(error)};
+    }
+    if (closure.assets.empty()) return {.error = "Bundle contains no cookable asset GUIDs"};
+    return {.roots = closure.assets};
 }
 
 cook_result asset_cooker::cook(const cook_request& request)
