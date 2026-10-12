@@ -548,7 +548,6 @@ TEST_CASE("asset search service rebuilds when persisted change history is no lon
     std::filesystem::remove_all(root, error);
 }
 
-
 TEST_CASE("persistent asset search index finds tags categories and metadata through FTS")
 {
     using namespace arc::assets;
@@ -629,19 +628,18 @@ TEST_CASE("persistent asset search FTS supports token prefixes without a full do
 
     const auto bicycle_guid = generate_asset_guid();
     const auto chair_guid = generate_asset_guid();
-    REQUIRE(index->reset(std::vector<asset_search_document>{
-        {.guid = bicycle_guid,
-         .type = asset_types::static_mesh,
-         .display_name = "Bicycle",
-         .title = "Bicycle",
-         .source_generation = 1,
-         .source_revision = 1},
-        {.guid = chair_guid,
-         .type = asset_types::static_mesh,
-         .display_name = "Chair",
-         .title = "Chair",
-         .source_generation = 1,
-         .source_revision = 1}}));
+    REQUIRE(index->reset(std::vector<asset_search_document>{{.guid = bicycle_guid,
+                                                             .type = asset_types::static_mesh,
+                                                             .display_name = "Bicycle",
+                                                             .title = "Bicycle",
+                                                             .source_generation = 1,
+                                                             .source_revision = 1},
+                                                            {.guid = chair_guid,
+                                                             .type = asset_types::static_mesh,
+                                                             .display_name = "Chair",
+                                                             .title = "Chair",
+                                                             .source_generation = 1,
+                                                             .source_revision = 1}}));
 
     const auto results = index->query({.text = "bicy"});
     REQUIRE(results.size() == 1);

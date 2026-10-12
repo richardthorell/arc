@@ -138,8 +138,10 @@ std::string fts_query(std::string_view text)
         result.push_back('"');
         for (const auto character : value)
         {
-            if (character == '"') result += "\"\"";
-            else result.push_back(character);
+            if (character == '"')
+                result += "\"\"";
+            else
+                result.push_back(character);
         }
         result += "\"*";
     }
@@ -155,9 +157,8 @@ struct baseline_match
 };
 
 baseline_match match_text(std::string_view query, std::string_view display_name, std::string_view title,
-                          std::string_view logical_path, std::string_view description,
-                          std::string_view authored_tags, std::string_view generated_tags,
-                          std::string_view categories, std::string_view metadata)
+                          std::string_view logical_path, std::string_view description, std::string_view authored_tags,
+                          std::string_view generated_tags, std::string_view categories, std::string_view metadata)
 {
     if (query.empty()) return {.matched = true};
 
@@ -343,10 +344,9 @@ asset_status write_document(sqlite3* database, const std::filesystem::path& path
     if (sqlite3_step(erase_fts.get()) != SQLITE_DONE)
         return sqlite_failure(database, path, "Could not clear FTS search document");
 
-    sqlite_statement insert_fts(
-        database,
-        "INSERT INTO search_fts(guid,display_name,title,logical_path,description,"
-        "authored_tags,generated_tags,categories,metadata) VALUES(?,?,?,?,?,?,?,?,?);");
+    sqlite_statement insert_fts(database,
+                                "INSERT INTO search_fts(guid,display_name,title,logical_path,description,"
+                                "authored_tags,generated_tags,categories,metadata) VALUES(?,?,?,?,?,?,?,?,?);");
     if (!insert_fts) return sqlite_failure(database, path, "Could not prepare FTS search document");
     bind_text(insert_fts.get(), 1, to_string(document.guid));
     bind_text(insert_fts.get(), 2, document.display_name);
@@ -560,9 +560,8 @@ asset_status persistent_asset_search_index::erase(asset_guid guid)
         return sqlite_failure(implementation_->database, implementation_->path, "Could not begin search delete");
 
     const auto guid_text = to_string(guid);
-    for (const auto* table :
-         {"search_fts", "search_metadata", "search_categories", "search_generated_tags", "search_authored_tags",
-          "search_documents"})
+    for (const auto* table : {"search_fts", "search_metadata", "search_categories", "search_generated_tags",
+                              "search_authored_tags", "search_documents"})
     {
         const std::string sql = "DELETE FROM " + std::string(table) + " WHERE guid=?;";
         sqlite_statement statement(implementation_->database, sql.c_str());
@@ -632,13 +631,12 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
     const auto match_query = use_fts ? fts_query(query_value.text) : std::string{};
     if (use_fts && match_query.empty()) return results;
 
-    const char* sql = use_fts
-                          ? "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
-                            "d.description,f.authored_tags,f.generated_tags,f.categories,f.metadata "
-                            "FROM search_fts f JOIN search_documents d ON d.guid=f.guid "
-                            "WHERE search_fts MATCH ?;"
-                          : "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
-                            "d.description,'','','','' FROM search_documents d;";
+    const char* sql = use_fts ? "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
+                                "d.description,f.authored_tags,f.generated_tags,f.categories,f.metadata "
+                                "FROM search_fts f JOIN search_documents d ON d.guid=f.guid "
+                                "WHERE search_fts MATCH ?;"
+                              : "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
+                                "d.description,'','','','' FROM search_documents d;";
     sqlite_statement statement(implementation_->database, sql);
     if (!statement) return results;
     if (use_fts) bind_text(statement.get(), 1, match_query);
@@ -661,8 +659,7 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
                                column_text(statement.get(), 9), column_text(statement.get(), 10));
 
         asset_search_result result{.guid = *guid, .score = match.score};
-        if (use_fts)
-            result.reasons.push_back({.kind = match.kind, .score = match.score, .detail = match.detail});
+        if (use_fts) result.reasons.push_back({.kind = match.kind, .score = match.score, .detail = match.detail});
         results.push_back(std::move(result));
     }
 
