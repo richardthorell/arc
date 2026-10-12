@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <string>
@@ -55,6 +56,32 @@ struct content_bundle_descriptor
     bundle_closure_policy closure{bundle_closure_policy::transitive_dependencies};
     std::vector<std::string> tags;
 };
+
+/** Authoring I/O reports diagnostics without changing member asset identities. */
+struct [[nodiscard]] content_bundle_io_result
+{
+    content_bundle_descriptor descriptor;
+    std::string error;
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error.empty();
+    }
+};
+
+[[nodiscard]] content_bundle_io_result parse_content_bundle(std::string_view json_text);
+[[nodiscard]] content_bundle_io_result load_content_bundle(const std::filesystem::path& path);
+[[nodiscard]] std::string serialize_content_bundle(const content_bundle_descriptor& descriptor);
+struct [[nodiscard]] content_bundle_save_result
+{
+    std::string error;
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error.empty();
+    }
+};
+
+[[nodiscard]] content_bundle_save_result save_content_bundle(const std::filesystem::path& path,
+                                                             const content_bundle_descriptor& descriptor);
 
 enum class bundle_error : std::uint8_t
 {
