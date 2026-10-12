@@ -12,6 +12,7 @@
 #include <arc/scene/components.h>
 #include <arc/scene/environment.h>
 #include <arc/scene/hierarchy.h>
+#include <arc/scene/irradiance_probe_asset.h>
 #include <arc/scene/persistence.h>
 #include <arc/scene/photometric_asset.h>
 #include <arc/scene/query.h>
