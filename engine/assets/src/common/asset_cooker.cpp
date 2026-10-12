@@ -220,6 +220,21 @@ bundle_cook_request_result resolve_bundle_cook_roots(
     return {.roots = closure.assets};
 }
 
+cook_result asset_cooker::cook_bundle(const content_bundle_catalog& bundles, std::string_view bundle_id,
+                                     const cook_request& request)
+{
+    const auto resolved = resolve_bundle_cook_roots(bundles, bundle_id, implementation_->assets->database());
+    if (!resolved.succeeded())
+    {
+        cook_result result;
+        result.error = {.code = asset_error_code::invalid_request, .message = resolved.error};
+        return result;
+    }
+    auto bundle_request = request;
+    bundle_request.roots = resolved.roots;
+    return cook(bundle_request);
+}
+
 cook_result asset_cooker::cook(const cook_request& request)
 {
     cook_result result;
