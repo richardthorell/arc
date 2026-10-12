@@ -140,6 +140,32 @@
   flex: 0 0 auto;
 }
 
+.inspector-material-parameter-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.inspector-material-parameter-editors {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 3px;
+}
+
+.inspector-material-parameter-control > .asset-picker-property,
+.inspector-material-parameter-control > .inspector-property,
+.inspector-material-parameter-control > .ui-color-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inspector-material-parameter-control .inspector-field-reset {
+  flex: 0 0 auto;
+}
+
 .inspector-material-parameter-values {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
