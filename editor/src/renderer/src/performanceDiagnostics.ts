@@ -1,4 +1,4 @@
-const enabled = import.meta.env.DEV || new URLSearchParams(window.location.search).has('perf');
+const enabled = new URLSearchParams(window.location.search).has('perf');
 const startedAt = performance.now();
 
 const log = (message: string) => {
