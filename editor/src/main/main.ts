@@ -1,3 +1,4 @@
+import { forgetWindowViewportEntries } from './sharedViewportLifecycle';
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, screen, sharedTexture, shell } from 'electron';
 import type { WebFrameMain } from 'electron';
 import { spawn } from 'node:child_process';
@@ -284,15 +285,13 @@ const setAllSharedViewportsVisible = (visible: boolean): void => {
 };
 
 const forgetSharedViewportsForWindow = (webContentsId: number): void => {
-  for (const [viewportId, targetWebContentsId] of [...sharedViewportTargets]) {
-    if (targetWebContentsId !== webContentsId) continue;
-    sharedViewportTargets.delete(viewportId);
-    sharedViewportPresented.delete(viewportId);
-    sharedViewportFailures.delete(viewportId);
-    sharedViewportPresentationTails.delete(viewportId);
-    sharedViewportOutstandingReleases.delete(viewportId);
-    sharedViewportQuiescing.delete(viewportId);
-  }
+  forgetWindowViewportEntries(webContentsId, sharedViewportTargets, [
+    sharedViewportPresented,
+    sharedViewportFailures,
+    sharedViewportPresentationTails,
+    sharedViewportOutstandingReleases,
+    sharedViewportQuiescing,
+  ]);
 };
 
 const sharedViewportWindow = (viewportId: string): BrowserWindow | null => {
