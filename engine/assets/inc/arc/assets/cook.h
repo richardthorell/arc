@@ -418,11 +418,15 @@ struct [[nodiscard]] bundle_cook_request_result
 {
     std::vector<asset_guid> roots;
     std::string error;
-    [[nodiscard]] bool succeeded() const noexcept { return error.empty(); }
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error.empty();
+    }
 };
 
-[[nodiscard]] bundle_cook_request_result resolve_bundle_cook_roots(
-    const content_bundle_catalog& bundles, std::string_view bundle_id, const asset_database& database);
+[[nodiscard]] bundle_cook_request_result resolve_bundle_cook_roots(const content_bundle_catalog& bundles,
+                                                                   std::string_view bundle_id,
+                                                                   const asset_database& database);
 
 struct cook_request
 {
