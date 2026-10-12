@@ -124,11 +124,11 @@ std::string fts_query(std::string_view text)
         }
         if (!token.empty())
         {
-            tokens.push_back(std::move(token));
+            tokens.push_back(token);
             token.clear();
         }
     }
-    if (!token.empty()) tokens.push_back(std::move(token));
+    if (!token.empty()) tokens.push_back(token);
     if (tokens.empty()) return {};
 
     std::string result;
