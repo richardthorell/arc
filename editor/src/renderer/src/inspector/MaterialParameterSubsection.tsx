@@ -145,7 +145,7 @@ export function MaterialParameterSubsection({
         </div>
       ))}
       <fieldset disabled={busy || !description?.definitionReady} style={{ border: 0, margin: 0, padding: 0 }}>
-        {description?.functionSlots.map((slot) => (
+        {description?.functionSlots.filter((slot) => slot.alternatives.length > 1).map((slot) => (
           <div className="inspector-material-function-selector" key={slot.id}>
             <span>{slot.name}</span>
             <UiSelect
@@ -207,7 +207,9 @@ export function MaterialParameterSubsection({
                       }
                     />
                   )}
-                  {values.map((number, i) => (
+                  {parameter.semantic !== 'baseColor' && values.length > 0 && (
+                    <div className="inspector-material-parameter-values">
+                      {values.map((number, i) => (
                     <UiNumericInput
                       key={`${parameter.id}-${i}-${number}`}
                       precision={3}
@@ -224,7 +226,9 @@ export function MaterialParameterSubsection({
                         void mutate('setOverride', { parameterId: parameter.id, value: updated });
                       }}
                     />
-                  ))}
+                      ))}
+                    </div>
+                  )}
                   {parameter.valueStatus === 'unavailable' && <small>Value unavailable</small>}
                 </>
               )}
