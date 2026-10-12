@@ -206,4 +206,58 @@ private:
     std::map<content_bundle_id, content_bundle_descriptor, std::less<>> bundles_;
 };
 
+/**
+ * A read-only logical database projection that exposes bundle memberships
+ * without introducing a second asset registry or changing asset identities.
+ * The catalog and underlying database must outlive this view.
+ */
+class bundle_membership_database final : public asset_database
+{
+public:
+    bundle_membership_database(const asset_database& database, const content_bundle_catalog& bundles) noexcept
+        : database_(&database), bundles_(&bundles)
+    {
+    }
+
+    [[nodiscard]] std::optional<asset_database_record> query(asset_guid guid,
+                                                             asset_type_id expected_type = {}) const override
+    {
+        auto record = database_->query(guid, expected_type);
+        if (record) record->bundle_memberships = bundles_->memberships(guid, *database_);
+        return record;
+    }
+
+    [[nodiscard]] std::vector<asset_database_record> records() const override
+    {
+        auto result = database_->records();
+        for (auto& record : result)
+            record.bundle_memberships = bundles_->memberships(record.guid, *database_);
+        return result;
+    }
+
+    [[nodiscard]] std::vector<asset_guid> dependencies(asset_guid guid) const override
+    {
+        return database_->dependencies(guid);
+    }
+
+    [[nodiscard]] std::vector<asset_guid> reverse_dependencies(asset_guid guid) const override
+    {
+        return database_->reverse_dependencies(guid);
+    }
+
+    [[nodiscard]] std::uint64_t revision() const override
+    {
+        return database_->revision();
+    }
+
+    [[nodiscard]] asset_database_change_batch changes_since(std::uint64_t cursor) const override
+    {
+        return database_->changes_since(cursor);
+    }
+
+private:
+    const asset_database* database_{};
+    const content_bundle_catalog* bundles_{};
+};
+
 } // namespace arc::assets

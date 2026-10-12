@@ -447,3 +447,45 @@ TEST_CASE("bundle cooking resolves shared assets deterministically and rejects c
     REQUIRE(cyclic.add(std::move(b)) == bundle_error::none);
     CHECK_FALSE(resolve_bundle_cook_roots(cyclic, "A", database).succeeded());
 }
+
+TEST_CASE("bundle membership database projects shared and nested memberships onto GUID records")
+{
+    using namespace arc::assets;
+    bundle_test_database database;
+    const auto root = generate_asset_guid();
+    const auto shared = generate_asset_guid();
+    database.entries.emplace(root, std::vector<asset_guid>{shared});
+    database.entries.emplace(shared, std::vector<asset_guid>{});
+
+    content_bundle_catalog catalog;
+    content_bundle_descriptor common;
+    common.id = "Startup/Common";
+    common.roots = {shared};
+    REQUIRE(catalog.add(std::move(common)) == bundle_error::none);
+    content_bundle_descriptor level;
+    level.id = "Level/Forest";
+    level.roots = {root};
+    level.bundle_dependencies = {"Startup/Common"};
+    REQUIRE(catalog.add(std::move(level)) == bundle_error::none);
+
+    const bundle_membership_database view(database, catalog);
+    const auto shared_record = view.query(shared);
+    REQUIRE(shared_record);
+    CHECK(shared_record->guid == shared);
+    CHECK(shared_record->bundle_memberships == std::vector<std::string>{"Level/Forest", "Startup/Common"});
+    const auto root_record = view.query(root);
+    REQUIRE(root_record);
+    CHECK(root_record->bundle_memberships == std::vector<std::string>{"Level/Forest"});
+
+    const auto records = view.records();
+    REQUIRE(records.size() == 2);
+    for (const auto& record : records)
+    {
+        const auto queried = view.query(record.guid);
+        REQUIRE(queried);
+        CHECK(record.bundle_memberships == queried->bundle_memberships);
+    }
+    CHECK_FALSE(view.query(generate_asset_guid()));
+    CHECK(view.dependencies(root) == std::vector<asset_guid>{shared});
+    CHECK(view.revision() == database.revision());
+}
