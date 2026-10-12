@@ -224,11 +224,11 @@ export function MaterialParameterSubsection({
                           min={parameter.range?.min}
                           max={parameter.range?.max}
                           onCommit={(next) => {
-                        if (!Number.isFinite(next) || next === number) return;
-                        const updated = [...values];
-                        updated[i] = next;
-                        void mutate('setOverride', { parameterId: parameter.id, value: updated });
-                        }}
+                            if (!Number.isFinite(next) || next === number) return;
+                            const updated = [...values];
+                            updated[i] = next;
+                            void mutate('setOverride', { parameterId: parameter.id, value: updated });
+                          }}
                         />
                       ))}
                     </div>
