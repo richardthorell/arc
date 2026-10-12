@@ -103,7 +103,7 @@ export function MaterialParameterSubsection({
       }
     })();
     return () => {
-      if (generation.current === current) ++generation.current;
+      generation.current = current + 1;
     };
   }, [value, mixed, refresh]);
 
