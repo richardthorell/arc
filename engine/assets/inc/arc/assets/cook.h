@@ -410,6 +410,24 @@ struct cook_manifest
     std::vector<cook_manifest_artifact> artifacts;
 };
 
+class asset_database;
+class content_bundle_catalog;
+
+/** Resolve a bundle to a deterministic cook request without changing asset identity. */
+struct [[nodiscard]] bundle_cook_request_result
+{
+    std::vector<asset_guid> roots;
+    std::string error;
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return error.empty();
+    }
+};
+
+[[nodiscard]] bundle_cook_request_result resolve_bundle_cook_roots(const content_bundle_catalog& bundles,
+                                                                   std::string_view bundle_id,
+                                                                   const asset_database& database);
+
 struct cook_request
 {
     std::vector<asset_guid> roots;
@@ -439,6 +457,8 @@ public:
     ~asset_cooker();
     bool register_processor(std::unique_ptr<asset_cook_processor> processor);
     [[nodiscard]] cook_result cook(const cook_request& request);
+    [[nodiscard]] cook_result cook_bundle(const content_bundle_catalog& bundles, std::string_view bundle_id,
+                                          const cook_request& request);
 
 private:
     struct implementation;

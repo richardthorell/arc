@@ -1,5 +1,6 @@
 #include <arc/assets/asset_database.h>
 #include <arc/assets/content_bundle.h>
+#include <arc/assets/cook.h>
 
 #include <map>
 
@@ -404,4 +405,45 @@ TEST_CASE("arcbundle parser rejects malformed formats and references")
             .succeeded());
     CHECK_FALSE(parse_content_bundle(R"({"format":"arc.bundle","version":1,"id":"A","roots":[],"preload":"invalid"})")
                     .succeeded());
+}
+
+TEST_CASE("bundle cooking resolves shared assets deterministically and rejects cycles")
+{
+    using namespace arc::assets;
+    bundle_test_database database;
+    const auto scene = generate_asset_guid();
+    const auto audio = generate_asset_guid();
+    const auto shared = generate_asset_guid();
+    database.entries.emplace(scene, std::vector<asset_guid>{shared});
+    database.entries.emplace(audio, std::vector<asset_guid>{shared});
+    database.entries.emplace(shared, std::vector<asset_guid>{});
+
+    content_bundle_catalog bundles;
+    content_bundle_descriptor common;
+    common.id = "Startup/Common";
+    common.roots = {shared};
+    REQUIRE(bundles.add(std::move(common)) == bundle_error::none);
+    content_bundle_descriptor forest;
+    forest.id = "Level/Forest";
+    forest.roots = {audio, scene};
+    forest.bundle_dependencies = {"Startup/Common"};
+    REQUIRE(bundles.add(std::move(forest)) == bundle_error::none);
+
+    const auto first = resolve_bundle_cook_roots(bundles, "Level/Forest", database);
+    REQUIRE(first.succeeded());
+    REQUIRE(first.roots.size() == 3);
+    CHECK(std::is_sorted(first.roots.begin(), first.roots.end()));
+    CHECK(first.roots == resolve_bundle_cook_roots(bundles, "Level/Forest", database).roots);
+    CHECK_FALSE(resolve_bundle_cook_roots(bundles, "Unknown", database).succeeded());
+
+    content_bundle_catalog cyclic;
+    content_bundle_descriptor a;
+    a.id = "A";
+    a.bundle_dependencies = {"B"};
+    content_bundle_descriptor b;
+    b.id = "B";
+    b.bundle_dependencies = {"A"};
+    REQUIRE(cyclic.add(std::move(a)) == bundle_error::none);
+    REQUIRE(cyclic.add(std::move(b)) == bundle_error::none);
+    CHECK_FALSE(resolve_bundle_cook_roots(cyclic, "A", database).succeeded());
 }
