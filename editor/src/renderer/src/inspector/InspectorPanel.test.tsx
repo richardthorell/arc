@@ -610,28 +610,26 @@ describe('data-driven InspectorPanel', () => {
     const command = vi.fn().mockResolvedValue({ succeeded: true });
     const materialGuid = '11112222-3333-4444-5555-666677778888';
     const entityGuid = '99999999-1111-4111-8111-111111111111';
-    const query = vi
-      .fn()
-      .mockResolvedValue({
-        succeeded: true,
-        sceneRevision: 7,
-        worldEpoch: 2,
-        payload: {
-          guid: materialGuid,
-          kind: 'material',
-          provenance: 'savedSource',
-          definitionRevision: 'a'.repeat(64),
-          parentGuid: null,
-          dependencies: [],
-          parameters: [],
-          functionSlots: [],
-          functionInterface: null,
-          definitionReady: true,
-          diagnostics: [],
-          runtimeStatus: 'notInspected',
-          entity: null,
-        },
-      });
+    const query = vi.fn().mockResolvedValue({
+      succeeded: true,
+      sceneRevision: 7,
+      worldEpoch: 2,
+      payload: {
+        guid: materialGuid,
+        kind: 'material',
+        provenance: 'savedSource',
+        definitionRevision: 'a'.repeat(64),
+        parentGuid: null,
+        dependencies: [],
+        parameters: [],
+        functionSlots: [],
+        functionInterface: null,
+        definitionReady: true,
+        diagnostics: [],
+        runtimeStatus: 'notInspected',
+        entity: null,
+      },
+    });
     Object.defineProperty(window, 'arc', { configurable: true, value: { host: { query, command } } });
     const thumbnailProvider = vi.fn().mockResolvedValue('data:image/bmp;base64,Qkpreview');
     render(
