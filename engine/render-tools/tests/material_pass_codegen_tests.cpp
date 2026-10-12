@@ -380,3 +380,33 @@ TEST_CASE("Material pass evaluator retains requested clear-coat normal specializ
             std::string::npos);
     REQUIRE(default_evaluator.value().source != neutral_evaluator.value().source);
 }
+
+TEST_CASE("Graph material pass codegen selects the authored coat-normal shader variant")
+{
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"coat","type":"vector3","values":{"value":[0.0,1.0,0.0]}}
+      ],
+      "connections":[
+        {"id":"coat-out","from":{"nodeId":"coat","pin":"value"},
+         "to":{"nodeId":"out","pin":"clearCoatNormal"}}
+      ]
+    })";
+    const auto compiled = arc::render::tools::compile_material_graph_json(graph);
+    REQUIRE(compiled);
+    arc::render::material_descriptor material{};
+    const auto active = arc::render::tools::generate_material_pass_slang(
+        compiled.value(), material, arc::render::material_pass::forward,
+        arc::render::tools::material_shader_codegen_options{.independent_clear_coat_normal = true});
+    const auto neutral = arc::render::tools::generate_material_pass_slang(
+        compiled.value(), material, arc::render::material_pass::forward,
+        arc::render::tools::material_shader_codegen_options{.independent_clear_coat_normal = false});
+    REQUIRE(active);
+    REQUIRE(neutral);
+    REQUIRE(active.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") != std::string::npos);
+    REQUIRE(neutral.value().source.find("surface.clearCoatNormalWS = arc_node_coat_value;") == std::string::npos);
+    REQUIRE(neutral.value().source.find("surface.clearCoatNormalWS = surface.normalWS;") != std::string::npos);
+    REQUIRE(active.value().source != neutral.value().source);
+}
