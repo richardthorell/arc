@@ -28,7 +28,17 @@
 }
 
 .inspector-material-parameters {
-  --inspector-row-label: clamp(170px, 30%, 230px);
+  --inspector-row-label: clamp(140px, 30%, 230px);
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.inspector-material-parameters fieldset {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .inspector-subsection-title {
@@ -118,6 +128,7 @@
 }
 
 .inspector-material-parameter {
+  width: 100%;
   display: grid;
   grid-template-columns: var(--inspector-row-label) minmax(0, 1fr) auto;
   align-items: center;
@@ -137,6 +148,7 @@
 }
 
 .inspector-material-parameter-values {
+  grid-column: 2;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 3px;
