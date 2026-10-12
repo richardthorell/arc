@@ -819,8 +819,8 @@ material_pass_codegen_result generate_material_pass_slang(const material_graph_c
                                                           std::uint8_t debug_view, bool wireframe,
                                                           bool virtual_shadow_sampling)
 {
-    return generate_material_pass_slang(compilation, material, pass, material_shader_codegen_options{},
-                                        debug_view, wireframe, virtual_shadow_sampling);
+    return generate_material_pass_slang(compilation, material, pass, material_shader_codegen_options{}, debug_view,
+                                        wireframe, virtual_shadow_sampling);
 }
 
 } // namespace arc::render::tools

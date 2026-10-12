@@ -88,9 +88,8 @@ using material_pass_codegen_result = core::result<material_pass_shader_source, s
 /** @brief Compose a native graph shader variant directly, preserving pass material semantics. */
 [[nodiscard]] material_pass_codegen_result
 generate_material_pass_slang(const material_graph_compilation& compilation, const material_descriptor& material,
-                             material_pass pass, material_shader_codegen_options options,
-                             std::uint8_t debug_view = 0, bool wireframe = false,
-                             bool virtual_shadow_sampling = true);
+                             material_pass pass, material_shader_codegen_options options, std::uint8_t debug_view = 0,
+                             bool wireframe = false, bool virtual_shadow_sampling = true);
 
 [[nodiscard]] material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
                                                                         const material_descriptor& material,
