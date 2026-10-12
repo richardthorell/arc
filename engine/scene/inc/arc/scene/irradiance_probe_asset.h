@@ -26,7 +26,6 @@ bool register_irradiance_probe_volume_importer(assets::asset_manager& manager);
 
 /** Resolve/load an authored baked irradiance-volume component against the asset registry. */
 [[nodiscard]] irradiance_probe_volume_binding_result
-refresh_irradiance_probe_volume_binding(irradiance_probe_volume_component& component,
-                                        assets::asset_manager& manager);
+refresh_irradiance_probe_volume_binding(irradiance_probe_volume_component& component, assets::asset_manager& manager);
 
 } // namespace arc::scene

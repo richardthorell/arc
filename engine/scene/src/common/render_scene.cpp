@@ -949,8 +949,8 @@ render_scene_result render_scene(ecs::world& scene, render::renderer& renderer, 
             if (!entity_is_active(scene, value) || !probe.enabled || !probe.runtime_volume) return;
             const math::matrix4f world = transform.dirty ? local_matrix(transform) : transform.world;
             world_packet.irradiance_probe_volumes.push_back(
-                {.stable_id = (static_cast<std::uint64_t>(value.generation) << 32u) |
-                              static_cast<std::uint64_t>(value.index),
+                {.stable_id =
+                     (static_cast<std::uint64_t>(value.generation) << 32u) | static_cast<std::uint64_t>(value.index),
                  .world_bounds = transform_bounds(probe.runtime_volume->local_bounds, world),
                  .volume = probe.runtime_volume,
                  .intensity = probe.intensity,

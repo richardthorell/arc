@@ -18,7 +18,10 @@ public:
         descriptor_.output_types = {assets::asset_types::irradiance_probe_volume};
     }
 
-    const assets::asset_importer_descriptor& descriptor() const noexcept override { return descriptor_; }
+    const assets::asset_importer_descriptor& descriptor() const noexcept override
+    {
+        return descriptor_;
+    }
 
     assets::asset_import_result import(const assets::asset_import_context& context) override
     {
@@ -36,9 +39,8 @@ public:
                               .message = decoded.error}};
 
         auto volume = std::make_shared<render::irradiance_probe_volume_descriptor>(decoded.volume);
-        const std::size_t resident_bytes =
-            sizeof(render::irradiance_probe_volume_descriptor) +
-            volume->probes.size() * sizeof(render::irradiance_probe_sample);
+        const std::size_t resident_bytes = sizeof(render::irradiance_probe_volume_descriptor) +
+                                           volume->probes.size() * sizeof(render::irradiance_probe_sample);
 
         assets::asset_import_result result;
         result.payload = assets::asset_payload::make<render::irradiance_probe_volume_descriptor>(
@@ -64,8 +66,7 @@ bool register_irradiance_probe_volume_importer(assets::asset_manager& manager)
 }
 
 irradiance_probe_volume_binding_result
-refresh_irradiance_probe_volume_binding(irradiance_probe_volume_component& component,
-                                        assets::asset_manager& manager)
+refresh_irradiance_probe_volume_binding(irradiance_probe_volume_component& component, assets::asset_manager& manager)
 {
     irradiance_probe_volume_binding_result result;
     if (!component.asset.guid.valid() && component.asset.path_hint.empty())
@@ -88,18 +89,18 @@ refresh_irradiance_probe_volume_binding(irradiance_probe_volume_component& compo
         return result;
     }
 
-    auto pending = manager.load<render::irradiance_probe_volume_descriptor>(
-        {.reference = reference,
-         .priority = assets::asset_streaming_priority::high,
-         .residency = assets::asset_residency::cpu,
-         .allow_fallback = false});
+    auto pending =
+        manager.load<render::irradiance_probe_volume_descriptor>({.reference = reference,
+                                                                  .priority = assets::asset_streaming_priority::high,
+                                                                  .residency = assets::asset_residency::cpu,
+                                                                  .allow_fallback = false});
     auto loaded = pending.get();
     if (!loaded || !loaded.asset.get())
     {
         component.runtime_volume.reset();
         result.message = loaded ? "Irradiance probe-volume payload has the wrong runtime type"
                                 : (loaded.error.message.empty() ? "Irradiance probe-volume asset could not be loaded"
-                                                               : loaded.error.message);
+                                                                : loaded.error.message);
         return result;
     }
 

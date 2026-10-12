@@ -1153,12 +1153,11 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                          {"sphericalHarmonics", std::move(coefficients)}};
     }
     if (const auto* component = state.scene.try_get<scene::irradiance_probe_volume_component>(value))
-        components["IrradianceProbeVolume"] = {
-            {"version", 1},
-            {"asset", serialize_asset_reference(component->asset, project_root)},
-            {"intensity", component->intensity},
-            {"priorityBias", component->priority_bias},
-            {"enabled", component->enabled}};
+        components["IrradianceProbeVolume"] = {{"version", 1},
+                                               {"asset", serialize_asset_reference(component->asset, project_root)},
+                                               {"intensity", component->intensity},
+                                               {"priorityBias", component->priority_bias},
+                                               {"enabled", component->enabled}};
 
     if (const auto* component = state.scene.try_get<scene::baked_lighting_component>(value))
         components["BakedLighting"] = {{"version", 1},
@@ -1933,7 +1932,8 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
             {
                 const auto& source = components["IrradianceProbeVolume"];
                 scene::irradiance_probe_volume_component probe;
-                if (!source.contains("asset")) throw std::runtime_error("irradiance probe-volume asset reference is missing");
+                if (!source.contains("asset"))
+                    throw std::runtime_error("irradiance probe-volume asset reference is missing");
                 probe.asset = read_asset_reference(source["asset"], assets::asset_types::irradiance_probe_volume,
                                                    project_root, asset_registry);
                 probe.asset.expected_type = assets::asset_types::irradiance_probe_volume;

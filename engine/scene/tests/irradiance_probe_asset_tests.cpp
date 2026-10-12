@@ -8,8 +8,7 @@
 TEST_CASE("arcprobe importer publishes typed baked irradiance data")
 {
     arc::render::irradiance_probe_volume_descriptor volume;
-    volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f},
-                           arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
+    volume.local_bounds = {arc::geometric::point3f{0.0f, 0.0f, 0.0f}, arc::geometric::point3f{1.0f, 1.0f, 1.0f}};
     volume.dimensions = {1u, 1u, 1u};
     volume.spacing = {1.0f, 1.0f, 1.0f};
     volume.probes.resize(1u);
