@@ -73,6 +73,32 @@ describe('native-backed entity material controls', () => {
     expect(readText).not.toHaveBeenCalled();
     expect(command).not.toHaveBeenCalled();
   });
+  it('does not present internal one-choice Material Function slots as editable selections', async () => {
+    query.mockImplementation(async (type) =>
+      response(
+        type === 'entity.selected'
+          ? { guid: entityGuid, selectionCount: 1 }
+          : {
+              ...description(),
+              functionSlots: [
+                { id: 'internal', name: 'Unpack ORM', selectedFunctionGuid: 'a', alternatives: [{ guid: 'a', pathHint: 'orm' }] },
+                {
+                  id: 'authorable',
+                  name: 'Base Color Source',
+                  selectedFunctionGuid: 'a',
+                  alternatives: [
+                    { guid: 'a', pathHint: 'color' },
+                    { guid: 'b', pathHint: 'checker' },
+                  ],
+                },
+              ],
+            },
+      ),
+    );
+    show();
+    expect(await screen.findByLabelText('Base Color Source function')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Unpack ORM function')).not.toBeInTheDocument();
+  });
   it('commits a typed 64-bit override with inspected scene, world and definition authority', async () => {
     show();
     const input = await screen.findByLabelText('Artist Control');
