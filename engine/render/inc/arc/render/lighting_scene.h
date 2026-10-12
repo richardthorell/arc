@@ -251,7 +251,7 @@ struct irradiance_probe_volume_instance
 };
 
 /** @brief Deterministic receiver query result from one or more baked probe volumes. */
-struct irradiance_probe_resolve_result
+struct [[nodiscard]] irradiance_probe_resolve_result
 {
     std::array<math::vector3f, 9> spherical_harmonics{};
     float accumulated_weight{};
