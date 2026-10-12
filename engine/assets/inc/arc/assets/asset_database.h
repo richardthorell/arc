@@ -103,6 +103,8 @@ struct asset_database_record
     std::string source_hint;
     std::vector<asset_guid> dependencies;
     std::vector<asset_guid> reverse_dependencies;
+    /** Bundle IDs containing this GUID in their resolved dependency closure. */
+    std::vector<std::string> bundle_memberships;
     std::vector<asset_database_provider> providers;
     std::vector<asset_database_representation> representations;
     std::string active_provider;
