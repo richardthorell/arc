@@ -453,6 +453,8 @@ public:
     ~asset_cooker();
     bool register_processor(std::unique_ptr<asset_cook_processor> processor);
     [[nodiscard]] cook_result cook(const cook_request& request);
+    [[nodiscard]] cook_result cook_bundle(const content_bundle_catalog& bundles, std::string_view bundle_id,
+                                          const cook_request& request);
 
 private:
     struct implementation;
