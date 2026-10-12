@@ -253,6 +253,19 @@ TEST_CASE("Material Function Calls select from authored compatible functions and
     REQUIRE(repeated);
     CHECK(repeated.value().function_specialization_key == specialized.value().function_specialization_key);
     CHECK(repeated.value().descriptor.function_slots == specialized.value().descriptor.function_slots);
+
+    // The runtime resolves authored locators to absolute paths. Compatibility must
+    // compare the resolved Function, not reject the same asset due to its locator.
+    auto resolved_functions = functions;
+    resolved_functions[0].path = "/project/Content/functions/default.arcmatfn";
+    resolved_functions[1].path = "/project/Content/functions/scaled.arcmatfn";
+    const std::array resolved_overrides{arc::render::tools::material_function_slot_override{
+        .slot_id = "base-color-source", .function_path = resolved_functions[1].path}};
+    const auto resolved =
+        arc::render::tools::compile_material_graph_json(graph, resolved_functions, resolved_overrides);
+    REQUIRE(resolved);
+    CHECK(resolved.value().descriptor.function_slots[0].selected_function_identity == "function-guid-scaled");
+    CHECK(resolved.value().descriptor.function_slots[0].selected_parameters[0].parameter_id == parameter_id);
 }
 
 TEST_CASE("Material Function Calls reject incompatible and unknown selections")

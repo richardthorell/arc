@@ -1319,6 +1319,19 @@ struct host_set_entity_material_command
     bool apply_to_selection{};
 };
 
+struct host_material_edit_command
+{
+    std::string operation;
+    std::string entity_guid;
+    std::string asset_guid;
+    std::string parameter_id;
+    std::string slot_id;
+    std::string definition_revision;
+    std::uint64_t world_epoch{};
+    std::uint64_t scene_revision{};
+    std::string value_json{"null"};
+};
+
 enum class host_component_operation : std::uint8_t
 {
     add,
@@ -1680,8 +1693,8 @@ using host_command_payload = std::variant<
     host_terrain_modifier_stack_command, host_set_terrain_layer_command, host_create_terrain_command,
     host_generate_terrain_command, host_import_terrain_heightmap_command, host_export_terrain_heightmap_command,
     host_resample_terrain_command, host_cancel_terrain_operation_command, host_terrain_stroke_command,
-    host_terrain_hover_command, host_set_entity_material_command, host_component_operation_command,
-    host_patch_project_component_command, host_set_world_environment_command,
+    host_terrain_hover_command, host_set_entity_material_command, host_material_edit_command,
+    host_component_operation_command, host_patch_project_component_command, host_set_world_environment_command,
     host_apply_world_environment_preset_command, host_set_environment_hdri_command, host_set_camera_projection_command,
     host_viewport_attach_command, host_viewport_create_command, host_viewport_resize_command,
     host_viewport_detach_command, host_viewport_frame_released_command, host_viewport_set_visibility_command,
@@ -1782,6 +1795,17 @@ struct host_texture_settings_query
     std::string guid;
 };
 
+struct host_material_describe_query
+{
+    std::string guid;
+    std::string entity_guid;
+};
+
+struct host_asset_inspect_query
+{
+    std::string guid;
+};
+
 struct host_viewport_state_query
 {
     std::string viewport_id{"viewport-1"};
@@ -1808,12 +1832,14 @@ struct host_terrain_tool_state_query
 {
 };
 
-using host_query_payload = std::variant<
-    host_scene_hierarchy_query, host_selected_entity_query, host_scene_entities_query, host_entity_by_guid_query,
-    host_scene_spatial_query, host_component_schema_query, host_workspace_documents_query,
-    host_gateway_diagnostics_query, host_viewport_capture_query, host_project_assets_query, host_asset_thumbnail_query,
-    host_texture_settings_query, host_viewport_state_query, host_world_environment_query, host_history_state_query,
-    host_runtime_state_query, host_runtime_hierarchy_query, host_runtime_entity_query, host_terrain_tool_state_query>;
+using host_query_payload =
+    std::variant<host_scene_hierarchy_query, host_selected_entity_query, host_scene_entities_query,
+                 host_entity_by_guid_query, host_scene_spatial_query, host_component_schema_query,
+                 host_workspace_documents_query, host_gateway_diagnostics_query, host_viewport_capture_query,
+                 host_project_assets_query, host_asset_thumbnail_query, host_texture_settings_query,
+                 host_material_describe_query, host_asset_inspect_query, host_viewport_state_query,
+                 host_world_environment_query, host_history_state_query, host_runtime_state_query,
+                 host_runtime_hierarchy_query, host_runtime_entity_query, host_terrain_tool_state_query>;
 
 struct host_query_envelope
 {

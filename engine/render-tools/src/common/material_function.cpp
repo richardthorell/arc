@@ -481,11 +481,13 @@ slot_specialization_result specialize_function_slots(json graph,
 
         const auto selected_it = selections.find(slot_id);
         const auto selected_path = selected_it == selections.end() ? normalize_path(default_path) : selected_it->second;
-        if (selectable_call && !allowed_paths.contains(selected_path))
+        const auto* selected = find_function(functions, selected_path);
+        if (selectable_call &&
+            !std::ranges::any_of(allowed_paths, [&](const auto& allowed)
+                                 { return selected && find_function(functions, allowed) == selected; }))
             return slot_specialization_result::failure(validation_error(
                 "Material Function Call '" + slot_id + "' selects a function that is not authored on the node"));
 
-        const auto* selected = find_function(functions, selected_path);
         if (!selected)
             return slot_specialization_result::failure(
                 validation_error("Material Function Call '" + slot_id + "' selects a missing or ambiguous function"));

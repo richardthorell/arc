@@ -9,6 +9,8 @@ import {
 } from '../common/editorOperationRegistry';
 import { legacyOperationOutput, operationMetadata, operationMcpName, registryEntries } from './agentOperationCatalog';
 import { providerToolName } from '../common/aiToolProviderProjection';
+import { registerMaterialReadOperations } from './materialOperations';
+import { materialDescribeOutput } from '../common/materialOperationContract';
 
 export type AgentOperationContext = EditorOperationContext & { clientId: string };
 
@@ -38,8 +40,6 @@ type BatchCreatedAssets = {
   clientId: string;
   paths: string[];
 };
-
-const materialParameterCommandPrefix = '__arc_primitive_parameter__/__arc_material_parameter__';
 
 const asObject = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -88,11 +88,6 @@ const resolveBatchMaterial = (target: AgentBatchMaterialTarget, created: Readonl
   const path = created.get(target.tempId);
   if (!path) throw new Error(`Batch material tempId '${target.tempId}' has not been created`);
   return path;
-};
-
-const materialParameterPath = (name: string, type: string, kind: string, value: readonly number[]): string => {
-  const payload = JSON.stringify({ name, type, kind, value: [...value] });
-  return `${materialParameterCommandPrefix}${Buffer.from(payload, 'utf8').toString('hex')}/0`;
 };
 
 const semanticMaterialDefinition = (
@@ -201,10 +196,7 @@ const batchOperationToEditApply = (
       return { action: 'setMaterial', value: { guid, path } };
     }
     case 'entity.setBaseColor':
-      return {
-        action: 'setMaterial',
-        value: { guid, path: materialParameterPath('Base Color', 'vec3', 'color', operation.color) },
-      };
+      throw new Error('Deprecated color shortcut requires native material inspection');
     case 'entity.setFlow':
       return {
         action: 'setFlow',
@@ -279,6 +271,9 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
         execute: (params, context) => this.invokeLegacy(entry.method, params, context.clientId),
       });
     }
+    registerMaterialReadOperations(this, selectionHost, (clientId, params) =>
+      this.applyRegisteredMaterialEdit(clientId, params),
+    );
   }
 
   /** Trusted startup registrations, never executable code from clients or project assets. */
@@ -405,6 +400,42 @@ export class EditorAgentHarness extends EditorAgentHarnessCore {
           continue;
         }
 
+        if (operation.type === 'entity.setBaseColor') {
+          const entityGuid = resolveBatchTarget(operation.target, createdEntities);
+          const response = await this.selectionHost.query('materials.describe', { entityGuid });
+          const description = materialDescribeOutput.parse(expectHostResponse(response));
+          const candidates = description.parameters.filter(
+            (parameter) =>
+              parameter.semantic === 'baseColor' && (parameter.type === 'vec3' || parameter.type === 'vec4'),
+          );
+          if (candidates.length !== 1)
+            throw new Error(
+              `entity.setBaseColor is deprecated: no unambiguous base-color parameter. Use materials.setOverride with a discovered ID. Candidates: ${JSON.stringify(description.parameters.map(({ id, name, type }) => ({ id, name, type })))}`,
+            );
+          const parameter = candidates[0];
+          const result = asObject(
+            await this.invoke(
+              'materials.setOverride',
+              {
+                editSessionId: request.editSessionId,
+                entityGuid,
+                expectedSceneRevision,
+                worldEpoch: response.worldEpoch,
+                definitionRevision: description.definitionRevision,
+                parameterId: parameter.id,
+                value:
+                  parameter.type === 'vec4'
+                    ? [...operation.color, Array.isArray(parameter.resolvedValue) ? parameter.resolvedValue[3] : 1]
+                    : operation.color,
+              },
+              clientId,
+            ),
+          );
+          expectedSceneRevision = requireSceneRevision(result.sceneRevision);
+          authority = result;
+          results.push({ index, type: operation.type, result });
+          continue;
+        }
         const edit = batchOperationToEditApply(operation, createdEntities, createdMaterials);
         const result = asObject(
           await super.invoke(

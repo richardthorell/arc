@@ -1,4 +1,5 @@
 #include <arc/editor/host_protocol.h>
+#include <arc/assets/assets.h>
 
 #include <algorithm>
 #include <array>
@@ -1233,6 +1234,8 @@ std::string command_type(const host_command_payload& payload)
                 return "terrain.hover";
             else if constexpr (std::is_same_v<type, host_set_entity_material_command>)
                 return "entity.setMaterial";
+            else if constexpr (std::is_same_v<type, host_material_edit_command>)
+                return "materials.edit";
             else if constexpr (std::is_same_v<type, host_component_operation_command>)
             {
                 switch (value.operation)
@@ -1354,6 +1357,10 @@ std::string query_type(const host_query_payload& payload)
                 return "asset.thumbnail";
             else if constexpr (std::is_same_v<type, host_texture_settings_query>)
                 return "texture.settings";
+            else if constexpr (std::is_same_v<type, host_material_describe_query>)
+                return "materials.describe";
+            else if constexpr (std::is_same_v<type, host_asset_inspect_query>)
+                return "assets.inspect";
             else if constexpr (std::is_same_v<type, host_viewport_state_query>)
                 return "viewport.state";
             else if constexpr (std::is_same_v<type, host_world_environment_query>)
@@ -1458,9 +1465,8 @@ std::string to_json(const host_light_snapshot& light)
     std::ostringstream stream;
     stream << "{\"kind\":" << quote(kind) << ",\"unit\":" << quote(unit) << ",\"color\":" << vec3_json(light.color)
            << ",\"intensity\":" << light.intensity << ",\"range\":" << light.range
-           << ",\"sourceAngleDegrees\":" << light.source_angle_degrees
-           << ",\"sourceRadius\":" << light.source_radius << ",\"sourceLength\":" << light.source_length
-           << ",\"cookiePath\":" << quote(light.cookie_path)
+           << ",\"sourceAngleDegrees\":" << light.source_angle_degrees << ",\"sourceRadius\":" << light.source_radius
+           << ",\"sourceLength\":" << light.source_length << ",\"cookiePath\":" << quote(light.cookie_path)
            << ",\"iesProfilePath\":" << quote(light.ies_profile_path)
            << ",\"innerAngleDegrees\":" << light.inner_angle_degrees
            << ",\"outerAngleDegrees\":" << light.outer_angle_degrees << ",\"width\":" << light.width
@@ -1559,10 +1565,10 @@ std::string to_json(const host_water_snapshot& water)
                                                 : "high";
     std::ostringstream stream;
     stream << "{\"bodyType\":" << quote(body_type) << ",\"presetGuid\":" << quote(water.preset_guid)
-           << ",\"presetPath\":" << quote(water.preset_path) << ",\"presetOverrideMask\":"
-           << water.preset_override_mask << ",\"materialGuid\":" << quote(water.material_guid)
-           << ",\"materialPath\":" << quote(water.material_path) << ",\"waterLevel\":" << water.water_level
-           << ",\"enabled\":" << bool_json(water.enabled) << ",\"followCamera\":" << bool_json(water.follow_camera)
+           << ",\"presetPath\":" << quote(water.preset_path) << ",\"presetOverrideMask\":" << water.preset_override_mask
+           << ",\"materialGuid\":" << quote(water.material_guid) << ",\"materialPath\":" << quote(water.material_path)
+           << ",\"waterLevel\":" << water.water_level << ",\"enabled\":" << bool_json(water.enabled)
+           << ",\"followCamera\":" << bool_json(water.follow_camera)
            << ",\"visibleDistance\":" << water.visible_distance << ",\"windSpeed\":" << water.wind_speed
            << ",\"windDirectionX\":" << water.wind_direction_x << ",\"windDirectionY\":" << water.wind_direction_y
            << ",\"fetchLength\":" << water.fetch_length << ",\"waveAmplitude\":" << water.wave_amplitude
@@ -1737,7 +1743,8 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"entity\":" + to_json(payload.entity) +
                        (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") +
                        (!payload.graph_guid.empty() ? ",\"graphGuid\":" + quote(payload.graph_guid) : "") +
-                       (!payload.graph_path_hint.empty() ? ",\"graphPathHint\":" + quote(payload.graph_path_hint) : "") +
+                       (!payload.graph_path_hint.empty() ? ",\"graphPathHint\":" + quote(payload.graph_path_hint)
+                                                         : "") +
                        ",\"enabled\":" + bool_json(payload.enabled) + '}';
             else if constexpr (std::is_same_v<type, host_runtime_stage_flow_source_command> ||
                                std::is_same_v<type, host_runtime_update_flow_source_command>)
@@ -1849,6 +1856,17 @@ std::string to_json(const host_command_envelope& envelope)
                 return "{\"entity\":" + to_json(payload.entity) +
                        (!payload.path.empty() ? ",\"path\":" + quote(payload.path.generic_string()) : "") +
                        (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
+            else if constexpr (std::is_same_v<type, host_material_edit_command>)
+                return nlohmann::json{{"operation", payload.operation},
+                                      {"entityGuid", payload.entity_guid},
+                                      {"assetGuid", payload.asset_guid},
+                                      {"parameterId", payload.parameter_id},
+                                      {"slotId", payload.slot_id},
+                                      {"definitionRevision", payload.definition_revision},
+                                      {"worldEpoch", payload.world_epoch},
+                                      {"expectedSceneRevision", payload.scene_revision},
+                                      {"value", nlohmann::json::parse(payload.value_json)}}
+                    .dump();
             else if constexpr (std::is_same_v<type, host_component_operation_command>)
                 return "{\"component\":" + quote(payload.component) + '}';
             else if constexpr (std::is_same_v<type, host_patch_project_component_command>)
@@ -2033,7 +2051,10 @@ std::string to_json(const host_query_envelope& envelope)
                 return "{\"entity\":" + to_json(value.entity) + '}';
             else if constexpr (std::is_same_v<query, host_asset_thumbnail_query>)
                 return "{\"path\":" + quote(value.path) + ",\"maxSize\":" + std::to_string(value.max_size) + '}';
-            else if constexpr (std::is_same_v<query, host_texture_settings_query>)
+            else if constexpr (std::is_same_v<query, host_material_describe_query>)
+                return "{\"guid\":" + quote(value.guid) + ",\"entityGuid\":" + quote(value.entity_guid) + '}';
+            else if constexpr (std::is_same_v<query, host_texture_settings_query> ||
+                               std::is_same_v<query, host_asset_inspect_query>)
                 return "{\"guid\":" + quote(value.guid) + '}';
             else if constexpr (std::is_same_v<query, host_scene_entities_query>)
                 return "{\"search\":" + quote(value.search) + ",\"offset\":" + std::to_string(value.offset) +
@@ -3084,6 +3105,42 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         command.path = std::move(path);
         envelope.payload = std::move(command);
     }
+    else if (type == "materials.edit")
+    {
+        const auto value = nlohmann::json::parse(payload, nullptr, false);
+        if (!value.is_object())
+        {
+            error = "Material edit must be an object";
+            return false;
+        }
+        host_material_edit_command command;
+        if (!string_value(payload, "operation", command.operation) ||
+            !string_value(payload, "entityGuid", command.entity_guid) ||
+            !assets::parse_asset_guid(command.entity_guid) ||
+            !string_value(payload, "definitionRevision", command.definition_revision) ||
+            command.definition_revision.size() != 64 || !number_value(payload, "worldEpoch", command.world_epoch) ||
+            !number_value(payload, "expectedSceneRevision", command.scene_revision))
+        {
+            error = "Material edit requires entity GUID, definition revision and world epoch";
+            return false;
+        }
+        if (command.operation != "assign" && command.operation != "setOverride" &&
+            command.operation != "resetOverride" && command.operation != "selectFunction")
+        {
+            error = "Unsupported material operation";
+            return false;
+        }
+        string_value(payload, "assetGuid", command.asset_guid);
+        string_value(payload, "parameterId", command.parameter_id);
+        string_value(payload, "slotId", command.slot_id);
+        command.value_json = value.value("value", nlohmann::json(nullptr)).dump();
+        if (command.value_json.size() > 4096)
+        {
+            error = "Material value exceeds its size limit";
+            return false;
+        }
+        envelope.payload = std::move(command);
+    }
     else if (type == "entity.setMaterial")
     {
         host_set_entity_material_command command;
@@ -3681,6 +3738,22 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
     }
     else if (type == "project.assets")
         envelope.payload = host_project_assets_query{};
+    else if (type == "materials.describe" || type == "assets.inspect")
+    {
+        std::string guid, entity_guid;
+        string_value(json, "guid", guid);
+        string_value(json, "entityGuid", entity_guid);
+        if ((guid.empty() == entity_guid.empty()) || (!guid.empty() && !assets::parse_asset_guid(guid)) ||
+            (!entity_guid.empty() && (!assets::parse_asset_guid(entity_guid) || type != "materials.describe")))
+        {
+            error = "Asset inspection requires a valid GUID";
+            return false;
+        }
+        if (type == "materials.describe")
+            envelope.payload = host_material_describe_query{std::move(guid), std::move(entity_guid)};
+        else
+            envelope.payload = host_asset_inspect_query{std::move(guid)};
+    }
     else if (type == "texture.settings")
     {
         host_texture_settings_query settings;

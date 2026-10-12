@@ -148,7 +148,19 @@ describe('AiSkillService', () => {
     ]);
 
     const materialAuthoring = snapshot.skills.find((skill) => skill.manifest.id === 'material-authoring');
-    expect(materialAuthoring?.manifest.version).toBe('1.2.0');
+    expect(materialAuthoring?.manifest.version).toBe('1.3.0');
+    expect(materialAuthoring?.manifest.tools).toEqual(
+      expect.arrayContaining([
+        'materials.describe',
+        'materials.inspectEntity',
+        'materials.assign',
+        'materials.setOverride',
+        'materials.resetOverride',
+        'materials.selectFunction',
+      ]),
+    );
+    expect(materialAuthoring?.instructions).toContain('parameter IDs as strings');
+    expect(materialAuthoring?.instructions).toContain('Off-screen objects');
     expect(materialAuthoring?.instructions).toContain('Use **Standard Lit** where its _currently discovered_ inputs');
     expect(materialAuthoring?.instructions).toContain('Base Color Texture');
     expect(materialAuthoring?.instructions).toContain('Base Color Tint');

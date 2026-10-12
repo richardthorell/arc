@@ -7,6 +7,9 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
+#include <arc/editor/material_inspection.h>
+#include <arc/editor/entity_material_service.h>
+#include <charconv>
 #include <arc/editor/model_preview.h>
 #include <arc/editor/prefab_document.h>
 #include <arc/editor/scene_document.h>
@@ -267,6 +270,7 @@ template <class Command> constexpr bool is_authoring_command() noexcept
            std::is_same_v<Command, host_import_terrain_heightmap_command> ||
            std::is_same_v<Command, host_resample_terrain_command> ||
            std::is_same_v<Command, host_set_entity_material_command> ||
+           std::is_same_v<Command, host_material_edit_command> ||
            std::is_same_v<Command, host_component_operation_command> ||
            std::is_same_v<Command, host_patch_project_component_command> ||
            std::is_same_v<Command, host_set_world_environment_command> ||
@@ -1746,8 +1750,7 @@ host_mesh_renderer_snapshot mesh_renderer_snapshot(const editor_scene_state& sta
     snapshot.has_material = mesh_renderer.material.valid();
 
     const auto* binding = find_asset_binding(state, entity_guid_of(state, entity));
-    const auto inspector_material_path = [](std::string path)
-    { return arc::assets::normalize_asset_path(path); };
+    const auto inspector_material_path = [](std::string path) { return arc::assets::normalize_asset_path(path); };
     if (binding) snapshot.material_error = binding->material_error;
 
     for (const auto& record : state.material_library.materials)
@@ -2678,8 +2681,8 @@ host_response arc_host::open_project(const host_open_project_command& command, c
         // sources copied by older editor builds that were registered as stale but never
         // produced a last-good generation.
         for (const auto& asset : state_->asset_registry->search())
-            if (!asset.read_only && asset.state == assets::asset_state::stale && !asset.has_last_good)
-                [[maybe_unused]] const auto initial_import =
+            if (!asset.read_only && asset.state == assets::asset_state::stale && !asset.has_last_good) [[maybe_unused]]
+                const auto initial_import =
                     state_->asset_registry->reimport(asset.guid, assets::asset_streaming_priority::normal);
     }
     state_->asset_event_cursor = 0;
@@ -3205,14 +3208,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                     {
                         response["succeeded"] = false;
                         response["message"] = validated.error().message;
-                        response["diagnostics"].push_back(
-                            {{"severity", "error"},
-                             {"code", "material-function-validation"},
-                             {"message", validated.error().message},
-                             {"path", source_path->generic_string()},
-                             {"line", 0},
-                             {"column", 0},
-                             {"graphNode", ""}});
+                        response["diagnostics"].push_back({{"severity", "error"},
+                                                           {"code", "material-function-validation"},
+                                                           {"message", validated.error().message},
+                                                           {"path", source_path->generic_string()},
+                                                           {"line", 0},
+                                                           {"column", 0},
+                                                           {"graphNode", ""}});
                     }
                     else
                     {
@@ -3637,16 +3639,13 @@ host_response arc_host::execute(const host_command_envelope& command)
                         break;
                     case host_create_entity_kind::ocean:
                     case host_create_entity_kind::water:
-                        created = add_water_to_scene(state_->scene, *state_->renderer,
-                                                     water::water_body_type::ocean);
+                        created = add_water_to_scene(state_->scene, *state_->renderer, water::water_body_type::ocean);
                         break;
                     case host_create_entity_kind::lake:
-                        created = add_water_to_scene(state_->scene, *state_->renderer,
-                                                     water::water_body_type::lake);
+                        created = add_water_to_scene(state_->scene, *state_->renderer, water::water_body_type::lake);
                         break;
                     case host_create_entity_kind::river:
-                        created = add_water_to_scene(state_->scene, *state_->renderer,
-                                                     water::water_body_type::river);
+                        created = add_water_to_scene(state_->scene, *state_->renderer, water::water_body_type::river);
                         break;
                     case host_create_entity_kind::grass_patch:
                         created = add_grass_patch_to_scene(state_->scene, *state_->renderer);
@@ -4194,7 +4193,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                         spot_light->cookie_asset = {.expected_type = assets::asset_types::texture_2d,
                                                     .path_hint = payload.light.cookie_path};
                         spot_light->ies_profile = {.expected_type = assets::asset_types::photometric_profile,
-                                                  .path_hint = payload.light.ies_profile_path};
+                                                   .path_hint = payload.light.ies_profile_path};
                         spot_light->intensity_unit = unit;
                         spot_light->enabled = payload.light.enabled;
                         spot_light->casts_shadows = payload.light.casts_shadows;
@@ -4311,8 +4310,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     value.shoreline_foam_width < 0.0f || value.shallow_wave_damping_distance < 0.0f ||
                     value.runup_distance < 0.0f)
                     return fail("Water body or shoreline values are outside supported ranges", entity);
-                if (value.shape_points.size() > 4096u)
-                    return fail("Water shape has too many authored points", entity);
+                if (value.shape_points.size() > 4096u) return fail("Water shape has too many authored points", entity);
                 for (const auto& point : value.shape_points)
                     if (!std::isfinite(point.position.x) || !std::isfinite(point.position.y) ||
                         !std::isfinite(point.position.z) || !std::isfinite(point.width) ||
@@ -4358,8 +4356,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                     staged.shape.points.clear();
                     staged.shape.points.reserve(value.shape_points.size());
                     for (const auto& point : value.shape_points)
-                        staged.shape.points.push_back(
-                            {{point.position.x, point.position.y, point.position.z}, point.width, point.depth, point.flow});
+                        staged.shape.points.push_back({{point.position.x, point.position.y, point.position.z},
+                                                       point.width,
+                                                       point.depth,
+                                                       point.flow});
                     staged.shoreline_enabled = value.shoreline_enabled;
                     staged.shoreline_foam_width = value.shoreline_foam_width;
                     staged.shallow_wave_damping_distance = value.shallow_wave_damping_distance;
@@ -4369,8 +4369,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                     staged.queries_enabled = value.queries_enabled;
                     staged.buoyancy_enabled = value.buoyancy_enabled;
                     staged.priority = value.priority;
-                    if (state_->asset_registry &&
-                        (staged.preset.guid.valid() || !staged.preset.path_hint.empty()))
+                    if (state_->asset_registry && (staged.preset.guid.valid() || !staged.preset.path_hint.empty()))
                     {
                         const auto binding = scene::refresh_water_preset_binding(staged, *state_->asset_registry);
                         if (!binding.succeeded) return fail(binding.message, entity);
@@ -5023,12 +5022,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::filesystem::path resolved_path;
                 if (payload.asset || !payload.path.empty())
                 {
-                    const auto resolved =
-                        payload.asset
-                            ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
-                                                   *payload.asset)
-                            : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
-                                                   payload.path);
+                    const auto resolved = payload.asset
+                                              ? resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                                     state_->project.root, *payload.asset)
+                                              : resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                                     state_->project.root, payload.path);
                     if (!resolved || !render::is_supported_texture_asset(resolved->path))
                         return fail("Terrain layer must reference a supported texture asset", entity);
                     auto loaded = render::load_texture_asset(resolved->path);
@@ -5313,6 +5311,123 @@ host_response arc_host::execute(const host_command_envelope& command)
                     state_->terrain_brush_local_position.reset();
                 return success(to_json(terrain_tool_snapshot()));
             }
+            else if constexpr (std::is_same_v<command_type, host_material_edit_command>)
+            {
+                if (payload.scene_revision != state_->scene_revision || payload.world_epoch != state_->world_epoch)
+                    return fail("Material edit requires current scene revision and world epoch");
+                const auto guid = ecs::parse_entity_guid(payload.entity_guid);
+                if (!guid) return fail("Invalid entity GUID");
+                const auto entity = find_entity_by_guid(state_->scene, *guid);
+                auto* component = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity);
+                if (!component) return fail("Entity is missing or has no MeshRenderer");
+                const bool assigning = payload.operation == "assign";
+                const auto inspected =
+                    query_base({.payload = host_material_describe_query{
+                                    .guid = assigning ? payload.asset_guid : std::string{},
+                                    .entity_guid = assigning ? std::string{} : payload.entity_guid}});
+                if (!inspected.succeeded) return fail(inspected.error);
+                const auto description = nlohmann::json::parse(inspected.payload_json);
+                if (!description.value("definitionReady", false))
+                    return fail("Material definition is not ready: " + description["diagnostics"].dump());
+                if (description.value("definitionRevision", std::string{}) != payload.definition_revision)
+                    return fail("Material definition revision is stale; describe the material again");
+                std::string error;
+                if (assigning)
+                {
+                    const auto asset_guid = assets::parse_asset_guid(payload.asset_guid);
+                    const auto record = asset_guid ? state_->asset_registry->find(*asset_guid) : std::nullopt;
+                    if (!record || (record->type != assets::asset_types::material &&
+                                    record->type != assets::asset_types::material_instance))
+                        return fail("Assignment requires a Material or Material Instance GUID");
+                    const auto source =
+                        resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                             host_asset_reference{.guid = payload.asset_guid});
+                    if (!source) return fail("Material source cannot be resolved");
+                    // Realize before publishing the new binding. Other entities keep their existing material.
+                    const auto material = load_material_for_editor(state_->scene.material_library, *state_->renderer,
+                                                                   source->asset_root, source->path);
+                    if (!material.valid()) return fail("Material realization failed; previous binding retained");
+                    auto* binding = find_asset_binding(state_->scene, *guid);
+                    if (!binding)
+                    {
+                        state_->scene.asset_bindings.push_back({.entity = *guid});
+                        binding = &state_->scene.asset_bindings.back();
+                    }
+                    binding->material = {.guid = *asset_guid,
+                                         .expected_type = record->type,
+                                         .path_hint = assets::normalize_asset_path(record->source_path)};
+                    binding->material_error.clear();
+                    clear_entity_material_overrides(state_->scene, entity);
+                    component->material = material;
+                }
+                else if (payload.operation == "selectFunction")
+                {
+                    const auto& slots = description["functionSlots"];
+                    const auto slot =
+                        std::ranges::find_if(slots, [&](const auto& entry) { return entry["id"] == payload.slot_id; });
+                    if (slot == slots.end()) return fail("Unknown function slot; use materials.describe");
+                    const auto& alternatives = (*slot)["alternatives"];
+                    const auto alternative = std::ranges::find_if(alternatives, [&](const auto& entry)
+                                                                  { return entry["guid"] == payload.asset_guid; });
+                    if (alternative == alternatives.end())
+                        return fail("Function is not a discovered compatible alternative");
+                    const auto function = assets::parse_asset_guid(payload.asset_guid);
+                    if (!function || !select_entity_material_function(
+                                         state_->scene, *state_->renderer, entity, payload.slot_id,
+                                         {.guid = *function,
+                                          .expected_type = assets::asset_types::material_function,
+                                          .path_hint = (*alternative)["pathHint"].template get<std::string>()},
+                                         error))
+                        return fail(error);
+                }
+                else
+                {
+                    const auto& parameters = description["parameters"];
+                    const auto parameter = std::ranges::find_if(parameters, [&](const auto& entry)
+                                                                { return entry["id"] == payload.parameter_id; });
+                    if (parameter == parameters.end()) return fail("Unknown parameter ID; use materials.describe");
+                    std::uint64_t id{};
+                    const auto parsed = std::from_chars(payload.parameter_id.data(),
+                                                        payload.parameter_id.data() + payload.parameter_id.size(), id);
+                    if (parsed.ec != std::errc{} ||
+                        parsed.ptr != payload.parameter_id.data() + payload.parameter_id.size() || id == 0)
+                        return fail("Invalid 64-bit parameter ID");
+                    auto value = nlohmann::json::parse(payload.value_json, nullptr, false);
+                    const bool reset = payload.operation == "resetOverride";
+                    std::vector<float> numbers;
+                    std::optional<assets::asset_reference> texture;
+                    if (!reset && (*parameter)["type"] == "texture2d")
+                    {
+                        if (!value.is_object() || !value.contains("guid") || !value["guid"].is_string())
+                            return fail("Expected Texture2D reference");
+                        const auto texture_guid = assets::parse_asset_guid(value["guid"].template get<std::string>());
+                        if (!texture_guid) return fail("Invalid texture GUID");
+                        texture = assets::asset_reference{.guid = *texture_guid,
+                                                          .expected_type = assets::asset_types::texture_2d};
+                    }
+                    else if (!reset)
+                    {
+                        if (value.is_number()) value = nlohmann::json::array({value});
+                        if (!value.is_array() || value.size() > 4)
+                            return fail("Expected a numeric scalar/vector value");
+                        for (const auto& number : value)
+                        {
+                            if (!number.is_number()) return fail("Expected finite numeric components");
+                            numbers.push_back(number.template get<float>());
+                        }
+                    }
+                    if (!set_entity_material_parameter(state_->scene, *state_->renderer, entity,
+                                                       render::shader_parameter_id{id}, numbers,
+                                                       texture ? &*texture : nullptr, reset, error,
+                                                       (*parameter)["slotId"].template get<std::string>()))
+                        return fail(error);
+                }
+                push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                           "Material updated", entity);
+                return success(
+                    nlohmann::json{{"entityGuid", payload.entity_guid}, {"applied", true}, {"visualVerified", false}}
+                        .dump());
+            }
             else if constexpr (std::is_same_v<command_type, host_set_entity_material_command>)
             {
                 const auto entity = to_scene_entity(payload.entity);
@@ -5321,12 +5436,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (std::any_of(targets.begin(), targets.end(), [&](ecs::entity target)
                                 { return !state_->scene.scene.has<scene::mesh_renderer_component>(target); }))
                     return fail("Every selected entity must have an editable mesh renderer component", entity);
-                const auto resolved_material =
-                    payload.asset
-                        ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
-                                               *payload.asset)
-                        : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
-                                               payload.path);
+                const auto resolved_material = payload.asset
+                                                   ? resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                                          state_->project.root, *payload.asset)
+                                                   : resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                                          state_->project.root, payload.path);
                 if (!resolved_material || !is_material_asset_path(resolved_material->path))
                     return fail("Material must reference an .arcmat or .arcmatinst project or built-in asset", entity);
                 std::string message;
@@ -5523,10 +5637,9 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (field->kind == project::game_field_kind_v1::asset_reference && !reference.empty())
                 {
                     const auto referenced_guid = assets::parse_asset_guid(reference);
-                    const auto referenced_asset =
-                        referenced_guid && state_->asset_registry
-                            ? state_->asset_registry->database().query(*referenced_guid)
-                            : std::nullopt;
+                    const auto referenced_asset = referenced_guid && state_->asset_registry
+                                                      ? state_->asset_registry->database().query(*referenced_guid)
+                                                      : std::nullopt;
                     if (!referenced_guid || !referenced_asset)
                         return fail("Project asset reference does not resolve in the selected project");
                     if (!field->asset_type_restriction.empty())
@@ -5622,12 +5735,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                     return success("{\"entity\":" + to_json(payload.entity) + '}');
                 }
 
-                const auto resolved =
-                    payload.asset
-                        ? resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
-                                               *payload.asset)
-                        : resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
-                                               payload.path);
+                const auto resolved = payload.asset ? resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                                           state_->project.root, *payload.asset)
+                                                    : resolve_editor_asset(state_->assets, state_->asset_registry.get(),
+                                                                           state_->project.root, payload.path);
                 if (!resolved || !render::is_supported_texture_asset(resolved->path))
                     return fail("Environment texture must reference a supported texture asset", entity);
                 const auto loaded = render::load_texture_asset(resolved->path);
@@ -6917,6 +7028,132 @@ host_response arc_host::query(const host_query_envelope& query) const
                 return {
                     .request_id = request_id, .succeeded = true, .payload_json = to_json(project_assets_snapshot())};
             }
+            else if constexpr (std::is_same_v<query_type, host_asset_inspect_query>)
+            {
+                if (!state_->asset_registry)
+                    return {
+                        .request_id = request_id, .succeeded = false, .error = "No project asset registry is active"};
+                const auto guid = assets::parse_asset_guid(payload.guid);
+                const auto asset = guid ? state_->asset_registry->find(*guid) : std::nullopt;
+                const auto& database = state_->asset_registry->database();
+                const auto record = guid ? database.query(*guid) : std::nullopt;
+                if (!record || !asset)
+                    return {.request_id = request_id, .succeeded = false, .error = "Asset GUID was not found"};
+                nlohmann::json result{{"guid", assets::to_string(record->guid)},
+                                      {"typeId", assets::to_string(record->type)},
+                                      {"title", record->title},
+                                      {"sourcePath", record->source_hint},
+                                      {"scope", asset->read_only ? "builtin" : "project"},
+                                      {"readOnly", asset->read_only},
+                                      {"generation", std::to_string(record->generation)},
+                                      {"revision", std::to_string(record->revision)},
+                                      {"catalogRevision", std::to_string(database.revision())},
+                                      {"activeProvider", record->active_provider},
+                                      {"providers", nlohmann::json::array()},
+                                      {"sourceMissing", asset->source_missing},
+                                      {"hasLastGood", record->has_last_good},
+                                      {"dependencies", nlohmann::json::array()},
+                                      {"diagnostics", nlohmann::json::array()}};
+                for (const auto& provider : record->providers)
+                    result["providers"].push_back({{"id", provider.id},
+                                                   {"kind", assets::asset_provider_kind_name(provider.kind)},
+                                                   {"active", provider.active},
+                                                   {"readOnly", provider.read_only},
+                                                   {"generation", std::to_string(provider.generation)}});
+                for (const auto dependency : record->dependencies)
+                    result["dependencies"].push_back(assets::to_string(dependency));
+                for (const auto& diagnostic : asset->diagnostics)
+                    result["diagnostics"].push_back(diagnostic.message);
+                return {.request_id = request_id, .succeeded = true, .payload_json = result.dump()};
+            }
+            else if constexpr (std::is_same_v<query_type, host_material_describe_query>)
+            {
+                if (!state_->asset_registry)
+                    return {
+                        .request_id = request_id, .succeeded = false, .error = "No project asset registry is active"};
+                const auto& database = state_->asset_registry->database();
+                const auto catalog = database.records();
+                const material_inspection_resolver resolve =
+                    [&](std::string_view guid, std::string_view hint) -> std::optional<material_inspection_source>
+                {
+                    std::optional<assets::asset_database_record> asset;
+                    if (!guid.empty())
+                    {
+                        const auto parsed = assets::parse_asset_guid(guid);
+                        if (!parsed) return std::nullopt;
+                        asset = database.query(*parsed);
+                    }
+                    else
+                    {
+                        // Legacy authored function locators may be content-root-relative. Require a unique
+                        // registered suffix match; never reconstruct a GUID or choose by display name.
+                        const auto normalized = assets::normalize_asset_path(std::filesystem::path(hint));
+                        for (const auto& candidate : catalog)
+                        {
+                            const auto path = assets::normalize_asset_path(candidate.source_hint);
+                            if (path != normalized && !path.ends_with("/" + normalized)) continue;
+                            if (asset) return std::nullopt;
+                            asset = candidate;
+                        }
+                    }
+                    if (!asset) return std::nullopt;
+                    const auto kind = asset->type == assets::asset_types::material            ? "material"
+                                      : asset->type == assets::asset_types::material_instance ? "materialInstance"
+                                      : asset->type == assets::asset_types::material_function ? "materialFunction"
+                                                                                              : "unsupported";
+                    if (std::string_view(kind) == "unsupported") return std::nullopt;
+                    const auto resolved =
+                        resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
+                                             host_asset_reference{.guid = assets::to_string(asset->guid)});
+                    if (!resolved) return std::nullopt;
+                    std::error_code error;
+                    const auto size = std::filesystem::file_size(resolved->path, error);
+                    if (error || size > 8 * 1024 * 1024) return std::nullopt;
+                    std::ifstream stream(resolved->path, std::ios::binary);
+                    if (!stream) return std::nullopt;
+                    std::string source(static_cast<std::size_t>(size), '\0');
+                    stream.read(source.data(), static_cast<std::streamsize>(size));
+                    if (!stream || stream.peek() != std::char_traits<char>::eof()) return std::nullopt;
+                    return material_inspection_source{.guid = assets::to_string(asset->guid),
+                                                      .path = asset->source_hint,
+                                                      .kind = kind,
+                                                      .source = std::move(source)};
+                };
+                auto material_guid = payload.guid;
+                ecs::entity entity{};
+                if (!payload.entity_guid.empty())
+                {
+                    const auto parsed = ecs::parse_entity_guid(payload.entity_guid);
+                    if (!parsed) return {.request_id = request_id, .succeeded = false, .error = "Invalid entity GUID"};
+                    entity = find_entity_by_guid(state_->scene, *parsed);
+                    const auto* binding = find_asset_binding(state_->scene, *parsed);
+                    if (!state_->scene.scene.alive(entity) || !binding || !binding->material.guid.valid())
+                        return {.request_id = request_id,
+                                .succeeded = false,
+                                .error = "Entity has no GUID-backed material binding"};
+                    material_guid = assets::to_string(binding->material.guid);
+                }
+                const auto source = resolve(material_guid, {});
+                if (!source)
+                    return {.request_id = request_id,
+                            .succeeded = false,
+                            .error = "Material GUID is missing, unsupported, unreadable, or exceeds the source limit"};
+                auto description = nlohmann::json::parse(inspect_saved_material(
+                    *source, resolve,
+                    payload.entity_guid.empty() ? "[]" : entity_material_overrides_json(state_->scene, entity)));
+                description["entity"] = nullptr;
+                if (!payload.entity_guid.empty())
+                {
+                    const auto* mesh = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity);
+                    const auto material = mesh ? mesh->material : render::material_handle{};
+                    description["entity"] = {
+                        {"guid", payload.entity_guid},
+                        {"materialGuid", material_guid},
+                        {"runtimeHandle", {{"index", material.index}, {"generation", material.generation}}},
+                        {"resourceAlive", state_->renderer->material_alive(material)}};
+                }
+                return {.request_id = request_id, .succeeded = true, .payload_json = description.dump()};
+            }
             else if constexpr (std::is_same_v<query_type, host_texture_settings_query>)
             {
                 if (!state_->asset_registry)
@@ -7681,8 +7918,10 @@ host_selected_entity_snapshot arc_host::entity_snapshot(host_entity_id host_enti
         water_snapshot.shape_closed = water->shape.closed;
         water_snapshot.shape_points.reserve(water->shape.points.size());
         for (const auto& point : water->shape.points)
-            water_snapshot.shape_points.push_back(
-                {{point.position[0], point.position[1], point.position[2]}, point.width, point.depth, point.flow_speed});
+            water_snapshot.shape_points.push_back({{point.position[0], point.position[1], point.position[2]},
+                                                   point.width,
+                                                   point.depth,
+                                                   point.flow_speed});
         snapshot.water = std::move(water_snapshot);
         add_component_snapshot<scene::water_component>(state_->scene.scene, selected, snapshot.components,
                                                        host_component_kind::water, "Water");
@@ -8109,9 +8348,8 @@ std::optional<host_asset_thumbnail_snapshot> arc_host::asset_thumbnail(std::stri
         if (extension == ".arcmatinst")
         {
             if (!state_->renderer) return std::nullopt;
-            const auto handle =
-                load_material_for_editor(state_->scene.material_library, *state_->renderer, resolved->asset_root,
-                                         resolved->path, &material);
+            const auto handle = load_material_for_editor(state_->scene.material_library, *state_->renderer,
+                                                         resolved->asset_root, resolved->path, &material);
             if (!handle.valid()) return std::nullopt;
         }
         else

@@ -3,7 +3,7 @@ format: arc-skill
 formatVersion: 1
 id: material-authoring
 name: Material Authoring
-version: 1.2.0
+version: 1.3.0
 description: Inspect, create, bind, and visually verify ARC materials through typed asset and scene-edit workflows.
 requires:
   - scene.read
@@ -13,6 +13,13 @@ requires:
   - viewport.read
 tools:
   - assets.list
+  - assets.inspect
+  - materials.describe
+  - materials.inspectEntity
+  - materials.assign
+  - materials.setOverride
+  - materials.resetOverride
+  - materials.selectFunction
   - scene.getEntity
   - scene.componentSchemas
   - edit.request
@@ -43,9 +50,21 @@ Use specialized material families or systems only when the requested rendering b
 
 Do not create a new shader merely to apply a texture or change a common surface parameter.
 
-## Standard Lit workflow
+## Typed entity-local workflow
 
-Consult the actual Standard Lit definition and its selectable function sources rather than assuming a globally fixed parameter set.
+Follow **discover → describe → approve → assign/override → inspect resolved state → observe when possible**.
+
+1. Use `assets.list` for existing content and `assets.inspect` for identity, scope, dependencies and readiness. Use `materials.describe` with the chosen asset GUID to inspect its saved/published definition. This does not apply open dirty documents.
+2. Use `materials.inspectEntity` with the persistent entity GUID to inspect inherited values, local overrides, selected functions and the runtime resource handle. Keep parameter IDs as strings, including 64-bit IDs; use stable slot IDs, not display labels.
+3. Request approval and begin a scene edit session. Call the registered `materials.assign`, `materials.setOverride`, `materials.resetOverride` or `materials.selectFunction` with current scene/world authority and the inspected definition revision. Describe the destination asset before assignment; inspect the entity before local edits. Reinspect after changing a function because the exposed layout may change.
+4. Before committing, verify the resulting material GUID, parameter values and function selections through `materials.inspectEntity`. A live resource handle is not evidence that a GPU pipeline compiled or that the appearance is correct. Read diagnostics and capture the viewport with ObjectID association when possible.
+5. Report authored-state verification, runtime resource availability and visual observation separately. Off-screen objects, unavailable captures and unresolved compilation do not justify visual-success claims. Never implicitly save a scene or shared asset.
+
+Do not manufacture encoded procedural commands or use `entity.setBaseColor` as a general material API. Its compatibility adapter only accepts an unambiguous color parameter identified by native output semantics. Discover IDs and supported values instead. Function compatibility comes from native compiler metadata, not names such as glass or roof.
+
+## Existing material workflow
+
+Consult the actual material definition and its selectable function sources rather than assuming a globally fixed parameter set.
 
 - When the selected material/function exposes **Base Color Texture**, use it for the surface color texture.
 - When exposed, **Base Color Tint** can tint or scale the texture color.
