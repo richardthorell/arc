@@ -47,6 +47,7 @@ export const assetInspectOutput = z
   .strict();
 
 export const materialDescribeInput = assetInspectInput;
+export const materialEntityInspectInput = z.object({ entityGuid: guid }).strict();
 export const materialDescribeOutput = z
   .object({
     guid,
@@ -62,6 +63,10 @@ export const materialDescribeOutput = z
           name: z.string(),
           type: parameterType,
           defaultValue: parameterValue,
+          inheritedValue: parameterValue,
+          overridden: z.boolean(),
+          slotId: z.string(),
+          semantic: z.enum(['none', 'baseColor']),
           resolvedValue: parameterValue,
           valueStatus: z.enum(['resolved', 'unavailable']),
           range: z.object({ min: z.number(), max: z.number() }).strict().nullable(),
@@ -89,8 +94,48 @@ export const materialDescribeOutput = z
     diagnostics: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
     definitionReady: z.boolean(),
     runtimeStatus: z.literal('notInspected'),
+    entity: z
+      .object({
+        guid,
+        materialGuid: guid,
+        runtimeHandle: z
+          .object({ index: z.number().int().nonnegative(), generation: z.number().int().nonnegative() })
+          .strict(),
+        resourceAlive: z.boolean(),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 
 export type MaterialDescription = z.infer<typeof materialDescribeOutput>;
 export type AssetInspection = z.infer<typeof assetInspectOutput>;
+
+const materialEditAuthority = z
+  .object({
+    editSessionId: z.string().min(1),
+    entityGuid: guid,
+    expectedSceneRevision: z.number().int().positive(),
+    worldEpoch: z.number().int().nonnegative(),
+    definitionRevision: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .strict();
+export const materialEditInputs = {
+  assign: materialEditAuthority.extend({ assetGuid: guid }),
+  setOverride: materialEditAuthority.extend({
+    parameterId: unsignedId,
+    value: z.union([z.number(), z.array(z.number()).min(1).max(4), assetReference]),
+  }),
+  resetOverride: materialEditAuthority.extend({ parameterId: unsignedId }),
+  selectFunction: materialEditAuthority.extend({ slotId: z.string().min(1).max(256), assetGuid: guid }),
+};
+export const materialEditOutput = z
+  .object({
+    entityGuid: guid,
+    applied: z.literal(true),
+    visualVerified: z.literal(false),
+    sceneRevision: z.number().int().nonnegative(),
+    worldEpoch: z.number().int().nonnegative(),
+    frameRevision: z.number().int().nonnegative(),
+  })
+  .strict();

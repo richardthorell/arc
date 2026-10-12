@@ -3,12 +3,19 @@ import {
   assetInspectOutput,
   materialDescribeInput,
   materialDescribeOutput,
+  materialEntityInspectInput,
+  materialEditInputs,
+  materialEditOutput,
 } from '../common/materialOperationContract';
 import type { EditorOperationMetadata } from '../common/editorOperationRegistry';
 import type { EditorAgentHarness } from './editorAgentHarness';
 import type { AgentHarnessHost } from './editorAgentHarnessCore';
 
-export function registerMaterialReadOperations(harness: EditorAgentHarness, host: AgentHarnessHost): void {
+export function registerMaterialReadOperations(
+  harness: EditorAgentHarness,
+  host: AgentHarnessHost,
+  edit: (clientId: string, params: Record<string, unknown>) => Promise<unknown>,
+): void {
   const readMetadata = {
     version: 1,
     permissions: ['editor.read'],
@@ -20,7 +27,7 @@ export function registerMaterialReadOperations(harness: EditorAgentHarness, host
     references: [{ field: 'guid', resource: 'asset', temporary: false }],
     creates: [],
   } as const satisfies Omit<EditorOperationMetadata, 'id' | 'domain' | 'description'>;
-  const query = async (method: string, params: { guid: string }): Promise<unknown> => {
+  const query = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
     const response = await host.query(method, params);
     if (!response.succeeded) throw new Error(response.error || `${method} failed`);
     return response.payload;
@@ -45,4 +52,32 @@ export function registerMaterialReadOperations(harness: EditorAgentHarness, host
     output: materialDescribeOutput,
     execute: async (params) => materialDescribeOutput.parse(await query('materials.describe', params)),
   });
+  harness.registerOperation({
+    ...readMetadata,
+    id: 'materials.inspectEntity',
+    domain: 'materials',
+    effects: { reads: ['asset-catalog', 'saved-material-definition', 'scene', 'runtime-material'], writes: [] },
+    description:
+      'Inspect an entity material binding by entity GUID, including inherited values, local overrides, selected functions and runtime resource handle. Resource existence is not visual verification.',
+    references: [{ field: 'entityGuid', resource: 'entity', temporary: false }],
+    input: materialEntityInspectInput,
+    output: materialDescribeOutput,
+    execute: async (params) => materialDescribeOutput.parse(await query('materials.describe', params)),
+  });
+  for (const [operation, input] of Object.entries(materialEditInputs)) {
+    harness.registerOperation<Record<string, unknown>, ReturnType<typeof materialEditOutput.parse>>({
+      ...readMetadata,
+      id: `materials.${operation}`,
+      domain: 'materials',
+      description: `${operation} an entity-local material through native validation and scene undo. Requires approved edit session, current world/scene authority and inspected definitionRevision. Does not save shared assets or verify rendered appearance.`,
+      permissions: ['scene.edit'],
+      effects: { reads: ['asset-catalog', 'saved-material-definition'], writes: ['scene'] },
+      transaction: 'participant',
+      references: [{ field: 'entityGuid', resource: 'entity', temporary: false }],
+      input,
+      output: materialEditOutput,
+      execute: async (params, context) =>
+        materialEditOutput.parse(await edit(context.clientId, { ...params, operation })),
+    });
+  }
 }

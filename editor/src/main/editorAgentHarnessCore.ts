@@ -1858,6 +1858,29 @@ export class EditorAgentHarness {
       throw new Error(`Edit session expects scene revision ${session.expectedSceneRevision}`);
   }
 
+  /** Only trusted registered adapters can select a native command; this is not an invoke-anything tool. */
+  protected async applyRegisteredMaterialEdit(clientId: string, params: Record<string, unknown>): Promise<unknown> {
+    await this.authorizeOperation(['scene.edit'], clientId);
+    const { editSessionId, expectedSceneRevision, ...payload } = params;
+    const session = this.requireSession(requireString(editSessionId, 'editSessionId'), clientId);
+    const expected = requireRevision(expectedSceneRevision);
+    this.validateBatchAuthority(session.id, clientId, expected);
+    const response = await this.host.command(
+      'materials.edit',
+      { ...payload, expectedSceneRevision: expected },
+      { id: session.transactionId, phase: 'update', label: session.label },
+      expected,
+    );
+    // Cancellation/disconnection cannot revive a session or extend its approval on late completion.
+    this.requireSession(session.id, clientId);
+    const result = this.expect(response);
+    session.expectedSceneRevision = response.sceneRevision;
+    session.lastActivityAt = now();
+    this.approvedClients.set(clientId, Date.now() + editIdleMilliseconds);
+    this.notify();
+    return result;
+  }
+
   private requireApproved(clientId: string): void {
     this.expirePermissions();
     const expires = this.approvedClients.get(clientId);

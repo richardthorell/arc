@@ -16,6 +16,10 @@ const description = {
       name: 'Custom artist control',
       type: 'vec3',
       defaultValue: [0.2, 0.3, 0.4],
+      inheritedValue: [0.2, 0.3, 0.4],
+      overridden: false,
+      slotId: '',
+      semantic: 'none',
       resolvedValue: [0.2, 0.3, 0.4],
       range: null,
       valueStatus: 'resolved',
@@ -26,6 +30,7 @@ const description = {
   diagnostics: [],
   definitionReady: true,
   runtimeStatus: 'notInspected',
+  entity: null,
 };
 function setup(payload: unknown = description) {
   const query = vi.fn(async (): Promise<AgentHostResponse> => ({
@@ -43,6 +48,97 @@ function setup(payload: unknown = description) {
 }
 
 describe('native material discovery operations', () => {
+  const editParams = {
+    editSessionId: 'unapproved',
+    entityGuid: guid,
+    expectedSceneRevision: 1,
+    worldEpoch: 1,
+    definitionRevision: 'a'.repeat(64),
+    parameterId: '18446744073709551615',
+    value: [0.2, 0.3, 0.4],
+  };
+
+  async function approved() {
+    const fixture = setup();
+    fixture.command.mockResolvedValue({
+      kind: 'response',
+      requestId: 2,
+      succeeded: true,
+      error: '',
+      payload: { entityGuid: guid, applied: true, visualVerified: false },
+      sceneRevision: 1,
+      worldEpoch: 1,
+      frameRevision: 1,
+    });
+    const request = fixture.harness.requestEdit('agent', 'Edit a local override');
+    fixture.harness.approveEdit(request.id);
+    const session = (await fixture.harness.invoke(
+      'edit.begin',
+      { label: 'Edit a local override', expectedSceneRevision: 1 },
+      'agent',
+    )) as { id: string };
+    fixture.command.mockClear();
+    return { ...fixture, params: { ...editParams, editSessionId: session.id } };
+  }
+
+  it('requires approval before dispatching any typed material mutation', async () => {
+    const { harness, command } = setup();
+    await expect(harness.invoke('materials.setOverride', editParams, 'agent')).rejects.toThrow(/approv|permission/i);
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it('dispatches through the native scene transaction and does not claim visual success', async () => {
+    const { harness, command, params } = await approved();
+    expect(await harness.invoke('materials.setOverride', params, 'agent')).toEqual({
+      entityGuid: guid,
+      applied: true,
+      visualVerified: false,
+      sceneRevision: 1,
+      worldEpoch: 1,
+      frameRevision: 1,
+    });
+    expect(command).toHaveBeenCalledWith(
+      'materials.edit',
+      {
+        operation: 'setOverride',
+        entityGuid: guid,
+        parameterId: params.parameterId,
+        value: params.value,
+        expectedSceneRevision: 1,
+        worldEpoch: 1,
+        definitionRevision: params.definitionRevision,
+      },
+      expect.objectContaining({ phase: 'update' }),
+      1,
+    );
+  });
+
+  it('rejects stale session revisions and malformed values before native mutation', async () => {
+    const { harness, command, params } = await approved();
+    await expect(
+      harness.invoke('materials.setOverride', { ...params, expectedSceneRevision: 2 }, 'agent'),
+    ).rejects.toThrow(/revision/i);
+    await expect(harness.invoke('materials.setOverride', { ...params, parameterId: 123 }, 'agent')).rejects.toThrow();
+    await expect(
+      harness.invoke('materials.setOverride', { ...params, value: { path: 'guess.png' } }, 'agent'),
+    ).rejects.toThrow();
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it('propagates native failed compilation without reporting an applied result', async () => {
+    const { harness, command, params } = await approved();
+    command.mockResolvedValueOnce({
+      kind: 'response',
+      requestId: 3,
+      succeeded: false,
+      error: 'Function compilation failed; previous binding retained',
+      payload: {},
+      sceneRevision: 1,
+      worldEpoch: 1,
+      frameRevision: 1,
+    });
+    await expect(harness.invoke('materials.setOverride', params, 'agent')).rejects.toThrow(/previous binding retained/);
+  });
   it('discovers exact schemas through the shared registry and transport projections', async () => {
     const { harness } = setup();
     const discovery = await harness.invoke(
