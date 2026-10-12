@@ -212,58 +212,26 @@ describe('EditorAgentHarness editor.applyBatch', () => {
     expect(assets.files.size).toBe(1);
   });
 
-  it('creates a green scaled capsule by overriding the existing material base color', async () => {
+  it('rejects the deprecated base-color shortcut without discovered material parameters', async () => {
     const host = new BatchHost();
     const harness = new EditorAgentHarness(host);
     const session = await beginApprovedEdit(harness);
 
-    const result = (await harness.invoke(
-      'editor.applyBatch',
-      {
-        editSessionId: session.id,
-        expectedSceneRevision: 4,
-        operations: [
-          { type: 'entity.create', tempId: 'capsule', kind: 'capsule' },
-          { type: 'entity.rename', target: { tempId: 'capsule' }, name: 'Green Capsule' },
-          {
-            type: 'entity.setTransform',
-            target: { tempId: 'capsule' },
-            transform: { position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [5, 5, 5] },
-          },
-          { type: 'entity.setBaseColor', target: { tempId: 'capsule' }, color: [0.1, 0.8, 0.1] },
-        ],
-      },
-      'writer',
-    )) as Record<string, unknown>;
-
-    expect(result).toMatchObject({
-      operationCount: 4,
-      expectedSceneRevision: 8,
-      created: { capsule: { kind: 'entity', guid: 'created-cube-guid' } },
-    });
-    expect(host.commands.map((command) => command.type)).toEqual([
-      'history.beginTransaction',
-      'entity.create',
-      'entity.rename',
-      'entity.setTransform',
-      'entity.setMaterial',
-    ]);
-
-    const materialCommand = host.commands.at(-1)!;
-    const path = String(materialCommand.payload.path);
-    const prefix = '__arc_primitive_parameter__/__arc_material_parameter__';
-    expect(path.startsWith(prefix)).toBe(true);
-    expect(path.endsWith('/0')).toBe(true);
-    const encoded = path.slice(prefix.length, -2);
-    expect(JSON.parse(Buffer.from(encoded, 'hex').toString('utf8'))).toEqual({
-      name: 'Base Color',
-      type: 'vec3',
-      kind: 'color',
-      value: [0.1, 0.8, 0.1],
-    });
-
-    await harness.invoke('edit.commit', { editSessionId: session.id, expectedSceneRevision: 8 }, 'writer');
-    expect(host.commands.at(-1)?.type).toBe('history.commitTransaction');
+    await expect(
+      harness.invoke(
+        'editor.applyBatch',
+        {
+          editSessionId: session.id,
+          expectedSceneRevision: 4,
+          operations: [
+            { type: 'entity.create', tempId: 'capsule', kind: 'capsule' },
+            { type: 'entity.setBaseColor', target: { tempId: 'capsule' }, color: [0.1, 0.8, 0.1] },
+          ],
+        },
+        'writer',
+      ),
+    ).rejects.toThrow(/Batch failed and the edit transaction was cancelled/);
+    expect(host.commands.map((command) => command.type)).toContain('history.cancelTransaction');
   });
 
   it('creates and binds a semantic material in the same batch and keeps it on commit', async () => {
