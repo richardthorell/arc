@@ -697,7 +697,7 @@ shader_compile_error custom_shader_error(std::string_view source_path, std::stri
 } // namespace
 
 material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation,
-                                                     material_shader_codegen_options options)
+                                                        material_shader_codegen_options options)
 {
     auto generated = generate_material_slang(compilation, options);
     if (!generated) return material_evaluator_result::failure(generated.error());

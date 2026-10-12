@@ -59,8 +59,8 @@ using material_pass_codegen_result = core::result<material_pass_shader_source, s
 [[nodiscard]] material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation);
 
 /** @brief Produce a graph evaluator for a specific coat-normal shader variant. */
-[[nodiscard]] material_evaluator_result
-make_graph_material_evaluator(const material_graph_compilation& compilation, material_shader_codegen_options options);
+[[nodiscard]] material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation,
+                                                                      material_shader_codegen_options options);
 
 /**
  * @brief Wrap handwritten Slang as a Material ABI evaluator.
