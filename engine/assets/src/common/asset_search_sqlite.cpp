@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cctype>
 #include <filesystem>
+#include <sstream>
 #include <string_view>
 
 namespace arc::assets
@@ -87,6 +88,65 @@ bool contains_provider(std::span<const std::string> providers, std::string_view 
     return providers.empty() || std::find(providers.begin(), providers.end(), provider) != providers.end();
 }
 
+std::string join_values(std::span<const std::string> values)
+{
+    std::string result;
+    for (const auto& value : values)
+    {
+        if (!result.empty()) result.push_back(' ');
+        result += value;
+    }
+    return result;
+}
+
+std::string join_metadata(std::span<const asset_search_metadata_value> metadata)
+{
+    std::string result;
+    for (const auto& entry : metadata)
+    {
+        if (!result.empty()) result.push_back(' ');
+        result += entry.key;
+        result.push_back(' ');
+        result += entry.value;
+    }
+    return result;
+}
+
+std::string fts_query(std::string_view text)
+{
+    std::vector<std::string> tokens;
+    std::string token;
+    for (const unsigned char character : text)
+    {
+        if (std::isalnum(character) || character == '_' || character == '-')
+        {
+            token.push_back(static_cast<char>(character));
+            continue;
+        }
+        if (!token.empty())
+        {
+            tokens.push_back(std::move(token));
+            token.clear();
+        }
+    }
+    if (!token.empty()) tokens.push_back(std::move(token));
+    if (tokens.empty()) return {};
+
+    std::string result;
+    for (const auto& value : tokens)
+    {
+        if (!result.empty()) result += " AND ";
+        result.push_back('"');
+        for (const auto character : value)
+        {
+            if (character == '"') result += """";
+            else result.push_back(character);
+        }
+        result += ""*";
+    }
+    return result;
+}
+
 struct baseline_match
 {
     float score{};
@@ -96,7 +156,9 @@ struct baseline_match
 };
 
 baseline_match match_text(std::string_view query, std::string_view display_name, std::string_view title,
-                          std::string_view logical_path, std::string_view description)
+                          std::string_view logical_path, std::string_view description,
+                          std::string_view authored_tags, std::string_view generated_tags,
+                          std::string_view categories, std::string_view metadata)
 {
     if (query.empty()) return {.matched = true};
 
@@ -105,18 +167,32 @@ baseline_match match_text(std::string_view query, std::string_view display_name,
     const auto normalized_title = lowercase(title);
     const auto path = lowercase(logical_path);
     const auto desc = lowercase(description);
+    const auto authored = lowercase(authored_tags);
+    const auto generated = lowercase(generated_tags);
+    const auto normalized_categories = lowercase(categories);
+    const auto normalized_metadata = lowercase(metadata);
 
     if (name == needle || normalized_title == needle)
         return {.score = 1.0f, .kind = asset_search_match_kind::exact_name, .detail = "name", .matched = true};
     if (name.starts_with(needle) || normalized_title.starts_with(needle))
-        return {.score = 0.8f, .kind = asset_search_match_kind::prefix, .detail = "name", .matched = true};
+        return {.score = 0.9f, .kind = asset_search_match_kind::prefix, .detail = "name", .matched = true};
     if (name.find(needle) != std::string::npos || normalized_title.find(needle) != std::string::npos)
-        return {.score = 0.6f, .kind = asset_search_match_kind::lexical, .detail = "name", .matched = true};
+        return {.score = 0.8f, .kind = asset_search_match_kind::lexical, .detail = "name", .matched = true};
+    if (authored.find(needle) != std::string::npos)
+        return {.score = 0.75f, .kind = asset_search_match_kind::metadata, .detail = "authored tag", .matched = true};
+    if (generated.find(needle) != std::string::npos)
+        return {.score = 0.7f, .kind = asset_search_match_kind::metadata, .detail = "generated tag", .matched = true};
+    if (normalized_categories.find(needle) != std::string::npos)
+        return {.score = 0.68f, .kind = asset_search_match_kind::metadata, .detail = "category", .matched = true};
     if (path.find(needle) != std::string::npos)
-        return {.score = 0.4f, .kind = asset_search_match_kind::lexical, .detail = "path", .matched = true};
+        return {.score = 0.6f, .kind = asset_search_match_kind::lexical, .detail = "path", .matched = true};
     if (desc.find(needle) != std::string::npos)
-        return {.score = 0.3f, .kind = asset_search_match_kind::lexical, .detail = "description", .matched = true};
-    return {};
+        return {.score = 0.55f, .kind = asset_search_match_kind::lexical, .detail = "description", .matched = true};
+    if (normalized_metadata.find(needle) != std::string::npos)
+        return {.score = 0.5f, .kind = asset_search_match_kind::metadata, .detail = "metadata", .matched = true};
+    // FTS can match tokenized/prefix combinations that do not appear as one
+    // contiguous phrase in any single field.
+    return {.score = 0.45f, .kind = asset_search_match_kind::lexical, .detail = "tokens", .matched = true};
 }
 
 } // namespace
@@ -157,7 +233,11 @@ asset_status create_schema(sqlite3* database, const std::filesystem::path& path)
         "CREATE TABLE IF NOT EXISTS search_metadata("
         "guid TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,origin INTEGER NOT NULL,"
         "PRIMARY KEY(guid,key,value,origin));"
-        "INSERT OR IGNORE INTO search_meta(key,value) VALUES('schema_version','1');"
+        "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
+        "guid UNINDEXED,display_name,title,logical_path,description,"
+        "authored_tags,generated_tags,categories,metadata,"
+        "tokenize='unicode61 remove_diacritics 2');"
+        "INSERT OR IGNORE INTO search_meta(key,value) VALUES('schema_version','2');"
         "COMMIT;";
     if (!execute(database, schema)) return sqlite_failure(database, path, "Could not create search index schema");
     return asset_status::success();
@@ -166,6 +246,7 @@ asset_status create_schema(sqlite3* database, const std::filesystem::path& path)
 asset_status clear_schema(sqlite3* database, const std::filesystem::path& path)
 {
     const char* sql = "BEGIN;"
+                      "DROP TABLE IF EXISTS search_fts;"
                       "DROP TABLE IF EXISTS search_metadata;"
                       "DROP TABLE IF EXISTS search_categories;"
                       "DROP TABLE IF EXISTS search_generated_tags;"
@@ -256,6 +337,33 @@ asset_status write_document(sqlite3* database, const std::filesystem::path& path
         if (sqlite3_step(insert_metadata.get()) != SQLITE_DONE)
             return sqlite_failure(database, path, "Could not write search metadata");
     }
+
+    sqlite_statement erase_fts(database, "DELETE FROM search_fts WHERE guid=?;");
+    if (!erase_fts) return sqlite_failure(database, path, "Could not prepare FTS reset");
+    bind_text(erase_fts.get(), 1, to_string(document.guid));
+    if (sqlite3_step(erase_fts.get()) != SQLITE_DONE)
+        return sqlite_failure(database, path, "Could not clear FTS search document");
+
+    sqlite_statement insert_fts(
+        database,
+        "INSERT INTO search_fts(guid,display_name,title,logical_path,description,"
+        "authored_tags,generated_tags,categories,metadata) VALUES(?,?,?,?,?,?,?,?,?);");
+    if (!insert_fts) return sqlite_failure(database, path, "Could not prepare FTS search document");
+    bind_text(insert_fts.get(), 1, to_string(document.guid));
+    bind_text(insert_fts.get(), 2, document.display_name);
+    bind_text(insert_fts.get(), 3, document.title);
+    bind_text(insert_fts.get(), 4, document.logical_path);
+    bind_text(insert_fts.get(), 5, document.description);
+    const auto authored = join_values(document.authored_tags);
+    const auto generated = join_values(document.generated_tags);
+    const auto category_text = join_values(document.categories);
+    const auto metadata_text = join_metadata(document.metadata);
+    bind_text(insert_fts.get(), 6, authored);
+    bind_text(insert_fts.get(), 7, generated);
+    bind_text(insert_fts.get(), 8, category_text);
+    bind_text(insert_fts.get(), 9, metadata_text);
+    if (sqlite3_step(insert_fts.get()) != SQLITE_DONE)
+        return sqlite_failure(database, path, "Could not write FTS search document");
 
     return asset_status::success();
 }
@@ -351,6 +459,7 @@ asset_status persistent_asset_search_index::reset(std::span<const asset_search_d
             {.code = asset_error_code::invalid_request, .message = "Search index is not open"});
 
     if (!execute(implementation_->database, "BEGIN IMMEDIATE;"
+                                            "DELETE FROM search_fts;"
                                             "DELETE FROM search_metadata;"
                                             "DELETE FROM search_categories;"
                                             "DELETE FROM search_generated_tags;"
@@ -453,7 +562,8 @@ asset_status persistent_asset_search_index::erase(asset_guid guid)
 
     const auto guid_text = to_string(guid);
     for (const auto* table :
-         {"search_metadata", "search_categories", "search_generated_tags", "search_authored_tags", "search_documents"})
+         {"search_fts", "search_metadata", "search_categories", "search_generated_tags", "search_authored_tags",
+          "search_documents"})
     {
         const std::string sql = "DELETE FROM " + std::string(table) + " WHERE guid=?;";
         sqlite_statement statement(implementation_->database, sql.c_str());
@@ -519,10 +629,20 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
     std::vector<asset_search_result> results;
     if (!implementation_ || !implementation_->database || query_value.limit == 0) return results;
 
-    sqlite_statement statement(implementation_->database,
-                               "SELECT guid,type,display_name,logical_path,active_provider,title,description "
-                               "FROM search_documents;");
+    const bool use_fts = !query_value.text.empty();
+    const auto match_query = use_fts ? fts_query(query_value.text) : std::string{};
+    if (use_fts && match_query.empty()) return results;
+
+    const char* sql = use_fts
+                          ? "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
+                            "d.description,f.authored_tags,f.generated_tags,f.categories,f.metadata "
+                            "FROM search_fts f JOIN search_documents d ON d.guid=f.guid "
+                            "WHERE search_fts MATCH ?;"
+                          : "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
+                            "d.description,'','','','' FROM search_documents d;";
+    sqlite_statement statement(implementation_->database, sql);
     if (!statement) return results;
+    if (use_fts) bind_text(statement.get(), 1, match_query);
 
     while (sqlite3_step(statement.get()) == SQLITE_ROW)
     {
@@ -534,13 +654,15 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
         const auto provider = column_text(statement.get(), 4);
         if (!contains_provider(query_value.filters.provider_ids, provider)) continue;
 
-        const auto match =
-            match_text(query_value.text, column_text(statement.get(), 2), column_text(statement.get(), 5),
-                       column_text(statement.get(), 3), column_text(statement.get(), 6));
-        if (!match.matched) continue;
+        baseline_match match{.matched = true};
+        if (use_fts)
+            match = match_text(query_value.text, column_text(statement.get(), 2), column_text(statement.get(), 5),
+                               column_text(statement.get(), 3), column_text(statement.get(), 6),
+                               column_text(statement.get(), 7), column_text(statement.get(), 8),
+                               column_text(statement.get(), 9), column_text(statement.get(), 10));
 
         asset_search_result result{.guid = *guid, .score = match.score};
-        if (!query_value.text.empty())
+        if (use_fts)
             result.reasons.push_back({.kind = match.kind, .score = match.score, .detail = match.detail});
         results.push_back(std::move(result));
     }
