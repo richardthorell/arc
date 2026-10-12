@@ -99,6 +99,41 @@ describe('native-backed entity material controls', () => {
     expect(await screen.findByLabelText('Base Color Source function')).toBeInTheDocument();
     expect(screen.queryByLabelText('Unpack ORM function')).not.toBeInTheDocument();
   });
+  it('nests exposed function parameters beneath their selectable function and retains range sliders', async () => {
+    query.mockImplementation(async (type) =>
+      response(
+        type === 'entity.selected'
+          ? { guid: entityGuid, selectionCount: 1 }
+          : {
+              ...description(),
+              parameters: [
+                { ...description().parameters[0], slotId: 'base-color-source', name: 'Color Strength' },
+              ],
+              functionSlots: [
+                {
+                  id: 'base-color-source',
+                  name: 'Base Color Source',
+                  defaultFunctionGuid: '33333333-3333-4333-8333-333333333333',
+                  selectedFunctionGuid: '33333333-3333-4333-8333-333333333333',
+                  inputs: [],
+                  outputs: [],
+                  alternatives: [
+                    { guid: '33333333-3333-4333-8333-333333333333', pathHint: 'color' },
+                    { guid: '44444444-4444-4444-8444-444444444444', pathHint: 'checker' },
+                  ],
+                  alternativesTruncated: false,
+                },
+              ],
+            },
+      ),
+    );
+    const { container } = show();
+    expect(await screen.findByLabelText('Base Color Source function')).toBeInTheDocument();
+    const nested = container.querySelector('.inspector-material-function-parameters');
+    expect(nested).not.toBeNull();
+    expect(nested).toContainElement(screen.getByLabelText('Color Strength'));
+    expect(nested).toContainElement(screen.getByLabelText('Color Strength slider'));
+  });
   it('commits a typed 64-bit override with inspected scene, world and definition authority', async () => {
     show();
     const input = await screen.findByLabelText('Artist Control');
