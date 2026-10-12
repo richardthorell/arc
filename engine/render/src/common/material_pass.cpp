@@ -126,6 +126,7 @@ std::uint64_t hash_material_pass_permutation_key(const material_pass_permutation
     hash_integral(hash, static_cast<std::uint8_t>(key.evaluates_material));
     hash_integral(hash, static_cast<std::uint8_t>(key.writes_motion));
     hash_integral(hash, static_cast<std::uint8_t>(key.virtual_shadow_sampling));
+    hash_integral(hash, static_cast<std::uint8_t>(key.independent_clear_coat_normal));
     return hash;
 }
 
