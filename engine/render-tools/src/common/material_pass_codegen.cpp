@@ -810,8 +810,14 @@ material_pass_codegen_result generate_material_pass_slang(const material_graph_c
 {
     auto evaluator = make_graph_material_evaluator(compilation, options);
     if (!evaluator) return material_pass_codegen_result::failure(evaluator.error());
-    return generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe,
-                                        virtual_shadow_sampling);
+    auto generated = generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe,
+                                                  virtual_shadow_sampling);
+    if (!generated || options.independent_clear_coat_normal) return generated;
+    auto variant = std::move(generated).value();
+    auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe, virtual_shadow_sampling);
+    key.independent_clear_coat_normal = false;
+    variant.permutation = make_material_pass_permutation_id(key);
+    return material_pass_codegen_result::success(std::move(variant));
 }
 
 material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
