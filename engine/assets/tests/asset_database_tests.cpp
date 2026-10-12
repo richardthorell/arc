@@ -448,7 +448,6 @@ TEST_CASE("bundle cooking resolves shared assets deterministically and rejects c
     CHECK_FALSE(resolve_bundle_cook_roots(cyclic, "A", database).succeeded());
 }
 
-
 TEST_CASE("bundle membership database projects shared and nested memberships onto GUID records")
 {
     using namespace arc::assets;
@@ -473,8 +472,7 @@ TEST_CASE("bundle membership database projects shared and nested memberships ont
     const auto shared_record = view.query(shared);
     REQUIRE(shared_record);
     CHECK(shared_record->guid == shared);
-    CHECK(shared_record->bundle_memberships ==
-          std::vector<std::string>{"Level/Forest", "Startup/Common"});
+    CHECK(shared_record->bundle_memberships == std::vector<std::string>{"Level/Forest", "Startup/Common"});
     const auto root_record = view.query(root);
     REQUIRE(root_record);
     CHECK(root_record->bundle_memberships == std::vector<std::string>{"Level/Forest"});

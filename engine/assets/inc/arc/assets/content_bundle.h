@@ -219,8 +219,8 @@ public:
     {
     }
 
-    [[nodiscard]] std::optional<asset_database_record> query(
-        asset_guid guid, asset_type_id expected_type = {}) const override
+    [[nodiscard]] std::optional<asset_database_record> query(asset_guid guid,
+                                                             asset_type_id expected_type = {}) const override
     {
         auto record = database_->query(guid, expected_type);
         if (record) record->bundle_memberships = bundles_->memberships(guid, *database_);
@@ -245,7 +245,10 @@ public:
         return database_->reverse_dependencies(guid);
     }
 
-    [[nodiscard]] std::uint64_t revision() const override { return database_->revision(); }
+    [[nodiscard]] std::uint64_t revision() const override
+    {
+        return database_->revision();
+    }
 
     [[nodiscard]] asset_database_change_batch changes_since(std::uint64_t cursor) const override
     {
