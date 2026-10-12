@@ -15,7 +15,6 @@ import { InspectorComponentCard } from './InspectorComponentCard';
 import { SkeletonInspector } from './SkeletonInspector';
 import { inspectorLocalToWorld, inspectorWorldToLocal } from './transformSpace';
 import { waterPresetOverrideForPath } from './waterPresetOverrides';
-import { materialDescribeOutput } from '../../../common/materialOperationContract';
 
 import './inspector.css';
 
@@ -277,41 +276,6 @@ export function InspectorPanel({
         const assetReference = selectedAsset ? hostAssetReference(selectedAsset) : null;
         const requiresCommandPath =
           proceduralParameter || next.meshRenderer.materialPath.startsWith(meshAssignmentPrefix) || !assetReference;
-        if (!requiresCommandPath && assetReference) {
-          if (readOnly) {
-            setError(`${contextLabel || 'This context'} is read-only`);
-            return;
-          }
-          const entityGuid = next.selectedGuids?.[0];
-          if (!entityGuid || (next.selectionCount ?? 1) > 1) {
-            setError('Select one entity to assign a material by GUID');
-            return;
-          }
-          const selection = confirmed.current;
-          void (async () => {
-            try {
-              const response = (await window.arc.host.query('materials.describe', {
-                guid: assetReference.guid,
-              })) as HostResponse & { sceneRevision: number; worldEpoch: number };
-              if (!response.succeeded) throw new Error(response.error || 'Material inspection failed');
-              const description = materialDescribeOutput.parse(response.payload);
-              if (!description.definitionReady)
-                throw new Error(description.diagnostics.map((entry) => entry.message).join('; '));
-              if (confirmed.current !== selection) return;
-              await runMutation(next, 'materials.edit', {
-                operation: 'assign',
-                entityGuid,
-                assetGuid: assetReference.guid,
-                definitionRevision: description.definitionRevision,
-                expectedSceneRevision: response.sceneRevision,
-                worldEpoch: response.worldEpoch,
-              });
-            } catch (cause) {
-              if (confirmed.current === selection) setError(cause instanceof Error ? cause.message : String(cause));
-            }
-          })();
-          return;
-        }
         void runMutation(
           next,
           'entity.setMaterial',
