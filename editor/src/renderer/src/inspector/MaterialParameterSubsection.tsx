@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { materialDescribeOutput, type MaterialDescription } from '../../../common/materialOperationContract';
-import { UiPanelCardRow, UiSelect, UiNumericInput, UiColorControl } from '../ui';
+import { UiPanelCardRow, UiSelect, UiNumericInput, UiColorControl, UiSlider } from '../ui';
 import { TexturePicker, type AssetThumbnailProvider } from './AssetPicker';
 import './inspectorPolish.css';
 
@@ -134,121 +134,159 @@ export function MaterialParameterSubsection({
   };
   if (!value || mixed || value.startsWith('__arc_')) return null;
   const description = inspection?.description;
+
+  // Native parameter IDs and slot IDs are authoritative: do not reparse the saved
+  // graph. A function's exposed parameters are nested below its selector.
+  const renderParameter = (parameter: MaterialDescription['parameters'][number]) => {
+    const values = Array.isArray(parameter.resolvedValue)
+      ? parameter.resolvedValue
+      : typeof parameter.resolvedValue === 'number'
+        ? [parameter.resolvedValue]
+        : [];
+    const texture =
+      parameter.resolvedValue && typeof parameter.resolvedValue === 'object' && !Array.isArray(parameter.resolvedValue)
+        ? parameter.resolvedValue.guid
+        : '';
+    const changeNumber = (index: number, next: number) => {
+      if (!Number.isFinite(next) || next === values[index]) return;
+      const updated = [...values];
+      updated[index] = next;
+      void mutate('setOverride', { parameterId: parameter.id, value: updated });
+    };
+    const isColor = parameter.semantic === 'baseColor' && values.length >= 3;
+    const isScalar = parameter.type === 'float' && values.length === 1;
+    return (
+      <UiPanelCardRow
+        className="inspector-material-parameter"
+        key={parameter.id}
+        label={parameter.name}
+        align={parameter.type === 'texture2d' ? 'start' : 'center'}
+      >
+        <div className="inspector-material-parameter-control">
+          {parameter.type === 'texture2d' ? (
+            <TexturePicker
+              allowEmpty
+              assets={assets}
+              label={parameter.name}
+              showLabel={false}
+              referenceMode="guid"
+              thumbnailProvider={thumbnailProvider}
+              value={texture}
+              onChange={(_, asset) => {
+                if (asset?.guid)
+                  void mutate('setOverride', {
+                    parameterId: parameter.id,
+                    value: { guid: asset.guid, pathHint: asset.path },
+                  });
+              }}
+            />
+          ) : isColor ? (
+            <UiColorControl
+              label={parameter.name}
+              allowAlpha={values.length === 4}
+              value={{ x: values[0], y: values[1], z: values[2], w: values[3] ?? 1 }}
+              onCommit={(color) =>
+                void mutate('setOverride', {
+                  parameterId: parameter.id,
+                  value: [color.x, color.y, color.z, color.w].slice(0, values.length),
+                })
+              }
+            />
+          ) : (
+            <div className="inspector-material-parameter-editors">
+              <div className="inspector-material-parameter-values">
+                {values.map((number, i) => (
+                  <UiNumericInput
+                    key={i}
+                    precision={3}
+                    step={0.01}
+                    scrubSensitivity={0.005}
+                    scrubLabel={values.length > 1 ? ['X', 'Y', 'Z', 'W'][i] : undefined}
+                    scrubClassName={values.length > 1 ? `axis-${['x', 'y', 'z', 'w'][i]}` : undefined}
+                    ariaLabel={values.length === 1 ? parameter.name : `${parameter.name} ${['X', 'Y', 'Z', 'W'][i]}`}
+                    value={number}
+                    min={parameter.range?.min}
+                    max={parameter.range?.max}
+                    onCommit={(next) => changeNumber(i, next)}
+                  />
+                ))}
+              </div>
+              {isScalar && parameter.range && (
+                <UiSlider
+                  aria-label={`${parameter.name} slider`}
+                  min={parameter.range.min}
+                  max={parameter.range.max}
+                  step={Math.max(0.001, (parameter.range.max - parameter.range.min) / 100)}
+                  value={values[0]}
+                  onValueChange={(next) => changeNumber(0, next)}
+                />
+              )}
+            </div>
+          )}
+          {parameter.valueStatus === 'unavailable' && <small>Value unavailable</small>}
+          {parameter.overridden && (
+            <button
+              type="button"
+              className="inspector-field-reset"
+              aria-label={`Reset ${parameter.name}`}
+              onClick={() => void mutate('resetOverride', { parameterId: parameter.id })}
+            >
+              <RotateCcw size={12} />
+            </button>
+          )}
+        </div>
+      </UiPanelCardRow>
+    );
+  };
+
   return (
     <section className="inspector-material-parameters" aria-label="Material Parameters">
       <h4>Material Parameters</h4>
       {error && <div role="alert">{error}</div>}
       {!description && !error && <span>Loading…</span>}
       {description?.diagnostics.map((diagnostic, i) => (
-        <div role="status" key={i}>
-          {diagnostic.message}
-        </div>
+        <div role="status" key={i}>{diagnostic.message}</div>
       ))}
       <fieldset disabled={busy || !description?.definitionReady} style={{ border: 0, margin: 0, padding: 0 }}>
-        {description?.functionSlots.filter((slot) => slot.alternatives.length > 1).map((slot) => (
-          <UiPanelCardRow className="inspector-material-function-selector" key={slot.id} label={slot.name}>
-            <UiSelect
-              ariaLabel={`${slot.name} function`}
-              value={slot.selectedFunctionGuid}
-              options={slot.alternatives.map((entry) => ({
-                value: entry.guid,
-                label: assets.find((asset) => asset.guid === entry.guid)?.name ?? entry.pathHint,
-              }))}
-              onValueChange={(assetGuid) => void mutate('selectFunction', { slotId: slot.id, assetGuid })}
-            />
-            {slot.alternativesTruncated && (
-              <small>Additional alternatives were omitted by the inspection budget.</small>
-            )}
-          </UiPanelCardRow>
-        ))}
-        {description?.parameters.map((parameter) => {
-          const values = Array.isArray(parameter.resolvedValue)
-            ? parameter.resolvedValue
-            : typeof parameter.resolvedValue === 'number'
-              ? [parameter.resolvedValue]
-              : [];
-          const texture =
-            parameter.resolvedValue &&
-            typeof parameter.resolvedValue === 'object' &&
-            !Array.isArray(parameter.resolvedValue)
-              ? parameter.resolvedValue.guid
-              : '';
+        {description?.functionSlots.map((slot) => {
+          const children = description.parameters.filter((parameter) => parameter.slotId === slot.id);
+          // Internal one-choice functions should not display fake selection controls,
+          // but their exposed parameters must still be editable if present.
+          if (slot.alternatives.length <= 1 && children.length === 0) return null;
           return (
-            <UiPanelCardRow
-              className="inspector-material-parameter"
-              key={parameter.id}
-              label={parameter.name}
-              align={parameter.type === 'texture2d' ? 'start' : 'center'}
-            >
-              {parameter.type === 'texture2d' ? (
-                <TexturePicker
-                  assets={assets}
-                  label={parameter.name}
-                  showLabel={false}
-                  referenceMode="guid"
-                  thumbnailProvider={thumbnailProvider}
-                  value={texture}
-                  onChange={(_, asset) => {
-                    if (asset?.guid)
-                      void mutate('setOverride', {
-                        parameterId: parameter.id,
-                        value: { guid: asset.guid, pathHint: asset.path },
-                      });
-                  }}
-                />
-              ) : (
-                <>
-                  {parameter.semantic === 'baseColor' && values.length >= 3 && (
-                    <UiColorControl
-                      label={parameter.name}
-                      allowAlpha={values.length === 4}
-                      value={{ x: values[0], y: values[1], z: values[2], w: values[3] ?? 1 }}
-                      onCommit={(color) =>
-                        void mutate('setOverride', {
-                          parameterId: parameter.id,
-                          value: [color.x, color.y, color.z, color.w].slice(0, values.length),
-                        })
-                      }
-                    />
-                  )}
-                  {parameter.semantic !== 'baseColor' && values.length > 0 && (
-                    <div className="inspector-material-parameter-values">
-                      {values.map((number, i) => (
-                        <UiNumericInput
-                          key={`${parameter.id}-${i}-${number}`}
-                          precision={3}
-                          step={0.01}
-                          scrubSensitivity={0.01}
-                          ariaLabel={values.length === 1 ? parameter.name : `${parameter.name} ${['X', 'Y', 'Z', 'W'][i]}`}
-                          value={number}
-                          min={parameter.range?.min}
-                          max={parameter.range?.max}
-                          onCommit={(next) => {
-                            if (!Number.isFinite(next) || next === number) return;
-                            const updated = [...values];
-                            updated[i] = next;
-                            void mutate('setOverride', { parameterId: parameter.id, value: updated });
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {parameter.valueStatus === 'unavailable' && <small>Value unavailable</small>}
-                </>
+            <div className="inspector-material-function" key={slot.id}>
+              {slot.alternatives.length > 1 && (
+                <UiPanelCardRow label={slot.name} className="inspector-material-function-selector">
+                  <UiSelect
+                    ariaLabel={`${slot.name} function`}
+                    value={slot.selectedFunctionGuid}
+                    options={slot.alternatives.map((entry) => ({
+                      value: entry.guid,
+                      label: assets.find((asset) => asset.guid === entry.guid)?.name ?? entry.pathHint,
+                    }))}
+                    onValueChange={(assetGuid) => void mutate('selectFunction', { slotId: slot.id, assetGuid })}
+                  />
+                </UiPanelCardRow>
               )}
-              {parameter.overridden && (
-                <button
-                  type="button"
-                  className="inspector-field-reset"
-                  aria-label={`Reset ${parameter.name}`}
-                  onClick={() => void mutate('resetOverride', { parameterId: parameter.id })}
-                >
-                  <RotateCcw size={12} />
-                </button>
+              {slot.alternativesTruncated && (
+                <small>Additional alternatives were omitted by the inspection budget.</small>
               )}
-            </UiPanelCardRow>
+              {children.length > 0 && (
+                <div className="inspector-material-function-parameters">
+                  {children.map(renderParameter)}
+                </div>
+              )}
+            </div>
           );
         })}
+        <div className="inspector-material-parameter-list">
+          {description?.parameters.filter((parameter) =>
+            !parameter.slotId || !description.functionSlots.some((slot) => slot.id === parameter.slotId)
+          ).map(renderParameter)}
+        </div>
+        {description && description.parameters.length === 0 && description.functionSlots.length === 0 && (
+          <p className="inspector-subsection-empty">No exported parameters.</p>
+        )}
       </fieldset>
     </section>
   );
