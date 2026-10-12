@@ -17,6 +17,7 @@
 #include <arc/water/water_types.h>
 
 #include <array>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -400,6 +401,19 @@ struct irradiance_probe_component
     float visibility{1.0f};
     std::int32_t priority{};
     std::array<math::vector3f, 9> spherical_harmonics{};
+};
+
+/** @brief Authored instance of one baked irradiance probe-volume asset. */
+struct irradiance_probe_volume_component
+{
+    assets::asset_reference asset{.expected_type = assets::asset_types::irradiance_probe_volume};
+    /** Last resolved asset generation. Runtime-only. */
+    std::uint64_t asset_generation{};
+    /** Loaded backend-neutral probe data. Runtime-only; not serialized. */
+    std::shared_ptr<const render::irradiance_probe_volume_descriptor> runtime_volume;
+    float intensity{1.0f};
+    std::int32_t priority_bias{};
+    bool enabled{true};
 };
 
 /** @brief Authored lightmap assigned to one renderable entity. */
