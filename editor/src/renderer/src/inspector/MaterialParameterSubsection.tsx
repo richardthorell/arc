@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { materialDescribeOutput, type MaterialDescription } from '../../../common/materialOperationContract';
-import { UiSelect, UiNumericInput, UiColorControl } from '../ui';
+import { UiPanelCardRow, UiSelect, UiNumericInput, UiColorControl } from '../ui';
 import { TexturePicker, type AssetThumbnailProvider } from './AssetPicker';
 import './inspectorPolish.css';
 
@@ -146,8 +146,7 @@ export function MaterialParameterSubsection({
       ))}
       <fieldset disabled={busy || !description?.definitionReady} style={{ border: 0, margin: 0, padding: 0 }}>
         {description?.functionSlots.filter((slot) => slot.alternatives.length > 1).map((slot) => (
-          <div className="inspector-material-function-selector" key={slot.id}>
-            <span>{slot.name}</span>
+          <UiPanelCardRow className="inspector-material-function-selector" key={slot.id} label={slot.name}>
             <UiSelect
               ariaLabel={`${slot.name} function`}
               value={slot.selectedFunctionGuid}
@@ -160,7 +159,7 @@ export function MaterialParameterSubsection({
             {slot.alternativesTruncated && (
               <small>Additional alternatives were omitted by the inspection budget.</small>
             )}
-          </div>
+          </UiPanelCardRow>
         ))}
         {description?.parameters.map((parameter) => {
           const values = Array.isArray(parameter.resolvedValue)
@@ -175,11 +174,17 @@ export function MaterialParameterSubsection({
               ? parameter.resolvedValue.guid
               : '';
           return (
-            <div className="inspector-material-parameter" key={parameter.id}>
+            <UiPanelCardRow
+              className="inspector-material-parameter"
+              key={parameter.id}
+              label={parameter.name}
+              align={parameter.type === 'texture2d' ? 'start' : 'center'}
+            >
               {parameter.type === 'texture2d' ? (
                 <TexturePicker
                   assets={assets}
                   label={parameter.name}
+                  showLabel={false}
                   referenceMode="guid"
                   thumbnailProvider={thumbnailProvider}
                   value={texture}
@@ -193,7 +198,6 @@ export function MaterialParameterSubsection({
                 />
               ) : (
                 <>
-                  <span className="inspector-property-label">{parameter.name}</span>
                   {parameter.semantic === 'baseColor' && values.length >= 3 && (
                     <UiColorControl
                       label={parameter.name}
@@ -210,7 +214,7 @@ export function MaterialParameterSubsection({
                   {parameter.semantic !== 'baseColor' && values.length > 0 && (
                     <div className="inspector-material-parameter-values">
                       {values.map((number, i) => (
-                    <UiNumericInput
+                        <UiNumericInput
                       key={`${parameter.id}-${i}-${number}`}
                       precision={3}
                       step={0.01}
@@ -225,7 +229,7 @@ export function MaterialParameterSubsection({
                         updated[i] = next;
                         void mutate('setOverride', { parameterId: parameter.id, value: updated });
                       }}
-                    />
+                        />
                       ))}
                     </div>
                   )}
@@ -242,7 +246,7 @@ export function MaterialParameterSubsection({
                   <RotateCcw size={12} />
                 </button>
               )}
-            </div>
+            </UiPanelCardRow>
           );
         })}
       </fieldset>
