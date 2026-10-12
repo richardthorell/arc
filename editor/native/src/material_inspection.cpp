@@ -155,7 +155,7 @@ struct inspection
 } // namespace
 
 std::string inspect_saved_material(const material_inspection_source& source,
-                                   const material_inspection_resolver& resolve)
+                                   const material_inspection_resolver& resolve, std::string_view entity_overrides)
 {
     json result{{"guid", source.guid},          {"kind", source.kind},
                 {"provenance", "savedSource"},  {"definitionRevision", ""},
@@ -166,6 +166,8 @@ std::string inspect_saved_material(const material_inspection_source& source,
     inspection state{.resolve = resolve};
     try
     {
+        const auto local = json::parse(entity_overrides);
+        if (!local.is_array() || local.size() > 1024) throw std::runtime_error("Invalid entity override state");
         state.remember(source);
         if (source.kind == "materialFunction")
         {
@@ -215,6 +217,24 @@ std::string inspect_saved_material(const material_inspection_source& source,
                     state.function(path, selected.guid, functions);
                     selections.push_back({.slot_id = selection.slot_id, .function_path = path});
                 }
+            for (const auto& entry : local)
+            {
+                if (entry.value("kind", std::string{}) != "function") continue;
+                const auto reference = entry.at("function");
+                const auto selected =
+                    state.load(reference.value("guid", std::string{}), reference.value("pathHint", std::string{}));
+                auto path = selected.path;
+                for (const auto& [alias, guid] : state.aliases)
+                    if (guid == selected.guid)
+                    {
+                        path = alias;
+                        break;
+                    }
+                state.function(path, selected.guid, functions);
+                const auto id = entry.at("slotId").get<std::string>();
+                std::erase_if(selections, [&](const auto& selection) { return selection.slot_id == id; });
+                selections.push_back({.slot_id = id, .function_path = path});
+            }
             const auto compiled = rt::compile_material_graph_json(authored.value().graph_json, functions, selections);
             if (!compiled) throw std::runtime_error(compiled.error().message);
             std::map<std::uint64_t, json> overrides;
@@ -223,10 +243,24 @@ std::string inspect_saved_material(const material_inspection_source& source,
                 for (const auto& entry : instance->parameter_overrides)
                     overrides[entry.parameter_id.representation()] = json::parse(entry.value_json);
                 for (const auto& selection : instance->function_overrides)
+                {
+                    // An entity replacement inherits the newly selected function's defaults, not
+                    // input overrides belonging to the instance's previous selection.
+                    const bool replaced = std::ranges::any_of(
+                        local,
+                        [&](const auto& entry)
+                        {
+                            return entry.value("kind", std::string{}) == "function" &&
+                                   entry.value("slotId", std::string{}) == selection.slot_id &&
+                                   entry.value("function", json::object()).value("guid", std::string{}) !=
+                                       selection.function.guid;
+                        });
+                    if (replaced) continue;
                     for (const auto& entry : selection.input_overrides)
                         overrides[render::make_shader_parameter_id("slot::" + selection.slot_id +
                                                                    "::" + selection.function.guid + "::" + entry.pin_id)
                                       .representation()] = json::parse(entry.value_json);
+                }
             }
             for (const auto& parameter : compiled.value().descriptor.parameters)
             {
@@ -249,11 +283,49 @@ std::string inspect_saved_material(const material_inspection_source& source,
                     resolved = checked_value(found->second, parameter);
                     overrides.erase(found);
                 }
+                const auto inherited = resolved;
+                bool overridden = false;
+                for (const auto& entry : local)
+                    if (entry.value("kind", std::string{}) != "function" &&
+                        entry.value("parameterId", std::string{}) == std::to_string(parameter.id.representation()))
+                    {
+                        try
+                        {
+                            resolved =
+                                checked_value(type == "texture2d" ? entry.value("textureReference", json(nullptr))
+                                                                  : entry.at("value"),
+                                              parameter);
+                            overridden = true;
+                        }
+                        catch (const std::exception& error)
+                        {
+                            result["diagnostics"].push_back(
+                                {{"code", "stale-entity-override"}, {"message", error.what()}});
+                        }
+                    }
+                std::string slot_id;
+                for (const auto& slot : compiled.value().descriptor.function_slots)
+                {
+                    for (const auto& selected : slot.selected_parameters)
+                        if (selected.parameter_id == parameter.id) slot_id = slot.id;
+                    for (const auto& node : compiled.value().ir.nodes)
+                        if (node.parameter_id == parameter.id && node.id.starts_with(slot.id + "::")) slot_id = slot.id;
+                }
+                std::string semantic = "none";
+                for (const auto& output : compiled.value().descriptor.outputs)
+                    if (output.output == rt::material_surface_output::base_color && output.connected)
+                        for (const auto& node : compiled.value().ir.nodes)
+                            if (node.id == output.source_node && node.parameter_id == parameter.id)
+                                semantic = "baseColor";
                 result["parameters"].push_back(
                     {{"id", std::to_string(parameter.id.representation())},
                      {"name", parameter.name},
                      {"type", type},
                      {"defaultValue", default_value},
+                     {"inheritedValue", inherited},
+                     {"overridden", overridden},
+                     {"slotId", slot_id},
+                     {"semantic", semantic},
                      {"resolvedValue", resolved},
                      {"valueStatus", resolved.is_null() ? "unavailable" : "resolved"},
                      {"range", parameter.has_range ? json{{"min", parameter.minimum}, {"max", parameter.maximum}}
@@ -261,6 +333,16 @@ std::string inspect_saved_material(const material_inspection_source& source,
             }
             if (!overrides.empty())
                 throw std::runtime_error("Instance contains stale parameter overrides; repair the saved definition");
+            for (const auto& entry : local)
+            {
+                if (entry.value("kind", std::string{}) == "function") continue;
+                const auto id = entry.value("parameterId", std::string{});
+                if (!std::ranges::any_of(result["parameters"],
+                                         [&](const auto& parameter) { return parameter["id"] == id; }))
+                    result["diagnostics"].push_back(
+                        {{"code", "stale-entity-override"},
+                         {"message", "Saved entity override no longer matches a parameter: " + id}});
+            }
             std::size_t trials = 0;
             for (const auto& slot : compiled.value().descriptor.function_slots)
             {

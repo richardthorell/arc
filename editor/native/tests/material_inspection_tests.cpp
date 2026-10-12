@@ -1,11 +1,15 @@
 #include <arc/editor/material_inspection.h>
 #include <arc/editor/host_protocol.h>
+#include <arc/editor/editor_state.h>
+#include <arc/editor/entity_material_service.h>
+#include <arc/editor/material_preview_realizer.h>
 #include <arc/render_tools/material_graph.h>
 
 #include <catch2/catch_test_macros.hpp>
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
+#include <array>
 #include <fstream>
 #include <map>
 
@@ -158,4 +162,89 @@ TEST_CASE("material and asset inspection queries round trip GUID identity")
         REQUIRE(arc::editor::query_type(query.payload) == type);
         REQUIRE(json::parse(arc::editor::to_json(query))["payload"]["guid"] == material_guid);
     }
+}
+
+TEST_CASE("entity material inspection separates inherited and local values without changing definition identity")
+{
+    const auto source = material_source();
+    const auto saved = json::parse(arc::editor::inspect_saved_material(source, missing));
+    const auto id = saved["parameters"][0]["id"];
+    auto overrides = json::array({{{"kind", "scalar"}, {"parameterId", id}, {"value", json::array({0.7})}}});
+    const auto local = json::parse(arc::editor::inspect_saved_material(source, missing, overrides.dump()));
+    REQUIRE(local["definitionReady"] == true);
+    REQUIRE(local["definitionRevision"] == saved["definitionRevision"]);
+    REQUIRE(local["parameters"][0]["overridden"] == true);
+    REQUIRE(local["parameters"][0]["resolvedValue"][0] == 0.7);
+    REQUIRE(local["parameters"][0]["inheritedValue"] == saved["parameters"][0]["resolvedValue"]);
+    overrides[0]["value"] = json::array({2.0});
+    const auto invalid = json::parse(arc::editor::inspect_saved_material(source, missing, overrides.dump()));
+    REQUIRE(invalid["definitionReady"] == true);
+    REQUIRE(invalid["parameters"][0]["overridden"] == false);
+    REQUIRE(invalid["diagnostics"][0]["code"] == "stale-entity-override");
+    overrides[0]["parameterId"] = "999999";
+    const auto stale = json::parse(arc::editor::inspect_saved_material(source, missing, overrides.dump()));
+    REQUIRE(stale["diagnostics"][0]["code"] == "stale-entity-override");
+}
+
+TEST_CASE("typed material edit commands round trip revision authority and lossless parameter identity")
+{
+    const auto wire = json{{"kind", "command"},
+                           {"requestId", 51},
+                           {"type", "materials.edit"},
+                           {"payload",
+                            {{"operation", "setOverride"},
+                             {"entityGuid", material_guid},
+                             {"definitionRevision", std::string(64, 'a')},
+                             {"expectedSceneRevision", 7},
+                             {"worldEpoch", 3},
+                             {"parameterId", "18446744073709551615"},
+                             {"value", json::array({0.25})}}}};
+    arc::editor::host_command_envelope command;
+    std::string error;
+    REQUIRE(arc::editor::from_json(wire.dump(), command, error));
+    const auto roundtrip = json::parse(arc::editor::to_json(command));
+    REQUIRE(roundtrip["payload"]["parameterId"] == "18446744073709551615");
+    REQUIRE(roundtrip["payload"]["expectedSceneRevision"] == 7);
+    REQUIRE(roundtrip["payload"]["worldEpoch"] == 3);
+}
+
+TEST_CASE("typed entity overrides isolate shared materials and retain last good values on rejection")
+{
+    arc::render::renderer renderer;
+    arc::editor::editor_scene_state scene;
+    const auto source = material_source();
+    const auto realized = arc::editor::realize_material_preview_descriptor(source.source, "Custom");
+    REQUIRE(realized.succeeded);
+    const auto shared = renderer.create_material(realized.material);
+    auto asset = arc::editor::make_default_material_asset("Custom");
+    asset.material = realized.material;
+    asset.path = source.path;
+    scene.material_library.materials.push_back({source.path, asset, shared});
+    const auto first = scene.scene.create();
+    const auto second = scene.scene.create();
+    scene.scene.emplace<arc::scene::mesh_renderer_component>(first,
+                                                             arc::scene::mesh_renderer_component{.material = shared});
+    scene.scene.emplace<arc::scene::mesh_renderer_component>(second,
+                                                             arc::scene::mesh_renderer_component{.material = shared});
+    arc::editor::ensure_scene_authoring_metadata(scene);
+    const auto parameter = realized.material.runtime_program->parameters.front().id;
+    const std::array values{0.75f};
+    std::string error;
+    REQUIRE(
+        arc::editor::set_entity_material_parameter(scene, renderer, first, parameter, values, nullptr, false, error));
+    const auto local = scene.scene.try_get<arc::scene::mesh_renderer_component>(first)->material;
+    REQUIRE(local != shared);
+    REQUIRE(scene.scene.try_get<arc::scene::mesh_renderer_component>(second)->material == shared);
+    const auto saved = arc::editor::entity_material_overrides_json(scene, first);
+    REQUIRE(json::parse(saved)[0]["value"][0] == 0.75f);
+    REQUIRE(arc::editor::entity_material_overrides_json(scene, second) == "[]");
+    const std::array invalid{2.0f};
+    REQUIRE_FALSE(
+        arc::editor::set_entity_material_parameter(scene, renderer, first, parameter, invalid, nullptr, false, error));
+    REQUIRE_FALSE(error.empty());
+    REQUIRE(scene.scene.try_get<arc::scene::mesh_renderer_component>(first)->material == local);
+    REQUIRE(arc::editor::entity_material_overrides_json(scene, first) == saved);
+    REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, first, parameter, {}, nullptr, true, error));
+    REQUIRE(scene.scene.try_get<arc::scene::mesh_renderer_component>(first)->material == shared);
+    REQUIRE(arc::editor::entity_material_overrides_json(scene, first) == "[]");
 }

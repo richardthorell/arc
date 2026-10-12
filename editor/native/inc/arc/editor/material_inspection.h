@@ -27,6 +27,7 @@ using material_inspection_resolver =
  * The revision covers the saved source and resolved dependency contents/identities.
  */
 [[nodiscard]] std::string inspect_saved_material(const material_inspection_source& source,
-                                                 const material_inspection_resolver& resolve);
+                                                 const material_inspection_resolver& resolve,
+                                                 std::string_view entity_overrides = "[]");
 
 } // namespace arc::editor

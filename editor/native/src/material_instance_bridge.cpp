@@ -737,9 +737,11 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
         const auto slot_id = entry.value("slotId", std::string{});
         const auto function = entry.value("function", json::object());
         const auto reference = asset_reference_from_json(function);
-        if (slot_id.empty() || !reference) continue;
+        if (slot_id.empty() || !reference)
+            return material_preview_descriptor_result{.message = "Invalid entity Material Function reference"};
         const auto source_path = resolve_asset_reference_path(scene, base, *reference);
-        if (source_path.empty()) continue;
+        if (source_path.empty())
+            return material_preview_descriptor_result{.message = "Selected Material Function source is unavailable"};
         selections[slot_id] = {
             .guid = reference->guid.valid() ? assets::to_string(reference->guid) : source_path.generic_string(),
             .path = source_path.generic_string(),
@@ -761,11 +763,10 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
             return material_preview_descriptor_result{.message = "Material Instance source is unavailable"};
 
         const auto parent = instance.value("parent", json::object());
-        const auto parent_hint = parent.value("pathHint", std::string{});
-        if (parent_hint.empty())
-            return material_preview_descriptor_result{.message = "Material Instance parent path is unavailable"};
-
-        source_base.path = resolve_texture_path(scene, base, parent_hint);
+        const auto parent_reference = asset_reference_from_json(parent);
+        if (!parent_reference)
+            return material_preview_descriptor_result{.message = "Material Instance parent reference is unavailable"};
+        source_base.path = resolve_asset_reference_path(scene, base, *parent_reference);
         source = read_text_file(source_base.path);
         document = json::parse(source, nullptr, false);
         if (source.empty() || document.is_discarded() || !document.is_object() || !document.contains("graph"))
@@ -828,6 +829,8 @@ std::optional<material_preview_descriptor_result> realize_function_specializatio
             return material_preview_descriptor_result{.message = "Material Function could not be loaded: " + key};
 
         std::string identity = key;
+        if (const auto metadata = assets::load_asset_metadata(assets::metadata_path_for(source_path)); metadata)
+            identity = assets::to_string(metadata.value().guid);
         for (const auto& replacement : selected)
             if (same_path_suffix(source_path, replacement.path))
             {
@@ -1085,7 +1088,8 @@ bool apply_function_edit(editor_scene_state& scene, render::renderer& renderer, 
 
 bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
                                    render::shader_parameter_id parameter, std::span<const float> values,
-                                   const assets::asset_reference* texture, bool reset, std::string& error)
+                                   const assets::asset_reference* texture, bool reset, std::string& error,
+                                   std::string slot_id)
 {
     error.clear();
     if (!parameter.valid())
@@ -1118,6 +1122,7 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
                                  .type = found->type,
                                  .value = std::vector<float>(values.begin(), values.end()),
                                  .reset = reset};
+    edit.slot_id = std::move(slot_id);
     if (found->type == render::shader_parameter_type::texture_2d)
     {
         edit.kind = material_parameter_edit_kind::texture;
@@ -1152,6 +1157,12 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
             return false;
         }
         edit.kind = count == 1 ? material_parameter_edit_kind::scalar : material_parameter_edit_kind::vector;
+        if (!reset && found->has_range &&
+            std::ranges::any_of(values, [&](float value) { return value < found->minimum || value > found->maximum; }))
+        {
+            error = "Parameter value is outside the declared range";
+            return false;
+        }
     }
     if (!apply_material_edit(scene, renderer, entity, edit))
     {
@@ -1161,7 +1172,33 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
     return true;
 }
 
-std::string entity_material_overrides_json(editor_scene_state& scene, ecs::entity entity)
+bool select_entity_material_function(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                     const std::string& slot, const assets::asset_reference& function,
+                                     std::string& error)
+{
+    auto reference = function;
+    reference.expected_type = assets::asset_types::material_function;
+    if (slot.empty() || !reference.guid.valid() || !scene.asset_registry || !scene.asset_registry->find(reference))
+    {
+        error = "Function selection requires a registered Material Function GUID and slot ID";
+        return false;
+    }
+    if (!apply_function_edit(scene, renderer, entity, {.slot_id = slot, .function = reference}))
+    {
+        error = pending_material_edit_error;
+        return false;
+    }
+    return true;
+}
+
+void clear_entity_material_overrides(editor_scene_state& scene, ecs::entity entity)
+{
+    const auto guid = entity_guid_of(scene, entity);
+    store_persisted_overrides(scene, guid, json::array());
+    std::erase_if(runtime_instances, [&](const auto& entry) { return entry.scene == &scene && entry.entity == guid; });
+}
+
+std::string entity_material_overrides_json(const editor_scene_state& scene, ecs::entity entity)
 {
     return persisted_overrides(scene, entity_guid_of(scene, entity)).dump();
 }

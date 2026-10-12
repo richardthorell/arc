@@ -7,6 +7,7 @@
 #include <arc/render_tools/material_asset.h>
 #include <arc/render/texture.h>
 #include <arc/scene/scene.h>
+#include <arc/assets/assets.h>
 
 #include <algorithm>
 #include <array>
@@ -125,6 +126,8 @@ bool load_instance_function_sources(const std::filesystem::path& parent_path, co
         }
 
         std::string identity = key;
+        if (const auto metadata = assets::load_asset_metadata(assets::metadata_path_for(source_path)); metadata)
+            identity = assets::to_string(metadata.value().guid);
         for (const auto& override_value : instance.function_overrides)
         {
             const auto selected =
