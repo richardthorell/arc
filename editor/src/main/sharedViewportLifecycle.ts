@@ -1,8 +1,8 @@
 /** Remove per-viewport bookkeeping for a window whose Electron objects may already be destroyed. */
-export function forgetWindowViewportEntries<T>(
+export function forgetWindowViewportEntries(
   targetWebContentsId: number,
   targets: Map<string, number>,
-  collections: ReadonlyArray<Map<string, T> | Set<string>>,
+  collections: ReadonlyArray<{ delete(key: string): boolean }>,
 ): void {
   for (const [viewportId, ownerId] of [...targets]) {
     if (ownerId !== targetWebContentsId) continue;
