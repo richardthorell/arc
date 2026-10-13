@@ -30,6 +30,34 @@ Project-owned searchable metadata is stored in the versioned project file `.arc-
 
 Built-in/read-only assets expose their registry metadata for search and inspection but cannot be edited from the project metadata dialog. Type-specific details such as texture resolution/format, model geometry counts, material references, shader stages, prefab composition and scene counts continue to come from the asset registry rather than being duplicated into the metadata file.
 
+## Structured search grammar
+
+Free text and structured predicates can be mixed in one query. Free-text terms are sent to the lexical/semantic ranking path; predicates constrain the candidate set before ranking.
+
+Initial S2 predicates:
+
+| Predicate | Meaning | Example |
+| --- | --- | --- |
+| `type:` | Asset type alias or stable type UUID | `type:mesh`, `type:material` |
+| `tag:` | Required authored or generated tag | `tag:rustic` |
+| `category:` | Required category ID/path | `category:"Furniture/Chair"` |
+| `provider:` | Exact provider ID or common provider alias | `provider:arc.project.source` |
+| `scope:` | Common logical source grouping | `scope:project`, `scope:builtin` |
+
+Examples:
+
+```text
+rustic chair type:mesh
+chair tag:rustic tag:"old wood" category:"Furniture/Chair"
+type:material scope:project
+```
+
+Predicates are case-insensitive where their stored vocabulary permits it. Repeated tag/category predicates use **AND** semantics. A scope may expand to multiple provider IDs internally; those providers form an OR-set within the scope filter.
+
+Values containing whitespace can be quoted. Inside a quoted value, `\\"` and `\\` escape a quote and backslash respectively.
+
+Unknown predicates, unknown type/scope aliases, conflicting `type:` predicates, missing values, and unterminated quoted values are parse errors. ARC should surface the parser's token/offset/message to the user instead of silently treating a malformed predicate as ordinary free text.
+
 ## Online sources
 
 Online libraries are **sources**, not scopes. A source adapter normalizes provider-specific catalogs into ARC's common source contract. The Content Browser can search one source or aggregate multiple sources, while keeping provider-specific networking and response formats outside the UI.
