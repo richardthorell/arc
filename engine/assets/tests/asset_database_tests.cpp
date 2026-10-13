@@ -517,8 +517,8 @@ TEST_CASE("built-in boot and startup bundles retain legacy shader classification
 TEST_CASE("cook manifests round-trip deterministic bundle identities")
 {
     using namespace arc::assets;
-    const auto path = std::filesystem::temp_directory_path() /
-                      ("arc-bundles-" + to_string(generate_asset_guid()) + ".json");
+    const auto path =
+        std::filesystem::temp_directory_path() / ("arc-bundles-" + to_string(generate_asset_guid()) + ".json");
     cook_manifest manifest;
     manifest.bundle_ids = {"Boot", "Level/Forest", "Startup/Common"};
     const auto status = save_cook_manifest(path, manifest);

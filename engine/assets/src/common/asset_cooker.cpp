@@ -541,14 +541,10 @@ asset_status save_cook_manifest(const std::filesystem::path& path, const cook_ma
             dependencies.push_back(to_string(dependency));
         edges.push_back({{"asset", to_string(edge.asset)}, {"dependencies", std::move(dependencies)}});
     }
-    const json document{{"bundleIds", manifest.bundle_ids},
-                        {"dependencyEdges", std::move(edges)},
-                        {"format", "arc.cook-manifest"},
-                        {"version", manifest.version},
-                        {"buildId", manifest.build_id},
-                        {"target", target_json(manifest.target)},
-                        {"roots", std::move(roots)},
-                        {"dependencyClosure", std::move(closure)},
+    const json document{{"bundleIds", manifest.bundle_ids}, {"dependencyEdges", std::move(edges)},
+                        {"format", "arc.cook-manifest"},    {"version", manifest.version},
+                        {"buildId", manifest.build_id},     {"target", target_json(manifest.target)},
+                        {"roots", std::move(roots)},        {"dependencyClosure", std::move(closure)},
                         {"artifacts", std::move(artifacts)}};
     std::error_code filesystem_error;
     std::filesystem::create_directories(path.parent_path(), filesystem_error);
@@ -618,8 +614,7 @@ cook_manifest_result load_cook_manifest(const std::filesystem::path& path)
         if (!document["bundleIds"].is_array()) return failure("Cook manifest has invalid bundle IDs");
         for (const auto& id : document["bundleIds"])
         {
-            if (!id.is_string() || id.get<std::string>().empty())
-                return failure("Cook manifest has invalid bundle ID");
+            if (!id.is_string() || id.get<std::string>().empty()) return failure("Cook manifest has invalid bundle ID");
             manifest.bundle_ids.push_back(id.get<std::string>());
         }
         if (!std::is_sorted(manifest.bundle_ids.begin(), manifest.bundle_ids.end()) ||
@@ -713,8 +708,7 @@ cook_manifest_result parse_cook_manifest(std::span<const std::byte> bytes, std::
         if (!document["bundleIds"].is_array()) return failure("Cook manifest has invalid bundle IDs");
         for (const auto& id : document["bundleIds"])
         {
-            if (!id.is_string() || id.get<std::string>().empty())
-                return failure("Cook manifest has invalid bundle ID");
+            if (!id.is_string() || id.get<std::string>().empty()) return failure("Cook manifest has invalid bundle ID");
             manifest.bundle_ids.push_back(id.get<std::string>());
         }
         if (!std::is_sorted(manifest.bundle_ids.begin(), manifest.bundle_ids.end()) ||
