@@ -817,3 +817,33 @@ TEST_CASE("shader include paths classify as source dependencies")
     CHECK(entry->first == asset_types::shader);
     CHECK(entry->second == importer_ids::shader);
 }
+
+
+TEST_CASE("asset manager refreshes authored tags and categories without reimporting source")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    project.write("props/bicycle.obj", "o Bicycle\n");
+
+    asset_fixture fixture(project);
+    const auto before = fixture.manager.find("assets/props/bicycle.obj");
+    REQUIRE(before);
+
+    const auto metadata_path = project.assets / "props/bicycle.obj.arcmeta";
+    auto loaded = load_asset_metadata(metadata_path);
+    REQUIRE(loaded);
+    auto metadata = loaded.value();
+    metadata.tags = {"bicycle", "rustic"};
+    metadata.categories = {"Vehicle/Bicycle", "Style/Rustic"};
+    REQUIRE(save_asset_metadata(metadata_path, metadata));
+
+    const auto scan = fixture.manager.scan();
+    REQUIRE(scan.succeeded());
+
+    const auto after = fixture.manager.find(before->guid);
+    REQUIRE(after);
+    CHECK(after->tags == metadata.tags);
+    CHECK(after->categories == metadata.categories);
+    CHECK(after->revision > before->revision);
+    CHECK(after->state == before->state);
+}
