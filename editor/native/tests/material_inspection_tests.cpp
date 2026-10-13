@@ -197,6 +197,57 @@ TEST_CASE("material and asset inspection queries round trip GUID identity")
     }
 }
 
+TEST_CASE("function compatibility is independent of the bounded discovery preview")
+{
+    auto source = material_source();
+    auto document = json::parse(source.source);
+    std::map<std::string, arc::editor::material_inspection_source> functions;
+    json choices = json::array();
+    for (int index = 0; index < 17; ++index)
+    {
+        const auto path = "functions/f" + std::to_string(index) + ".arcmatfn";
+        const auto guid = "00000000-0000-4000-8000-" + std::to_string(100000000000LL + index);
+        functions.emplace(path, arc::editor::material_inspection_source{
+                                    .guid = guid,
+                                    .path = path,
+                                    .kind = "materialFunction",
+                                    .source = R"({"kind":"materialFunction","version":1,"name":"Choice",
+              "inputs":[],"outputs":[{"id":"result","name":"Result","type":"float"}],
+              "graph":{"version":1,"nodes":[{"id":"value","type":"constant","values":{"value":0.5}},
+                {"id":"out","type":"functionOutput","values":{}}],
+                "connections":[{"from":{"nodeId":"value","pin":"value"},"to":{"nodeId":"out","pin":"result"}}]}})"});
+        choices.push_back({{"path", path}});
+    }
+    document["graph"]["nodes"][1] = {
+        {"id", "custom-value"},
+        {"type", "functionCall"},
+        {"values",
+         {{"slotId", "source"}, {"name", "Source"}, {"path", "functions/f0.arcmatfn"}, {"functions", choices}}}};
+    document["graph"]["connections"][0]["from"]["pin"] = "result";
+    source.source = document.dump();
+    const arc::editor::material_inspection_resolver resolve =
+        [&](auto guid, auto hint) -> std::optional<arc::editor::material_inspection_source>
+    {
+        for (const auto& [path, function] : functions)
+            if (guid.empty() ? path == hint : function.guid == guid) return function;
+        return std::nullopt;
+    };
+    const auto preview = json::parse(arc::editor::inspect_saved_material(source, resolve));
+    REQUIRE(preview["definitionReady"] == true);
+    const auto& slot = preview["functionSlots"][0];
+    REQUIRE(slot["alternatives"].size() == 16);
+    REQUIRE(slot["alternativesTruncated"] == true);
+    const auto& last = functions.at("functions/f16.arcmatfn");
+    for (const auto& alternative : slot["alternatives"])
+        CHECK(alternative["guid"] != last.guid);
+    const auto overrides = json::array(
+        {{{"kind", "function"}, {"slotId", "source"}, {"function", {{"guid", last.guid}, {"pathHint", last.path}}}}});
+    const auto selected = json::parse(arc::editor::inspect_saved_material(source, resolve, overrides.dump()));
+    INFO(selected.dump(2));
+    REQUIRE(selected["definitionReady"] == true);
+    CHECK(selected["functionSlots"][0]["selectedFunctionGuid"] == last.guid);
+}
+
 TEST_CASE("entity material inspection separates inherited and local values without changing definition identity")
 {
     const auto source = material_source();
