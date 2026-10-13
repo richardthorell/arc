@@ -68,8 +68,8 @@ bool parse_string_list(const json& document, std::string_view key, std::vector<s
     {
         if (!value.is_string()) return false;
         auto text = value.get<std::string>();
-        if (text.empty()) return false;
-        if (std::find(output.begin(), output.end(), text) == output.end()) output.push_back(std::move(text));
+        if (text.empty() || std::find(output.begin(), output.end(), text) != output.end()) return false;
+        output.push_back(std::move(text));
     }
     return true;
 }
