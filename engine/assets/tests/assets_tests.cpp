@@ -818,7 +818,6 @@ TEST_CASE("shader include paths classify as source dependencies")
     CHECK(entry->second == importer_ids::shader);
 }
 
-
 TEST_CASE("asset manager refreshes authored tags and categories without reimporting source")
 {
     using namespace arc::assets;

@@ -290,11 +290,10 @@ asset_scan_result asset_manager::scan()
         const bool settings_changed = value.metadata.importer != source.metadata.importer ||
                                       value.metadata.settings_version != source.metadata.settings_version ||
                                       value.metadata.canonical_settings != source.metadata.canonical_settings;
-        const bool authored_metadata_changed =
-            value.metadata.title != source.metadata.title ||
-            value.metadata.description != source.metadata.description ||
-            value.metadata.tags != source.metadata.tags ||
-            value.metadata.categories != source.metadata.categories;
+        const bool authored_metadata_changed = value.metadata.title != source.metadata.title ||
+                                               value.metadata.description != source.metadata.description ||
+                                               value.metadata.tags != source.metadata.tags ||
+                                               value.metadata.categories != source.metadata.categories;
         std::uint32_t registered_importer_version{};
         if (const auto importer = implementation_->importers.find(source.metadata.importer);
             importer != implementation_->importers.end())
