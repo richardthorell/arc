@@ -770,9 +770,7 @@ TEST_CASE("irradiance probe bake command JSON round trips")
     const arc::editor::host_command_envelope command{
         .request_id = 77,
         .payload = arc::editor::host_bake_irradiance_probe_volume_command{
-            .entity = {12, 3},
-            .output_path = "Content/Lighting/ProbeVolumes/test.arcprobe",
-            .samples = 256u}};
+            .entity = {12, 3}, .output_path = "Content/Lighting/ProbeVolumes/test.arcprobe", .samples = 256u}};
 
     const auto json = arc::editor::to_json(command);
     arc::editor::host_command_envelope parsed;

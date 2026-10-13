@@ -127,7 +127,8 @@ bake_scene_irradiance_probe_volume(ecs::world& world, render::renderer& renderer
     const auto minimum = math::mul(component->bake_extents, -1.0f);
     layout.local_bounds = {geometric::point3f{minimum}, geometric::point3f{component->bake_extents}};
     layout.blend_distance = component->blend_distance;
-    // Instance priority remains on the component; do not bake it into the asset or runtime resolution would apply it twice.
+    // Instance priority remains on the component; do not bake it into the asset or runtime resolution would apply it
+    // twice.
     layout.priority = 0;
     for (std::size_t axis = 0; axis < 3; ++axis)
     {
@@ -169,8 +170,8 @@ bake_scene_irradiance_probe_volume(ecs::world& world, render::renderer& renderer
                 const auto position = [&](std::uint32_t vertex)
                 {
                     const auto& value = mesh->vertices[vertex];
-                    return math::transform_point(object_to_volume,
-                                                 math::vector3f{value.position[0], value.position[1], value.position[2]});
+                    return math::transform_point(
+                        object_to_volume, math::vector3f{value.position[0], value.position[1], value.position[2]});
                 };
                 const auto a = position(i0);
                 const auto b = position(i1);
@@ -199,12 +200,14 @@ bake_scene_irradiance_probe_volume(ecs::world& world, render::renderer& renderer
         {
             if (!bake_eligible(world, entity) || !light.enabled) return;
             auto color = light.color;
-            if (light.use_color_temperature) color = math::mul(color, render::color_temperature_rgb(light.temperature_kelvin));
+            if (light.use_color_temperature)
+                color = math::mul(color, render::color_temperature_rgb(light.temperature_kelvin));
             const float intensity = render::light_intensity_scale(light.intensity_unit, light.intensity);
             const auto world_direction = world_forward_direction(transform);
             const auto local_direction = math::normalize(math::transform_vector(world_to_volume, world_direction));
-            directional.push_back(
-                {.direction = local_direction, .radiance = math::mul(color, std::max(intensity, 0.0f)), .enabled = true});
+            directional.push_back({.direction = local_direction,
+                                   .radiance = math::mul(color, std::max(intensity, 0.0f)),
+                                   .enabled = true});
             ++result.static_directional_lights;
         });
 
@@ -255,7 +258,8 @@ bake_scene_irradiance_probe_volume(ecs::world& world, render::renderer& renderer
     const auto scan = asset_manager.scan();
     if (!scan.succeeded())
     {
-        result.error = scan.error.message.empty() ? "Asset scan failed after irradiance probe bake" : scan.error.message;
+        result.error =
+            scan.error.message.empty() ? "Asset scan failed after irradiance probe bake" : scan.error.message;
         return result;
     }
 

@@ -442,8 +442,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                 !finite_number(value, "probeSpacing") || value["probeSpacing"].get<double>() <= 0.0 ||
                 !finite_number(value, "blendDistance") || value["blendDistance"].get<double>() < 0.0 ||
                 !value.contains("bakeSamples") || !value["bakeSamples"].is_number_unsigned() ||
-                value["bakeSamples"].get<std::uint32_t>() < 16u ||
-                value["bakeSamples"].get<std::uint32_t>() > 4096u)
+                value["bakeSamples"].get<std::uint32_t>() < 16u || value["bakeSamples"].get<std::uint32_t>() > 4096u)
                 return fail("has invalid irradiance bake settings");
             for (const auto& extent : value["bakeExtents"])
                 if (extent.get<double>() <= 0.0) return fail("has non-positive irradiance bake extents");

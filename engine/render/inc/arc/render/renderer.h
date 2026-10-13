@@ -369,7 +369,6 @@ public:
     /** @brief Return retained CPU material data for tooling and deterministic baking. */
     [[nodiscard]] const material_descriptor* material_data_for(material_handle handle) const noexcept;
 
-
     /**
      * @brief Return whether an environment handle still references a live renderer environment.
      */
