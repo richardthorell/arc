@@ -401,11 +401,10 @@ cook_result asset_cooker::cook(const cook_request& request)
                                       .schema_version = artifact->schema_version,
                                       .hash = artifact->hash,
                                       .size = artifact->size,
-                                      .chunk = request.bundle_role == builtin_bundle_ids::boot
-                                                   ? "boot"
-                                                   : request.bundle_role == builtin_bundle_ids::startup
-                                                         ? "startup"
-                                                         : snapshot->type == asset_types::shader ? "boot" : "startup"});
+                                      .chunk = request.bundle_role == builtin_bundle_ids::boot      ? "boot"
+                                               : request.bundle_role == builtin_bundle_ids::startup ? "startup"
+                                               : snapshot->type == asset_types::shader              ? "boot"
+                                                                                                    : "startup"});
                 }
                 if (complete)
                 {
@@ -479,11 +478,11 @@ cook_result asset_cooker::cook(const cook_request& request)
                                                  .schema_version = artifact.schema_version,
                                                  .hash = artifact.hash,
                                                  .size = artifact.size,
-                                                 .chunk = request.bundle_role == builtin_bundle_ids::boot
-                                                   ? "boot"
-                                                   : request.bundle_role == builtin_bundle_ids::startup
-                                                         ? "startup"
-                                                         : snapshot->type == asset_types::shader ? "boot" : "startup"});
+                                                 .chunk = request.bundle_role == builtin_bundle_ids::boot ? "boot"
+                                                          : request.bundle_role == builtin_bundle_ids::startup
+                                                              ? "startup"
+                                                          : snapshot->type == asset_types::shader ? "boot"
+                                                                                                  : "startup"});
         }
         action.metadata = artifact_metadata(cooked.artifacts).dump();
         cache_error action_error;

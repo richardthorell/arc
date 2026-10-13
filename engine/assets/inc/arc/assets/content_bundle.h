@@ -230,8 +230,10 @@ private:
 
     for (const auto& asset : database.records())
     {
-        if (asset.type == asset_types::shader) boot.roots.push_back(asset.guid);
-        else startup.roots.push_back(asset.guid);
+        if (asset.type == asset_types::shader)
+            boot.roots.push_back(asset.guid);
+        else
+            startup.roots.push_back(asset.guid);
     }
     static_cast<void>(catalog.add(std::move(boot)));
     static_cast<void>(catalog.add(std::move(startup)));

@@ -490,7 +490,6 @@ TEST_CASE("bundle membership database projects shared and nested memberships ont
     CHECK(view.revision() == database.revision());
 }
 
-
 TEST_CASE("built-in boot and startup bundles retain legacy shader classification")
 {
     using namespace arc::assets;
