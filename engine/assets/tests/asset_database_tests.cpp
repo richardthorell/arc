@@ -513,3 +513,24 @@ TEST_CASE("built-in boot and startup bundles retain legacy shader classification
     REQUIRE(resolved.succeeded());
     CHECK(resolved.assets.size() == 2);
 }
+
+TEST_CASE("cook manifests round-trip deterministic bundle identities")
+{
+    using namespace arc::assets;
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("arc-bundles-" + to_string(generate_asset_guid()) + ".json");
+    cook_manifest manifest;
+    manifest.bundle_ids = {"Boot", "Level/Forest", "Startup/Common"};
+    const auto status = save_cook_manifest(path, manifest);
+    REQUIRE(status);
+    const auto loaded = load_cook_manifest(path);
+    REQUIRE(loaded);
+    CHECK(loaded.value().bundle_ids == manifest.bundle_ids);
+    std::ifstream input(path, std::ios::binary);
+    const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    const auto parsed = parse_cook_manifest(std::as_bytes(std::span(bytes.data(), bytes.size())));
+    REQUIRE(parsed);
+    CHECK(parsed.value().bundle_ids == manifest.bundle_ids);
+    std::error_code error;
+    std::filesystem::remove(path, error);
+}
