@@ -82,7 +82,9 @@ describe('resolveAiRuntimeInstructions', () => {
 
     expect(serialized).toContain('Inspect the supplied ARC assets context first');
     expect(serialized).toContain('assets.list');
-    expect(serialized).toContain('entity.setBaseColor');
+    expect(serialized).toContain('materials.inspectEntity');
+    expect(serialized).toContain('materials.setOverride');
+    expect(serialized).not.toContain('entity.setBaseColor');
     expect(serialized).toContain('Create a new project asset only when no suitable local asset');
     expect(serialized).toContain('Search for or import external content only after suitable project-local options');
     expect(serialized.indexOf('Inspect the supplied ARC assets context first')).toBeLessThan(

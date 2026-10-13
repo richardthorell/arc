@@ -3,7 +3,7 @@ format: arc-skill
 formatVersion: 1
 id: material-authoring
 name: Material Authoring
-version: 1.3.0
+version: 1.4.0
 description: Inspect, create, bind, and visually verify ARC materials through typed asset and scene-edit workflows.
 requires:
   - scene.read
@@ -19,7 +19,9 @@ tools:
   - materials.assign
   - materials.setOverride
   - materials.resetOverride
+  - materials.clearTexture
   - materials.selectFunction
+  - materials.resetFunction
   - scene.getEntity
   - scene.componentSchemas
   - edit.request
@@ -56,11 +58,15 @@ Follow **discover → describe → approve → assign/override → inspect resol
 
 1. Use `assets.list` for existing content and `assets.inspect` for identity, scope, dependencies and readiness. Use `materials.describe` with the chosen asset GUID to inspect its saved/published definition. This does not apply open dirty documents.
 2. Use `materials.inspectEntity` with the persistent entity GUID to inspect inherited values, local overrides, selected functions and the runtime resource handle. Keep parameter IDs as strings, including 64-bit IDs; use stable slot IDs, not display labels.
-3. Request approval and begin a scene edit session. Call the registered `materials.assign`, `materials.setOverride`, `materials.resetOverride` or `materials.selectFunction` with current scene/world authority and the inspected definition revision. Describe the destination asset before assignment; inspect the entity before local edits. Reinspect after changing a function because the exposed layout may change.
+3. Request approval and begin a scene edit session. Use the registered material operations with current scene/world authority and the inspected definition revision. Describe the destination asset before `materials.assign`; inspect the entity before local edits. Reinspect after changing or resetting a function because the exposed layout may change.
 4. Before committing, verify the resulting material GUID, parameter values and function selections through `materials.inspectEntity`. A live resource handle is not evidence that a GPU pipeline compiled or that the appearance is correct. Read diagnostics and capture the viewport with ObjectID association when possible.
 5. Report authored-state verification, runtime resource availability and visual observation separately. Off-screen objects, unavailable captures and unresolved compilation do not justify visual-success claims. Never implicitly save a scene or shared asset.
 
 Do not manufacture encoded procedural commands or use `entity.setBaseColor` as a general material API. Its compatibility adapter only accepts an unambiguous color parameter identified by native output semantics. Discover IDs and supported values instead. Function compatibility comes from native compiler metadata, not names such as glass or roof.
+
+For a color change, use `materials.setOverride` with the discovered parameter ID and its declared RGB/RGBA shape; do not guess from a label such as Base Color. For textures, supply the discovered Texture2D asset reference (`guid` and `pathHint`), not a filesystem path. `materials.clearTexture` takes the parameter ID and writes an explicit empty override; `materials.resetOverride` instead removes the local override and restores the inherited value. `materials.selectFunction` selects by slot ID and function GUID; `materials.resetFunction` takes only the slot ID and removes its local selection and local inputs, restoring the material/instance's inherited function. Clear/reset operations take no replacement value.
+
+Use live operation discovery to confirm support in the running build. Texture-default/requirement discovery and atomic multi-selection are not yet complete; report unavailable metadata rather than guessing or claiming full Inspector parity.
 
 ## Existing material workflow
 
