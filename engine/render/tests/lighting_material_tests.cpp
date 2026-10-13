@@ -23,15 +23,13 @@
 TEST_CASE("CPU irradiance probe baker is deterministic and captures environment fallback")
 {
     arc::render::irradiance_probe_volume_descriptor layout;
-    layout.local_bounds = {arc::geometric::point3f{-1.0f, 0.5f, -1.0f},
-                           arc::geometric::point3f{1.0f, 1.5f, 1.0f}};
+    layout.local_bounds = {arc::geometric::point3f{-1.0f, 0.5f, -1.0f}, arc::geometric::point3f{1.0f, 1.5f, 1.0f}};
     layout.dimensions = {2u, 1u, 2u};
     layout.spacing = {2.0f, 1.0f, 2.0f};
     layout.blend_distance = 0.25f;
 
-    const arc::render::irradiance_bake_environment environment{
-        .sky_radiance = {0.4f, 0.5f, 0.7f},
-        .ground_radiance = {0.1f, 0.08f, 0.05f}};
+    const arc::render::irradiance_bake_environment environment{.sky_radiance = {0.4f, 0.5f, 0.7f},
+                                                               .ground_radiance = {0.1f, 0.08f, 0.05f}};
     const arc::render::irradiance_probe_bake_options options{
         .samples_per_probe = 64u, .maximum_trace_distance = 25.0f, .surface_bias = 0.01f};
 
@@ -61,40 +59,31 @@ TEST_CASE("CPU irradiance probe baker is deterministic and captures environment 
 TEST_CASE("CPU irradiance probe baker captures static direct light as bounced diffuse")
 {
     arc::render::irradiance_probe_volume_descriptor layout;
-    layout.local_bounds = {arc::geometric::point3f{0.0f, 1.0f, 0.0f},
-                           arc::geometric::point3f{0.0f, 1.0f, 0.0f}};
+    layout.local_bounds = {arc::geometric::point3f{0.0f, 1.0f, 0.0f}, arc::geometric::point3f{0.0f, 1.0f, 0.0f}};
     layout.dimensions = {1u, 1u, 1u};
     layout.spacing = {1.0f, 1.0f, 1.0f};
 
-    const std::array triangles{
-        arc::render::irradiance_bake_triangle{
-            .a = {-20.0f, 0.0f, -20.0f},
-            .b = {20.0f, 0.0f, -20.0f},
-            .c = {20.0f, 0.0f, 20.0f},
-            .normal = {0.0f, 1.0f, 0.0f},
-            .diffuse_albedo = {0.8f, 0.2f, 0.1f},
-            .two_sided = true},
-        arc::render::irradiance_bake_triangle{
-            .a = {-20.0f, 0.0f, -20.0f},
-            .b = {20.0f, 0.0f, 20.0f},
-            .c = {-20.0f, 0.0f, 20.0f},
-            .normal = {0.0f, 1.0f, 0.0f},
-            .diffuse_albedo = {0.8f, 0.2f, 0.1f},
-            .two_sided = true}};
-    const std::array lights{
-        arc::render::irradiance_bake_directional_light{
-            .direction = {0.0f, -1.0f, 0.0f},
-            .radiance = {5.0f, 5.0f, 5.0f}}};
-    const arc::render::irradiance_bake_environment dark_environment{
-        .sky_radiance = {0.0f, 0.0f, 0.0f},
-        .ground_radiance = {0.0f, 0.0f, 0.0f}};
+    const std::array triangles{arc::render::irradiance_bake_triangle{.a = {-20.0f, 0.0f, -20.0f},
+                                                                     .b = {20.0f, 0.0f, -20.0f},
+                                                                     .c = {20.0f, 0.0f, 20.0f},
+                                                                     .normal = {0.0f, 1.0f, 0.0f},
+                                                                     .diffuse_albedo = {0.8f, 0.2f, 0.1f},
+                                                                     .two_sided = true},
+                               arc::render::irradiance_bake_triangle{.a = {-20.0f, 0.0f, -20.0f},
+                                                                     .b = {20.0f, 0.0f, 20.0f},
+                                                                     .c = {-20.0f, 0.0f, 20.0f},
+                                                                     .normal = {0.0f, 1.0f, 0.0f},
+                                                                     .diffuse_albedo = {0.8f, 0.2f, 0.1f},
+                                                                     .two_sided = true}};
+    const std::array lights{arc::render::irradiance_bake_directional_light{.direction = {0.0f, -1.0f, 0.0f},
+                                                                           .radiance = {5.0f, 5.0f, 5.0f}}};
+    const arc::render::irradiance_bake_environment dark_environment{.sky_radiance = {0.0f, 0.0f, 0.0f},
+                                                                    .ground_radiance = {0.0f, 0.0f, 0.0f}};
     const arc::render::irradiance_probe_bake_options options{
         .samples_per_probe = 128u, .maximum_trace_distance = 50.0f, .surface_bias = 0.005f};
 
-    const auto lit =
-        arc::render::bake_irradiance_probe_volume(layout, triangles, lights, dark_environment, options);
-    const auto unlit =
-        arc::render::bake_irradiance_probe_volume(layout, triangles, {}, dark_environment, options);
+    const auto lit = arc::render::bake_irradiance_probe_volume(layout, triangles, lights, dark_environment, options);
+    const auto unlit = arc::render::bake_irradiance_probe_volume(layout, triangles, {}, dark_environment, options);
 
     REQUIRE(lit.statistics.geometry_hits > 0u);
     REQUIRE(lit.statistics.shadow_rays > 0u);

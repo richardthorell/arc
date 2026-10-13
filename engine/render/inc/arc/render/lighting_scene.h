@@ -361,12 +361,10 @@ struct [[nodiscard]] irradiance_probe_bake_result
  * pass static/stationary bake sources and omit movable lights. The baker projects incoming
  * environment/static-direct/one-bounce diffuse radiance into ARC's SH9 convention.
  */
-[[nodiscard]] irradiance_probe_bake_result
-bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
-                             std::span<const irradiance_bake_triangle> triangles,
-                             std::span<const irradiance_bake_directional_light> directional_lights,
-                             const irradiance_bake_environment& environment = {},
-                             const irradiance_probe_bake_options& options = {});
+[[nodiscard]] irradiance_probe_bake_result bake_irradiance_probe_volume(
+    const irradiance_probe_volume_descriptor& layout, std::span<const irradiance_bake_triangle> triangles,
+    std::span<const irradiance_bake_directional_light> directional_lights,
+    const irradiance_bake_environment& environment = {}, const irradiance_probe_bake_options& options = {});
 
 /** @brief Runtime budgets for shared world-space lighting data. */
 struct lighting_scene_config

@@ -511,23 +511,20 @@ math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& sh, 
     return {std::max(irradiance[0], 0.0f), std::max(irradiance[1], 0.0f), std::max(irradiance[2], 0.0f)};
 }
 
-
-irradiance_probe_bake_result
-bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
-                             std::span<const irradiance_bake_triangle> triangles,
-                             std::span<const irradiance_bake_directional_light> directional_lights,
-                             const irradiance_bake_environment& environment,
-                             const irradiance_probe_bake_options& options)
+irradiance_probe_bake_result bake_irradiance_probe_volume(
+    const irradiance_probe_volume_descriptor& layout, std::span<const irradiance_bake_triangle> triangles,
+    std::span<const irradiance_bake_directional_light> directional_lights,
+    const irradiance_bake_environment& environment, const irradiance_probe_bake_options& options)
 {
     irradiance_probe_bake_result result;
     result.volume = layout;
     result.volume.probes.clear();
     result.volume.content_hash = 0u;
 
-    const std::uint64_t probe_count = static_cast<std::uint64_t>(layout.dimensions[0]) * layout.dimensions[1] *
-                                      layout.dimensions[2];
-    if (layout.dimensions[0] == 0u || layout.dimensions[1] == 0u || layout.dimensions[2] == 0u ||
-        probe_count == 0u || probe_count > maximum_probe_count)
+    const std::uint64_t probe_count =
+        static_cast<std::uint64_t>(layout.dimensions[0]) * layout.dimensions[1] * layout.dimensions[2];
+    if (layout.dimensions[0] == 0u || layout.dimensions[1] == 0u || layout.dimensions[2] == 0u || probe_count == 0u ||
+        probe_count > maximum_probe_count)
     {
         result.diagnostics.emplace_back("irradiance bake requires non-zero bounded probe dimensions");
         return result;
@@ -609,27 +606,26 @@ bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
 
             const auto shadow_origin = math::add(hit.position, math::mul(hit.normal, options.surface_bias * 2.0f));
             ++result.statistics.shadow_rays;
-            const auto blocker = trace(shadow_origin, light_direction, options.maximum_trace_distance,
-                                       hit.triangle_index);
+            const auto blocker =
+                trace(shadow_origin, light_direction, options.maximum_trace_distance, hit.triangle_index);
             if (blocker.hit) continue;
 
-            const auto reflected = math::mul(
-                math::mul(triangle.diffuse_albedo, light.radiance), n_dot_l / math::pi<float>);
+            const auto reflected =
+                math::mul(math::mul(triangle.diffuse_albedo, light.radiance), n_dot_l / math::pi<float>);
             radiance = math::add(radiance, reflected);
         }
         return radiance;
     };
 
-    constexpr std::array<float, 9> band_convolution{
-        math::pi<float>,
-        2.0f * math::pi<float> / 3.0f,
-        2.0f * math::pi<float> / 3.0f,
-        2.0f * math::pi<float> / 3.0f,
-        math::pi<float> / 4.0f,
-        math::pi<float> / 4.0f,
-        math::pi<float> / 4.0f,
-        math::pi<float> / 4.0f,
-        math::pi<float> / 4.0f};
+    constexpr std::array<float, 9> band_convolution{math::pi<float>,
+                                                    2.0f * math::pi<float> / 3.0f,
+                                                    2.0f * math::pi<float> / 3.0f,
+                                                    2.0f * math::pi<float> / 3.0f,
+                                                    math::pi<float> / 4.0f,
+                                                    math::pi<float> / 4.0f,
+                                                    math::pi<float> / 4.0f,
+                                                    math::pi<float> / 4.0f,
+                                                    math::pi<float> / 4.0f};
 
     const std::uint32_t sample_count = std::max(options.samples_per_probe, 16u);
     result.volume.probes.resize(static_cast<std::size_t>(probe_count));
@@ -641,10 +637,9 @@ bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
         const std::array coordinate{x, y, z};
         for (std::size_t axis = 0; axis < 3; ++axis)
         {
-            const float t = layout.dimensions[axis] > 1u
-                                ? static_cast<float>(coordinate[axis]) /
-                                      static_cast<float>(layout.dimensions[axis] - 1u)
-                                : 0.5f;
+            const float t = layout.dimensions[axis] > 1u ? static_cast<float>(coordinate[axis]) /
+                                                               static_cast<float>(layout.dimensions[axis] - 1u)
+                                                         : 0.5f;
             position[axis] =
                 layout.local_bounds.min[axis] + (layout.local_bounds.max[axis] - layout.local_bounds.min[axis]) * t;
         }
@@ -670,11 +665,9 @@ bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
                     const float direction_y = 1.0f - 2.0f * unit;
                     const float radial = std::sqrt(std::max(0.0f, 1.0f - direction_y * direction_y));
                     constexpr float golden_ratio_conjugate = 0.6180339887498948482f;
-                    const float azimuth =
-                        2.0f * math::pi<float> *
-                        std::fmod(static_cast<float>(sample_index) * golden_ratio_conjugate, 1.0f);
-                    const math::vector3f direction{
-                        radial * std::cos(azimuth), direction_y, radial * std::sin(azimuth)};
+                    const float azimuth = 2.0f * math::pi<float> *
+                                          std::fmod(static_cast<float>(sample_index) * golden_ratio_conjugate, 1.0f);
+                    const math::vector3f direction{radial * std::cos(azimuth), direction_y, radial * std::sin(azimuth)};
 
                     ++result.statistics.primary_rays;
                     const auto hit = trace(origin, direction, options.maximum_trace_distance);
@@ -688,7 +681,8 @@ bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
                             std::max(options.surface_bias * 4.0f,
                                      0.2f * std::min({layout.spacing[0], layout.spacing[1], layout.spacing[2]}));
                         if (hit.distance < near_threshold) ++near_hits;
-                        incoming = options.indirect_bounce ? direct_at_hit(hit) : triangles[hit.triangle_index].emissive_radiance;
+                        incoming = options.indirect_bounce ? direct_at_hit(hit)
+                                                           : triangles[hit.triangle_index].emissive_radiance;
                     }
                     else
                     {
@@ -704,9 +698,15 @@ bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
                     constexpr float c2 = 1.092548f;
                     constexpr float c3 = 0.315392f;
                     constexpr float c4 = 0.546274f;
-                    const std::array<float, 9> basis{
-                        c0, c1 * sy, c1 * sz, c1 * sx, c2 * sx * sy, c2 * sy * sz,
-                        c3 * (3.0f * sz * sz - 1.0f), c2 * sx * sz, c4 * (sx * sx - sy * sy)};
+                    const std::array<float, 9> basis{c0,
+                                                     c1 * sy,
+                                                     c1 * sz,
+                                                     c1 * sx,
+                                                     c2 * sx * sy,
+                                                     c2 * sy * sz,
+                                                     c3 * (3.0f * sz * sz - 1.0f),
+                                                     c2 * sx * sz,
+                                                     c4 * (sx * sx - sy * sy)};
                     const float projection_weight = 4.0f * math::pi<float> / static_cast<float>(sample_count);
                     for (std::size_t coefficient = 0; coefficient < probe.spherical_harmonics.size(); ++coefficient)
                     {
@@ -721,10 +721,9 @@ bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
                         math::mul(probe.spherical_harmonics[coefficient], band_convolution[coefficient]);
 
                 probe.mean_distance = distance_sum / static_cast<float>(sample_count);
-                probe.distance_variance =
-                    std::max(distance_squared_sum / static_cast<float>(sample_count) -
-                                 probe.mean_distance * probe.mean_distance,
-                             0.0f);
+                probe.distance_variance = std::max(distance_squared_sum / static_cast<float>(sample_count) -
+                                                       probe.mean_distance * probe.mean_distance,
+                                                   0.0f);
                 const float near_fraction = static_cast<float>(near_hits) / static_cast<float>(sample_count);
                 probe.visibility = std::clamp(1.0f - near_fraction, 0.0f, 1.0f);
                 probe.validity = near_fraction >= 0.9f ? 0.0f : 1.0f;
@@ -736,7 +735,8 @@ bake_irradiance_probe_volume(const irradiance_probe_volume_descriptor& layout,
     const auto encoded = encode_irradiance_probe_volume(result.volume);
     if (!encoded.empty()) result.volume.content_hash = hash_bytes(encoded);
     if (triangles.empty())
-        result.diagnostics.emplace_back("probe bake contains environment lighting only because no static geometry was supplied");
+        result.diagnostics.emplace_back(
+            "probe bake contains environment lighting only because no static geometry was supplied");
     if (directional_lights.empty())
         result.diagnostics.emplace_back("probe bake contains no static directional-light contribution");
     return result;
