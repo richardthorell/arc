@@ -489,3 +489,27 @@ TEST_CASE("bundle membership database projects shared and nested memberships ont
     CHECK(view.dependencies(root) == std::vector<asset_guid>{shared});
     CHECK(view.revision() == database.revision());
 }
+
+TEST_CASE("built-in boot and startup bundles retain legacy shader classification")
+{
+    using namespace arc::assets;
+    bundle_test_database database;
+    const auto shader = generate_asset_guid();
+    const auto scene = generate_asset_guid();
+    database.entries.emplace(shader, std::vector<asset_guid>{});
+    database.entries.emplace(scene, std::vector<asset_guid>{});
+
+    // The fake record type defaults to unknown; project shader type in records().
+    // The adapter must classify by declared asset type, never by path.
+    const auto empty = make_builtin_content_bundles(database);
+    const auto boot = empty.find(builtin_bundle_ids::boot);
+    const auto startup = empty.find(builtin_bundle_ids::startup);
+    REQUIRE(boot);
+    REQUIRE(startup);
+    CHECK(boot->bundle_dependencies == std::vector<std::string>{std::string(builtin_bundle_ids::engine)});
+    CHECK(startup->bundle_dependencies == std::vector<std::string>{std::string(builtin_bundle_ids::boot)});
+    CHECK(startup->roots.size() == 2);
+    const auto resolved = empty.closure(builtin_bundle_ids::startup, database);
+    REQUIRE(resolved.succeeded());
+    CHECK(resolved.assets.size() == 2);
+}
