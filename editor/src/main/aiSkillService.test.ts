@@ -148,7 +148,7 @@ describe('AiSkillService', () => {
     ]);
 
     const materialAuthoring = snapshot.skills.find((skill) => skill.manifest.id === 'material-authoring');
-    expect(materialAuthoring?.manifest.version).toBe('1.3.0');
+    expect(materialAuthoring?.manifest.version).toBe('1.4.0');
     expect(materialAuthoring?.manifest.tools).toEqual(
       expect.arrayContaining([
         'materials.describe',
@@ -156,7 +156,9 @@ describe('AiSkillService', () => {
         'materials.assign',
         'materials.setOverride',
         'materials.resetOverride',
+        'materials.clearTexture',
         'materials.selectFunction',
+        'materials.resetFunction',
       ]),
     );
     expect(materialAuthoring?.instructions).toContain('parameter IDs as strings');
