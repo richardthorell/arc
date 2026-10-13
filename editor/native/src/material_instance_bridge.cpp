@@ -1089,9 +1089,14 @@ bool apply_function_edit(editor_scene_state& scene, render::renderer& renderer, 
 bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
                                    render::shader_parameter_id parameter, std::span<const float> values,
                                    const assets::asset_reference* texture, bool reset, std::string& error,
-                                   std::string slot_id)
+                                   std::string slot_id, bool clear_texture)
 {
     error.clear();
+    if (clear_texture && (reset || texture || !values.empty()))
+    {
+        error = "Clear texture cannot include a value or reset inheritance";
+        return false;
+    }
     if (!parameter.valid())
     {
         error = "A stable material parameter ID is required";
@@ -1110,7 +1115,13 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
         error = "The entity has no inspectable realized material generation";
         return false;
     }
-    const auto& layout = record->asset.material.runtime_program->parameters;
+    // Textures live in resource bindings, not the numeric parameter block.
+    // Validate both kinds using the same stable compiler identity.
+    auto layout = record->asset.material.runtime_program->parameters;
+    for (const auto& binding : record->asset.material.runtime_program->texture_bindings)
+        if (binding.parameter_id.valid() &&
+            std::ranges::find(layout, binding.parameter_id, &render::shader_parameter_descriptor::id) == layout.end())
+            layout.push_back({.id = binding.parameter_id, .name = "Texture", .type = binding.type});
     const auto found = std::ranges::find(layout, parameter, &render::shader_parameter_descriptor::id);
     if (found == layout.end())
     {
@@ -1126,18 +1137,24 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
     if (found->type == render::shader_parameter_type::texture_2d)
     {
         edit.kind = material_parameter_edit_kind::texture;
-        if (!values.empty() || (!reset && (!texture || !texture->guid.valid())))
+        if (!values.empty() || (!reset && !clear_texture && (!texture || !texture->guid.valid())))
         {
             error = "Texture parameters require a GUID-backed texture reference";
             return false;
         }
-        if (!reset)
+        if (!reset && !clear_texture)
         {
             auto reference = *texture;
             reference.expected_type = assets::asset_types::texture_2d;
             if (!scene.asset_registry || !scene.asset_registry->find(reference))
             {
                 error = "Texture GUID does not resolve to a Texture2D asset";
+                return false;
+            }
+            const auto* base = base_material_record(scene, entity);
+            if (!base || !ensure_override_texture(scene, renderer, *base, reference).valid())
+            {
+                error = "Texture realization failed; previous material override retained";
                 return false;
             }
             edit.texture_reference = std::move(reference);
@@ -1150,7 +1167,7 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
                                   : found->type == render::shader_parameter_type::float3 ? 3
                                   : found->type == render::shader_parameter_type::float4 ? 4
                                                                                          : 0;
-        if (!count || texture || (!reset && values.size() != count) ||
+        if (clear_texture || !count || texture || (!reset && values.size() != count) ||
             std::ranges::any_of(values, [](float value) { return !std::isfinite(value); }))
         {
             error = "Parameter value shape is unsupported or does not match compiler metadata";
@@ -1184,6 +1201,23 @@ bool select_entity_material_function(editor_scene_state& scene, render::renderer
         return false;
     }
     if (!apply_function_edit(scene, renderer, entity, {.slot_id = slot, .function = reference}))
+    {
+        error = pending_material_edit_error;
+        return false;
+    }
+    return true;
+}
+
+bool reset_entity_material_function(editor_scene_state& scene, render::renderer& renderer, ecs::entity entity,
+                                    const std::string& slot, std::string& error)
+{
+    error.clear();
+    if (slot.empty() || !scene.scene.has<scene::mesh_renderer_component>(entity))
+    {
+        error = "Function reset requires an editable material and slot ID";
+        return false;
+    }
+    if (!apply_function_edit(scene, renderer, entity, {.slot_id = slot, .reset = true}))
     {
         error = pending_material_edit_error;
         return false;

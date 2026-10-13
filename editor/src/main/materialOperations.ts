@@ -69,7 +69,7 @@ export function registerMaterialReadOperations(
       ...readMetadata,
       id: `materials.${operation}`,
       domain: 'materials',
-      description: `${operation} an entity-local material through native validation and scene undo. Requires approved edit session, current world/scene authority and inspected definitionRevision. Does not save shared assets or verify rendered appearance.`,
+      description: `${operation === 'clearTexture' ? 'Set an explicit empty texture override; unlike resetOverride this does not restore the inherited texture.' : operation === 'resetFunction' ? 'Remove an entity-local function selection and its local inputs, restoring the inherited function.' : `${operation} an entity-local material through native validation and scene undo.`} Requires approved edit session, current world/scene authority and inspected definitionRevision. Does not save shared assets or verify rendered appearance.`,
       permissions: ['scene.edit'],
       effects: { reads: ['asset-catalog', 'saved-material-definition'], writes: ['scene'] },
       transaction: 'participant',

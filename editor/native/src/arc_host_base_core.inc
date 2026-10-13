@@ -5360,6 +5360,15 @@ host_response arc_host::execute(const host_command_envelope& command)
                     clear_entity_material_overrides(state_->scene, entity);
                     component->material = material;
                 }
+                else if (payload.operation == "resetFunction")
+                {
+                    const auto& slots = description["functionSlots"];
+                    if (!std::ranges::any_of(slots, [&](const auto& entry) { return entry["id"] == payload.slot_id; }))
+                        return fail("Unknown function slot; use materials.describe");
+                    if (!reset_entity_material_function(state_->scene, *state_->renderer, entity, payload.slot_id,
+                                                        error))
+                        return fail(error);
+                }
                 else if (payload.operation == "selectFunction")
                 {
                     const auto& slots = description["functionSlots"];
@@ -5394,9 +5403,12 @@ host_response arc_host::execute(const host_command_envelope& command)
                         return fail("Invalid 64-bit parameter ID");
                     auto value = nlohmann::json::parse(payload.value_json, nullptr, false);
                     const bool reset = payload.operation == "resetOverride";
+                    const bool clear_texture = payload.operation == "clearTexture";
+                    if (clear_texture && (*parameter)["type"] != "texture2d")
+                        return fail("Clear texture requires a Texture2D parameter");
                     std::vector<float> numbers;
                     std::optional<assets::asset_reference> texture;
-                    if (!reset && (*parameter)["type"] == "texture2d")
+                    if (!reset && !clear_texture && (*parameter)["type"] == "texture2d")
                     {
                         if (!value.is_object() || !value.contains("guid") || !value["guid"].is_string())
                             return fail("Expected Texture2D reference");
@@ -5405,7 +5417,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                         texture = assets::asset_reference{.guid = *texture_guid,
                                                           .expected_type = assets::asset_types::texture_2d};
                     }
-                    else if (!reset)
+                    else if (!reset && !clear_texture)
                     {
                         if (value.is_number()) value = nlohmann::json::array({value});
                         if (!value.is_array() || value.size() > 4)
@@ -5416,10 +5428,10 @@ host_response arc_host::execute(const host_command_envelope& command)
                             numbers.push_back(number.template get<float>());
                         }
                     }
-                    if (!set_entity_material_parameter(state_->scene, *state_->renderer, entity,
-                                                       render::shader_parameter_id{id}, numbers,
-                                                       texture ? &*texture : nullptr, reset, error,
-                                                       (*parameter)["slotId"].template get<std::string>()))
+                    if (!set_entity_material_parameter(
+                            state_->scene, *state_->renderer, entity, render::shader_parameter_id{id}, numbers,
+                            texture ? &*texture : nullptr, reset, error,
+                            (*parameter)["slotId"].template get<std::string>(), clear_texture))
                         return fail(error);
                 }
                 push_event(state_->events, state_->event_sequence, host_event_type::component_changed,

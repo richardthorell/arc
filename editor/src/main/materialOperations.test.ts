@@ -153,6 +153,38 @@ describe('native material discovery operations', () => {
     expect(command).not.toHaveBeenCalled();
   });
 
+  it.each(['clearTexture', 'resetFunction'] as const)(
+    'authorizes and dispatches %s without an implicit value',
+    async (operation) => {
+      const { harness, command, params } = await approved();
+      const authority = Object.fromEntries(
+        Object.entries(params).filter(([key]) => key !== 'value' && key !== 'parameterId'),
+      );
+      const target = operation === 'clearTexture' ? { parameterId: params.parameterId } : { slotId: 'surface-source' };
+      await harness.invoke(`materials.${operation}`, { ...authority, ...target }, 'agent');
+      expect(command).toHaveBeenCalledWith(
+        'materials.edit',
+        expect.objectContaining({ operation, ...target, definitionRevision: params.definitionRevision }),
+        expect.objectContaining({ phase: 'update' }),
+        1,
+      );
+      expect(command.mock.calls[0][1]).not.toHaveProperty('value');
+    },
+  );
+
+  it.each(['clearTexture', 'resetFunction'] as const)('rejects unapproved %s', async (operation) => {
+    const { harness, command } = setup();
+    const authority = Object.fromEntries(
+      Object.entries(editParams).filter(([key]) => key !== 'value' && key !== 'parameterId'),
+    );
+    const target =
+      operation === 'clearTexture' ? { parameterId: editParams.parameterId } : { slotId: 'surface-source' };
+    await expect(harness.invoke(`materials.${operation}`, { ...authority, ...target }, 'agent')).rejects.toThrow(
+      /approv|permission/i,
+    );
+    expect(command).not.toHaveBeenCalled();
+  });
+
   it('propagates native failed compilation without reporting an applied result', async () => {
     const { harness, command, params } = await approved();
     command.mockResolvedValueOnce({

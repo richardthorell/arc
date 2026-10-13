@@ -1857,16 +1857,24 @@ std::string to_json(const host_command_envelope& envelope)
                        (!payload.path.empty() ? ",\"path\":" + quote(payload.path.generic_string()) : "") +
                        (payload.asset ? ",\"asset\":" + to_json(*payload.asset) : "") + '}';
             else if constexpr (std::is_same_v<type, host_material_edit_command>)
-                return nlohmann::json{{"operation", payload.operation},
-                                      {"entityGuid", payload.entity_guid},
-                                      {"assetGuid", payload.asset_guid},
-                                      {"parameterId", payload.parameter_id},
-                                      {"slotId", payload.slot_id},
-                                      {"definitionRevision", payload.definition_revision},
-                                      {"worldEpoch", payload.world_epoch},
-                                      {"expectedSceneRevision", payload.scene_revision},
-                                      {"value", nlohmann::json::parse(payload.value_json)}}
-                    .dump();
+            {
+                auto result = nlohmann::json{{"operation", payload.operation},
+                                             {"entityGuid", payload.entity_guid},
+                                             {"assetGuid", payload.asset_guid},
+                                             {"parameterId", payload.parameter_id},
+                                             {"slotId", payload.slot_id},
+                                             {"definitionRevision", payload.definition_revision},
+                                             {"worldEpoch", payload.world_epoch},
+                                             {"expectedSceneRevision", payload.scene_revision},
+                                             {"value", nlohmann::json::parse(payload.value_json)}};
+                if (payload.operation == "clearTexture" || payload.operation == "resetFunction")
+                {
+                    result.erase("value");
+                    result.erase("assetGuid");
+                    result.erase(payload.operation == "clearTexture" ? "slotId" : "parameterId");
+                }
+                return result.dump();
+            }
             else if constexpr (std::is_same_v<type, host_component_operation_command>)
                 return "{\"component\":" + quote(payload.component) + '}';
             else if constexpr (std::is_same_v<type, host_patch_project_component_command>)
@@ -3125,7 +3133,8 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
             return false;
         }
         if (command.operation != "assign" && command.operation != "setOverride" &&
-            command.operation != "resetOverride" && command.operation != "selectFunction")
+            command.operation != "resetOverride" && command.operation != "selectFunction" &&
+            command.operation != "clearTexture" && command.operation != "resetFunction")
         {
             error = "Unsupported material operation";
             return false;
@@ -3134,6 +3143,14 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         string_value(payload, "parameterId", command.parameter_id);
         string_value(payload, "slotId", command.slot_id);
         command.value_json = value.value("value", nlohmann::json(nullptr)).dump();
+        if ((command.operation == "clearTexture" || command.operation == "resetFunction") &&
+            (value.contains("value") || value.contains("assetGuid") ||
+             (command.operation == "clearTexture" && (command.parameter_id.empty() || value.contains("slotId"))) ||
+             (command.operation == "resetFunction" && (command.slot_id.empty() || value.contains("parameterId")))))
+        {
+            error = "Clear/reset requires only the target parameter or slot, without a replacement value";
+            return false;
+        }
         if (command.value_json.size() > 4096)
         {
             error = "Material value exceeds its size limit";

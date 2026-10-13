@@ -20,6 +20,14 @@ The Inspector migration from #1060 has been rolled back pending UI parity: the n
 
 The legacy batch `entity.setBaseColor` operation is a compatibility adapter to `materials.setOverride`. It requires one native-reflected exposed parameter directly connected to the base-color output; it never searches display names. Ambiguous or indirect color composition returns discovered candidates and asks the caller to use the typed operation.
 
+### Typed clear and reset operations
+
+`materials.clearTexture` accepts the existing edit authority and a stable `parameterId`, with no replacement value. It writes an explicit empty texture override. Inspection reports `overridden: true`, `resolvedValue: null`, and `valueStatus: resolved`; this differs from an unavailable default. `materials.resetOverride` removes that local entry and restores inheritance. Failed explicit texture realization retains the previous binding instead of publishing an empty replacement.
+
+`materials.resetFunction` accepts edit authority and a stable `slotId`, with no asset GUID or replacement value. The host validates the slot against the current inspected definition before removing its local function selection and local input overrides. This restores the assigned material/instance's inherited selection, not necessarily the parent graph's authored default. Both operations use the existing approved scene transaction and history path and are discovered from the shared operation catalog.
+
+This clear/reset increment does not migrate the Inspector. Texture default/requirement reflection, paginated function discovery, atomic multi-selection, and the final versioned parity contract remain follow-up work before the UI switch and legacy retirement.
+
 ## Remaining acceptance work before closing #986
 
 ### Inspector parity migration checkpoint
