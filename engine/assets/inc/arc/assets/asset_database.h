@@ -100,6 +100,8 @@ struct asset_database_record
     asset_type_id type{};
     std::string title;
     std::string description;
+    std::vector<std::string> authored_tags;
+    std::vector<std::string> authored_categories;
     std::string source_hint;
     std::vector<asset_guid> dependencies;
     std::vector<asset_guid> reverse_dependencies;
