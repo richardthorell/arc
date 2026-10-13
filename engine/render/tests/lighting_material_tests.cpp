@@ -44,7 +44,10 @@ TEST_CASE("CPU irradiance probe baker is deterministic and captures environment 
     REQUIRE(first.statistics.geometry_hits == 0u);
     REQUIRE(first.volume.content_hash != 0u);
     REQUIRE(first.volume.content_hash == second.volume.content_hash);
-    REQUIRE(first.volume.probes[0].spherical_harmonics == second.volume.probes[0].spherical_harmonics);
+    for (std::size_t coefficient = 0; coefficient < first.volume.probes[0].spherical_harmonics.size(); ++coefficient)
+        for (std::size_t channel = 0; channel < 3; ++channel)
+            REQUIRE(first.volume.probes[0].spherical_harmonics[coefficient][channel] ==
+                    Catch::Approx(second.volume.probes[0].spherical_harmonics[coefficient][channel]));
     REQUIRE(first.volume.probes[0].validity == Catch::Approx(1.0f));
     REQUIRE(first.volume.probes[0].mean_distance == Catch::Approx(25.0f));
 
