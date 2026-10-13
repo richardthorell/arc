@@ -252,6 +252,8 @@ struct asset_source_metadata
     asset_importer_id importer{};
     std::string title;
     std::string description;
+    std::vector<std::string> tags;
+    std::vector<std::string> categories;
     std::uint32_t settings_version{1};
     std::string canonical_settings{"{}"};
     std::vector<asset_subasset_metadata> subassets;
@@ -307,6 +309,8 @@ struct asset_snapshot
     std::filesystem::path source_path;
     std::string title;
     std::string description;
+    std::vector<std::string> tags;
+    std::vector<std::string> categories;
     asset_hash source_hash{};
     asset_hash dependency_hash{};
     asset_state state{asset_state::unknown};

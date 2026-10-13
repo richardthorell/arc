@@ -214,6 +214,8 @@ TEST_CASE("asset metadata round trips stable subasset identities")
                                  .importer = importer_ids::gltf,
                                  .title = "Cabin Model",
                                  .description = "A reusable cabin asset for metadata testing.",
+                                 .tags = {"cabin", "wood", "rustic"},
+                                 .categories = {"Architecture/Building", "Style/Rustic"},
                                  .settings_version = 2,
                                  .canonical_settings = R"({"normalizeAxes":true})",
                                  .subassets = {{.persistent_key = "mesh:Cabin",
@@ -235,6 +237,8 @@ TEST_CASE("asset metadata round trips stable subasset identities")
     REQUIRE(loaded.importer == source.importer);
     REQUIRE(loaded.title == "Cabin Model");
     REQUIRE(loaded.description == "A reusable cabin asset for metadata testing.");
+    REQUIRE(loaded.tags == std::vector<std::string>{"cabin", "wood", "rustic"});
+    REQUIRE(loaded.categories == std::vector<std::string>{"Architecture/Building", "Style/Rustic"});
     REQUIRE(loaded.settings_version == 2);
     REQUIRE(loaded.subassets.size() == 2);
     REQUIRE(loaded.subassets[1].tombstoned);
@@ -812,4 +816,33 @@ TEST_CASE("shader include paths classify as source dependencies")
     REQUIRE(entry.has_value());
     CHECK(entry->first == asset_types::shader);
     CHECK(entry->second == importer_ids::shader);
+}
+
+TEST_CASE("asset manager refreshes authored tags and categories without reimporting source")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    project.write("props/bicycle.obj", "o Bicycle\n");
+
+    asset_fixture fixture(project);
+    const auto before = fixture.manager.find("assets/props/bicycle.obj");
+    REQUIRE(before);
+
+    const auto metadata_path = project.assets / "props/bicycle.obj.arcmeta";
+    auto loaded = load_asset_metadata(metadata_path);
+    REQUIRE(loaded);
+    auto metadata = loaded.value();
+    metadata.tags = {"bicycle", "rustic"};
+    metadata.categories = {"Vehicle/Bicycle", "Style/Rustic"};
+    REQUIRE(save_asset_metadata(metadata_path, metadata));
+
+    const auto scan = fixture.manager.scan();
+    REQUIRE(scan.succeeded());
+
+    const auto after = fixture.manager.find(before->guid);
+    REQUIRE(after);
+    CHECK(after->tags == metadata.tags);
+    CHECK(after->categories == metadata.categories);
+    CHECK(after->revision > before->revision);
+    CHECK(after->state == before->state);
 }

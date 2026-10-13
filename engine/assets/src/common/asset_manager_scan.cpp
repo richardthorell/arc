@@ -243,6 +243,8 @@ asset_scan_result asset_manager::scan()
             value.snapshot.source_path = relative_text;
             value.snapshot.title = source.metadata.title;
             value.snapshot.description = source.metadata.description;
+            value.snapshot.tags = source.metadata.tags;
+            value.snapshot.categories = source.metadata.categories;
             value.snapshot.source_hash = source.hash;
             value.snapshot.state = asset_state::stale;
             value.snapshot.residency = asset_residency::source;
@@ -288,6 +290,10 @@ asset_scan_result asset_manager::scan()
         const bool settings_changed = value.metadata.importer != source.metadata.importer ||
                                       value.metadata.settings_version != source.metadata.settings_version ||
                                       value.metadata.canonical_settings != source.metadata.canonical_settings;
+        const bool authored_metadata_changed = value.metadata.title != source.metadata.title ||
+                                               value.metadata.description != source.metadata.description ||
+                                               value.metadata.tags != source.metadata.tags ||
+                                               value.metadata.categories != source.metadata.categories;
         std::uint32_t registered_importer_version{};
         if (const auto importer = implementation_->importers.find(source.metadata.importer);
             importer != implementation_->importers.end())
@@ -305,6 +311,8 @@ asset_scan_result asset_manager::scan()
         }
         value.snapshot.title = source.metadata.title;
         value.snapshot.description = source.metadata.description;
+        value.snapshot.tags = source.metadata.tags;
+        value.snapshot.categories = source.metadata.categories;
         value.metadata = source.metadata;
         value.absolute_path = source.absolute;
         if (!observed_file_change || debounce_complete)
@@ -331,9 +339,11 @@ asset_scan_result asset_manager::scan()
                 hot_reload.push_back(value.snapshot.guid);
             ++result.updated;
         }
-        else if (path_changed)
+        else if (path_changed || authored_metadata_changed)
         {
             value.snapshot.revision = ++implementation_->revision;
+            implementation_->emit(asset_event_kind::state_changed, value.snapshot.guid, value.snapshot.state,
+                                  authored_metadata_changed ? "Asset metadata changed" : "Asset path changed");
             ++result.updated;
         }
         implementation_->persist_record(value);

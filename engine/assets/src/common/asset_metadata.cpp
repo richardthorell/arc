@@ -49,6 +49,28 @@ json subasset_json(const asset_subasset_metadata& subasset)
             {"tombstoned", subasset.tombstoned}};
 }
 
+bool valid_string_list(std::span<const std::string> values)
+{
+    return std::all_of(values.begin(), values.end(), [&](const std::string& value)
+                       { return !value.empty() && std::count(values.begin(), values.end(), value) == 1; });
+}
+
+bool parse_string_list(const json& document, std::string_view key, std::vector<std::string>& output)
+{
+    const auto values = document.find(std::string(key));
+    if (values == document.end()) return true;
+    if (!values->is_array()) return false;
+
+    for (const auto& value : *values)
+    {
+        if (!value.is_string()) return false;
+        auto text = value.get<std::string>();
+        if (text.empty() || std::find(output.begin(), output.end(), text) != output.end()) return false;
+        output.push_back(std::move(text));
+    }
+    return true;
+}
+
 } // namespace
 
 std::filesystem::path metadata_path_for(const std::filesystem::path& source_path)
@@ -96,6 +118,11 @@ asset_metadata_result load_asset_metadata(const std::filesystem::path& path)
     parsed.importer = *importer;
     parsed.title = document.value("title", std::string{});
     parsed.description = document.value("description", std::string{});
+    if (!parse_string_list(document, "tags", parsed.tags) ||
+        !parse_string_list(document, "categories", parsed.categories))
+    {
+        return failure("Asset metadata tags and categories must be arrays of non-empty strings");
+    }
     parsed.settings_version = document.value("settingsVersion", 1u);
     if (parsed.settings_version == 0)
     {
@@ -150,6 +177,10 @@ asset_status save_asset_metadata(const std::filesystem::path& path, const asset_
     {
         return failure("Asset metadata is incomplete");
     }
+    if (!valid_string_list(metadata.tags) || !valid_string_list(metadata.categories))
+    {
+        return failure("Asset metadata tags and categories must contain unique non-empty strings");
+    }
 
     json settings = json::parse(metadata.canonical_settings, nullptr, false);
     if (settings.is_discarded())
@@ -167,6 +198,8 @@ asset_status save_asset_metadata(const std::filesystem::path& path, const asset_
                   {"subassets", json::array()}};
     if (!metadata.title.empty()) document["title"] = metadata.title;
     if (!metadata.description.empty()) document["description"] = metadata.description;
+    if (!metadata.tags.empty()) document["tags"] = metadata.tags;
+    if (!metadata.categories.empty()) document["categories"] = metadata.categories;
     for (const asset_subasset_metadata& subasset : metadata.subassets)
         document["subassets"].push_back(subasset_json(subasset));
 
