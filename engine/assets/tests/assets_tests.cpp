@@ -214,6 +214,8 @@ TEST_CASE("asset metadata round trips stable subasset identities")
                                  .importer = importer_ids::gltf,
                                  .title = "Cabin Model",
                                  .description = "A reusable cabin asset for metadata testing.",
+                                 .tags = {"cabin", "wood", "rustic"},
+                                 .categories = {"Architecture/Building", "Style/Rustic"},
                                  .settings_version = 2,
                                  .canonical_settings = R"({"normalizeAxes":true})",
                                  .subassets = {{.persistent_key = "mesh:Cabin",
@@ -235,6 +237,8 @@ TEST_CASE("asset metadata round trips stable subasset identities")
     REQUIRE(loaded.importer == source.importer);
     REQUIRE(loaded.title == "Cabin Model");
     REQUIRE(loaded.description == "A reusable cabin asset for metadata testing.");
+    REQUIRE(loaded.tags == std::vector<std::string>{"cabin", "wood", "rustic"});
+    REQUIRE(loaded.categories == std::vector<std::string>{"Architecture/Building", "Style/Rustic"});
     REQUIRE(loaded.settings_version == 2);
     REQUIRE(loaded.subassets.size() == 2);
     REQUIRE(loaded.subassets[1].tombstoned);
