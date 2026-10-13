@@ -800,8 +800,8 @@ public:
             if (graph_output_connected(graph.value().descriptor,
                                        render::tools::material_surface_output::clear_coat_normal))
             {
-                auto neutral = render::tools::make_graph_material_evaluator(
-                    graph.value(), {.independent_clear_coat_normal = false});
+                auto neutral = render::tools::make_graph_material_evaluator(graph.value(),
+                                                                            {.independent_clear_coat_normal = false});
                 if (!neutral)
                     return {.error = {.code = assets::asset_error_code::import_failed,
                                       .guid = context.asset.guid,
@@ -901,8 +901,6 @@ public:
                                  .schema = assets::artifact_schemas::shader,
                                  .schema_version = render::shader_package::current_version,
                                  .bytes = std::move(bytes).value()});
-
-
         }
         // Cook neutral passes independently: the default authored material is
         // forward-only, but its neutral variant also needs a G-buffer shader.
@@ -914,75 +912,77 @@ public:
             {
                 if (!render::material_supports_pass(neutral_material, pass)) continue;
                 const std::string pass_label = std::string(pass_name(pass)) + (virtual_shadows ? ".vsm" : "");
-            {
-                auto neutral_pass = render::tools::generate_material_pass_slang(
-                    *neutral_coat_evaluator, neutral_material, pass, 0, false, virtual_shadows);
-                if (!neutral_pass)
-                    return {.error = {.code = assets::asset_error_code::import_failed,
-                                      .guid = context.asset.guid,
-                                      .path = context.source.source_path,
-                                      .message = neutral_pass.error().message}};
-                // Generic evaluator pass composition does not carry the authored graph
-                // variant bit; tag it explicitly before entering the shader cache.
-                auto neutral_key = render::make_material_pass_permutation_key(
-                    neutral_material, pass, 0, false, virtual_shadows);
-                neutral_key.independent_clear_coat_normal = false;
-                neutral_pass.value().permutation = render::make_material_pass_permutation_id(neutral_key);
+                {
+                    auto neutral_pass = render::tools::generate_material_pass_slang(
+                        *neutral_coat_evaluator, neutral_material, pass, 0, false, virtual_shadows);
+                    if (!neutral_pass)
+                        return {.error = {.code = assets::asset_error_code::import_failed,
+                                          .guid = context.asset.guid,
+                                          .path = context.source.source_path,
+                                          .message = neutral_pass.error().message}};
+                    // Generic evaluator pass composition does not carry the authored graph
+                    // variant bit; tag it explicitly before entering the shader cache.
+                    auto neutral_key =
+                        render::make_material_pass_permutation_key(neutral_material, pass, 0, false, virtual_shadows);
+                    neutral_key.independent_clear_coat_normal = false;
+                    neutral_pass.value().permutation = render::make_material_pass_permutation_id(neutral_key);
 
-                render::shader_compile_request neutral_request{
-                    .source_path = context.source.source_path.string() + "." + pass_label + ".neutral.generated.slang",
-                    .source_override = neutral_pass.value().source,
-                    .entry_point = neutral_pass.value().entry_point,
-                    .profile = "spirv_1_5",
-                    .library_version = "arc-material-pass/2",
-                    .domain = render::shader_domain::surface,
-                    .stage = render::shader_stage::fragment,
-                    .target = render::shader_target::spirv,
-                    .optimization = context.target.configuration == assets::cook_configuration::shipping
-                                        ? render::shader_optimization::performance
-                                        : render::shader_optimization::development,
-                    .required_passes = {pass},
-                    .generated_line_nodes = neutral_pass.value().generated_line_nodes,
-                    .generate_debug_information = context.target.configuration != assets::cook_configuration::shipping};
-                auto neutral_compiled = cache_.compile_or_get(compiler_, neutral_request);
-                if (!neutral_compiled)
-                    return {.error = {.code = assets::asset_error_code::import_failed,
-                                      .guid = context.asset.guid,
-                                      .path = context.source.source_path,
-                                      .message = compile_error_message(neutral_compiled.error())}};
-                for (const auto& [line, node] : neutral_request.generated_line_nodes)
-                    neutral_compiled.value().source_map.push_back(
-                        {.generated_line = line,
-                         .source = {.path = context.source.source_path.generic_string(),
-                                    .line = line,
-                                    .graph_node_id = node}});
-                std::ranges::sort(neutral_compiled.value().source_map, {},
-                                  &render::shader_source_map_entry::generated_line);
-                neutral_compiled.value().reflection.parameters = parameters;
-                std::uint32_t neutral_parameter_block_size{};
-                for (const auto& parameter : parameters)
-                    neutral_parameter_block_size =
-                        std::max(neutral_parameter_block_size, parameter.offset + parameter.size);
-                neutral_compiled.value().reflection.parameter_block_size = neutral_parameter_block_size;
-                render::shader_package neutral_package{
-                    .id = program.package,
-                    .generation = {std::max<std::uint64_t>(context.asset.generation, 1)},
-                    .target = render::shader_target::spirv,
-                    .permutation = neutral_pass.value().permutation,
-                    .compiled = std::move(neutral_compiled).value()};
-                auto neutral_bytes = render::serialize_shader_package(neutral_package);
-                if (!neutral_bytes)
-                    return {.error = {.code = assets::asset_error_code::import_failed,
-                                      .guid = context.asset.guid,
-                                      .path = context.source.source_path,
-                                      .message = neutral_bytes.error().message}};
-                artifacts.push_back({.name = context.source.source_path.stem().string() + "." + pass_label +
-                                             ".coat-neutral",
-                                     .extension = ".arcshader",
-                                     .schema = assets::artifact_schemas::shader,
-                                     .schema_version = render::shader_package::current_version,
-                                     .bytes = std::move(neutral_bytes).value()});
-            }
+                    render::shader_compile_request neutral_request{
+                        .source_path =
+                            context.source.source_path.string() + "." + pass_label + ".neutral.generated.slang",
+                        .source_override = neutral_pass.value().source,
+                        .entry_point = neutral_pass.value().entry_point,
+                        .profile = "spirv_1_5",
+                        .library_version = "arc-material-pass/2",
+                        .domain = render::shader_domain::surface,
+                        .stage = render::shader_stage::fragment,
+                        .target = render::shader_target::spirv,
+                        .optimization = context.target.configuration == assets::cook_configuration::shipping
+                                            ? render::shader_optimization::performance
+                                            : render::shader_optimization::development,
+                        .required_passes = {pass},
+                        .generated_line_nodes = neutral_pass.value().generated_line_nodes,
+                        .generate_debug_information =
+                            context.target.configuration != assets::cook_configuration::shipping};
+                    auto neutral_compiled = cache_.compile_or_get(compiler_, neutral_request);
+                    if (!neutral_compiled)
+                        return {.error = {.code = assets::asset_error_code::import_failed,
+                                          .guid = context.asset.guid,
+                                          .path = context.source.source_path,
+                                          .message = compile_error_message(neutral_compiled.error())}};
+                    for (const auto& [line, node] : neutral_request.generated_line_nodes)
+                        neutral_compiled.value().source_map.push_back(
+                            {.generated_line = line,
+                             .source = {.path = context.source.source_path.generic_string(),
+                                        .line = line,
+                                        .graph_node_id = node}});
+                    std::ranges::sort(neutral_compiled.value().source_map, {},
+                                      &render::shader_source_map_entry::generated_line);
+                    neutral_compiled.value().reflection.parameters = parameters;
+                    std::uint32_t neutral_parameter_block_size{};
+                    for (const auto& parameter : parameters)
+                        neutral_parameter_block_size =
+                            std::max(neutral_parameter_block_size, parameter.offset + parameter.size);
+                    neutral_compiled.value().reflection.parameter_block_size = neutral_parameter_block_size;
+                    render::shader_package neutral_package{
+                        .id = program.package,
+                        .generation = {std::max<std::uint64_t>(context.asset.generation, 1)},
+                        .target = render::shader_target::spirv,
+                        .permutation = neutral_pass.value().permutation,
+                        .compiled = std::move(neutral_compiled).value()};
+                    auto neutral_bytes = render::serialize_shader_package(neutral_package);
+                    if (!neutral_bytes)
+                        return {.error = {.code = assets::asset_error_code::import_failed,
+                                          .guid = context.asset.guid,
+                                          .path = context.source.source_path,
+                                          .message = neutral_bytes.error().message}};
+                    artifacts.push_back(
+                        {.name = context.source.source_path.stem().string() + "." + pass_label + ".coat-neutral",
+                         .extension = ".arcshader",
+                         .schema = assets::artifact_schemas::shader,
+                         .schema_version = render::shader_package::current_version,
+                         .bytes = std::move(neutral_bytes).value()});
+                }
             }
         }
 
