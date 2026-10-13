@@ -1341,6 +1341,7 @@ material_handle renderer::create_material(material_descriptor material)
     material.handle = handle;
     material.render_path = resolve_material_render_path(material);
     auto shared_material = std::make_shared<material_descriptor>(std::move(material));
+    material_data_[renderer_resource_key(handle)] = shared_material;
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
@@ -1359,6 +1360,7 @@ bool renderer::update_material(material_handle handle, material_descriptor mater
     material.handle = handle;
     material.render_path = resolve_material_render_path(material);
     auto shared_material = std::make_shared<material_descriptor>(std::move(material));
+    material_data_[renderer_resource_key(handle)] = shared_material;
 
     render_event_buffer buffer;
     render_event_writer writer(buffer);
@@ -1518,6 +1520,13 @@ bool renderer::texture_alive(texture_handle handle) const
 bool renderer::material_alive(material_handle handle) const
 {
     return material_handles_.alive(handle);
+}
+
+const material_descriptor* renderer::material_data_for(material_handle handle) const noexcept
+{
+    if (!material_handles_.alive(handle)) return nullptr;
+    const auto found = material_data_.find(renderer_resource_key(handle));
+    return found == material_data_.end() ? nullptr : found->second.get();
 }
 
 bool renderer::environment_alive(environment_handle handle) const
