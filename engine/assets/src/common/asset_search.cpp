@@ -90,6 +90,13 @@ tokenize_search_query(std::string_view input)
         while (index < input.size())
         {
             const auto character = input[index];
+            if (character == '\\' && quoted && index + 1 < input.size() &&
+                (input[index + 1] == '"' || input[index + 1] == '\\'))
+            {
+                token.push_back(input[index + 1]);
+                index += 2;
+                continue;
+            }
             if (character == '"')
             {
                 quoted = !quoted;
