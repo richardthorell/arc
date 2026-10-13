@@ -986,6 +986,13 @@ struct host_asset_reimport_command
 struct host_asset_scan_command
 {
 };
+
+struct host_bake_irradiance_probe_volume_command
+{
+    host_entity_id entity{};
+    std::filesystem::path output_path;
+    std::uint32_t samples{};
+};
 struct host_set_texture_streaming_mode_command
 {
     std::string guid;
@@ -1681,7 +1688,7 @@ using host_command_payload = std::variant<
     host_open_project_command, host_close_project_command, host_reload_project_module_command, host_open_scene_command,
     host_new_scene_command, host_save_scene_command, host_save_scene_as_command, host_autosave_scene_command,
     host_open_recovery_scene_command, host_asset_reimport_command, host_asset_scan_command,
-    host_set_texture_streaming_mode_command, host_patch_texture_settings_command, host_shader_compile_command,
+    host_bake_irradiance_probe_volume_command, host_set_texture_streaming_mode_command, host_patch_texture_settings_command, host_shader_compile_command,
     host_asset_cancel_import_command, host_asset_move_command, host_asset_rename_command, host_create_entity_command,
     host_delete_entity_command, host_duplicate_entity_command, host_snap_to_floor_command, host_create_prefab_command,
     host_instantiate_prefab_command, host_apply_prefab_command, host_revert_prefab_command, host_unpack_prefab_command,
