@@ -207,6 +207,38 @@ private:
 };
 
 /**
+ * Project the legacy shader boot and remaining startup groups into the same
+ * GUID-based descriptor model as authored bundles. Engine remains an empty
+ * role for future built-in asset membership; startup depends on boot.
+ */
+[[nodiscard]] inline content_bundle_catalog make_builtin_content_bundles(const asset_database& database)
+{
+    content_bundle_catalog catalog;
+    content_bundle_descriptor engine;
+    engine.id = std::string(builtin_bundle_ids::engine);
+    engine.preload = bundle_preload_policy::eager;
+    static_cast<void>(catalog.add(std::move(engine)));
+
+    content_bundle_descriptor boot;
+    boot.id = std::string(builtin_bundle_ids::boot);
+    boot.bundle_dependencies = {std::string(builtin_bundle_ids::engine)};
+    boot.preload = bundle_preload_policy::eager;
+    content_bundle_descriptor startup;
+    startup.id = std::string(builtin_bundle_ids::startup);
+    startup.bundle_dependencies = {std::string(builtin_bundle_ids::boot)};
+    startup.preload = bundle_preload_policy::eager;
+
+    for (const auto& asset : database.records())
+    {
+        if (asset.type == asset_types::shader) boot.roots.push_back(asset.guid);
+        else startup.roots.push_back(asset.guid);
+    }
+    static_cast<void>(catalog.add(std::move(boot)));
+    static_cast<void>(catalog.add(std::move(startup)));
+    return catalog;
+}
+
+/**
  * A read-only logical database projection that exposes bundle memberships
  * without introducing a second asset registry or changing asset identities.
  * The catalog and underlying database must outlive this view.
