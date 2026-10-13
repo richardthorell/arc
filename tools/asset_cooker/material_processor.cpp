@@ -902,12 +902,19 @@ public:
                                  .schema_version = render::shader_package::current_version,
                                  .bytes = std::move(bytes).value()});
 
-            if (neutral_coat_evaluator)
-            {
-                auto neutral_material = pass_material;
-                neutral_material.deferred_compatible = true;
-                if (!render::material_supports_pass(neutral_material, pass)) continue;
 
+        }
+        // Cook neutral passes independently: the default authored material is
+        // forward-only, but its neutral variant also needs a G-buffer shader.
+        if (neutral_coat_evaluator)
+        {
+            auto neutral_material = pass_material;
+            neutral_material.deferred_compatible = true;
+            for (const auto& [pass, virtual_shadows] : material_passes)
+            {
+                if (!render::material_supports_pass(neutral_material, pass)) continue;
+                const std::string pass_label = std::string(pass_name(pass)) + (virtual_shadows ? ".vsm" : "");
+            {
                 auto neutral_pass = render::tools::generate_material_pass_slang(
                     *neutral_coat_evaluator, neutral_material, pass, 0, false, virtual_shadows);
                 if (!neutral_pass)
@@ -975,6 +982,7 @@ public:
                                      .schema = assets::artifact_schemas::shader,
                                      .schema_version = render::shader_package::current_version,
                                      .bytes = std::move(neutral_bytes).value()});
+            }
             }
         }
 
