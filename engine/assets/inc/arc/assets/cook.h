@@ -431,6 +431,8 @@ struct [[nodiscard]] bundle_cook_request_result
 struct cook_request
 {
     std::vector<asset_guid> roots;
+    /** Optional built-in bundle role; empty retains legacy shader/other chunk classification. */
+    std::string bundle_role;
     cook_target target{windows_vulkan_cook_target()};
     std::filesystem::path output;
     bool fail_on_warning{};
