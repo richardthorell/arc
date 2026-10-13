@@ -777,6 +777,40 @@ public:
 
         program.package = {.high = context.asset.guid.high, .low = context.asset.guid.low};
 
+        // In addition to the authoritative existing pass set, bake a neutral
+        // clear-coat normal variant for the future instance-aware Deferred path.
+        // Do not publish this alternative into program.passes until runtime variant
+        // selection is implemented (otherwise pass lookup becomes ambiguous).
+        std::optional<render::tools::material_evaluator_source> neutral_coat_evaluator;
+        if (!handwritten && !authored.value().graph_json.empty())
+        {
+            auto functions = material_function_sources(context, source);
+            if (!functions)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = context.source.source_path,
+                                  .message = functions.error()}};
+            auto graph = render::tools::compile_material_graph_json(authored.value().graph_json, functions.value());
+            if (!graph)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = context.source.source_path,
+                                  .message = graph.error().message}};
+            if (graph_output_connected(graph.value().descriptor,
+                                       render::tools::material_surface_output::clear_coat_normal))
+            {
+                auto neutral = render::tools::make_graph_material_evaluator(
+                    graph.value(), {.independent_clear_coat_normal = false});
+                if (!neutral)
+                    return {.error = {.code = assets::asset_error_code::import_failed,
+                                      .guid = context.asset.guid,
+                                      .path = context.source.source_path,
+                                      .message = neutral.error().message}};
+                neutral_coat_evaluator = std::move(neutral).value();
+                neutral_coat_evaluator->parameters = parameters;
+            }
+        }
+
         for (const auto& [pass, virtual_shadows] : material_passes)
         {
             if (!render::material_supports_pass(pass_material, pass)) continue;
