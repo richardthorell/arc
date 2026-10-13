@@ -127,7 +127,8 @@ bake_scene_irradiance_probe_volume(ecs::world& world, render::renderer& renderer
     const auto minimum = math::mul(component->bake_extents, -1.0f);
     layout.local_bounds = {geometric::point3f{minimum}, geometric::point3f{component->bake_extents}};
     layout.blend_distance = component->blend_distance;
-    layout.priority = component->priority_bias;
+    // Instance priority remains on the component; do not bake it into the asset or runtime resolution would apply it twice.
+    layout.priority = 0;
     for (std::size_t axis = 0; axis < 3; ++axis)
     {
         const float extent = component->bake_extents[axis] * 2.0f;
