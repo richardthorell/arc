@@ -33,6 +33,8 @@ struct material_pass_permutation_key
     bool evaluates_material{};
     bool writes_motion{};
     bool virtual_shadow_sampling{};
+    // Different material evaluator shader variants must not share a runtime permutation identity.
+    bool independent_clear_coat_normal{true};
 
     friend bool operator==(const material_pass_permutation_key&,
                            const material_pass_permutation_key&) noexcept = default;
