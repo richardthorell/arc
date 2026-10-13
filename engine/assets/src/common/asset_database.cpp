@@ -45,6 +45,8 @@ asset_database_record database_record_from(const asset_snapshot& snapshot)
     record.type = snapshot.type;
     record.title = snapshot.title;
     record.description = snapshot.description;
+    record.authored_tags = snapshot.tags;
+    record.authored_categories = snapshot.categories;
     record.source_hint = normalize_asset_path(snapshot.source_path);
     record.dependencies = snapshot.dependencies;
     record.reverse_dependencies = snapshot.reverse_dependencies;
