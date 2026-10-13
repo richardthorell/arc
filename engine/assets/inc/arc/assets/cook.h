@@ -406,6 +406,8 @@ struct cook_manifest
     cook_target target{};
     std::vector<asset_guid> roots;
     std::vector<asset_guid> dependency_closure;
+    /** Bundle identities represented by this cook, sorted and unique. */
+    std::vector<std::string> bundle_ids;
     std::vector<cook_manifest_dependency> dependency_edges;
     std::vector<cook_manifest_artifact> artifacts;
 };
@@ -433,6 +435,7 @@ struct cook_request
     std::vector<asset_guid> roots;
     /** Optional built-in bundle role; empty retains legacy shader/other chunk classification. */
     std::string bundle_role;
+    std::vector<std::string> bundle_ids;
     cook_target target{windows_vulkan_cook_target()};
     std::filesystem::path output;
     bool fail_on_warning{};
