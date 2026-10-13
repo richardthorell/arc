@@ -39,6 +39,8 @@ asset_search_document make_asset_search_document(const asset_database_record& re
     document.active_provider = record.active_provider;
     document.title = record.title;
     document.description = record.description;
+    document.authored_tags = record.authored_tags;
+    document.categories = record.authored_categories;
     document.source_generation = record.generation;
     document.source_revision = record.revision;
     return document;
