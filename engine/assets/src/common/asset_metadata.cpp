@@ -49,6 +49,15 @@ json subasset_json(const asset_subasset_metadata& subasset)
             {"tombstoned", subasset.tombstoned}};
 }
 
+bool valid_string_list(std::span<const std::string> values)
+{
+    return std::all_of(values.begin(), values.end(), [&](const std::string& value)
+                       {
+                           return !value.empty() &&
+                                  std::count(values.begin(), values.end(), value) == 1;
+                       });
+}
+
 bool parse_string_list(const json& document, std::string_view key, std::vector<std::string>& output)
 {
     const auto values = document.find(std::string(key));
@@ -170,6 +179,10 @@ asset_status save_asset_metadata(const std::filesystem::path& path, const asset_
         metadata.settings_version == 0)
     {
         return failure("Asset metadata is incomplete");
+    }
+    if (!valid_string_list(metadata.tags) || !valid_string_list(metadata.categories))
+    {
+        return failure("Asset metadata tags and categories must contain unique non-empty strings");
     }
 
     json settings = json::parse(metadata.canonical_settings, nullptr, false);
