@@ -87,15 +87,18 @@ tokenize_search_query(std::string_view input)
         const auto start = index;
         std::string token;
         bool quoted{};
-        while (index < input.size() && !std::isspace(static_cast<unsigned char>(input[index])))
+        while (index < input.size())
         {
-            if (input[index] == '"')
+            const auto character = input[index];
+            if (character == '"')
             {
                 quoted = !quoted;
                 ++index;
                 continue;
             }
-            token.push_back(input[index++]);
+            if (!quoted && std::isspace(static_cast<unsigned char>(character))) break;
+            token.push_back(character);
+            ++index;
         }
 
         if (quoted)
