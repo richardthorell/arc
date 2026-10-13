@@ -1,4 +1,5 @@
 #include <arc/render/lighting_scene.h>
+#include <arc/math/constants.h>
 
 #include <algorithm>
 #include <array>
