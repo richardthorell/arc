@@ -86,7 +86,6 @@ struct asset_search_query
     std::size_t offset{};
 };
 
-
 struct asset_search_parse_error
 {
     std::size_t offset{};
@@ -109,8 +108,7 @@ using asset_search_parse_result = core::result<asset_search_query, asset_search_
  * Values containing whitespace may be quoted. Unknown predicates and malformed
  * quotes are errors rather than silently becoming free text.
  */
-[[nodiscard]] asset_search_parse_result parse_asset_search_query(std::string_view text,
-                                                                 std::size_t limit = 100,
+[[nodiscard]] asset_search_parse_result parse_asset_search_query(std::string_view text, std::size_t limit = 100,
                                                                  std::size_t offset = 0);
 
 enum class asset_search_match_kind : std::uint8_t

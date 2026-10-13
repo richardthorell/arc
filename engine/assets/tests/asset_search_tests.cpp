@@ -654,14 +654,12 @@ TEST_CASE("persistent asset search FTS supports token prefixes without a full do
     std::filesystem::remove_all(root, error);
 }
 
-
 TEST_CASE("asset search parser separates free text from structured predicates")
 {
     using namespace arc::assets;
 
     auto parsed = parse_asset_search_query(
-        R"(rustic chair type:mesh tag:"old wood" category:"Furniture/Chair" scope:project)",
-        25, 5);
+        R"(rustic chair type:mesh tag:"old wood" category:"Furniture/Chair" scope:project)", 25, 5);
     REQUIRE(parsed);
 
     const auto& query = parsed.value();
@@ -670,8 +668,7 @@ TEST_CASE("asset search parser separates free text from structured predicates")
     CHECK(*query.filters.type == asset_types::static_mesh);
     CHECK(query.filters.required_tags == std::vector<std::string>{"old wood"});
     CHECK(query.filters.required_categories == std::vector<std::string>{"Furniture/Chair"});
-    CHECK(query.filters.provider_ids ==
-          std::vector<std::string>{std::string(asset_provider_ids::project_source)});
+    CHECK(query.filters.provider_ids == std::vector<std::string>{std::string(asset_provider_ids::project_source)});
     CHECK(query.limit == 25);
     CHECK(query.offset == 5);
 }
@@ -694,8 +691,7 @@ TEST_CASE("asset search parser supports escaped quotes in quoted values")
 
     auto parsed = parse_asset_search_query(R"(tag:"designer \"classic\"")");
     REQUIRE(parsed);
-    CHECK(parsed.value().filters.required_tags ==
-          std::vector<std::string>{R"(designer "classic")"});
+    CHECK(parsed.value().filters.required_tags == std::vector<std::string>{R"(designer "classic")"});
 }
 
 TEST_CASE("asset search parser reports unknown predicates and malformed quotes")
@@ -737,34 +733,34 @@ TEST_CASE("persistent asset search applies structured predicates with free text"
     const auto modern_chair = generate_asset_guid();
     const auto rustic_texture = generate_asset_guid();
 
-    REQUIRE(index->reset(std::vector<asset_search_document>{
-        {.guid = rustic_chair,
-         .type = asset_types::static_mesh,
-         .display_name = "Chair_A",
-         .active_provider = std::string(asset_provider_ids::project_source),
-         .title = "Chair_A",
-         .authored_tags = {"rustic", "old wood"},
-         .categories = {"Furniture/Chair"},
-         .source_generation = 1,
-         .source_revision = 1},
-        {.guid = modern_chair,
-         .type = asset_types::static_mesh,
-         .display_name = "Chair_B",
-         .active_provider = std::string(asset_provider_ids::project_source),
-         .title = "Chair_B",
-         .authored_tags = {"modern"},
-         .categories = {"Furniture/Chair"},
-         .source_generation = 1,
-         .source_revision = 1},
-        {.guid = rustic_texture,
-         .type = asset_types::texture_2d,
-         .display_name = "Rustic_Wood",
-         .active_provider = std::string(asset_provider_ids::builtin_source),
-         .title = "Rustic_Wood",
-         .authored_tags = {"rustic", "old wood"},
-         .categories = {"Surface/Wood"},
-         .source_generation = 1,
-         .source_revision = 1}}));
+    REQUIRE(index->reset(
+        std::vector<asset_search_document>{{.guid = rustic_chair,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Chair_A",
+                                            .active_provider = std::string(asset_provider_ids::project_source),
+                                            .title = "Chair_A",
+                                            .authored_tags = {"rustic", "old wood"},
+                                            .categories = {"Furniture/Chair"},
+                                            .source_generation = 1,
+                                            .source_revision = 1},
+                                           {.guid = modern_chair,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Chair_B",
+                                            .active_provider = std::string(asset_provider_ids::project_source),
+                                            .title = "Chair_B",
+                                            .authored_tags = {"modern"},
+                                            .categories = {"Furniture/Chair"},
+                                            .source_generation = 1,
+                                            .source_revision = 1},
+                                           {.guid = rustic_texture,
+                                            .type = asset_types::texture_2d,
+                                            .display_name = "Rustic_Wood",
+                                            .active_provider = std::string(asset_provider_ids::builtin_source),
+                                            .title = "Rustic_Wood",
+                                            .authored_tags = {"rustic", "old wood"},
+                                            .categories = {"Surface/Wood"},
+                                            .source_generation = 1,
+                                            .source_revision = 1}}));
 
     auto parsed = parse_asset_search_query(
         R"(chair type:mesh tag:rustic tag:"old wood" category:"Furniture/Chair" scope:project)");
@@ -792,23 +788,23 @@ TEST_CASE("persistent asset search supports structured-only indexed filtering")
     const auto project_mesh = generate_asset_guid();
     const auto builtin_mesh = generate_asset_guid();
 
-    REQUIRE(index->reset(std::vector<asset_search_document>{
-        {.guid = project_mesh,
-         .type = asset_types::static_mesh,
-         .display_name = "Project Prop",
-         .active_provider = std::string(asset_provider_ids::project_source),
-         .title = "Project Prop",
-         .authored_tags = {"hero"},
-         .source_generation = 1,
-         .source_revision = 1},
-        {.guid = builtin_mesh,
-         .type = asset_types::static_mesh,
-         .display_name = "Built-in Prop",
-         .active_provider = std::string(asset_provider_ids::builtin_source),
-         .title = "Built-in Prop",
-         .authored_tags = {"hero"},
-         .source_generation = 1,
-         .source_revision = 1}}));
+    REQUIRE(index->reset(
+        std::vector<asset_search_document>{{.guid = project_mesh,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Project Prop",
+                                            .active_provider = std::string(asset_provider_ids::project_source),
+                                            .title = "Project Prop",
+                                            .authored_tags = {"hero"},
+                                            .source_generation = 1,
+                                            .source_revision = 1},
+                                           {.guid = builtin_mesh,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Built-in Prop",
+                                            .active_provider = std::string(asset_provider_ids::builtin_source),
+                                            .title = "Built-in Prop",
+                                            .authored_tags = {"hero"},
+                                            .source_generation = 1,
+                                            .source_revision = 1}}));
 
     auto parsed = parse_asset_search_query("type:mesh tag:hero scope:project");
     REQUIRE(parsed);

@@ -626,13 +626,11 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
     const auto match_query = use_fts ? fts_query(query_value.text) : std::string{};
     if (use_fts && match_query.empty()) return results;
 
-    std::string sql =
-        use_fts
-            ? "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
-              "d.description,f.authored_tags,f.generated_tags,f.categories,f.metadata "
-              "FROM search_fts f JOIN search_documents d ON d.guid=f.guid WHERE search_fts MATCH ?"
-            : "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
-              "d.description,'','','','' FROM search_documents d WHERE 1=1";
+    std::string sql = use_fts ? "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
+                                "d.description,f.authored_tags,f.generated_tags,f.categories,f.metadata "
+                                "FROM search_fts f JOIN search_documents d ON d.guid=f.guid WHERE search_fts MATCH ?"
+                              : "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
+                                "d.description,'','','','' FROM search_documents d WHERE 1=1";
 
     std::vector<std::string> bindings;
     if (use_fts) bindings.push_back(match_query);
@@ -657,11 +655,10 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
 
     for (const auto& tag : query_value.filters.required_tags)
     {
-        sql +=
-            " AND (EXISTS(SELECT 1 FROM search_authored_tags at "
-            "WHERE at.guid=d.guid AND at.value=? COLLATE NOCASE)"
-            " OR EXISTS(SELECT 1 FROM search_generated_tags gt "
-            "WHERE gt.guid=d.guid AND gt.value=? COLLATE NOCASE))";
+        sql += " AND (EXISTS(SELECT 1 FROM search_authored_tags at "
+               "WHERE at.guid=d.guid AND at.value=? COLLATE NOCASE)"
+               " OR EXISTS(SELECT 1 FROM search_generated_tags gt "
+               "WHERE gt.guid=d.guid AND gt.value=? COLLATE NOCASE))";
         bindings.push_back(tag);
         bindings.push_back(tag);
     }

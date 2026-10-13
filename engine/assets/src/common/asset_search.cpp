@@ -47,8 +47,7 @@ std::optional<asset_type_id> search_type_from_alias(std::string_view value)
 
 void append_unique(std::vector<std::string>& values, std::string value)
 {
-    if (std::find(values.begin(), values.end(), value) == values.end())
-        values.push_back(std::move(value));
+    if (std::find(values.begin(), values.end(), value) == values.end()) values.push_back(std::move(value));
 }
 
 bool apply_scope(std::string_view value, std::vector<std::string>& providers)
@@ -74,14 +73,14 @@ struct parsed_search_token
     std::size_t offset{};
 };
 
-core::result<std::vector<parsed_search_token>, asset_search_parse_error>
-tokenize_search_query(std::string_view input)
+core::result<std::vector<parsed_search_token>, asset_search_parse_error> tokenize_search_query(std::string_view input)
 {
     std::vector<parsed_search_token> tokens;
     std::size_t index{};
     while (index < input.size())
     {
-        while (index < input.size() && std::isspace(static_cast<unsigned char>(input[index]))) ++index;
+        while (index < input.size() && std::isspace(static_cast<unsigned char>(input[index])))
+            ++index;
         if (index >= input.size()) break;
 
         const auto start = index;
