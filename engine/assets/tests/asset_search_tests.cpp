@@ -132,7 +132,9 @@ arc::assets::asset_database_record make_record(std::string title, std::uint64_t 
 TEST_CASE("asset search document preserves logical identity and source revision")
 {
     using namespace arc::assets;
-    const auto record = make_record("Old Bicycle", 17);
+    auto record = make_record("Old Bicycle", 17);
+    record.authored_tags = {"bicycle", "vintage"};
+    record.authored_categories = {"Vehicle/Bicycle", "Style/Rustic"};
 
     const auto document = make_asset_search_document(record);
 
@@ -143,6 +145,8 @@ TEST_CASE("asset search document preserves logical identity and source revision"
     CHECK(document.logical_path == "assets/content/example.bin");
     CHECK(document.active_provider == asset_provider_ids::project_source);
     CHECK(document.description == "searchable description");
+    CHECK(document.authored_tags == record.authored_tags);
+    CHECK(document.categories == record.authored_categories);
     CHECK(document.source_generation == 3);
     CHECK(document.source_revision == 17);
 }
