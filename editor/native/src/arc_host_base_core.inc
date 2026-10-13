@@ -5381,10 +5381,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                     // boundary: the native realization validates the registered function
                     // against the authored slot contract before replacing the binding.
                     if (!select_entity_material_function(
-                                         state_->scene, *state_->renderer, entity, payload.slot_id,
-                                         {.guid = *function,
-                                          .expected_type = assets::asset_types::material_function},
-                                         error))
+                            state_->scene, *state_->renderer, entity, payload.slot_id,
+                            {.guid = *function, .expected_type = assets::asset_types::material_function}, error))
                         return fail(error);
                 }
                 else
@@ -7150,7 +7148,21 @@ host_response arc_host::query(const host_query_envelope& query) const
                             .error = "Material GUID is missing, unsupported, unreadable, or exceeds the source limit"};
                 auto description = nlohmann::json::parse(inspect_saved_material(
                     *source, resolve,
-                    payload.entity_guid.empty() ? "[]" : entity_material_overrides_json(state_->scene, entity)));
+                    payload.entity_guid.empty() ? "[]" : entity_material_overrides_json(state_->scene, entity),
+                    {.slot_id = payload.function_slot_id,
+                     .offset = payload.function_offset,
+                     .limit = payload.function_limit,
+                     .revision = payload.discovery_revision}));
+                if (!payload.function_slot_id.empty())
+                {
+                    if (!description.value("definitionReady", false) || !description.contains("functionDiscovery"))
+                        return {.request_id = request_id,
+                                .succeeded = false,
+                                .error = "Function discovery failed: " + description["diagnostics"].dump()};
+                    return {.request_id = request_id,
+                            .succeeded = true,
+                            .payload_json = description["functionDiscovery"].dump()};
+                }
                 description["entity"] = nullptr;
                 if (!payload.entity_guid.empty())
                 {

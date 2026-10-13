@@ -12,6 +12,7 @@
 #include <array>
 #include <fstream>
 #include <map>
+#include <set>
 
 namespace
 {
@@ -197,6 +198,32 @@ TEST_CASE("material and asset inspection queries round trip GUID identity")
     }
 }
 
+TEST_CASE("function discovery query preserves bounded continuation identity")
+{
+    arc::editor::host_query_envelope query;
+    std::string error;
+    json wire{{"kind", "query"},
+              {"requestId", 43},
+              {"type", "materials.describe"},
+              {"payload",
+               {{"guid", material_guid},
+                {"functionSlotId", "source"},
+                {"functionOffset", 5},
+                {"functionLimit", 5},
+                {"discoveryRevision", std::string(64, 'a')}}}};
+    REQUIRE(arc::editor::from_json(wire.dump(), query, error));
+    const auto round_trip = json::parse(arc::editor::to_json(query))["payload"];
+    CHECK(round_trip["functionSlotId"] == "source");
+    CHECK(round_trip["functionOffset"] == 5);
+    CHECK(round_trip["functionLimit"] == 5);
+    CHECK(round_trip["discoveryRevision"] == std::string(64, 'a'));
+    wire["payload"].erase("discoveryRevision");
+    CHECK_FALSE(arc::editor::from_json(wire.dump(), query, error));
+    wire["payload"]["functionOffset"] = 0;
+    wire["payload"]["functionLimit"] = 17;
+    CHECK_FALSE(arc::editor::from_json(wire.dump(), query, error));
+}
+
 TEST_CASE("function compatibility is independent of the bounded discovery preview")
 {
     auto source = material_source();
@@ -246,6 +273,39 @@ TEST_CASE("function compatibility is independent of the bounded discovery previe
     INFO(selected.dump(2));
     REQUIRE(selected["definitionReady"] == true);
     CHECK(selected["functionSlots"][0]["selectedFunctionGuid"] == last.guid);
+    std::set<std::string> discovered;
+    arc::editor::material_function_discovery_request request{.slot_id = "source", .limit = 5};
+    for (int page = 0; page < 4; ++page)
+    {
+        const auto response = json::parse(arc::editor::inspect_saved_material(source, resolve, "[]", request));
+        INFO(response.dump(2));
+        REQUIRE(response["definitionReady"] == true);
+        const auto& result = response["functionDiscovery"];
+        REQUIRE(result["alternatives"].size() <= 5);
+        for (const auto& alternative : result["alternatives"])
+            CHECK(discovered.insert(alternative["guid"].get<std::string>()).second);
+        request.revision = result["discoveryRevision"].get<std::string>();
+        if (page == 3)
+            CHECK(result["nextOffset"].is_null());
+        else
+        {
+            REQUIRE_FALSE(result["nextOffset"].is_null());
+            request.offset = result["nextOffset"].get<std::uint32_t>();
+        }
+    }
+    CHECK(discovered.size() == 17);
+    CHECK(discovered.contains(last.guid));
+    const auto changed_selection =
+        json::parse(arc::editor::inspect_saved_material(source, resolve, overrides.dump(), request));
+    CHECK(changed_selection["definitionReady"] == false);
+    source.source += " ";
+    const auto stale = json::parse(arc::editor::inspect_saved_material(source, resolve, "[]", request));
+    CHECK(stale["definitionReady"] == false);
+    CHECK(stale["diagnostics"][0]["message"].get<std::string>().find("Stale") != std::string::npos);
+    request = {.slot_id = "missing"};
+    CHECK(json::parse(arc::editor::inspect_saved_material(source, resolve, "[]", request))["definitionReady"] == false);
+    request = {.slot_id = "source", .limit = 0};
+    CHECK(json::parse(arc::editor::inspect_saved_material(source, resolve, "[]", request))["definitionReady"] == false);
 }
 
 TEST_CASE("entity material inspection separates inherited and local values without changing definition identity")

@@ -156,7 +156,8 @@ struct inspection
 } // namespace
 
 std::string inspect_saved_material(const material_inspection_source& source,
-                                   const material_inspection_resolver& resolve, std::string_view entity_overrides)
+                                   const material_inspection_resolver& resolve, std::string_view entity_overrides,
+                                   const material_function_discovery_request& discovery)
 {
     json result{{"guid", source.guid},          {"kind", source.kind},
                 {"provenance", "savedSource"},  {"definitionRevision", ""},
@@ -167,6 +168,10 @@ std::string inspect_saved_material(const material_inspection_source& source,
     inspection state{.resolve = resolve};
     try
     {
+        if (!discovery.slot_id.empty() &&
+            (discovery.limit == 0 || discovery.limit > alternative_limit || discovery.offset > dependency_limit ||
+             (discovery.offset != 0 && discovery.revision.empty())))
+            throw std::runtime_error("Invalid function discovery bounds or missing discovery revision");
         const auto local = json::parse(entity_overrides);
         if (!local.is_array() || local.size() > 1024) throw std::runtime_error("Invalid entity override state");
         state.remember(source);
@@ -367,15 +372,39 @@ std::string inspect_saved_material(const material_inspection_source& source,
                          {"message", "Saved entity override no longer matches a parameter: " + id}});
             }
             std::size_t trials = 0;
+            if (!discovery.slot_id.empty() &&
+                !std::ranges::any_of(compiled.value().descriptor.function_slots,
+                                     [&](const auto& slot) { return slot.id == discovery.slot_id; }))
+                throw std::runtime_error("Unknown Material Function slot");
             for (const auto& slot : compiled.value().descriptor.function_slots)
             {
+                if (!discovery.slot_id.empty() && slot.id != discovery.slot_id) continue;
                 json alternatives = json::array();
                 std::set<std::string> seen;
                 bool truncated = false;
+                std::vector<const rt::material_function_source*> candidates;
                 for (const auto& candidate : functions)
+                    if (seen.insert(candidate.identity).second) candidates.push_back(&candidate);
+                std::ranges::sort(candidates,
+                                  [](const auto* left, const auto* right) { return left->identity < right->identity; });
+                std::string discovery_revision;
+                if (!discovery.slot_id.empty())
                 {
-                    if (!seen.insert(candidate.identity).second) continue;
-                    if (alternatives.size() >= alternative_limit || trials >= 256)
+                    const auto identity =
+                        json{{"definition", state.revision()}, {"overrides", local}, {"slot", slot.id}}.dump();
+                    discovery_revision = assets::to_string(
+                        assets::hash_bytes(std::as_bytes(std::span(identity.data(), identity.size()))));
+                    if (!discovery.revision.empty() && discovery.revision != discovery_revision)
+                        throw std::runtime_error("Stale function discovery revision; restart discovery");
+                    if (discovery.offset > candidates.size())
+                        throw std::runtime_error("Function discovery offset is out of range");
+                }
+                std::size_t next = discovery.slot_id.empty() ? 0 : discovery.offset;
+                const auto limit = discovery.slot_id.empty() ? alternative_limit : discovery.limit;
+                for (; next < candidates.size(); ++next)
+                {
+                    const auto& candidate = *candidates[next];
+                    if (alternatives.size() >= limit || trials >= 256)
                     {
                         truncated = true;
                         break;
@@ -387,6 +416,13 @@ std::string inspect_saved_material(const material_inspection_source& source,
                     if (rt::compile_material_graph_json(authored.value().graph_json, functions, trial))
                         alternatives.push_back({{"guid", candidate.identity}, {"pathHint", candidate.path}});
                 }
+                if (!discovery.slot_id.empty())
+                    result["functionDiscovery"] = {{"guid", source.guid},
+                                                   {"slotId", slot.id},
+                                                   {"definitionRevision", state.revision()},
+                                                   {"discoveryRevision", discovery_revision},
+                                                   {"alternatives", alternatives},
+                                                   {"nextOffset", truncated ? json(next) : json(nullptr)}};
                 json inputs = json::array(), outputs = json::array();
                 for (const auto& pin : slot.inputs)
                     inputs.push_back(pin_json(pin));
