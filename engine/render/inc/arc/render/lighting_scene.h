@@ -295,6 +295,77 @@ resolve_irradiance_probe_volumes(std::span<const irradiance_probe_volume_instanc
 [[nodiscard]] math::vector3f evaluate_irradiance_sh9(const std::array<math::vector3f, 9>& spherical_harmonics,
                                                      const math::vector3f& normal) noexcept;
 
+/** @brief One static diffuse triangle consumed by the deterministic CPU probe baker. */
+struct irradiance_bake_triangle
+{
+    math::vector3f a{};
+    math::vector3f b{};
+    math::vector3f c{};
+    math::vector3f normal{0.0f, 1.0f, 0.0f};
+    math::vector3f diffuse_albedo = math::vector3f::one;
+    math::vector3f emissive_radiance{};
+    bool two_sided{};
+};
+
+/** @brief Static directional emitter captured into baked indirect lighting. */
+struct irradiance_bake_directional_light
+{
+    /** Direction travelled by light rays, matching directional_light_event. */
+    math::vector3f direction{0.0f, -1.0f, 0.0f};
+    math::vector3f radiance = math::vector3f::one;
+    bool enabled{true};
+};
+
+/** @brief Environment source captured by the low-tier reference baker. */
+struct irradiance_bake_environment
+{
+    math::vector3f sky_radiance{0.03f, 0.03f, 0.03f};
+    math::vector3f ground_radiance{0.01f, 0.01f, 0.01f};
+};
+
+/** @brief Deterministic CPU/reference bake controls for one probe volume. */
+struct irradiance_probe_bake_options
+{
+    /** Fixed spherical sample count per probe. Rounded up to at least 16. */
+    std::uint32_t samples_per_probe{128u};
+    /** Maximum ray distance used for visibility/distance moments. */
+    float maximum_trace_distance{100.0f};
+    /** Surface offset applied to secondary visibility rays. */
+    float surface_bias{0.01f};
+    /** Enables one static diffuse bounce at the first hit. */
+    bool indirect_bounce{true};
+};
+
+/** @brief Diagnostics/statistics from one deterministic CPU probe bake. */
+struct irradiance_probe_bake_statistics
+{
+    std::uint32_t probe_count{};
+    std::uint64_t primary_rays{};
+    std::uint64_t shadow_rays{};
+    std::uint64_t geometry_hits{};
+    std::uint32_t invalid_probes{};
+};
+
+/** @brief Complete deterministic baked-volume result. */
+struct [[nodiscard]] irradiance_probe_bake_result
+{
+    irradiance_probe_volume_descriptor volume;
+    irradiance_probe_bake_statistics statistics;
+    std::vector<std::string> diagnostics;
+};
+
+/**
+ * @brief Bake one low-tier irradiance volume using the portable CPU reference path.
+ *
+ * Only geometry and lights explicitly supplied to this function participate. Callers therefore
+ * pass static/stationary bake sources and omit movable lights. The baker projects incoming
+ * environment/static-direct/one-bounce diffuse radiance into ARC's SH9 convention.
+ */
+[[nodiscard]] irradiance_probe_bake_result bake_irradiance_probe_volume(
+    const irradiance_probe_volume_descriptor& layout, std::span<const irradiance_bake_triangle> triangles,
+    std::span<const irradiance_bake_directional_light> directional_lights,
+    const irradiance_bake_environment& environment = {}, const irradiance_probe_bake_options& options = {});
+
 /** @brief Runtime budgets for shared world-space lighting data. */
 struct lighting_scene_config
 {
