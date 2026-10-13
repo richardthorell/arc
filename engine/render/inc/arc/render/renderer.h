@@ -366,6 +366,9 @@ public:
      * @brief Return whether a material handle still references a live renderer material.
      */
     [[nodiscard]] bool material_alive(material_handle handle) const;
+    /** @brief Return retained CPU material data for tooling and deterministic baking. */
+    [[nodiscard]] const material_descriptor* material_data_for(material_handle handle) const noexcept;
+
 
     /**
      * @brief Return whether an environment handle still references a live renderer environment.
@@ -446,6 +449,7 @@ private:
     std::unordered_map<std::uint64_t, std::shared_ptr<const virtual_mesh_data>> virtual_mesh_data_;
     std::unordered_map<std::uint64_t, std::uint32_t> virtual_mesh_content_generations_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const mesh_data>> mesh_data_;
+    std::unordered_map<std::uint64_t, std::shared_ptr<const material_descriptor>> material_data_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const skin_palette_data>> skin_palette_data_;
     std::unordered_map<std::uint64_t, std::shared_ptr<const streamed_texture_descriptor>> streamed_texture_data_;
     texture_streaming_io_snapshot texture_streaming_io_;
