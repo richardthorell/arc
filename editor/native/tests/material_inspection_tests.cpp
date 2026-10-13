@@ -87,6 +87,37 @@ TEST_CASE("material inspection resolves instance parents by GUID and includes th
     REQUIRE(json::parse(arc::editor::inspect_saved_material(instance, missing))["definitionReady"] == false);
 }
 
+TEST_CASE("material inspection exposes authored presentation independently of output semantics")
+{
+    auto source = material_source();
+    auto document = json::parse(source.source);
+    auto& graph = document["graph"];
+    graph["groups"] = json::array({{{"id", "surface"}, {"name", "Surface controls"}, {"order", 4}}});
+    auto& node = graph["nodes"][1];
+    node["type"] = "colorRgba";
+    node["values"] = {{"value", json::array({0.1, 0.2, 0.3, 1.0})}};
+    node["parameter"]["group"] = "surface";
+    node["parameter"]["order"] = 7;
+    graph["connections"][0]["to"]["pin"] = "emissive";
+    source.source = document.dump();
+    const auto result = json::parse(arc::editor::inspect_saved_material(source, missing));
+    INFO(result.dump(2));
+    REQUIRE(result["definitionReady"] == true);
+    const auto& parameter = result["parameters"][0];
+    CHECK(parameter["semantic"] == "none");
+    CHECK(parameter["presentation"] == json({{"editorKind", "color"},
+                                             {"groupId", "surface"},
+                                             {"groupLabel", "Surface controls"},
+                                             {"groupOrder", 4},
+                                             {"order", 7}}));
+    graph["nodes"][1]["type"] = "vector4";
+    source.source = document.dump();
+    const auto vector_result = json::parse(arc::editor::inspect_saved_material(source, missing));
+    REQUIRE(vector_result["definitionReady"] == true);
+    CHECK(vector_result["parameters"][0]["id"] == parameter["id"]);
+    CHECK(vector_result["parameters"][0]["presentation"]["editorKind"] == "vector");
+}
+
 TEST_CASE("material inspection rejects malformed and oversized definitions without mutation")
 {
     auto source = material_source();
@@ -145,6 +176,8 @@ TEST_CASE("saved built-in instances expose native function selections and inheri
         {
             found_checker = true;
             REQUIRE(slot["selectedFunctionGuid"] == sources.at("material_functions/checker.arcmatfn").guid);
+            CHECK(slot["inheritedFunctionGuid"] == slot["selectedFunctionGuid"]);
+            CHECK(slot["overridden"] == false);
             REQUIRE(slot["alternatives"].size() >= 2);
         }
     REQUIRE(found_checker);
@@ -174,12 +207,15 @@ TEST_CASE("entity material inspection separates inherited and local values witho
     REQUIRE(local["definitionReady"] == true);
     REQUIRE(local["definitionRevision"] == saved["definitionRevision"]);
     REQUIRE(local["parameters"][0]["overridden"] == true);
+    CHECK(local["parameters"][0]["localValue"] == json::array({0.7}));
+    CHECK(saved["parameters"][0]["localValue"].is_null());
     REQUIRE(local["parameters"][0]["resolvedValue"][0] == 0.7);
     REQUIRE(local["parameters"][0]["inheritedValue"] == saved["parameters"][0]["resolvedValue"]);
     overrides[0]["value"] = json::array({2.0});
     const auto invalid = json::parse(arc::editor::inspect_saved_material(source, missing, overrides.dump()));
     REQUIRE(invalid["definitionReady"] == true);
     REQUIRE(invalid["parameters"][0]["overridden"] == false);
+    CHECK(invalid["parameters"][0]["localValue"].is_null());
     REQUIRE(invalid["diagnostics"][0]["code"] == "stale-entity-override");
     overrides[0]["parameterId"] = "999999";
     const auto stale = json::parse(arc::editor::inspect_saved_material(source, missing, overrides.dump()));

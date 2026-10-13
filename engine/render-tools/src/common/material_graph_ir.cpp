@@ -640,6 +640,39 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                     {.code = shader_compile_error_code::validation_failed,
                      .message = "material graph contains colliding stable parameter IDs"});
             const auto type = parameter_type(node);
+            // Read presentation from the expanded authored graph, not normalized IR: a
+            // color and a vector can have the same execution type but different editors.
+            const auto authored = std::ranges::find_if(document["nodes"], [&](const auto& entry)
+                                                       { return entry.value("id", std::string{}) == node.id; });
+            const auto metadata = authored->value("parameter", json::object());
+            const auto authored_type = authored->value("type", std::string{});
+            material_parameter_presentation presentation{.id = node.parameter_id,
+                                                         .editor_kind =
+                                                             type == shader_parameter_type::texture_2d ? "texture"
+                                                             : authored_type == "colorRgba"            ? "color"
+                                                             : type == shader_parameter_type::float32  ? "scalar"
+                                                                                                       : "vector",
+                                                         .group_id = metadata.value("group", std::string{})};
+            presentation.group_label = presentation.group_id;
+            if (metadata.contains("order") && metadata["order"].is_number())
+            {
+                const auto order = metadata["order"].get<double>();
+                if (std::isfinite(order)) presentation.order = order;
+            }
+            if (document.contains("groups") && document["groups"].is_array())
+                for (const auto& group : document["groups"])
+                    if (!presentation.group_id.empty() && group.is_object() &&
+                        group.value("id", std::string{}) == presentation.group_id)
+                    {
+                        presentation.group_label = group.value("name", presentation.group_id);
+                        if (group.contains("order") && group["order"].is_number())
+                        {
+                            const auto order = group["order"].get<double>();
+                            if (std::isfinite(order)) presentation.group_order = order;
+                        }
+                        break;
+                    }
+            compilation.parameter_presentation.push_back(std::move(presentation));
             compilation.descriptor.parameters.push_back({.id = node.parameter_id,
                                                          .name = node.parameter_name,
                                                          .type = type,

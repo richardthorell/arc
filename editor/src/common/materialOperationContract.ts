@@ -65,8 +65,22 @@ export const materialDescribeOutput = z
           defaultValue: parameterValue,
           inheritedValue: parameterValue,
           overridden: z.boolean(),
+          localValue: parameterValue.optional(),
           slotId: z.string(),
           semantic: z.enum(['none', 'baseColor']),
+          // Optional during the native-contract rollout; Inspector migration will
+          // require the completed version rather than infer missing UI metadata.
+          presentation: z
+            .object({
+              editorKind: z.enum(['scalar', 'vector', 'color', 'texture']),
+              groupId: z.string(),
+              groupLabel: z.string(),
+              groupOrder: z.number().finite().nullable(),
+              order: z.number().finite().nullable(),
+            })
+            .strict()
+            .nullable()
+            .optional(),
           resolvedValue: parameterValue,
           valueStatus: z.enum(['resolved', 'unavailable']),
           range: z.object({ min: z.number(), max: z.number() }).strict().nullable(),
@@ -80,6 +94,8 @@ export const materialDescribeOutput = z
           name: z.string(),
           defaultFunctionGuid: guid,
           selectedFunctionGuid: guid,
+          inheritedFunctionGuid: guid.optional(),
+          overridden: z.boolean().optional(),
           inputs: z.array(pin),
           outputs: z.array(pin),
           alternatives: z.array(assetReference).max(16),
