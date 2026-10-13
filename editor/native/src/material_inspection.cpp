@@ -62,6 +62,7 @@ json checked_value(json value, const render::shader_parameter_descriptor& parame
     const auto type = type_name(parameter.type);
     if (type == "texture2d")
     {
+        if (value.is_string() && value.get<std::string>().empty()) return nullptr;
         if (value.is_string() || (value.is_object() && value.contains("guid") && value["guid"].is_string() &&
                                   assets::parse_asset_guid(value["guid"].get<std::string>())))
             return value;
@@ -280,9 +281,11 @@ std::string inspect_saved_material(const material_inspection_source& source,
                     default_value = values;
                 }
                 auto resolved = default_value;
+                bool value_available = !default_value.is_null();
                 if (const auto found = overrides.find(parameter.id.representation()); found != overrides.end())
                 {
                     resolved = checked_value(found->second, parameter);
+                    value_available = true;
                     overrides.erase(found);
                 }
                 const auto inherited = resolved;
@@ -295,10 +298,12 @@ std::string inspect_saved_material(const material_inspection_source& source,
                         try
                         {
                             resolved =
-                                checked_value(type == "texture2d" ? entry.value("textureReference", json(nullptr))
+                                checked_value(type == "texture2d" ? entry.value("textureReference",
+                                                                                entry.value("texture", json(nullptr)))
                                                                   : entry.at("value"),
                                               parameter);
                             overridden = true;
+                            value_available = true;
                             local_value = resolved;
                         }
                         catch (const std::exception& error)
@@ -345,7 +350,7 @@ std::string inspect_saved_material(const material_inspection_source& source,
                      {"semantic", semantic},
                      {"presentation", presentation},
                      {"resolvedValue", resolved},
-                     {"valueStatus", resolved.is_null() ? "unavailable" : "resolved"},
+                     {"valueStatus", value_available ? "resolved" : "unavailable"},
                      {"range", parameter.has_range ? json{{"min", parameter.minimum}, {"max", parameter.maximum}}
                                                    : json(nullptr)}});
             }

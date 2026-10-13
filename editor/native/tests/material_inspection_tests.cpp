@@ -272,6 +272,9 @@ TEST_CASE("typed entity overrides isolate shared materials and retain last good 
     REQUIRE(local != shared);
     REQUIRE(scene.scene.try_get<arc::scene::mesh_renderer_component>(second)->material == shared);
     const auto saved = arc::editor::entity_material_overrides_json(scene, first);
+    REQUIRE_FALSE(arc::editor::set_entity_material_parameter(scene, renderer, first, parameter, {}, nullptr, false,
+                                                             error, {}, true));
+    REQUIRE(arc::editor::entity_material_overrides_json(scene, first) == saved);
     REQUIRE(json::parse(saved)[0]["value"][0] == 0.75f);
     REQUIRE(arc::editor::entity_material_overrides_json(scene, second) == "[]");
     const std::array invalid{2.0f};
@@ -283,4 +286,101 @@ TEST_CASE("typed entity overrides isolate shared materials and retain last good 
     REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, first, parameter, {}, nullptr, true, error));
     REQUIRE(scene.scene.try_get<arc::scene::mesh_renderer_component>(first)->material == shared);
     REQUIRE(arc::editor::entity_material_overrides_json(scene, first) == "[]");
+
+    SECTION("function reset removes local inputs and selection without changing another entity")
+    {
+        REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, first, parameter, values, nullptr, false,
+                                                           error, "surface-source"));
+        const auto entity_guid = arc::editor::entity_guid_of(scene, first);
+        for (auto& record : scene.preserved_component_records)
+        {
+            if (record.entity != entity_guid || record.component_name != "MeshRenderer") continue;
+            auto data = json::parse(record.json);
+            data["materialParameterOverrides"].push_back(
+                {{"kind", "function"},
+                 {"slotId", "surface-source"},
+                 {"function", {{"guid", instance_guid}, {"pathHint", "old-function.arcmatfn"}}}});
+            record.json = data.dump();
+        }
+        REQUIRE(json::parse(arc::editor::entity_material_overrides_json(scene, first)).size() == 2);
+        REQUIRE(arc::editor::reset_entity_material_function(scene, renderer, first, "surface-source", error));
+        CHECK(arc::editor::entity_material_overrides_json(scene, first) == "[]");
+        CHECK(scene.scene.try_get<arc::scene::mesh_renderer_component>(first)->material == shared);
+        CHECK(scene.scene.try_get<arc::scene::mesh_renderer_component>(second)->material == shared);
+        CHECK_FALSE(arc::editor::reset_entity_material_function(scene, renderer, first, "", error));
+        CHECK(scene.scene.try_get<arc::scene::mesh_renderer_component>(first)->material == shared);
+    }
+}
+
+TEST_CASE("typed clear and function reset commands round trip without replacement values")
+{
+    for (const auto* operation : {"clearTexture", "resetFunction"})
+    {
+        auto payload = json{{"operation", operation},
+                            {"entityGuid", material_guid},
+                            {"definitionRevision", std::string(64, 'a')},
+                            {"expectedSceneRevision", 7},
+                            {"worldEpoch", 3}};
+        payload[std::string_view(operation) == "clearTexture" ? "parameterId" : "slotId"] = "123";
+        auto wire = json{{"kind", "command"}, {"requestId", 51}, {"type", "materials.edit"}, {"payload", payload}};
+        arc::editor::host_command_envelope command;
+        std::string error;
+        REQUIRE(arc::editor::from_json(wire.dump(), command, error));
+        const auto serialized = arc::editor::to_json(command);
+        CHECK(json::parse(serialized)["payload"] == payload);
+        REQUIRE(arc::editor::from_json(serialized, command, error));
+        wire["payload"]["value"] = nullptr;
+        CHECK_FALSE(arc::editor::from_json(wire.dump(), command, error));
+    }
+}
+
+TEST_CASE("typed texture clearing persists an empty override while reset restores inheritance")
+{
+    auto source = material_source();
+    auto document = json::parse(source.source);
+    auto& graph = document["graph"];
+    graph["nodes"][1]["type"] = "textureSample";
+    graph["nodes"][1]["values"] = json::object();
+    graph["connections"][0]["from"]["pin"] = "rgb";
+    graph["connections"][0]["to"]["pin"] = "baseColor";
+    source.source = document.dump();
+    arc::render::renderer renderer;
+    arc::editor::editor_scene_state scene;
+    const auto realized = arc::editor::realize_material_preview_descriptor(source.source, "Texture material");
+    INFO(realized.message);
+    REQUIRE(realized.succeeded);
+    const auto shared = renderer.create_material(realized.material);
+    auto asset = arc::editor::make_default_material_asset("Texture material");
+    asset.material = realized.material;
+    asset.path = source.path;
+    scene.material_library.materials.push_back({source.path, asset, shared});
+    const auto entity = scene.scene.create();
+    scene.scene.emplace<arc::scene::mesh_renderer_component>(entity,
+                                                             arc::scene::mesh_renderer_component{.material = shared});
+    arc::editor::ensure_scene_authoring_metadata(scene);
+    const auto parameter = arc::render::make_shader_parameter_id("custom-value");
+    std::string error;
+    REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, entity, parameter, {}, nullptr, false, error,
+                                                       {}, true));
+    const auto overrides = arc::editor::entity_material_overrides_json(scene, entity);
+    REQUIRE(json::parse(overrides).size() == 1);
+    CHECK(json::parse(overrides)[0]["texture"] == "");
+    const auto inspected = json::parse(arc::editor::inspect_saved_material(source, missing, overrides));
+    REQUIRE(inspected["definitionReady"] == true);
+    CHECK(inspected["parameters"][0]["overridden"] == true);
+    CHECK(inspected["parameters"][0]["resolvedValue"].is_null());
+    CHECK(inspected["parameters"][0]["valueStatus"] == "resolved");
+    const auto cleared_handle = scene.scene.try_get<arc::scene::mesh_renderer_component>(entity)->material;
+    const arc::assets::asset_reference missing_texture{.guid = *arc::assets::parse_asset_guid(instance_guid),
+                                                       .expected_type = arc::assets::asset_types::texture_2d};
+    CHECK_FALSE(arc::editor::set_entity_material_parameter(scene, renderer, entity, parameter, {}, &missing_texture,
+                                                           false, error));
+    CHECK(arc::editor::entity_material_overrides_json(scene, entity) == overrides);
+    CHECK(scene.scene.try_get<arc::scene::mesh_renderer_component>(entity)->material == cleared_handle);
+    CHECK_FALSE(arc::editor::set_entity_material_parameter(scene, renderer, entity, parameter, {}, nullptr, true, error,
+                                                           {}, true));
+    CHECK(arc::editor::entity_material_overrides_json(scene, entity) == overrides);
+    REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, entity, parameter, {}, nullptr, true, error));
+    CHECK(arc::editor::entity_material_overrides_json(scene, entity) == "[]");
+    CHECK(scene.scene.try_get<arc::scene::mesh_renderer_component>(entity)->material == shared);
 }

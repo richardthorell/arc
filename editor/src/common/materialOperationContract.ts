@@ -143,7 +143,9 @@ export const materialEditInputs = {
     value: z.union([z.number(), z.array(z.number()).min(1).max(4), assetReference]),
   }),
   resetOverride: materialEditAuthority.extend({ parameterId: unsignedId }),
+  clearTexture: materialEditAuthority.extend({ parameterId: unsignedId }),
   selectFunction: materialEditAuthority.extend({ slotId: z.string().min(1).max(256), assetGuid: guid }),
+  resetFunction: materialEditAuthority.extend({ slotId: z.string().min(1).max(256) }),
 };
 export const materialEditOutput = z
   .object({
