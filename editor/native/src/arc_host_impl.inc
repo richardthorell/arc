@@ -1361,7 +1361,7 @@ host_response arc_host::execute(const host_command_envelope& command)
 
     if (const auto* bake = std::get_if<host_bake_irradiance_probe_volume_command>(&command.payload))
     {
-        const auto finish = [this, &command](host_response response)
+        const auto finish = [this](host_response response)
         {
             response.scene_revision = state_->scene_revision;
             response.world_epoch = state_->world_epoch;
