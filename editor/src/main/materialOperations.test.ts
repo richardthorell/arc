@@ -55,6 +55,34 @@ function setup(payload: unknown = description) {
 }
 
 describe('native material discovery operations', () => {
+  it('preserves texture identity and separates unresolved defaults from explicit clearing', () => {
+    const parameter = {
+      ...description.parameters[0],
+      type: 'texture2d',
+      defaultValue: null,
+      inheritedValue: null,
+      localValue: null,
+      resolvedValue: null,
+      overridden: true,
+      presentation: null,
+      texture: {
+        assetType: 'texture2d',
+        dimension: '2d',
+        semantic: 'generic_color',
+        defaultStatus: 'unresolved',
+        inheritedStatus: 'unresolved',
+        effectiveStatus: 'empty',
+      },
+    };
+    const result = materialDescribeOutput.parse({ ...description, parameters: [parameter] });
+    expect(result.parameters[0]).toEqual(parameter);
+    expect(
+      materialDescribeOutput.safeParse({
+        ...description,
+        parameters: [{ ...parameter, texture: { ...parameter.texture, effectiveStatus: 'guessed' } }],
+      }).success,
+    ).toBe(false);
+  });
   it('routes bounded function pages through the shared read contract', async () => {
     const page = {
       guid,
