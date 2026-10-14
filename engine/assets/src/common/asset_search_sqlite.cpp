@@ -82,11 +82,6 @@ std::string lowercase(std::string_view value)
     return result;
 }
 
-bool contains_provider(std::span<const std::string> providers, std::string_view provider)
-{
-    return providers.empty() || std::find(providers.begin(), providers.end(), provider) != providers.end();
-}
-
 std::string join_values(std::span<const std::string> values)
 {
     std::string result;
@@ -631,25 +626,60 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
     const auto match_query = use_fts ? fts_query(query_value.text) : std::string{};
     if (use_fts && match_query.empty()) return results;
 
-    const char* sql = use_fts ? "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
+    std::string sql = use_fts ? "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
                                 "d.description,f.authored_tags,f.generated_tags,f.categories,f.metadata "
-                                "FROM search_fts f JOIN search_documents d ON d.guid=f.guid "
-                                "WHERE search_fts MATCH ?;"
+                                "FROM search_fts f JOIN search_documents d ON d.guid=f.guid WHERE search_fts MATCH ?"
                               : "SELECT d.guid,d.type,d.display_name,d.logical_path,d.active_provider,d.title,"
-                                "d.description,'','','','' FROM search_documents d;";
-    sqlite_statement statement(implementation_->database, sql);
+                                "d.description,'','','','' FROM search_documents d WHERE 1=1";
+
+    std::vector<std::string> bindings;
+    if (use_fts) bindings.push_back(match_query);
+
+    if (query_value.filters.type)
+    {
+        sql += " AND d.type=?";
+        bindings.push_back(to_string(*query_value.filters.type));
+    }
+
+    if (!query_value.filters.provider_ids.empty())
+    {
+        sql += " AND d.active_provider IN (";
+        for (std::size_t index = 0; index < query_value.filters.provider_ids.size(); ++index)
+        {
+            if (index != 0) sql.push_back(',');
+            sql.push_back('?');
+            bindings.push_back(query_value.filters.provider_ids[index]);
+        }
+        sql.push_back(')');
+    }
+
+    for (const auto& tag : query_value.filters.required_tags)
+    {
+        sql += " AND (EXISTS(SELECT 1 FROM search_authored_tags at "
+               "WHERE at.guid=d.guid AND at.value=? COLLATE NOCASE)"
+               " OR EXISTS(SELECT 1 FROM search_generated_tags gt "
+               "WHERE gt.guid=d.guid AND gt.value=? COLLATE NOCASE))";
+        bindings.push_back(tag);
+        bindings.push_back(tag);
+    }
+
+    for (const auto& category : query_value.filters.required_categories)
+    {
+        sql += " AND EXISTS(SELECT 1 FROM search_categories c "
+               "WHERE c.guid=d.guid AND c.value=? COLLATE NOCASE)";
+        bindings.push_back(category);
+    }
+    sql.push_back(';');
+
+    sqlite_statement statement(implementation_->database, sql.c_str());
     if (!statement) return results;
-    if (use_fts) bind_text(statement.get(), 1, match_query);
+    for (std::size_t index = 0; index < bindings.size(); ++index)
+        bind_text(statement.get(), static_cast<int>(index + 1), bindings[index]);
 
     while (sqlite3_step(statement.get()) == SQLITE_ROW)
     {
         const auto guid = parse_asset_guid(column_text(statement.get(), 0));
-        const auto type = parse_asset_type_id(column_text(statement.get(), 1));
-        if (!guid || !type) continue;
-        if (query_value.filters.type && *query_value.filters.type != *type) continue;
-
-        const auto provider = column_text(statement.get(), 4);
-        if (!contains_provider(query_value.filters.provider_ids, provider)) continue;
+        if (!guid) continue;
 
         baseline_match match{.matched = true};
         if (use_fts)

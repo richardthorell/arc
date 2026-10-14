@@ -1,9 +1,201 @@
 #include <arc/assets/asset_search.h>
 
 #include <algorithm>
+#include <cctype>
 
 namespace arc::assets
 {
+
+namespace
+{
+
+std::string lowercase_search_token(std::string_view value)
+{
+    std::string result(value);
+    std::transform(result.begin(), result.end(), result.begin(),
+                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+    return result;
+}
+
+std::optional<asset_type_id> search_type_from_alias(std::string_view value)
+{
+    const auto normalized = lowercase_search_token(value);
+    if (const auto parsed = parse_asset_type_id(value)) return parsed;
+
+    if (normalized == "scene") return asset_types::scene;
+    if (normalized == "prefab") return asset_types::prefab;
+    if (normalized == "material" || normalized == "mat") return asset_types::material;
+    if (normalized == "material-instance" || normalized == "material_instance" || normalized == "matinst")
+        return asset_types::material_instance;
+    if (normalized == "material-function" || normalized == "material_function" || normalized == "matfn")
+        return asset_types::material_function;
+    if (normalized == "texture" || normalized == "texture2d" || normalized == "texture_2d")
+        return asset_types::texture_2d;
+    if (normalized == "mesh" || normalized == "static-mesh" || normalized == "static_mesh")
+        return asset_types::static_mesh;
+    if (normalized == "shader") return asset_types::shader;
+    if (normalized == "sound") return asset_types::sound;
+    if (normalized == "audio" || normalized == "audio-clip" || normalized == "audio_clip")
+        return asset_types::audio_clip;
+    if (normalized == "animation" || normalized == "animation-clip" || normalized == "animation_clip")
+        return asset_types::animation_clip;
+    if (normalized == "environment") return asset_types::environment;
+    if (normalized == "flow" || normalized == "flow-graph" || normalized == "flow_graph")
+        return asset_types::flow_graph;
+    return std::nullopt;
+}
+
+void append_unique(std::vector<std::string>& values, std::string value)
+{
+    if (std::find(values.begin(), values.end(), value) == values.end()) values.push_back(std::move(value));
+}
+
+bool apply_scope(std::string_view value, std::vector<std::string>& providers)
+{
+    const auto normalized = lowercase_search_token(value);
+    if (normalized == "project")
+    {
+        append_unique(providers, std::string(asset_provider_ids::project_source));
+        return true;
+    }
+    if (normalized == "builtin" || normalized == "built-in" || normalized == "engine")
+    {
+        append_unique(providers, std::string(asset_provider_ids::builtin_source));
+        append_unique(providers, std::string(asset_provider_ids::virtual_builtin));
+        return true;
+    }
+    return false;
+}
+
+struct parsed_search_token
+{
+    std::string text;
+    std::size_t offset{};
+};
+
+core::result<std::vector<parsed_search_token>, asset_search_parse_error> tokenize_search_query(std::string_view input)
+{
+    std::vector<parsed_search_token> tokens;
+    std::size_t index{};
+    while (index < input.size())
+    {
+        while (index < input.size() && std::isspace(static_cast<unsigned char>(input[index])))
+            ++index;
+        if (index >= input.size()) break;
+
+        const auto start = index;
+        std::string token;
+        bool quoted{};
+        while (index < input.size())
+        {
+            const auto character = input[index];
+            if (character == '\\' && quoted && index + 1 < input.size() &&
+                (input[index + 1] == '"' || input[index + 1] == '\\'))
+            {
+                token.push_back(input[index + 1]);
+                index += 2;
+                continue;
+            }
+            if (character == '"')
+            {
+                quoted = !quoted;
+                ++index;
+                continue;
+            }
+            if (!quoted && std::isspace(static_cast<unsigned char>(character))) break;
+            token.push_back(character);
+            ++index;
+        }
+
+        if (quoted)
+            return core::result<std::vector<parsed_search_token>, asset_search_parse_error>::failure(
+                {.offset = start, .token = token, .message = "Unterminated quoted search value"});
+
+        if (!token.empty()) tokens.push_back({.text = std::move(token), .offset = start});
+    }
+    return core::result<std::vector<parsed_search_token>, asset_search_parse_error>::success(std::move(tokens));
+}
+
+} // namespace
+
+asset_search_parse_result parse_asset_search_query(std::string_view text, std::size_t limit, std::size_t offset)
+{
+    auto tokenized = tokenize_search_query(text);
+    if (!tokenized) return asset_search_parse_result::failure(std::move(tokenized).error());
+
+    asset_search_query query;
+    query.limit = limit;
+    query.offset = offset;
+
+    std::vector<std::string> free_text;
+    for (const auto& token : tokenized.value())
+    {
+        const auto separator = token.text.find(':');
+        if (separator == std::string::npos)
+        {
+            free_text.push_back(token.text);
+            continue;
+        }
+
+        const auto key = lowercase_search_token(std::string_view(token.text).substr(0, separator));
+        const auto value = std::string_view(token.text).substr(separator + 1);
+        if (key.empty() || value.empty())
+            return asset_search_parse_result::failure(
+                {.offset = token.offset, .token = token.text, .message = "Search predicate requires key:value"});
+
+        if (key == "type")
+        {
+            const auto type = search_type_from_alias(value);
+            if (!type)
+                return asset_search_parse_result::failure(
+                    {.offset = token.offset, .token = token.text, .message = "Unknown asset type"});
+            if (query.filters.type && *query.filters.type != *type)
+                return asset_search_parse_result::failure(
+                    {.offset = token.offset, .token = token.text, .message = "Only one type predicate is supported"});
+            query.filters.type = *type;
+        }
+        else if (key == "tag")
+        {
+            append_unique(query.filters.required_tags, std::string(value));
+        }
+        else if (key == "category")
+        {
+            append_unique(query.filters.required_categories, std::string(value));
+        }
+        else if (key == "provider")
+        {
+            const auto normalized = lowercase_search_token(value);
+            if (normalized == "project" || normalized == "builtin" || normalized == "built-in" ||
+                normalized == "engine")
+            {
+                if (!apply_scope(value, query.filters.provider_ids))
+                    return asset_search_parse_result::failure(
+                        {.offset = token.offset, .token = token.text, .message = "Unknown provider alias"});
+            }
+            else
+                append_unique(query.filters.provider_ids, std::string(value));
+        }
+        else if (key == "scope")
+        {
+            if (!apply_scope(value, query.filters.provider_ids))
+                return asset_search_parse_result::failure(
+                    {.offset = token.offset, .token = token.text, .message = "Unknown search scope"});
+        }
+        else
+        {
+            return asset_search_parse_result::failure(
+                {.offset = token.offset, .token = token.text, .message = "Unknown search predicate"});
+        }
+    }
+
+    for (const auto& token : free_text)
+    {
+        if (!query.text.empty()) query.text.push_back(' ');
+        query.text += token;
+    }
+    return asset_search_parse_result::success(std::move(query));
+}
+
 namespace
 {
 
