@@ -2060,7 +2060,13 @@ std::string to_json(const host_query_envelope& envelope)
             else if constexpr (std::is_same_v<query, host_asset_thumbnail_query>)
                 return "{\"path\":" + quote(value.path) + ",\"maxSize\":" + std::to_string(value.max_size) + '}';
             else if constexpr (std::is_same_v<query, host_material_describe_query>)
-                return "{\"guid\":" + quote(value.guid) + ",\"entityGuid\":" + quote(value.entity_guid) + '}';
+                return nlohmann::json{{"guid", value.guid},
+                                      {"entityGuid", value.entity_guid},
+                                      {"functionSlotId", value.function_slot_id},
+                                      {"functionOffset", value.function_offset},
+                                      {"functionLimit", value.function_limit},
+                                      {"discoveryRevision", value.discovery_revision}}
+                    .dump();
             else if constexpr (std::is_same_v<query, host_texture_settings_query> ||
                                std::is_same_v<query, host_asset_inspect_query>)
                 return "{\"guid\":" + quote(value.guid) + '}';
@@ -3767,7 +3773,21 @@ bool from_json(std::string_view json, host_query_envelope& envelope, std::string
             return false;
         }
         if (type == "materials.describe")
-            envelope.payload = host_material_describe_query{std::move(guid), std::move(entity_guid)};
+        {
+            host_material_describe_query query{std::move(guid), std::move(entity_guid)};
+            string_value(json, "functionSlotId", query.function_slot_id);
+            string_value(json, "discoveryRevision", query.discovery_revision);
+            if (!query.function_slot_id.empty() &&
+                (!number_value(json, "functionOffset", query.function_offset) ||
+                 !number_value(json, "functionLimit", query.function_limit) || query.function_limit == 0 ||
+                 query.function_limit > 16 || query.function_offset > 128 || query.function_slot_id.size() > 256 ||
+                 (query.function_offset != 0 && query.discovery_revision.empty())))
+            {
+                error = "Function discovery requires bounded offset/limit and a revision for continuation";
+                return false;
+            }
+            envelope.payload = std::move(query);
+        }
         else
             envelope.payload = host_asset_inspect_query{std::move(guid)};
     }

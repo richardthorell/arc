@@ -48,6 +48,31 @@ export const assetInspectOutput = z
 
 export const materialDescribeInput = assetInspectInput;
 export const materialEntityInspectInput = z.object({ entityGuid: guid }).strict();
+export const materialFunctionListInput = z
+  .object({
+    guid: guid.optional(),
+    entityGuid: guid.optional(),
+    slotId: z.string().min(1).max(256),
+    offset: z.number().int().min(0).max(128).default(0),
+    limit: z.number().int().min(1).max(16).default(16),
+    discoveryRevision: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/u)
+      .optional(),
+  })
+  .strict()
+  .refine((value) => Boolean(value.guid) !== Boolean(value.entityGuid), 'Specify exactly one asset or entity GUID')
+  .refine((value) => value.offset === 0 || Boolean(value.discoveryRevision), 'Continuation requires discoveryRevision');
+export const materialFunctionListOutput = z
+  .object({
+    guid,
+    slotId: z.string(),
+    definitionRevision: z.string().regex(/^[0-9a-f]{64}$/u),
+    discoveryRevision: z.string().regex(/^[0-9a-f]{64}$/u),
+    alternatives: z.array(assetReference).max(16),
+    nextOffset: z.number().int().min(0).max(128).nullable(),
+  })
+  .strict();
 export const materialDescribeOutput = z
   .object({
     guid,

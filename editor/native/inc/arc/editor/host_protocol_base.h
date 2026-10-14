@@ -1799,6 +1799,10 @@ struct host_material_describe_query
 {
     std::string guid;
     std::string entity_guid;
+    std::string function_slot_id;
+    std::uint32_t function_offset{};
+    std::uint32_t function_limit{16};
+    std::string discovery_revision;
 };
 
 struct host_asset_inspect_query

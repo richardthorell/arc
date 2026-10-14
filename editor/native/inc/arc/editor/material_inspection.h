@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -21,6 +22,15 @@ struct material_inspection_source
 using material_inspection_resolver =
     std::function<std::optional<material_inspection_source>(std::string_view guid, std::string_view hint)>;
 
+/** Candidate offsets are valid only for the returned discovery revision. */
+struct material_function_discovery_request
+{
+    std::string slot_id;
+    std::uint32_t offset{};
+    std::uint32_t limit{16};
+    std::string revision;
+};
+
 /**
  * Read-only native compiler reflection. Returns the materials.describe wire contract.
  * Does not allocate renderer resources, apply dirty documents, or write asset files.
@@ -28,6 +38,7 @@ using material_inspection_resolver =
  */
 [[nodiscard]] std::string inspect_saved_material(const material_inspection_source& source,
                                                  const material_inspection_resolver& resolve,
-                                                 std::string_view entity_overrides = "[]");
+                                                 std::string_view entity_overrides = "[]",
+                                                 const material_function_discovery_request& discovery = {});
 
 } // namespace arc::editor

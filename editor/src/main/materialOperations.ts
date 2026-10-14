@@ -6,6 +6,8 @@ import {
   materialEntityInspectInput,
   materialEditInputs,
   materialEditOutput,
+  materialFunctionListInput,
+  materialFunctionListOutput,
 } from '../common/materialOperationContract';
 import type { EditorOperationMetadata } from '../common/editorOperationRegistry';
 import type { EditorAgentHarness } from './editorAgentHarness';
@@ -63,6 +65,29 @@ export function registerMaterialReadOperations(
     input: materialEntityInspectInput,
     output: materialDescribeOutput,
     execute: async (params) => materialDescribeOutput.parse(await query('materials.describe', params)),
+  });
+  harness.registerOperation({
+    ...readMetadata,
+    id: 'materials.listFunctions',
+    domain: 'materials',
+    effects: { reads: ['asset-catalog', 'saved-material-definition', 'scene'], writes: [] },
+    description:
+      'Page compiler-compatible functions for a slot on an asset or entity. Use nextOffset and discoveryRevision unchanged for continuation; restart on stale revision. Reads saved sources and local selections, never saves or edits.',
+    references: [
+      { field: 'guid', resource: 'asset', temporary: false },
+      { field: 'entityGuid', resource: 'entity', temporary: false },
+    ],
+    input: materialFunctionListInput,
+    output: materialFunctionListOutput,
+    execute: async ({ slotId, offset, limit, ...identity }) =>
+      materialFunctionListOutput.parse(
+        await query('materials.describe', {
+          ...identity,
+          functionSlotId: slotId,
+          functionOffset: offset,
+          functionLimit: limit,
+        }),
+      ),
   });
   for (const [operation, input] of Object.entries(materialEditInputs)) {
     harness.registerOperation<Record<string, unknown>, ReturnType<typeof materialEditOutput.parse>>({

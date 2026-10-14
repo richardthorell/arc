@@ -5375,18 +5375,14 @@ host_response arc_host::execute(const host_command_envelope& command)
                     const auto slot =
                         std::ranges::find_if(slots, [&](const auto& entry) { return entry["id"] == payload.slot_id; });
                     if (slot == slots.end()) return fail("Unknown function slot; use materials.describe");
-                    const auto& alternatives = (*slot)["alternatives"];
-                    const auto alternative = std::ranges::find_if(alternatives, [&](const auto& entry)
-                                                                  { return entry["guid"] == payload.asset_guid; });
-                    if (alternative == alternatives.end())
-                        return fail("Function is not a discovered compatible alternative");
                     const auto function = assets::parse_asset_guid(payload.asset_guid);
-                    if (!function || !select_entity_material_function(
-                                         state_->scene, *state_->renderer, entity, payload.slot_id,
-                                         {.guid = *function,
-                                          .expected_type = assets::asset_types::material_function,
-                                          .path_hint = (*alternative)["pathHint"].template get<std::string>()},
-                                         error))
+                    if (!function) return fail("Invalid Material Function GUID");
+                    // Discovery is bounded. It is not the authorization or compatibility
+                    // boundary: the native realization validates the registered function
+                    // against the authored slot contract before replacing the binding.
+                    if (!select_entity_material_function(
+                            state_->scene, *state_->renderer, entity, payload.slot_id,
+                            {.guid = *function, .expected_type = assets::asset_types::material_function}, error))
                         return fail(error);
                 }
                 else
@@ -7152,7 +7148,21 @@ host_response arc_host::query(const host_query_envelope& query) const
                             .error = "Material GUID is missing, unsupported, unreadable, or exceeds the source limit"};
                 auto description = nlohmann::json::parse(inspect_saved_material(
                     *source, resolve,
-                    payload.entity_guid.empty() ? "[]" : entity_material_overrides_json(state_->scene, entity)));
+                    payload.entity_guid.empty() ? "[]" : entity_material_overrides_json(state_->scene, entity),
+                    {.slot_id = payload.function_slot_id,
+                     .offset = payload.function_offset,
+                     .limit = payload.function_limit,
+                     .revision = payload.discovery_revision}));
+                if (!payload.function_slot_id.empty())
+                {
+                    if (!description.value("definitionReady", false) || !description.contains("functionDiscovery"))
+                        return {.request_id = request_id,
+                                .succeeded = false,
+                                .error = "Function discovery failed: " + description["diagnostics"].dump()};
+                    return {.request_id = request_id,
+                            .succeeded = true,
+                            .payload_json = description["functionDiscovery"].dump()};
+                }
                 description["entity"] = nullptr;
                 if (!payload.entity_guid.empty())
                 {

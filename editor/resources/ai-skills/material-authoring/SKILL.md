@@ -3,7 +3,7 @@ format: arc-skill
 formatVersion: 1
 id: material-authoring
 name: Material Authoring
-version: 1.4.0
+version: 1.5.0
 description: Inspect, create, bind, and visually verify ARC materials through typed asset and scene-edit workflows.
 requires:
   - scene.read
@@ -15,6 +15,7 @@ tools:
   - assets.list
   - assets.inspect
   - materials.describe
+  - materials.listFunctions
   - materials.inspectEntity
   - materials.assign
   - materials.setOverride
@@ -67,6 +68,8 @@ Do not manufacture encoded procedural commands or use `entity.setBaseColor` as a
 For a color change, use `materials.setOverride` with the discovered parameter ID and its declared RGB/RGBA shape; do not guess from a label such as Base Color. For textures, supply the discovered Texture2D asset reference (`guid` and `pathHint`), not a filesystem path. `materials.clearTexture` takes the parameter ID and writes an explicit empty override; `materials.resetOverride` instead removes the local override and restores the inherited value. `materials.selectFunction` selects by slot ID and function GUID; `materials.resetFunction` takes only the slot ID and removes its local selection and local inputs, restoring the material/instance's inherited function. Clear/reset operations take no replacement value.
 
 Use live operation discovery to confirm support in the running build. Texture-default/requirement discovery and atomic multi-selection are not yet complete; report unavailable metadata rather than guessing or claiming full Inspector parity.
+
+Function alternatives in descriptions are a bounded preview. Use `materials.listFunctions` with either the material `guid` or `entityGuid`, plus the discovered `slotId`. Continue with the returned `nextOffset` and `discoveryRevision` until `nextOffset` is null; restart discovery if the revision is stale. These pages cover the saved definition's loaded function library/dependencies, not every function in the project. Selection is validated by the native compiler, independently of the first preview page.
 
 ## Existing material workflow
 

@@ -26,7 +26,13 @@ The legacy batch `entity.setBaseColor` operation is a compatibility adapter to `
 
 `materials.resetFunction` accepts edit authority and a stable `slotId`, with no asset GUID or replacement value. The host validates the slot against the current inspected definition before removing its local function selection and local input overrides. This restores the assigned material/instance's inherited selection, not necessarily the parent graph's authored default. Both operations use the existing approved scene transaction and history path and are discovered from the shared operation catalog.
 
-This clear/reset increment does not migrate the Inspector. Texture default/requirement reflection, paginated function discovery, atomic multi-selection, and the final versioned parity contract remain follow-up work before the UI switch and legacy retirement.
+This clear/reset increment does not migrate the Inspector. Texture default/requirement reflection, atomic multi-selection, and the final versioned parity contract remain follow-up work before the UI switch and legacy retirement.
+
+### Paginated function discovery
+
+`materials.listFunctions` accepts exactly one material `guid` or `entityGuid`, a stable `slotId`, and a page `limit` of 1–16. Start at offset zero; continue with `nextOffset` and `discoveryRevision` until the offset is null. Offsets address deterministic GUID-ordered candidates, not returned matches. The revision covers saved source/dependency bytes, local overrides, and slot identity. Stale continuations fail without mutation; restart discovery rather than combine generations.
+
+Pages compile candidates from the saved definition's loaded function library/dependency closure. This is not a second global asset inventory. The existing dependency limits still apply. `materials.selectFunction` validates the requested GUID through native realization and compiler compatibility, rather than requiring it to appear in the first 16 preview choices. Neither discovery nor selection saves dirty documents or changes the Inspector transport.
 
 ## Remaining acceptance work before closing #986
 
@@ -34,7 +40,7 @@ This clear/reset increment does not migrate the Inspector. Texture default/requi
 
 Native graph compilation now returns authoring-only parameter presentation separately from shader layout: editor kind, group identity/label/order, and parameter order. Function inlining namespaces group identities and retains their presentation. Material inspection projects this data by stable parameter ID, exposes explicit local parameter values, and distinguishes inherited function selections from entity overrides. These additive fields are optional during the contract rollout; the future Inspector migration must require the completed, versioned contract rather than guess missing metadata.
 
-The restored Inspector is unchanged at this checkpoint. Texture defaults/clearing, function reset and paginated discovery, atomic multi-selection, revision-safe Inspector integration, and legacy command retirement remain required before removing its compatibility path. Existing saved scene data must remain readable.
+The restored Inspector is unchanged at this checkpoint. Typed texture clearing, function reset, and paginated discovery are available. Texture defaults/requirements, atomic multi-selection, revision-safe Inspector integration, and legacy command retirement remain required before removing its compatibility path. Existing saved scene data must remain readable.
 
 - Complete texture requirement/default-source reflection and confirm inherited values across every function/instance realization path.
 - Audit saved-definition versus cached/dirty runtime generations on assignment, dependency rename/move recovery, and parameter-update specialization caching.

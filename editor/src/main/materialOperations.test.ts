@@ -55,6 +55,71 @@ function setup(payload: unknown = description) {
 }
 
 describe('native material discovery operations', () => {
+  it('routes bounded function pages through the shared read contract', async () => {
+    const page = {
+      guid,
+      slotId: 'source',
+      definitionRevision: 'a'.repeat(64),
+      discoveryRevision: 'b'.repeat(64),
+      alternatives: [{ guid, pathHint: 'functions/example.arcmatfn' }],
+      nextOffset: 5,
+    };
+    const { harness, query, command } = setup(page);
+    expect(
+      await harness.invoke('materials.listFunctions', { entityGuid: guid, slotId: 'source', limit: 5 }, 'agent'),
+    ).toEqual(page);
+    expect(query).toHaveBeenCalledWith('materials.describe', {
+      entityGuid: guid,
+      functionSlotId: 'source',
+      functionOffset: 0,
+      functionLimit: 5,
+    });
+    await harness.invoke(
+      'materials.listFunctions',
+      { guid, slotId: 'source', offset: 5, discoveryRevision: page.discoveryRevision },
+      'agent',
+    );
+    expect(query).toHaveBeenLastCalledWith('materials.describe', {
+      guid,
+      functionSlotId: 'source',
+      functionOffset: 5,
+      functionLimit: 16,
+      discoveryRevision: page.discoveryRevision,
+    });
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid discovery identities, bounds and unversioned continuations before dispatch', async () => {
+    const { harness, query } = setup();
+    for (const params of [
+      { slotId: 'source' },
+      { guid, entityGuid: guid, slotId: 'source' },
+      { guid, slotId: 'source', limit: 17 },
+      { guid, slotId: 'source', offset: 1 },
+      { guid, slotId: 'source', offset: -1 },
+    ])
+      await expect(harness.invoke('materials.listFunctions', params, 'agent')).rejects.toThrow();
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('propagates stale discovery without retrying or mutating', async () => {
+    const { harness, query, command } = setup();
+    query.mockResolvedValueOnce({
+      kind: 'response',
+      requestId: 1,
+      succeeded: false,
+      error: 'Stale function discovery revision; restart discovery',
+      payload: {},
+      sceneRevision: 1,
+      worldEpoch: 1,
+      frameRevision: 1,
+    });
+    await expect(harness.invoke('materials.listFunctions', { guid, slotId: 'source' }, 'agent')).rejects.toThrow(
+      /Stale/,
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(command).not.toHaveBeenCalled();
+  });
   it('preserves authored presentation independently of material semantics', () => {
     const parameter = {
       ...description.parameters[0],
