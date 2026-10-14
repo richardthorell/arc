@@ -91,6 +91,17 @@ export const materialDescribeOutput = z
           inheritedValue: parameterValue,
           overridden: z.boolean(),
           localValue: parameterValue.optional(),
+          texture: z
+            .object({
+              assetType: z.literal('texture2d'),
+              dimension: z.literal('2d'),
+              semantic: z.string(),
+              defaultStatus: z.enum(['resolved', 'empty', 'unresolved']),
+              inheritedStatus: z.enum(['resolved', 'empty', 'unresolved']),
+              effectiveStatus: z.enum(['resolved', 'empty', 'unresolved']),
+            })
+            .strict()
+            .optional(),
           slotId: z.string(),
           semantic: z.enum(['none', 'baseColor']),
           // Optional during the native-contract rollout; Inspector migration will

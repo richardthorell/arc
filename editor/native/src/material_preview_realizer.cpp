@@ -586,20 +586,8 @@ realize_material_preview_descriptor(std::string_view source, std::string_view na
     }
 
     result.texture_sources.resize(compiled.value().descriptor.textures.size());
-    const auto graph_document = nlohmann::json::parse(authored.value().graph_json, nullptr, false);
-    if (!graph_document.is_discarded() && graph_document.contains("nodes") && graph_document["nodes"].is_array())
-    {
-        for (const auto& texture : compiled.value().descriptor.textures)
-        {
-            if (texture.slot >= result.texture_sources.size()) continue;
-            const auto node =
-                std::ranges::find_if(graph_document["nodes"], [&](const auto& candidate)
-                                     { return candidate.is_object() && candidate.value("id", "") == texture.node_id; });
-            if (node == graph_document["nodes"].end()) continue;
-            const auto values = node->value("values", nlohmann::json::object());
-            result.texture_sources[texture.slot] = values.value("texture", "");
-        }
-    }
+    for (const auto& texture : compiled.value().descriptor.textures)
+        if (texture.slot < result.texture_sources.size()) result.texture_sources[texture.slot] = texture.default_source;
 
     static_material_evaluator evaluator(compiled.value());
     const auto apply_scalar = [&](material_surface_output output, float& target)

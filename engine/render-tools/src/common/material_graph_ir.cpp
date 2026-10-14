@@ -718,6 +718,11 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                              std::string(kind_name) + " sample '" + node.id + "' requires a vec3 coordinate input"});
                 }
                 const auto slot = static_cast<std::uint32_t>(compilation.descriptor.textures.size());
+                const auto authored = std::ranges::find_if(document["nodes"], [&](const auto& entry)
+                                                           { return entry.value("id", "") == node.id; });
+                const auto default_source = authored == document["nodes"].end()
+                                                ? std::string{}
+                                                : authored->value("values", json::object()).value("texture", "");
                 const auto dimension_slot = static_cast<std::uint32_t>(std::ranges::count_if(
                     compilation.descriptor.textures,
                     [&node](const material_texture_binding& binding) { return binding.type == node.texture_type; }));
@@ -728,7 +733,8 @@ material_graph_compile_result compile_material_graph_json(std::string_view graph
                      .parameter_name = node.exposed_parameter ? node.parameter_name : std::string{},
                      .type = node.texture_type,
                      .dimension_slot = dimension_slot,
-                     .semantic = node.texture_semantic_value});
+                     .semantic = node.texture_semantic_value,
+                     .default_source = default_source});
                 break;
             }
             case material_ir_node_kind::normal_map:
