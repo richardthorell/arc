@@ -243,6 +243,7 @@ cook_result asset_cooker::cook_bundle(const content_bundle_catalog& bundles, std
     }
     auto bundle_request = request;
     bundle_request.roots = resolved.roots;
+    bundle_request.bundle_ids = bundles.closure(bundle_id, implementation_->assets->database()).bundles;
     bundle_request.bundle_role = std::string(bundle_id);
     return cook(bundle_request);
 }
@@ -252,6 +253,7 @@ cook_result asset_cooker::cook(const cook_request& request)
     cook_result result;
     result.manifest.target = request.target;
     result.manifest.roots = request.roots;
+    result.manifest.bundle_ids = request.bundle_ids;
     const auto registry = implementation_->assets->snapshot();
     if (request.roots.empty())
     {
@@ -539,13 +541,10 @@ asset_status save_cook_manifest(const std::filesystem::path& path, const cook_ma
             dependencies.push_back(to_string(dependency));
         edges.push_back({{"asset", to_string(edge.asset)}, {"dependencies", std::move(dependencies)}});
     }
-    const json document{{"dependencyEdges", std::move(edges)},
-                        {"format", "arc.cook-manifest"},
-                        {"version", manifest.version},
-                        {"buildId", manifest.build_id},
-                        {"target", target_json(manifest.target)},
-                        {"roots", std::move(roots)},
-                        {"dependencyClosure", std::move(closure)},
+    const json document{{"bundleIds", manifest.bundle_ids}, {"dependencyEdges", std::move(edges)},
+                        {"format", "arc.cook-manifest"},    {"version", manifest.version},
+                        {"buildId", manifest.build_id},     {"target", target_json(manifest.target)},
+                        {"roots", std::move(roots)},        {"dependencyClosure", std::move(closure)},
                         {"artifacts", std::move(artifacts)}};
     std::error_code filesystem_error;
     std::filesystem::create_directories(path.parent_path(), filesystem_error);
@@ -609,6 +608,18 @@ cook_manifest_result load_cook_manifest(const std::filesystem::path& path)
         !document.contains("artifacts") || !document["artifacts"].is_array())
     {
         return failure("Cook manifest contains invalid asset identities");
+    }
+    if (document.contains("bundleIds"))
+    {
+        if (!document["bundleIds"].is_array()) return failure("Cook manifest has invalid bundle IDs");
+        for (const auto& id : document["bundleIds"])
+        {
+            if (!id.is_string() || id.get<std::string>().empty()) return failure("Cook manifest has invalid bundle ID");
+            manifest.bundle_ids.push_back(id.get<std::string>());
+        }
+        if (!std::is_sorted(manifest.bundle_ids.begin(), manifest.bundle_ids.end()) ||
+            std::adjacent_find(manifest.bundle_ids.begin(), manifest.bundle_ids.end()) != manifest.bundle_ids.end())
+            return failure("Cook manifest bundle IDs must be sorted and unique");
     }
     for (const auto& edge : document.value("dependencyEdges", json::array()))
     {
@@ -692,6 +703,18 @@ cook_manifest_result parse_cook_manifest(std::span<const std::byte> bytes, std::
         !document.contains("artifacts") || !document["artifacts"].is_array())
         return failure("Cook manifest contains invalid asset identities");
 
+    if (document.contains("bundleIds"))
+    {
+        if (!document["bundleIds"].is_array()) return failure("Cook manifest has invalid bundle IDs");
+        for (const auto& id : document["bundleIds"])
+        {
+            if (!id.is_string() || id.get<std::string>().empty()) return failure("Cook manifest has invalid bundle ID");
+            manifest.bundle_ids.push_back(id.get<std::string>());
+        }
+        if (!std::is_sorted(manifest.bundle_ids.begin(), manifest.bundle_ids.end()) ||
+            std::adjacent_find(manifest.bundle_ids.begin(), manifest.bundle_ids.end()) != manifest.bundle_ids.end())
+            return failure("Cook manifest bundle IDs must be sorted and unique");
+    }
     for (const auto& edge : document.value("dependencyEdges", json::array()))
     {
         if (!edge.is_object()) return failure("Cook manifest has invalid dependency edges");
