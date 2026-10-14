@@ -813,7 +813,7 @@ export const generatedEcsComponents = [
     "canonicalName": "arc::scene.irradiance_probe_volume_component",
     "displayName": "Irradiance Probe Volume",
     "description": "Authored instance of a baked irradiance probe-volume asset.",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "fields": [
       {
         "id": "0000000000000001",
@@ -867,6 +867,69 @@ export const generatedEcsComponents = [
         "unit": "none",
         "constraints": {},
         "kind": "bool",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000005",
+        "name": "bake_extents",
+        "displayName": "Bake Extents",
+        "description": "Local half-extents in metres used to place baked irradiance probes.",
+        "unit": "meters",
+        "constraints": {},
+        "kind": "vector3",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000006",
+        "name": "probe_spacing",
+        "displayName": "Probe Spacing",
+        "description": "Target local spacing between baked irradiance probes.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0.01
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000007",
+        "name": "blend_distance",
+        "displayName": "Blend Distance",
+        "description": "Distance over which equal-priority overlapping probe volumes blend.",
+        "unit": "meters",
+        "constraints": {
+          "minimum": 0
+        },
+        "kind": "float",
+        "flags": [
+          "serialized",
+          "editable",
+          "prefab_override"
+        ]
+      },
+      {
+        "id": "0000000000000008",
+        "name": "bake_samples",
+        "displayName": "Bake Samples",
+        "description": "Deterministic spherical ray samples evaluated per baked probe.",
+        "unit": "none",
+        "constraints": {
+          "minimum": 16,
+          "maximum": 4096
+        },
+        "kind": "uint",
         "flags": [
           "serialized",
           "editable",

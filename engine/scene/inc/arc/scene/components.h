@@ -411,6 +411,14 @@ struct irradiance_probe_volume_component
     std::uint64_t asset_generation{};
     /** Loaded backend-neutral probe data. Runtime-only; not serialized. */
     std::shared_ptr<const render::irradiance_probe_volume_descriptor> runtime_volume;
+    /** Authoring half-extents in local metres used when baking a new/rebaked volume. */
+    math::vector3f bake_extents{5.0f, 3.0f, 5.0f};
+    /** Target probe spacing in local metres; dimensions are derived deterministically. */
+    float probe_spacing{2.0f};
+    /** Equal-priority overlap blend distance stored into the baked asset. */
+    float blend_distance{1.0f};
+    /** Deterministic spherical samples per probe. */
+    std::uint32_t bake_samples{128u};
     float intensity{1.0f};
     std::int32_t priority_bias{};
     bool enabled{true};

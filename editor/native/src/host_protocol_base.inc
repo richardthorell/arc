@@ -1146,6 +1146,8 @@ std::string command_type(const host_command_payload& payload)
                 return "asset.reimport";
             else if constexpr (std::is_same_v<type, host_asset_scan_command>)
                 return "asset.scan";
+            else if constexpr (std::is_same_v<type, host_bake_irradiance_probe_volume_command>)
+                return "lighting.bakeIrradianceProbeVolume";
             else if constexpr (std::is_same_v<type, host_set_texture_streaming_mode_command>)
                 return "asset.setTextureStreamingMode";
             else if constexpr (std::is_same_v<type, host_patch_texture_settings_command>)
@@ -1694,6 +1696,10 @@ std::string to_json(const host_command_envelope& envelope)
             else if constexpr (std::is_same_v<type, host_asset_reimport_command> ||
                                std::is_same_v<type, host_asset_cancel_import_command>)
                 return "{\"guid\":" + quote(payload.guid) + '}';
+            else if constexpr (std::is_same_v<type, host_bake_irradiance_probe_volume_command>)
+                return "{\"entity\":" + to_json(payload.entity) +
+                       ",\"outputPath\":" + quote(payload.output_path.generic_string()) +
+                       ",\"samples\":" + std::to_string(payload.samples) + '}';
             else if constexpr (std::is_same_v<type, host_shader_compile_command>)
                 return "{\"path\":" + quote(payload.path.generic_string()) + ",\"source\":" + quote(payload.source) +
                        ",\"entryPoint\":" + quote(payload.entry_point) + ",\"stage\":" + quote(payload.stage) +
@@ -2472,6 +2478,25 @@ bool from_json(std::string_view json, host_command_envelope& envelope, std::stri
         string_value(payload, "originalPath", original_path);
         command.path = std::move(recovery_path);
         command.original_path = std::move(original_path);
+        envelope.payload = std::move(command);
+    }
+    else if (type == "lighting.bakeIrradianceProbeVolume")
+    {
+        host_bake_irradiance_probe_volume_command command;
+        if (!entity_field_value(payload, "entity", command.entity))
+        {
+            error = "Irradiance probe bake requires an entity";
+            return false;
+        }
+        std::string output_path;
+        string_value(payload, "outputPath", output_path);
+        command.output_path = std::filesystem::path(output_path);
+        number_value(payload, "samples", command.samples);
+        if (command.samples != 0u && (command.samples < 16u || command.samples > 4096u))
+        {
+            error = "Irradiance probe bake samples must be between 16 and 4096";
+            return false;
+        }
         envelope.payload = std::move(command);
     }
     else if (type == "asset.reimport" || type == "asset.cancelImport" || type == "asset.setTextureStreamingMode" ||

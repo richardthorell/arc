@@ -1359,6 +1359,76 @@ host_response arc_host::execute(const host_command_envelope& command)
         }
     }
 
+    if (const auto* bake = std::get_if<host_bake_irradiance_probe_volume_command>(&command.payload))
+    {
+        const auto finish = [this](host_response response)
+        {
+            response.scene_revision = state_->scene_revision;
+            response.world_epoch = state_->world_epoch;
+            response.frame_revision = state_->viewport_frame_index;
+            return response;
+        };
+        const auto fail_bake = [this, &command, &finish](std::string message, ecs::entity entity = {})
+        {
+            arc::diagnostics::warn("editor.lighting", message);
+            push_event(state_->events, state_->event_sequence, host_event_type::command_failed, message, entity);
+            return finish({.request_id = command.request_id, .succeeded = false, .error = std::move(message)});
+        };
+
+        if (!state_->project_open) return fail_bake("Cannot bake irradiance probes before a project is open");
+        if (state_->project_read_only) return fail_bake("Cannot bake irradiance probes in a read-only project");
+        if (!state_->renderer || !state_->asset_registry)
+            return fail_bake("Irradiance probe baking requires renderer and asset services");
+        if (!ensure_irradiance_probe_volume_importer(*state_))
+            return fail_bake("Could not register the irradiance probe-volume importer");
+
+        const auto entity = to_scene_entity(bake->entity);
+        if (!state_->scene.scene.alive(entity) ||
+            !state_->scene.scene.has<scene::irradiance_probe_volume_component>(entity))
+            return fail_bake("Irradiance probe bake target is missing its probe-volume component", entity);
+
+        std::filesystem::path output_path = bake->output_path;
+        if (output_path.empty())
+        {
+            const auto guid = entity_guid_of(state_->scene, entity);
+            output_path = std::filesystem::path{"Content/Lighting/ProbeVolumes"} /
+                          (ecs::to_string(guid) + ".arcprobe");
+        }
+
+        auto before = state_->scene;
+        scene::scene_irradiance_probe_bake_request request{
+            .volume_entity = entity,
+            .output_path = output_path};
+        if (bake->samples != 0u) request.options.samples_per_probe = bake->samples;
+
+        auto baked = scene::bake_scene_irradiance_probe_volume(
+            state_->scene.scene, *state_->renderer, *state_->asset_registry, request);
+        if (!baked.succeeded)
+        {
+            state_->scene = std::move(before);
+            return fail_bake(baked.error.empty() ? "Irradiance probe bake failed" : baked.error, entity);
+        }
+
+        ++state_->scene_revision;
+        state_->history.record("Bake Irradiance Probe Volume", std::move(before), state_->scene);
+        push_event(state_->events, state_->event_sequence, host_event_type::component_changed,
+                   "Irradiance probe volume baked", entity);
+        for (const auto& diagnostic : baked.diagnostics)
+            arc::diagnostics::info("editor.lighting", diagnostic);
+
+        nlohmann::json payload{
+            {"assetPath", baked.asset.path_hint},
+            {"probeCount", baked.statistics.probe_count},
+            {"primaryRays", baked.statistics.primary_rays},
+            {"shadowRays", baked.statistics.shadow_rays},
+            {"geometryHits", baked.statistics.geometry_hits},
+            {"invalidProbes", baked.statistics.invalid_probes},
+            {"staticMeshes", baked.static_meshes},
+            {"staticTriangles", baked.static_triangles},
+            {"staticDirectionalLights", baked.static_directional_lights}};
+        return finish({.request_id = command.request_id, .succeeded = true, .payload_json = payload.dump()});
+    }
+
     const auto* material_command = std::get_if<host_set_entity_material_command>(&command.payload);
     const auto mesh_reference = material_command ? mesh_assignment_path(*material_command) : std::nullopt;
     const auto primitive_type = material_command ? primitive_assignment_type(*material_command) : std::nullopt;
