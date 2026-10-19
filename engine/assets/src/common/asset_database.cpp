@@ -56,6 +56,7 @@ asset_database_record database_record_from(const asset_snapshot& snapshot)
     record.revision = snapshot.revision;
     record.strong_references = snapshot.strong_references;
     record.pins = snapshot.pins;
+    record.source_missing = snapshot.source_missing;
     record.has_last_good = snapshot.has_last_good;
 
     auto provider = provider_for(snapshot);
