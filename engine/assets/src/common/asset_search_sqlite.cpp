@@ -588,8 +588,8 @@ asset_status persistent_asset_search_index::erase(asset_guid guid)
         return sqlite_failure(implementation_->database, implementation_->path, "Could not begin search delete");
 
     const auto guid_text = to_string(guid);
-    for (const auto* table : {"search_fts", "search_metadata", "search_categories", "search_generated_tags",
-                              "search_authored_tags", "search_documents"})
+    for (const auto* table : {"search_fts", "search_properties", "search_metadata", "search_categories",
+                              "search_generated_tags", "search_authored_tags", "search_documents"})
     {
         const std::string sql = "DELETE FROM " + std::string(table) + " WHERE guid=?;";
         sqlite_statement statement(implementation_->database, sql.c_str());
@@ -705,7 +705,8 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
 
     for (const auto& property : query_value.filters.property_filters)
     {
-        sql += " AND EXISTS(SELECT 1 FROM search_properties p WHERE p.guid=d.guid AND p.key=? AND p.kind=CAST(? AS INTEGER)";
+        sql += " AND EXISTS(SELECT 1 FROM search_properties p "
+               "WHERE p.guid=d.guid AND p.key=? AND p.kind=CAST(? AS INTEGER)";
         bindings.push_back(property.key);
         bindings.push_back(std::to_string(static_cast<int>(property.kind)));
 
