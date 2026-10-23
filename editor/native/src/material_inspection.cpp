@@ -3,6 +3,7 @@
 #include <arc/assets/assets.h>
 #include <arc/render_tools/material_asset.h>
 #include <arc/render_tools/material_graph.h>
+#include <arc/render_tools/texture_cooker.h>
 
 #include <nlohmann/json.hpp>
 
@@ -62,6 +63,7 @@ json checked_value(json value, const render::shader_parameter_descriptor& parame
     const auto type = type_name(parameter.type);
     if (type == "texture2d")
     {
+        if (value.is_null()) return nullptr;
         if (value.is_string() && value.get<std::string>().empty()) return nullptr;
         if (value.is_string() || (value.is_object() && value.contains("guid") && value["guid"].is_string() &&
                                   assets::parse_asset_guid(value["guid"].get<std::string>())))
@@ -274,6 +276,45 @@ std::string inspect_saved_material(const material_inspection_source& source,
             {
                 const auto type = type_name(parameter.type);
                 json default_value = nullptr;
+                json texture = nullptr;
+                std::string texture_status;
+                // Resolve locators through the registry, never expose a path as asset identity.
+                const auto resolve_texture = [&](const json& value, std::string& status) -> json
+                {
+                    if (value.is_null() || (value.is_string() && value.get<std::string>().empty()))
+                    {
+                        status = "empty";
+                        return nullptr;
+                    }
+                    std::string guid, hint;
+                    if (value.is_object())
+                    {
+                        guid = value.value("guid", "");
+                        hint = value.value("pathHint", "");
+                    }
+                    else if (value.is_string())
+                    {
+                        const auto locator = value.get<std::string>();
+                        if (assets::parse_asset_guid(locator))
+                            guid = locator;
+                        else
+                            hint = locator;
+                    }
+                    const auto asset = (guid.empty() && hint.empty()) ? std::nullopt : resolve(guid, hint);
+                    if (!asset || asset->kind != "texture2d" || !assets::parse_asset_guid(asset->guid) ||
+                        (!guid.empty() && asset->guid != guid))
+                    {
+                        status = "unresolved";
+                        result["diagnostics"].push_back(
+                            {{"code", "unresolved-texture"},
+                             {"message", "Texture parameter " + std::to_string(parameter.id.representation()) +
+                                             " references a missing or incompatible Texture2D asset: " +
+                                             (guid.empty() ? hint : guid)}});
+                        return nullptr;
+                    }
+                    status = "resolved";
+                    return {{"guid", asset->guid}, {"pathHint", asset->path}};
+                };
                 const auto count = type == "float"  ? 1u
                                    : type == "vec2" ? 2u
                                    : type == "vec3" ? 3u
@@ -287,13 +328,36 @@ std::string inspect_saved_material(const material_inspection_source& source,
                 }
                 auto resolved = default_value;
                 bool value_available = !default_value.is_null();
+                if (type == "texture2d")
+                {
+                    const auto binding =
+                        std::ranges::find_if(compiled.value().descriptor.textures,
+                                             [&](const auto& entry) { return entry.parameter_id == parameter.id; });
+                    texture_status = "unresolved";
+                    if (binding != compiled.value().descriptor.textures.end())
+                        default_value = resolve_texture(binding->default_source, texture_status);
+                    texture = {{"assetType", "texture2d"},
+                               {"dimension", "2d"},
+                               {"semantic", binding == compiled.value().descriptor.textures.end()
+                                                ? "unknown"
+                                                : std::string(rt::texture_semantic_name(binding->semantic))},
+                               {"defaultStatus", texture_status}};
+                    resolved = default_value;
+                    value_available = texture_status != "unresolved";
+                }
                 if (const auto found = overrides.find(parameter.id.representation()); found != overrides.end())
                 {
                     resolved = checked_value(found->second, parameter);
                     value_available = true;
+                    if (type == "texture2d")
+                    {
+                        resolved = resolve_texture(resolved, texture_status);
+                        value_available = texture_status != "unresolved";
+                    }
                     overrides.erase(found);
                 }
                 const auto inherited = resolved;
+                if (type == "texture2d") texture["inheritedStatus"] = texture_status;
                 bool overridden = false;
                 json local_value = nullptr;
                 for (const auto& entry : local)
@@ -309,6 +373,11 @@ std::string inspect_saved_material(const material_inspection_source& source,
                                               parameter);
                             overridden = true;
                             value_available = true;
+                            if (type == "texture2d")
+                            {
+                                resolved = resolve_texture(resolved, texture_status);
+                                value_available = texture_status != "unresolved";
+                            }
                             local_value = resolved;
                         }
                         catch (const std::exception& error)
@@ -358,6 +427,11 @@ std::string inspect_saved_material(const material_inspection_source& source,
                      {"valueStatus", value_available ? "resolved" : "unavailable"},
                      {"range", parameter.has_range ? json{{"min", parameter.minimum}, {"max", parameter.maximum}}
                                                    : json(nullptr)}});
+                if (type == "texture2d")
+                {
+                    texture["effectiveStatus"] = texture_status;
+                    result["parameters"].back()["texture"] = std::move(texture);
+                }
             }
             if (!overrides.empty())
                 throw std::runtime_error("Instance contains stale parameter overrides; repair the saved definition");

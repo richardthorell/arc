@@ -7108,8 +7108,15 @@ host_response arc_host::query(const host_query_envelope& query) const
                     const auto kind = asset->type == assets::asset_types::material            ? "material"
                                       : asset->type == assets::asset_types::material_instance ? "materialInstance"
                                       : asset->type == assets::asset_types::material_function ? "materialFunction"
+                                      : asset->type == assets::asset_types::texture_2d        ? "texture2d"
                                                                                               : "unsupported";
                     if (std::string_view(kind) == "unsupported") return std::nullopt;
+                    if (std::string_view(kind) == "texture2d")
+                    {
+                        if (asset->source_missing) return std::nullopt;
+                        return material_inspection_source{
+                            .guid = assets::to_string(asset->guid), .path = asset->source_hint, .kind = kind};
+                    }
                     const auto resolved =
                         resolve_editor_asset(state_->assets, state_->asset_registry.get(), state_->project.root,
                                              host_asset_reference{.guid = assets::to_string(asset->guid)});

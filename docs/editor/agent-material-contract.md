@@ -26,7 +26,15 @@ The legacy batch `entity.setBaseColor` operation is a compatibility adapter to `
 
 `materials.resetFunction` accepts edit authority and a stable `slotId`, with no asset GUID or replacement value. The host validates the slot against the current inspected definition before removing its local function selection and local input overrides. This restores the assigned material/instance's inherited selection, not necessarily the parent graph's authored default. Both operations use the existing approved scene transaction and history path and are discovered from the shared operation catalog.
 
-This clear/reset increment does not migrate the Inspector. Texture default/requirement reflection, atomic multi-selection, and the final versioned parity contract remain follow-up work before the UI switch and legacy retirement.
+These increments do not migrate the Inspector. Atomic multi-selection and the final versioned parity contract remain follow-up work before the UI switch and legacy retirement.
+
+### Texture metadata
+
+The native compiler retains texture default locators after function expansion, separately from shader execution layout. Inspection resolves these and instance/entity overrides through the asset registry to GUID-backed references. Texture binaries are not read for reflection. Missing, ambiguous, or wrong-type references produce diagnostics without confusing them with intentional empty bindings.
+
+Texture2D parameters include `texture` metadata: `assetType`, `dimension`, compiler `semantic`, and separate `defaultStatus`, `inheritedStatus`, and `effectiveStatus` values (`resolved`, `empty`, or `unresolved`). Existing default/inherited/local/resolved value fields retain their distinct meanings. An unresolved texture has a null value and unavailable status; clearing produces an explicit local empty override with resolved value status. Reset removes the local entry and restores inheritance. Semantic is usage metadata, not an additional enforced color-space or format constraint. Runtime resource reporting still does not prove rendered correctness.
+
+The additive field is optional during rollout for older host responses. The Inspector migration must require the completed version rather than silently guess omitted metadata. Cube/3D editing is not enabled by this Texture2D contract.
 
 ### Paginated function discovery
 
@@ -40,9 +48,9 @@ Pages compile candidates from the saved definition's loaded function library/dep
 
 Native graph compilation now returns authoring-only parameter presentation separately from shader layout: editor kind, group identity/label/order, and parameter order. Function inlining namespaces group identities and retains their presentation. Material inspection projects this data by stable parameter ID, exposes explicit local parameter values, and distinguishes inherited function selections from entity overrides. These additive fields are optional during the contract rollout; the future Inspector migration must require the completed, versioned contract rather than guess missing metadata.
 
-The restored Inspector is unchanged at this checkpoint. Typed texture clearing, function reset, and paginated discovery are available. Texture defaults/requirements, atomic multi-selection, revision-safe Inspector integration, and legacy command retirement remain required before removing its compatibility path. Existing saved scene data must remain readable.
+The restored Inspector is unchanged at this checkpoint. Typed texture clearing, Texture2D metadata, function reset, and paginated discovery are available. Atomic multi-selection, revision-safe Inspector integration, and legacy command retirement remain required before removing its compatibility path. Existing saved scene data must remain readable.
 
-- Complete texture requirement/default-source reflection and confirm inherited values across every function/instance realization path.
+- Confirm texture inheritance and rendered defaults in live function/instance realization acceptance.
 - Audit saved-definition versus cached/dirty runtime generations on assignment, dependency rename/move recovery, and parameter-update specialization caching.
 - Validate native compilation, undo/reopen, function/texture last-good behavior and the seeded multipart rendered scenario on an updated editor build. Native reflection and parameter isolation/rejection regression tests are included, but are not a substitute for rendered acceptance.
 - Verify restored Inspector presentation for all parameter kinds and groups without reintroducing a frontend graph evaluator.

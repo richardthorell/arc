@@ -266,6 +266,8 @@ struct material_texture_binding
     shader_parameter_type type{shader_parameter_type::texture_2d};
     std::uint32_t dimension_slot{};
     texture_semantic semantic{texture_semantic::generic_color};
+    /** Saved authoring locator after function expansion; not part of the shader ABI. */
+    std::string default_source;
 };
 
 /** @brief Runtime/input capabilities required by a compiled material graph. */

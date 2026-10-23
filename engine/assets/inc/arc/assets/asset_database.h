@@ -116,6 +116,7 @@ struct asset_database_record
     std::uint64_t revision{};
     std::uint32_t strong_references{};
     std::uint32_t pins{};
+    bool source_missing{};
     bool has_last_good{};
 
     friend bool operator==(const asset_database_record&, const asset_database_record&) = default;

@@ -445,6 +445,123 @@ TEST_CASE("typed clear and function reset commands round trip without replacemen
     }
 }
 
+TEST_CASE("texture inspection distinguishes GUID defaults inheritance empty and unresolved values")
+{
+    auto source = material_source();
+    auto document = json::parse(source.source);
+    auto& graph = document["graph"];
+    graph["nodes"][1]["type"] = "textureSample";
+    graph["nodes"][1]["values"] = {{"texture", "textures/albedo.png"}};
+    graph["connections"][0]["from"]["pin"] = "rgb";
+    graph["connections"][0]["to"]["pin"] = "baseColor";
+    source.source = document.dump();
+    arc::editor::material_inspection_source texture{
+        .guid = instance_guid, .path = "textures/albedo.png", .kind = "texture2d"};
+    const arc::editor::material_inspection_resolver resolve =
+        [&](auto guid, auto hint) -> std::optional<arc::editor::material_inspection_source>
+    {
+        if (guid == material_guid) return source;
+        if (guid.empty() ? hint == texture.path : guid == texture.guid) return texture;
+        return std::nullopt;
+    };
+    const auto saved = json::parse(arc::editor::inspect_saved_material(source, resolve));
+    INFO(saved.dump(2));
+    REQUIRE(saved["definitionReady"] == true);
+    const auto& parameter = saved["parameters"][0];
+    CHECK(parameter["defaultValue"]["guid"] == texture.guid);
+    CHECK(parameter["texture"]["defaultStatus"] == "resolved");
+    CHECK(parameter["texture"]["dimension"] == "2d");
+    const auto cleared = json::array({{{"kind", "texture"}, {"parameterId", parameter["id"]}, {"texture", ""}}});
+    const auto empty =
+        json::parse(arc::editor::inspect_saved_material(source, resolve, cleared.dump()))["parameters"][0];
+    CHECK(empty["texture"]["defaultStatus"] == "resolved");
+    CHECK(empty["texture"]["inheritedStatus"] == "resolved");
+    CHECK(empty["texture"]["effectiveStatus"] == "empty");
+    CHECK(empty["overridden"] == true);
+    CHECK(empty["valueStatus"] == "resolved");
+    auto local = cleared;
+    local[0]["textureReference"] = {{"guid", texture.guid}, {"pathHint", "old/name.png"}};
+    const auto bound = json::parse(arc::editor::inspect_saved_material(source, resolve, local.dump()));
+    CHECK(bound["parameters"][0]["localValue"]["guid"] == texture.guid);
+    CHECK(bound["parameters"][0]["texture"]["effectiveStatus"] == "resolved");
+    local[0]["textureReference"]["guid"] = "44444444-4444-4444-8444-444444444444";
+    local[0]["textureReference"]["pathHint"] = texture.path;
+    const auto stale = json::parse(arc::editor::inspect_saved_material(source, resolve, local.dump()));
+    CHECK(stale["parameters"][0]["texture"]["effectiveStatus"] == "unresolved");
+    CHECK(stale["parameters"][0]["overridden"] == true);
+    CHECK(stale["parameters"][0]["texture"]["inheritedStatus"] == "resolved");
+    const auto unresolved = json::parse(arc::editor::inspect_saved_material(source, missing));
+    CHECK(unresolved["definitionReady"] == true);
+    CHECK(unresolved["parameters"][0]["texture"]["defaultStatus"] == "unresolved");
+    CHECK(unresolved["parameters"][0]["valueStatus"] == "unavailable");
+    REQUIRE_FALSE(unresolved["diagnostics"].empty());
+
+    json instance_document{{"version", 1},
+                           {"name", "Instance"},
+                           {"parent", {{"guid", material_guid}, {"pathHint", source.path}}},
+                           {"parameterOverrides", json::array({{{"parameterId", parameter["id"]}, {"value", ""}}})},
+                           {"functionOverrides", json::array()}};
+    arc::editor::material_inspection_source instance{.guid = "33333333-3333-4333-8333-333333333333",
+                                                     .path = "instance.arcmatinst",
+                                                     .kind = "materialInstance",
+                                                     .source = instance_document.dump()};
+    const auto inherited_empty = json::parse(arc::editor::inspect_saved_material(instance, resolve));
+    INFO(inherited_empty.dump(2));
+    REQUIRE(inherited_empty["definitionReady"] == true);
+    CHECK(inherited_empty["parameters"][0]["texture"]["inheritedStatus"] == "empty");
+    CHECK(inherited_empty["parameters"][0]["overridden"] == false);
+
+    graph["nodes"][1]["values"]["texture"] = texture.guid;
+    source.source = document.dump();
+    texture.path = "textures/renamed.png";
+    const auto renamed = json::parse(arc::editor::inspect_saved_material(source, resolve));
+    CHECK(renamed["parameters"][0]["defaultValue"]["pathHint"] == texture.path);
+    texture.kind = "material";
+    const auto incompatible = json::parse(arc::editor::inspect_saved_material(source, resolve));
+    CHECK(incompatible["parameters"][0]["texture"]["defaultStatus"] == "unresolved");
+}
+
+TEST_CASE("expanded function textures retain compiler default sources")
+{
+    auto source = material_source();
+    auto document = json::parse(source.source);
+    document["graph"]["nodes"][1] = {{"id", "call"},
+                                     {"type", "functionCall"},
+                                     {"values", {{"path", "functions/texture.arcmatfn"}, {"slotId", "surface"}}}};
+    document["graph"]["connections"][0]["from"] = {{"nodeId", "call"}, {"pin", "result"}};
+    document["graph"]["connections"][0]["to"]["pin"] = "baseColor";
+    source.source = document.dump();
+    const arc::editor::material_inspection_source function{
+        .guid = instance_guid, .path = "functions/texture.arcmatfn", .kind = "materialFunction", .source = R"({
+        "kind":"materialFunction","version":1,"name":"Textured","inputs":[],
+        "outputs":[{"id":"result","name":"Result","type":"vec3"}],
+        "graph":{"version":1,"nodes":[
+          {"id":"image","type":"textureSample","values":{"texture":"images/color.png"},
+           "parameter":{"exposed":true,"name":"Image"}},
+          {"id":"out","type":"functionOutput","values":{}}],
+        "connections":[{"from":{"nodeId":"image","pin":"rgb"},"to":{"nodeId":"out","pin":"result"}}]}})"};
+    const arc::editor::material_inspection_source texture{
+        .guid = "33333333-3333-4333-8333-333333333333", .path = "images/color.png", .kind = "texture2d"};
+    const arc::editor::material_inspection_resolver resolve =
+        [&](auto guid, auto hint) -> std::optional<arc::editor::material_inspection_source>
+    {
+        if (guid.empty() ? hint == function.path : guid == function.guid) return function;
+        if (guid.empty() ? hint == texture.path : guid == texture.guid) return texture;
+        return std::nullopt;
+    };
+    const auto inspected = json::parse(arc::editor::inspect_saved_material(source, resolve));
+    INFO(inspected.dump(2));
+    REQUIRE(inspected["definitionReady"] == true);
+    REQUIRE(inspected["parameters"].size() == 1);
+    CHECK(inspected["parameters"][0]["defaultValue"]["guid"] == texture.guid);
+    const std::vector<arc::render::tools::material_function_source> functions{
+        {.path = function.path, .identity = function.guid, .source = function.source}};
+    const auto compiled = arc::render::tools::compile_material_graph_json(document["graph"].dump(), functions);
+    REQUIRE(compiled);
+    REQUIRE(compiled.value().descriptor.textures.size() == 1);
+    CHECK(compiled.value().descriptor.textures[0].default_source == texture.path);
+}
+
 TEST_CASE("typed texture clearing persists an empty override while reset restores inheritance")
 {
     auto source = material_source();
