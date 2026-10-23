@@ -498,7 +498,7 @@ TEST_CASE("texture inspection distinguishes GUID defaults inheritance empty and 
 
     json instance_document{{"version", 1},
                            {"name", "Instance"},
-                           {"parent", {{"guid", material_guid}}},
+                           {"parent", {{"guid", material_guid}, {"pathHint", source.path}}},
                            {"parameterOverrides", json::array({{{"parameterId", parameter["id"]}, {"value", ""}}})},
                            {"functionOverrides", json::array()}};
     arc::editor::material_inspection_source instance{.guid = "33333333-3333-4333-8333-333333333333",
