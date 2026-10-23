@@ -653,3 +653,167 @@ TEST_CASE("persistent asset search FTS supports token prefixes without a full do
     std::error_code error;
     std::filesystem::remove_all(root, error);
 }
+
+TEST_CASE("asset search parser separates free text from structured predicates")
+{
+    using namespace arc::assets;
+
+    auto parsed = parse_asset_search_query(
+        R"(rustic chair type:mesh tag:"old wood" category:"Furniture/Chair" scope:project)", 25, 5);
+    REQUIRE(parsed);
+
+    const auto& query = parsed.value();
+    CHECK(query.text == "rustic chair");
+    REQUIRE(query.filters.type);
+    CHECK(*query.filters.type == asset_types::static_mesh);
+    CHECK(query.filters.required_tags == std::vector<std::string>{"old wood"});
+    CHECK(query.filters.required_categories == std::vector<std::string>{"Furniture/Chair"});
+    CHECK(query.filters.provider_ids == std::vector<std::string>{std::string(asset_provider_ids::project_source)});
+    CHECK(query.limit == 25);
+    CHECK(query.offset == 5);
+}
+
+TEST_CASE("asset search parser resolves built-in scope aliases")
+{
+    using namespace arc::assets;
+
+    auto parsed = parse_asset_search_query("scope:builtin");
+    REQUIRE(parsed);
+
+    CHECK(parsed.value().filters.provider_ids ==
+          std::vector<std::string>{std::string(asset_provider_ids::builtin_source),
+                                   std::string(asset_provider_ids::virtual_builtin)});
+}
+
+TEST_CASE("asset search parser supports escaped quotes in quoted values")
+{
+    using namespace arc::assets;
+
+    auto parsed = parse_asset_search_query(R"(tag:"designer \"classic\"")");
+    REQUIRE(parsed);
+    CHECK(parsed.value().filters.required_tags == std::vector<std::string>{R"(designer "classic")"});
+}
+
+TEST_CASE("asset search parser reports unknown predicates and malformed quotes")
+{
+    using namespace arc::assets;
+
+    auto unknown = parse_asset_search_query("bike colour:red");
+    REQUIRE_FALSE(unknown);
+    CHECK(unknown.error().token == "colour:red");
+    CHECK(unknown.error().message == "Unknown search predicate");
+    CHECK(unknown.error().offset == 5);
+
+    auto quote = parse_asset_search_query(R"(tag:"old wood)");
+    REQUIRE_FALSE(quote);
+    CHECK(quote.error().message == "Unterminated quoted search value");
+}
+
+TEST_CASE("asset search parser rejects conflicting type predicates")
+{
+    using namespace arc::assets;
+
+    auto parsed = parse_asset_search_query("type:mesh type:material");
+    REQUIRE_FALSE(parsed);
+    CHECK(parsed.error().message == "Only one type predicate is supported");
+}
+
+TEST_CASE("persistent asset search applies structured predicates with free text")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-structured-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto rustic_chair = generate_asset_guid();
+    const auto modern_chair = generate_asset_guid();
+    const auto rustic_texture = generate_asset_guid();
+
+    REQUIRE(index->reset(
+        std::vector<asset_search_document>{{.guid = rustic_chair,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Chair_A",
+                                            .active_provider = std::string(asset_provider_ids::project_source),
+                                            .title = "Chair_A",
+                                            .authored_tags = {"rustic", "old wood"},
+                                            .categories = {"Furniture/Chair"},
+                                            .source_generation = 1,
+                                            .source_revision = 1},
+                                           {.guid = modern_chair,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Chair_B",
+                                            .active_provider = std::string(asset_provider_ids::project_source),
+                                            .title = "Chair_B",
+                                            .authored_tags = {"modern"},
+                                            .categories = {"Furniture/Chair"},
+                                            .source_generation = 1,
+                                            .source_revision = 1},
+                                           {.guid = rustic_texture,
+                                            .type = asset_types::texture_2d,
+                                            .display_name = "Rustic_Wood",
+                                            .active_provider = std::string(asset_provider_ids::builtin_source),
+                                            .title = "Rustic_Wood",
+                                            .authored_tags = {"rustic", "old wood"},
+                                            .categories = {"Surface/Wood"},
+                                            .source_generation = 1,
+                                            .source_revision = 1}}));
+
+    auto parsed = parse_asset_search_query(
+        R"(chair type:mesh tag:rustic tag:"old wood" category:"Furniture/Chair" scope:project)");
+    REQUIRE(parsed);
+    const auto results = index->query(parsed.value());
+
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == rustic_chair);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search supports structured-only indexed filtering")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-structured-only-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto project_mesh = generate_asset_guid();
+    const auto builtin_mesh = generate_asset_guid();
+
+    REQUIRE(index->reset(
+        std::vector<asset_search_document>{{.guid = project_mesh,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Project Prop",
+                                            .active_provider = std::string(asset_provider_ids::project_source),
+                                            .title = "Project Prop",
+                                            .authored_tags = {"hero"},
+                                            .source_generation = 1,
+                                            .source_revision = 1},
+                                           {.guid = builtin_mesh,
+                                            .type = asset_types::static_mesh,
+                                            .display_name = "Built-in Prop",
+                                            .active_provider = std::string(asset_provider_ids::builtin_source),
+                                            .title = "Built-in Prop",
+                                            .authored_tags = {"hero"},
+                                            .source_generation = 1,
+                                            .source_revision = 1}}));
+
+    auto parsed = parse_asset_search_query("type:mesh tag:hero scope:project");
+    REQUIRE(parsed);
+    CHECK(parsed.value().text.empty());
+
+    const auto results = index->query(parsed.value());
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == project_mesh);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}

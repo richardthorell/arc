@@ -18,6 +18,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace arc::assets
@@ -73,6 +74,8 @@ struct asset_search_filters
 {
     std::optional<asset_type_id> type;
     std::vector<std::string> provider_ids;
+    std::vector<std::string> required_tags;
+    std::vector<std::string> required_categories;
 };
 
 struct asset_search_query
@@ -82,6 +85,31 @@ struct asset_search_query
     std::size_t limit{100};
     std::size_t offset{};
 };
+
+struct asset_search_parse_error
+{
+    std::size_t offset{};
+    std::string token;
+    std::string message;
+};
+
+using asset_search_parse_result = core::result<asset_search_query, asset_search_parse_error>;
+
+/**
+ * Parse free text mixed with structured asset predicates.
+ *
+ * Supported predicates in S2.3:
+ *   type:<alias|asset-type-uuid>
+ *   tag:<value>
+ *   category:<value>
+ *   provider:<provider-id|project|builtin>
+ *   scope:<project|builtin>
+ *
+ * Values containing whitespace may be quoted. Unknown predicates and malformed
+ * quotes are errors rather than silently becoming free text.
+ */
+[[nodiscard]] asset_search_parse_result parse_asset_search_query(std::string_view text, std::size_t limit = 100,
+                                                                 std::size_t offset = 0);
 
 enum class asset_search_match_kind : std::uint8_t
 {
