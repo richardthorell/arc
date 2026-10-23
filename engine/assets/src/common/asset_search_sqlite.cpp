@@ -228,11 +228,18 @@ asset_status create_schema(sqlite3* database, const std::filesystem::path& path)
         "CREATE TABLE IF NOT EXISTS search_metadata("
         "guid TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,origin INTEGER NOT NULL,"
         "PRIMARY KEY(guid,key,value,origin));"
+        "CREATE TABLE IF NOT EXISTS search_properties("
+        "guid TEXT NOT NULL,key TEXT NOT NULL,kind INTEGER NOT NULL,string_value TEXT NOT NULL,"
+        "numeric_value REAL NOT NULL,origin INTEGER NOT NULL);"
+        "CREATE INDEX IF NOT EXISTS search_properties_number "
+        "ON search_properties(key,kind,numeric_value,guid);"
+        "CREATE INDEX IF NOT EXISTS search_properties_string "
+        "ON search_properties(key,kind,string_value COLLATE NOCASE,guid);"
         "CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5("
         "guid UNINDEXED,display_name,title,logical_path,description,"
         "authored_tags,generated_tags,categories,metadata,"
         "tokenize='unicode61 remove_diacritics 2');"
-        "INSERT OR IGNORE INTO search_meta(key,value) VALUES('schema_version','2');"
+        "INSERT OR IGNORE INTO search_meta(key,value) VALUES('schema_version','3');"
         "COMMIT;";
     if (!execute(database, schema)) return sqlite_failure(database, path, "Could not create search index schema");
     return asset_status::success();
@@ -242,6 +249,7 @@ asset_status clear_schema(sqlite3* database, const std::filesystem::path& path)
 {
     const char* sql = "BEGIN;"
                       "DROP TABLE IF EXISTS search_fts;"
+                      "DROP TABLE IF EXISTS search_properties;"
                       "DROP TABLE IF EXISTS search_metadata;"
                       "DROP TABLE IF EXISTS search_categories;"
                       "DROP TABLE IF EXISTS search_generated_tags;"
@@ -331,6 +339,30 @@ asset_status write_document(sqlite3* database, const std::filesystem::path& path
         sqlite3_bind_int(insert_metadata.get(), 4, static_cast<int>(metadata.origin));
         if (sqlite3_step(insert_metadata.get()) != SQLITE_DONE)
             return sqlite_failure(database, path, "Could not write search metadata");
+    }
+
+    sqlite_statement erase_properties(database, "DELETE FROM search_properties WHERE guid=?;");
+    if (!erase_properties) return sqlite_failure(database, path, "Could not prepare property reset");
+    bind_text(erase_properties.get(), 1, to_string(document.guid));
+    if (sqlite3_step(erase_properties.get()) != SQLITE_DONE)
+        return sqlite_failure(database, path, "Could not clear search properties");
+
+    sqlite_statement insert_property(
+        database,
+        "INSERT INTO search_properties(guid,key,kind,string_value,numeric_value,origin) VALUES(?,?,?,?,?,?);");
+    if (!insert_property) return sqlite_failure(database, path, "Could not prepare property insert");
+    for (const auto& property : document.properties)
+    {
+        sqlite3_reset(insert_property.get());
+        sqlite3_clear_bindings(insert_property.get());
+        bind_text(insert_property.get(), 1, to_string(document.guid));
+        bind_text(insert_property.get(), 2, property.key);
+        sqlite3_bind_int(insert_property.get(), 3, static_cast<int>(property.kind));
+        bind_text(insert_property.get(), 4, property.string_value);
+        sqlite3_bind_double(insert_property.get(), 5, property.number_value);
+        sqlite3_bind_int(insert_property.get(), 6, static_cast<int>(property.origin));
+        if (sqlite3_step(insert_property.get()) != SQLITE_DONE)
+            return sqlite_failure(database, path, "Could not write search property");
     }
 
     sqlite_statement erase_fts(database, "DELETE FROM search_fts WHERE guid=?;");
@@ -454,6 +486,7 @@ asset_status persistent_asset_search_index::reset(std::span<const asset_search_d
 
     if (!execute(implementation_->database, "BEGIN IMMEDIATE;"
                                             "DELETE FROM search_fts;"
+                                            "DELETE FROM search_properties;"
                                             "DELETE FROM search_metadata;"
                                             "DELETE FROM search_categories;"
                                             "DELETE FROM search_generated_tags;"
@@ -668,6 +701,30 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
         sql += " AND EXISTS(SELECT 1 FROM search_categories c "
                "WHERE c.guid=d.guid AND c.value=? COLLATE NOCASE)";
         bindings.push_back(category);
+    }
+
+    for (const auto& property : query_value.filters.property_filters)
+    {
+        sql += " AND EXISTS(SELECT 1 FROM search_properties p WHERE p.guid=d.guid AND p.key=? AND p.kind=?";
+        bindings.push_back(property.key);
+        bindings.push_back(std::to_string(static_cast<int>(property.kind)));
+
+        if (property.kind == asset_search_property_kind::string)
+        {
+            sql += " AND p.string_value=? COLLATE NOCASE)";
+            bindings.push_back(property.string_value);
+            continue;
+        }
+
+        switch (property.comparison)
+        {
+        case asset_search_comparison::equal: sql += " AND p.numeric_value=?)"; break;
+        case asset_search_comparison::less: sql += " AND p.numeric_value<?)"; break;
+        case asset_search_comparison::less_equal: sql += " AND p.numeric_value<=?)"; break;
+        case asset_search_comparison::greater: sql += " AND p.numeric_value>?)"; break;
+        case asset_search_comparison::greater_equal: sql += " AND p.numeric_value>=?)"; break;
+        }
+        bindings.push_back(std::to_string(property.number_value));
     }
     sql.push_back(';');
 
