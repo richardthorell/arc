@@ -818,13 +818,11 @@ TEST_CASE("persistent asset search supports structured-only indexed filtering")
     std::filesystem::remove_all(root, error);
 }
 
-
 TEST_CASE("asset search parser supports numeric and string property predicates")
 {
     using namespace arc::assets;
 
-    auto parsed = parse_asset_search_query(
-        "rustic chair type:mesh triangles:<100000 roughness:>=0.8 format:bc7");
+    auto parsed = parse_asset_search_query("rustic chair type:mesh triangles:<100000 roughness:>=0.8 format:bc7");
     REQUIRE(parsed);
 
     const auto& filters = parsed.value().filters.property_filters;
@@ -906,16 +904,12 @@ TEST_CASE("persistent asset search applies indexed numeric property comparisons"
          .type = asset_types::static_mesh,
          .display_name = "Rustic Chair Low",
          .title = "Rustic Chair Low",
-         .properties = {{.key = "triangles",
-                         .kind = asset_search_property_kind::number,
-                         .number_value = 48000.0}}},
+         .properties = {{.key = "triangles", .kind = asset_search_property_kind::number, .number_value = 48000.0}}},
         {.guid = high_poly,
          .type = asset_types::static_mesh,
          .display_name = "Rustic Chair High",
          .title = "Rustic Chair High",
-         .properties = {{.key = "triangles",
-                         .kind = asset_search_property_kind::number,
-                         .number_value = 240000.0}}}}));
+         .properties = {{.key = "triangles", .kind = asset_search_property_kind::number, .number_value = 240000.0}}}}));
 
     auto parsed = parse_asset_search_query("rustic chair type:mesh triangles:<100000");
     REQUIRE(parsed);
@@ -947,16 +941,12 @@ TEST_CASE("persistent asset search applies indexed material numeric properties")
          .type = asset_types::material,
          .display_name = "Rough Stone",
          .title = "Rough Stone",
-         .properties = {{.key = "roughness",
-                         .kind = asset_search_property_kind::number,
-                         .number_value = 0.92}}},
+         .properties = {{.key = "roughness", .kind = asset_search_property_kind::number, .number_value = 0.92}}},
         {.guid = smooth,
          .type = asset_types::material,
          .display_name = "Smooth Stone",
          .title = "Smooth Stone",
-         .properties = {{.key = "roughness",
-                         .kind = asset_search_property_kind::number,
-                         .number_value = 0.2}}}}));
+         .properties = {{.key = "roughness", .kind = asset_search_property_kind::number, .number_value = 0.2}}}}));
 
     auto parsed = parse_asset_search_query("type:material roughness:>0.8");
     REQUIRE(parsed);
@@ -988,16 +978,12 @@ TEST_CASE("persistent asset search applies indexed string properties case-insens
          .type = asset_types::texture_2d,
          .display_name = "Rock BC7",
          .title = "Rock BC7",
-         .properties = {{.key = "format",
-                         .kind = asset_search_property_kind::string,
-                         .string_value = "BC7"}}},
+         .properties = {{.key = "format", .kind = asset_search_property_kind::string, .string_value = "BC7"}}},
         {.guid = rgba,
          .type = asset_types::texture_2d,
          .display_name = "Rock RGBA",
          .title = "Rock RGBA",
-         .properties = {{.key = "format",
-                         .kind = asset_search_property_kind::string,
-                         .string_value = "RGBA8"}}}}));
+         .properties = {{.key = "format", .kind = asset_search_property_kind::string, .string_value = "RGBA8"}}}}));
 
     auto parsed = parse_asset_search_query("type:texture format:bc7");
     REQUIRE(parsed);

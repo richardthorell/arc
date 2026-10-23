@@ -719,11 +719,21 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
 
         switch (property.comparison)
         {
-        case asset_search_comparison::equal: sql += " AND p.numeric_value=CAST(? AS REAL))"; break;
-        case asset_search_comparison::less: sql += " AND p.numeric_value<CAST(? AS REAL))"; break;
-        case asset_search_comparison::less_equal: sql += " AND p.numeric_value<=CAST(? AS REAL))"; break;
-        case asset_search_comparison::greater: sql += " AND p.numeric_value>CAST(? AS REAL))"; break;
-        case asset_search_comparison::greater_equal: sql += " AND p.numeric_value>=CAST(? AS REAL))"; break;
+            case asset_search_comparison::equal:
+                sql += " AND p.numeric_value=CAST(? AS REAL))";
+                break;
+            case asset_search_comparison::less:
+                sql += " AND p.numeric_value<CAST(? AS REAL))";
+                break;
+            case asset_search_comparison::less_equal:
+                sql += " AND p.numeric_value<=CAST(? AS REAL))";
+                break;
+            case asset_search_comparison::greater:
+                sql += " AND p.numeric_value>CAST(? AS REAL))";
+                break;
+            case asset_search_comparison::greater_equal:
+                sql += " AND p.numeric_value>=CAST(? AS REAL))";
+                break;
         }
         bindings.push_back(std::to_string(property.number_value));
     }

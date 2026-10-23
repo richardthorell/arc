@@ -43,7 +43,6 @@ struct asset_search_metadata_value
     friend bool operator==(const asset_search_metadata_value&, const asset_search_metadata_value&) = default;
 };
 
-
 enum class asset_search_property_kind : std::uint8_t
 {
     string,

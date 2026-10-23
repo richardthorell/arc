@@ -68,15 +68,13 @@ bool apply_scope(std::string_view value, std::vector<std::string>& providers)
     return false;
 }
 
-
 std::optional<asset_search_property_kind> search_property_kind(std::string_view key)
 {
     const auto normalized = lowercase_search_token(key);
-    if (normalized == "triangles" || normalized == "vertices" || normalized == "width" ||
-        normalized == "height" || normalized == "roughness" || normalized == "metallic" ||
-        normalized == "duration" || normalized == "sample-rate" || normalized == "sample_rate" ||
-        normalized == "channels" || normalized == "dependencies" ||
-        normalized == "reverse-dependencies" || normalized == "reverse_dependencies" ||
+    if (normalized == "triangles" || normalized == "vertices" || normalized == "width" || normalized == "height" ||
+        normalized == "roughness" || normalized == "metallic" || normalized == "duration" ||
+        normalized == "sample-rate" || normalized == "sample_rate" || normalized == "channels" ||
+        normalized == "dependencies" || normalized == "reverse-dependencies" || normalized == "reverse_dependencies" ||
         normalized == "generation" || normalized == "revision")
         return asset_search_property_kind::number;
 
@@ -144,8 +142,7 @@ parse_property_filter(std::string_view key, std::string_view value, asset_search
     double number{};
     const auto parsed = std::from_chars(value.data(), value.data() + value.size(), number);
     if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size())
-        return core::result<asset_search_property_filter, std::string>::failure(
-            "Numeric property value is invalid");
+        return core::result<asset_search_property_filter, std::string>::failure("Numeric property value is invalid");
 
     filter.number_value = number;
     return core::result<asset_search_property_filter, std::string>::success(std::move(filter));
@@ -325,19 +322,18 @@ asset_search_document make_asset_search_document(const asset_database_record& re
     document.description = record.description;
     document.authored_tags = record.authored_tags;
     document.categories = record.authored_categories;
-    document.properties = {
-        {.key = "dependencies",
-         .kind = asset_search_property_kind::number,
-         .number_value = static_cast<double>(record.dependencies.size())},
-        {.key = "reverse-dependencies",
-         .kind = asset_search_property_kind::number,
-         .number_value = static_cast<double>(record.reverse_dependencies.size())},
-        {.key = "generation",
-         .kind = asset_search_property_kind::number,
-         .number_value = static_cast<double>(record.generation)},
-        {.key = "revision",
-         .kind = asset_search_property_kind::number,
-         .number_value = static_cast<double>(record.revision)}};
+    document.properties = {{.key = "dependencies",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.dependencies.size())},
+                           {.key = "reverse-dependencies",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.reverse_dependencies.size())},
+                           {.key = "generation",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.generation)},
+                           {.key = "revision",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.revision)}};
     document.source_generation = record.generation;
     document.source_revision = record.revision;
     return document;
