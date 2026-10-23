@@ -609,14 +609,18 @@
                            "type":  "irradiance_probe_volume_component",
                            "id":  "a7c0000000000001000000000000002a",
                            "display":  "Irradiance Probe Volume",
-                           "version":  1,
+                           "version":  2,
                            "customSerialization":  true,
                            "description":  "Authored instance of a baked irradiance probe-volume asset.",
                            "fields":  [
                                { "name": "asset", "id": "0000000000000001", "kind": "asset", "display": "Probe Volume", "description": "Baked .arcprobe volume asset.", "unit": "none", "constraints": {} },
                                { "name": "intensity", "id": "0000000000000002", "kind": "float", "display": "Intensity", "description": "Scales this volume's indirect diffuse contribution.", "unit": "multiplier", "constraints": { "minimum": 0 } },
                                { "name": "priority_bias", "id": "0000000000000003", "kind": "int", "display": "Priority Bias", "description": "Added to the baked volume priority when overlapping volumes resolve.", "unit": "none", "constraints": {} },
-                               { "name": "enabled", "id": "0000000000000004", "kind": "bool", "display": "Enabled", "description": "Registers this volume for baked indirect lighting.", "unit": "none", "constraints": {} }
+                               { "name": "enabled", "id": "0000000000000004", "kind": "bool", "display": "Enabled", "description": "Registers this volume for baked indirect lighting.", "unit": "none", "constraints": {} },
+                               { "name": "bake_extents", "id": "0000000000000005", "kind": "vector3", "display": "Bake Extents", "description": "Local half-extents in metres used to place baked irradiance probes.", "unit": "meters", "constraints": {} },
+                               { "name": "probe_spacing", "id": "0000000000000006", "kind": "float", "display": "Probe Spacing", "description": "Target local spacing between baked irradiance probes.", "unit": "meters", "constraints": { "minimum": 0.01 } },
+                               { "name": "blend_distance", "id": "0000000000000007", "kind": "float", "display": "Blend Distance", "description": "Distance over which equal-priority overlapping probe volumes blend.", "unit": "meters", "constraints": { "minimum": 0 } },
+                               { "name": "bake_samples", "id": "0000000000000008", "kind": "uint", "display": "Bake Samples", "description": "Deterministic spherical ray samples evaluated per baked probe.", "unit": "none", "constraints": { "minimum": 16, "maximum": 4096 } }
                            ]
                        },
                        {

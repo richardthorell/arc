@@ -249,6 +249,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                                                             "AreaLight",
                                                             "ReflectionProbe",
                                                             "IrradianceProbe",
+                                                            "IrradianceProbeVolume",
                                                             "BakedLighting",
                                                             "WorldEnvironment",
                                                             "Terrain",
@@ -260,7 +261,8 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                                                             "WorldRegion"};
     if (!known.contains(name)) return true;
     const auto component_version = value["version"].get<std::uint32_t>();
-    const bool supports_v2 = name == "Terrain" || name == "Water" || name == "Camera" || name == "MeshRenderer" ||
+    const bool supports_v2 = name == "Terrain" || name == "Water" || name == "Camera" ||
+                             name == "IrradianceProbeVolume" || name == "MeshRenderer" ||
                              name == "VirtualMeshRenderer" || name == "Vegetation" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight" ||
                              name == "PrefabInstance" || name == "Flow";
@@ -427,6 +429,26 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                                      [](const json& coefficient) { return finite_array(coefficient, 3); })))
                    ? true
                    : fail("has invalid irradiance probe values");
+    if (name == "IrradianceProbeVolume")
+    {
+        if (!value.contains("asset") || !validate_asset_reference_json(value["asset"], {}) ||
+            !finite_number(value, "intensity") || value["intensity"].get<double>() < 0.0 ||
+            !value.contains("priorityBias") || !value["priorityBias"].is_number_integer() ||
+            !value.contains("enabled") || !value["enabled"].is_boolean())
+            return fail("has invalid baked irradiance probe-volume fields");
+        if (component_version >= 2u)
+        {
+            if (!value.contains("bakeExtents") || !finite_array(value["bakeExtents"], 3) ||
+                !finite_number(value, "probeSpacing") || value["probeSpacing"].get<double>() <= 0.0 ||
+                !finite_number(value, "blendDistance") || value["blendDistance"].get<double>() < 0.0 ||
+                !value.contains("bakeSamples") || !value["bakeSamples"].is_number_unsigned() ||
+                value["bakeSamples"].get<std::uint32_t>() < 16u || value["bakeSamples"].get<std::uint32_t>() > 4096u)
+                return fail("has invalid irradiance bake settings");
+            for (const auto& extent : value["bakeExtents"])
+                if (extent.get<double>() <= 0.0) return fail("has non-positive irradiance bake extents");
+        }
+        return true;
+    }
     if (name == "BakedLighting")
         return value.contains("uvChannel") && value["uvChannel"].is_number_unsigned() &&
                        value["uvChannel"].get<std::uint32_t>() < 8u && value.contains("scaleOffset") &&
@@ -1153,8 +1175,12 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
                                          {"sphericalHarmonics", std::move(coefficients)}};
     }
     if (const auto* component = state.scene.try_get<scene::irradiance_probe_volume_component>(value))
-        components["IrradianceProbeVolume"] = {{"version", 1},
+        components["IrradianceProbeVolume"] = {{"version", 2},
                                                {"asset", serialize_asset_reference(component->asset, project_root)},
+                                               {"bakeExtents", vector3(component->bake_extents)},
+                                               {"probeSpacing", component->probe_spacing},
+                                               {"blendDistance", component->blend_distance},
+                                               {"bakeSamples", component->bake_samples},
                                                {"intensity", component->intensity},
                                                {"priorityBias", component->priority_bias},
                                                {"enabled", component->enabled}};
@@ -1937,6 +1963,13 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 probe.asset = read_asset_reference(source["asset"], assets::asset_types::irradiance_probe_volume,
                                                    project_root, asset_registry);
                 probe.asset.expected_type = assets::asset_types::irradiance_probe_volume;
+                if (source.value("version", 1u) >= 2u)
+                {
+                    if (source.contains("bakeExtents")) probe.bake_extents = read_vector3(source["bakeExtents"]);
+                    probe.probe_spacing = source.value("probeSpacing", probe.probe_spacing);
+                    probe.blend_distance = source.value("blendDistance", probe.blend_distance);
+                    probe.bake_samples = source.value("bakeSamples", probe.bake_samples);
+                }
                 probe.intensity = source.value("intensity", probe.intensity);
                 probe.priority_bias = source.value("priorityBias", probe.priority_bias);
                 probe.enabled = source.value("enabled", probe.enabled);

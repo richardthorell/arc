@@ -765,6 +765,24 @@ TEST_CASE("mesh renderer snapshot preserves secondary content root catalog path"
     std::filesystem::remove_all(root, cleanup_error);
 }
 
+TEST_CASE("irradiance probe bake command JSON round trips")
+{
+    const arc::editor::host_command_envelope command{
+        .request_id = 77,
+        .payload = arc::editor::host_bake_irradiance_probe_volume_command{
+            .entity = {12, 3}, .output_path = "Content/Lighting/ProbeVolumes/test.arcprobe", .samples = 256u}};
+
+    const auto json = arc::editor::to_json(command);
+    arc::editor::host_command_envelope parsed;
+    std::string error;
+    REQUIRE(arc::editor::from_json(json, parsed, error));
+    REQUIRE(parsed.command_type == "lighting.bakeIrradianceProbeVolume");
+    const auto& bake = std::get<arc::editor::host_bake_irradiance_probe_volume_command>(parsed.payload);
+    REQUIRE(bake.entity == arc::editor::host_entity_id{12, 3});
+    REQUIRE(bake.output_path == std::filesystem::path{"Content/Lighting/ProbeVolumes/test.arcprobe"});
+    REQUIRE(bake.samples == 256u);
+}
+
 TEST_CASE("world environment JSON round trips every field and enum")
 {
     arc::editor::host_world_environment_snapshot environment;
