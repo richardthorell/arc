@@ -817,3 +817,181 @@ TEST_CASE("persistent asset search supports structured-only indexed filtering")
     std::error_code error;
     std::filesystem::remove_all(root, error);
 }
+
+TEST_CASE("asset search parser supports numeric and string property predicates")
+{
+    using namespace arc::assets;
+
+    auto parsed = parse_asset_search_query("rustic chair type:mesh triangles:<100000 roughness:>=0.8 format:bc7");
+    REQUIRE(parsed);
+
+    const auto& filters = parsed.value().filters.property_filters;
+    REQUIRE(filters.size() == 3);
+
+    CHECK(filters[0].key == "triangles");
+    CHECK(filters[0].kind == asset_search_property_kind::number);
+    CHECK(filters[0].comparison == asset_search_comparison::less);
+    CHECK(filters[0].number_value == 100000.0);
+
+    CHECK(filters[1].key == "roughness");
+    CHECK(filters[1].comparison == asset_search_comparison::greater_equal);
+    CHECK(filters[1].number_value == 0.8);
+
+    CHECK(filters[2].key == "format");
+    CHECK(filters[2].kind == asset_search_property_kind::string);
+    CHECK(filters[2].string_value == "bc7");
+    CHECK(parsed.value().text == "rustic chair");
+}
+
+TEST_CASE("asset search parser rejects invalid property comparisons")
+{
+    using namespace arc::assets;
+
+    auto invalid_number = parse_asset_search_query("triangles:<lots");
+    REQUIRE_FALSE(invalid_number);
+    CHECK(invalid_number.error().message == "Numeric property value is invalid");
+
+    auto invalid_string = parse_asset_search_query("format:>bc7");
+    REQUIRE_FALSE(invalid_string);
+    CHECK(invalid_string.error().message == "String properties only support equality");
+}
+
+TEST_CASE("asset search document extracts common intrinsic properties")
+{
+    using namespace arc::assets;
+    auto record = make_record("Bicycle", 12);
+    record.generation = 7;
+    record.dependencies = {generate_asset_guid(), generate_asset_guid()};
+    record.reverse_dependencies = {generate_asset_guid()};
+
+    const auto document = make_asset_search_document(record);
+
+    const auto find_number = [&](std::string_view key) -> std::optional<double>
+    {
+        const auto found = std::find_if(document.properties.begin(), document.properties.end(),
+                                        [&](const auto& property) { return property.key == key; });
+        if (found == document.properties.end() || found->kind != asset_search_property_kind::number)
+            return std::nullopt;
+        return found->number_value;
+    };
+
+    REQUIRE(find_number("dependencies"));
+    CHECK(*find_number("dependencies") == 2.0);
+    REQUIRE(find_number("reverse-dependencies"));
+    CHECK(*find_number("reverse-dependencies") == 1.0);
+    REQUIRE(find_number("generation"));
+    CHECK(*find_number("generation") == 7.0);
+    REQUIRE(find_number("revision"));
+    CHECK(*find_number("revision") == 12.0);
+}
+
+TEST_CASE("persistent asset search applies indexed numeric property comparisons")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-property-number-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto low_poly = generate_asset_guid();
+    const auto high_poly = generate_asset_guid();
+
+    REQUIRE(index->reset(std::vector<asset_search_document>{
+        {.guid = low_poly,
+         .type = asset_types::static_mesh,
+         .display_name = "Rustic Chair Low",
+         .title = "Rustic Chair Low",
+         .properties = {{.key = "triangles", .kind = asset_search_property_kind::number, .number_value = 48000.0}}},
+        {.guid = high_poly,
+         .type = asset_types::static_mesh,
+         .display_name = "Rustic Chair High",
+         .title = "Rustic Chair High",
+         .properties = {{.key = "triangles", .kind = asset_search_property_kind::number, .number_value = 240000.0}}}}));
+
+    auto parsed = parse_asset_search_query("rustic chair type:mesh triangles:<100000");
+    REQUIRE(parsed);
+
+    const auto results = index->query(parsed.value());
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == low_poly);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search applies indexed material numeric properties")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-property-material-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto rough = generate_asset_guid();
+    const auto smooth = generate_asset_guid();
+
+    REQUIRE(index->reset(std::vector<asset_search_document>{
+        {.guid = rough,
+         .type = asset_types::material,
+         .display_name = "Rough Stone",
+         .title = "Rough Stone",
+         .properties = {{.key = "roughness", .kind = asset_search_property_kind::number, .number_value = 0.92}}},
+        {.guid = smooth,
+         .type = asset_types::material,
+         .display_name = "Smooth Stone",
+         .title = "Smooth Stone",
+         .properties = {{.key = "roughness", .kind = asset_search_property_kind::number, .number_value = 0.2}}}}));
+
+    auto parsed = parse_asset_search_query("type:material roughness:>0.8");
+    REQUIRE(parsed);
+
+    const auto results = index->query(parsed.value());
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == rough);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}
+
+TEST_CASE("persistent asset search applies indexed string properties case-insensitively")
+{
+    using namespace arc::assets;
+    const auto root =
+        std::filesystem::temp_directory_path() / ("arc-search-property-string-" + to_string(generate_asset_guid()));
+    const auto database_path = root / "search.db";
+
+    auto opened = persistent_asset_search_index::open(database_path);
+    REQUIRE(opened);
+    auto index = std::move(opened).value();
+
+    const auto bc7 = generate_asset_guid();
+    const auto rgba = generate_asset_guid();
+
+    REQUIRE(index->reset(std::vector<asset_search_document>{
+        {.guid = bc7,
+         .type = asset_types::texture_2d,
+         .display_name = "Rock BC7",
+         .title = "Rock BC7",
+         .properties = {{.key = "format", .kind = asset_search_property_kind::string, .string_value = "BC7"}}},
+        {.guid = rgba,
+         .type = asset_types::texture_2d,
+         .display_name = "Rock RGBA",
+         .title = "Rock RGBA",
+         .properties = {{.key = "format", .kind = asset_search_property_kind::string, .string_value = "RGBA8"}}}}));
+
+    auto parsed = parse_asset_search_query("type:texture format:bc7");
+    REQUIRE(parsed);
+
+    const auto results = index->query(parsed.value());
+    REQUIRE(results.size() == 1);
+    CHECK(results.front().guid == bc7);
+
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+}

@@ -1,6 +1,7 @@
 #include <arc/assets/asset_search.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cctype>
 
 namespace arc::assets
@@ -65,6 +66,86 @@ bool apply_scope(std::string_view value, std::vector<std::string>& providers)
         return true;
     }
     return false;
+}
+
+std::optional<asset_search_property_kind> search_property_kind(std::string_view key)
+{
+    const auto normalized = lowercase_search_token(key);
+    if (normalized == "triangles" || normalized == "vertices" || normalized == "width" || normalized == "height" ||
+        normalized == "roughness" || normalized == "metallic" || normalized == "duration" ||
+        normalized == "sample-rate" || normalized == "sample_rate" || normalized == "channels" ||
+        normalized == "dependencies" || normalized == "reverse-dependencies" || normalized == "reverse_dependencies" ||
+        normalized == "generation" || normalized == "revision")
+        return asset_search_property_kind::number;
+
+    if (normalized == "format" || normalized == "encoding" || normalized == "compression" ||
+        normalized == "blend-mode" || normalized == "blend_mode")
+        return asset_search_property_kind::string;
+    return std::nullopt;
+}
+
+std::string canonical_property_key(std::string_view key)
+{
+    auto normalized = lowercase_search_token(key);
+    std::replace(normalized.begin(), normalized.end(), '_', '-');
+    return normalized;
+}
+
+core::result<asset_search_property_filter, std::string>
+parse_property_filter(std::string_view key, std::string_view value, asset_search_property_kind kind)
+{
+    asset_search_property_filter filter;
+    filter.key = canonical_property_key(key);
+    filter.kind = kind;
+
+    if (kind == asset_search_property_kind::string)
+    {
+        if (value.starts_with("<") || value.starts_with(">"))
+            return core::result<asset_search_property_filter, std::string>::failure(
+                "String properties only support equality");
+        if (value.starts_with("=")) value.remove_prefix(1);
+        if (value.empty())
+            return core::result<asset_search_property_filter, std::string>::failure("Property value is empty");
+        filter.string_value = std::string(value);
+        return core::result<asset_search_property_filter, std::string>::success(std::move(filter));
+    }
+
+    if (value.starts_with("<="))
+    {
+        filter.comparison = asset_search_comparison::less_equal;
+        value.remove_prefix(2);
+    }
+    else if (value.starts_with(">="))
+    {
+        filter.comparison = asset_search_comparison::greater_equal;
+        value.remove_prefix(2);
+    }
+    else if (value.starts_with("<"))
+    {
+        filter.comparison = asset_search_comparison::less;
+        value.remove_prefix(1);
+    }
+    else if (value.starts_with(">"))
+    {
+        filter.comparison = asset_search_comparison::greater;
+        value.remove_prefix(1);
+    }
+    else
+    {
+        filter.comparison = asset_search_comparison::equal;
+        if (value.starts_with("=")) value.remove_prefix(1);
+    }
+
+    if (value.empty())
+        return core::result<asset_search_property_filter, std::string>::failure("Numeric property value is empty");
+
+    double number{};
+    const auto parsed = std::from_chars(value.data(), value.data() + value.size(), number);
+    if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size())
+        return core::result<asset_search_property_filter, std::string>::failure("Numeric property value is invalid");
+
+    filter.number_value = number;
+    return core::result<asset_search_property_filter, std::string>::success(std::move(filter));
 }
 
 struct parsed_search_token
@@ -181,6 +262,14 @@ asset_search_parse_result parse_asset_search_query(std::string_view text, std::s
                 return asset_search_parse_result::failure(
                     {.offset = token.offset, .token = token.text, .message = "Unknown search scope"});
         }
+        else if (const auto property_kind = search_property_kind(key))
+        {
+            auto property = parse_property_filter(key, value, *property_kind);
+            if (!property)
+                return asset_search_parse_result::failure(
+                    {.offset = token.offset, .token = token.text, .message = std::move(property).error()});
+            query.filters.property_filters.push_back(std::move(property).value());
+        }
         else
         {
             return asset_search_parse_result::failure(
@@ -233,6 +322,18 @@ asset_search_document make_asset_search_document(const asset_database_record& re
     document.description = record.description;
     document.authored_tags = record.authored_tags;
     document.categories = record.authored_categories;
+    document.properties = {{.key = "dependencies",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.dependencies.size())},
+                           {.key = "reverse-dependencies",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.reverse_dependencies.size())},
+                           {.key = "generation",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.generation)},
+                           {.key = "revision",
+                            .kind = asset_search_property_kind::number,
+                            .number_value = static_cast<double>(record.revision)}};
     document.source_generation = record.generation;
     document.source_revision = record.revision;
     return document;

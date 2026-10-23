@@ -24,8 +24,8 @@
 namespace arc::assets
 {
 
-inline constexpr std::uint32_t asset_search_document_schema_version = 1;
-inline constexpr std::uint32_t asset_search_index_schema_version = 2;
+inline constexpr std::uint32_t asset_search_document_schema_version = 2;
+inline constexpr std::uint32_t asset_search_index_schema_version = 3;
 
 enum class asset_search_metadata_origin : std::uint8_t
 {
@@ -41,6 +41,43 @@ struct asset_search_metadata_value
     asset_search_metadata_origin origin{asset_search_metadata_origin::intrinsic};
 
     friend bool operator==(const asset_search_metadata_value&, const asset_search_metadata_value&) = default;
+};
+
+enum class asset_search_property_kind : std::uint8_t
+{
+    string,
+    number
+};
+
+struct asset_search_property
+{
+    std::string key;
+    asset_search_property_kind kind{asset_search_property_kind::string};
+    std::string string_value;
+    double number_value{};
+    asset_search_metadata_origin origin{asset_search_metadata_origin::intrinsic};
+
+    friend bool operator==(const asset_search_property&, const asset_search_property&) = default;
+};
+
+enum class asset_search_comparison : std::uint8_t
+{
+    equal,
+    less,
+    less_equal,
+    greater,
+    greater_equal
+};
+
+struct asset_search_property_filter
+{
+    std::string key;
+    asset_search_property_kind kind{asset_search_property_kind::string};
+    asset_search_comparison comparison{asset_search_comparison::equal};
+    std::string string_value;
+    double number_value{};
+
+    friend bool operator==(const asset_search_property_filter&, const asset_search_property_filter&) = default;
 };
 
 /**
@@ -63,6 +100,7 @@ struct asset_search_document
     std::vector<std::string> generated_tags;
     std::vector<std::string> categories;
     std::vector<asset_search_metadata_value> metadata;
+    std::vector<asset_search_property> properties;
     std::uint64_t source_generation{};
     std::uint64_t source_revision{};
     std::uint32_t schema_version{asset_search_document_schema_version};
@@ -76,6 +114,7 @@ struct asset_search_filters
     std::vector<std::string> provider_ids;
     std::vector<std::string> required_tags;
     std::vector<std::string> required_categories;
+    std::vector<asset_search_property_filter> property_filters;
 };
 
 struct asset_search_query
@@ -104,6 +143,12 @@ using asset_search_parse_result = core::result<asset_search_query, asset_search_
  *   category:<value>
  *   provider:<provider-id|project|builtin>
  *   scope:<project|builtin>
+ *   <property>:<comparison><value>
+ *
+ * Initial numeric properties include triangles, vertices, width, height,
+ * roughness, metallic, duration, sample-rate, channels, dependencies,
+ * reverse-dependencies, generation and revision. String properties include
+ * format, encoding, compression and blend-mode.
  *
  * Values containing whitespace may be quoted. Unknown predicates and malformed
  * quotes are errors rather than silently becoming free text.
