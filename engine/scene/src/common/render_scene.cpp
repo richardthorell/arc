@@ -173,11 +173,10 @@ void append_water_authoring_overlay(render::debug_overlay_stream& stream, const 
         for (std::uint32_t ring = 0; ring < std::min(grid.ring_count + 1u, 6u); ++ring)
         {
             const float y = surface_origin[1] + 0.03f;
-            const math::vector3f corners[]{
-                {surface_origin[0] - half_extent, y, surface_origin[2] - half_extent},
-                {surface_origin[0] + half_extent, y, surface_origin[2] - half_extent},
-                {surface_origin[0] + half_extent, y, surface_origin[2] + half_extent},
-                {surface_origin[0] - half_extent, y, surface_origin[2] + half_extent}};
+            const math::vector3f corners[]{{surface_origin[0] - half_extent, y, surface_origin[2] - half_extent},
+                                           {surface_origin[0] + half_extent, y, surface_origin[2] - half_extent},
+                                           {surface_origin[0] + half_extent, y, surface_origin[2] + half_extent},
+                                           {surface_origin[0] - half_extent, y, surface_origin[2] + half_extent}};
             const float intensity = 0.35f + static_cast<float>(ring) * 0.08f;
             for (std::uint32_t edge = 0; edge < 4u; ++edge)
                 line(corners[edge], corners[(edge + 1u) % 4u], {0.08f, intensity, 0.92f, 0.75f});
@@ -199,12 +198,10 @@ void append_water_authoring_overlay(render::debug_overlay_stream& stream, const 
     {
         const auto& point = water.shape.points[index];
         const auto position = world_point(point.position);
-        line(position - math::vector3f{point_marker, 0.0f, 0.0f},
-             position + math::vector3f{point_marker, 0.0f, 0.0f}, point_color,
-             render::debug_overlay_depth_mode::always);
-        line(position - math::vector3f{0.0f, 0.0f, point_marker},
-             position + math::vector3f{0.0f, 0.0f, point_marker}, point_color,
-             render::debug_overlay_depth_mode::always);
+        line(position - math::vector3f{point_marker, 0.0f, 0.0f}, position + math::vector3f{point_marker, 0.0f, 0.0f},
+             point_color, render::debug_overlay_depth_mode::always);
+        line(position - math::vector3f{0.0f, 0.0f, point_marker}, position + math::vector3f{0.0f, 0.0f, point_marker},
+             point_color, render::debug_overlay_depth_mode::always);
 
         const auto depth_end = world_point(point.position + math::vector3f{0.0f, -point.depth, 0.0f});
         line(position, depth_end, metadata_color);
@@ -219,8 +216,7 @@ void append_water_authoring_overlay(render::debug_overlay_stream& stream, const 
         const math::vector3f side{-tangent[2], 0.0f, tangent[0]};
         const float half_width = point.width * 0.5f;
         line(world_point(math::sub(point.position, math::mul(side, half_width))),
-             world_point(math::add(point.position, math::mul(side, half_width))),
-             metadata_color);
+             world_point(math::add(point.position, math::mul(side, half_width))), metadata_color);
 
         if (std::abs(point.flow_speed) > 1.0e-4f)
         {
@@ -231,14 +227,16 @@ void append_water_authoring_overlay(render::debug_overlay_stream& stream, const 
             line(position, tip, flow_color, render::debug_overlay_depth_mode::always);
             const auto back = math::mul(tangent, direction * -0.28f * arrow_length);
             const auto wing = math::mul(side, 0.14f * arrow_length);
-            line(tip, world_point(math::add(tip_local, math::add(back, wing))), flow_color, render::debug_overlay_depth_mode::always);
-            line(tip, world_point(math::sub(math::add(tip_local, back), wing)), flow_color, render::debug_overlay_depth_mode::always);
+            line(tip, world_point(math::add(tip_local, math::add(back, wing))), flow_color,
+                 render::debug_overlay_depth_mode::always);
+            line(tip, world_point(math::sub(math::add(tip_local, back), wing)), flow_color,
+                 render::debug_overlay_depth_mode::always);
         }
     }
 
-    const std::size_t segment_count =
-        water.type == ::arc::water::water_body_type::lake && water.shape.closed ? water.shape.points.size()
-                                                                                : water.shape.points.size() - 1u;
+    const std::size_t segment_count = water.type == ::arc::water::water_body_type::lake && water.shape.closed
+                                          ? water.shape.points.size()
+                                          : water.shape.points.size() - 1u;
     for (std::size_t index = 0; index < segment_count; ++index)
     {
         const auto& first = water.shape.points[index].position;

@@ -932,24 +932,26 @@ TEST_CASE("selected finite Water bodies expose their authored Lake and River con
 
     const auto lake = render(arc::water::water_body_type::lake);
     CHECK(lake.size() == 18u);
-    const auto has_lake_edge = std::any_of(
-        lake.begin(), lake.end(), [](const auto& line)
-        {
-            return line.start[0] == Catch::Approx(-1.0f) && line.start[1] == Catch::Approx(5.0f) &&
-                   line.start[2] == Catch::Approx(-7.0f) && line.end[0] == Catch::Approx(9.0f) &&
-                   line.end[1] == Catch::Approx(5.0f) && line.end[2] == Catch::Approx(-7.0f);
-        });
+    const auto has_lake_edge =
+        std::any_of(lake.begin(), lake.end(),
+                    [](const auto& line)
+                    {
+                        return line.start[0] == Catch::Approx(-1.0f) && line.start[1] == Catch::Approx(5.0f) &&
+                               line.start[2] == Catch::Approx(-7.0f) && line.end[0] == Catch::Approx(9.0f) &&
+                               line.end[1] == Catch::Approx(5.0f) && line.end[2] == Catch::Approx(-7.0f);
+                    });
     CHECK(has_lake_edge);
 
     const auto river = render(arc::water::water_body_type::river);
     CHECK(river.size() == 25u);
-    const auto has_width_marker = std::any_of(
-        river.begin(), river.end(), [](const auto& line)
-        {
-            return line.start[0] == Catch::Approx(-2.0f) && line.start[1] == Catch::Approx(5.0f) &&
-                   line.start[2] == Catch::Approx(-5.0f) && line.end[0] == Catch::Approx(-2.0f) &&
-                   line.end[1] == Catch::Approx(5.0f) && line.end[2] == Catch::Approx(-1.0f);
-        });
+    const auto has_width_marker =
+        std::any_of(river.begin(), river.end(),
+                    [](const auto& line)
+                    {
+                        return line.start[0] == Catch::Approx(-2.0f) && line.start[1] == Catch::Approx(5.0f) &&
+                               line.start[2] == Catch::Approx(-5.0f) && line.end[0] == Catch::Approx(-2.0f) &&
+                               line.end[1] == Catch::Approx(5.0f) && line.end[2] == Catch::Approx(-1.0f);
+                    });
     CHECK(has_width_marker);
 }
 
