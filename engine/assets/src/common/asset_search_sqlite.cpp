@@ -705,7 +705,7 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
 
     for (const auto& property : query_value.filters.property_filters)
     {
-        sql += " AND EXISTS(SELECT 1 FROM search_properties p WHERE p.guid=d.guid AND p.key=? AND p.kind=?";
+        sql += " AND EXISTS(SELECT 1 FROM search_properties p WHERE p.guid=d.guid AND p.key=? AND p.kind=CAST(? AS INTEGER)";
         bindings.push_back(property.key);
         bindings.push_back(std::to_string(static_cast<int>(property.kind)));
 
@@ -718,11 +718,11 @@ std::vector<asset_search_result> persistent_asset_search_index::query(const asse
 
         switch (property.comparison)
         {
-        case asset_search_comparison::equal: sql += " AND p.numeric_value=?)"; break;
-        case asset_search_comparison::less: sql += " AND p.numeric_value<?)"; break;
-        case asset_search_comparison::less_equal: sql += " AND p.numeric_value<=?)"; break;
-        case asset_search_comparison::greater: sql += " AND p.numeric_value>?)"; break;
-        case asset_search_comparison::greater_equal: sql += " AND p.numeric_value>=?)"; break;
+        case asset_search_comparison::equal: sql += " AND p.numeric_value=CAST(? AS REAL))"; break;
+        case asset_search_comparison::less: sql += " AND p.numeric_value<CAST(? AS REAL))"; break;
+        case asset_search_comparison::less_equal: sql += " AND p.numeric_value<=CAST(? AS REAL))"; break;
+        case asset_search_comparison::greater: sql += " AND p.numeric_value>CAST(? AS REAL))"; break;
+        case asset_search_comparison::greater_equal: sql += " AND p.numeric_value>=CAST(? AS REAL))"; break;
         }
         bindings.push_back(std::to_string(property.number_value));
     }
