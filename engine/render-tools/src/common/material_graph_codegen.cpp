@@ -957,6 +957,39 @@ void append_compiler_input(source_builder& source)
 
 } // namespace
 
+material_shader_codegen_options
+resolve_material_shader_codegen_options(const material_graph_compilation& compilation,
+                                        std::span<const material_texture_binding_state> bindings)
+{
+    const auto output = std::ranges::find(compilation.descriptor.outputs, material_surface_output::clear_coat_normal,
+                                          &material_surface_output_binding::output);
+    if (output == compilation.descriptor.outputs.end() || !output->connected)
+        return {.independent_clear_coat_normal = false};
+
+    const auto normal = std::ranges::find(compilation.ir.nodes, output->source_node, &material_ir_node::id);
+    if (normal == compilation.ir.nodes.end() || normal->kind != material_ir_node_kind::normal_map ||
+        output->source_pin != "normal")
+        return {.independent_clear_coat_normal = true};
+
+    const auto input = std::ranges::find_if(compilation.ir.connections, [&](const material_ir_connection& edge)
+                                            { return edge.target_node == normal->id && edge.target_pin == "texture"; });
+    // An unconnected normal-map input is the compiler's neutral tangent-space normal.
+    if (input == compilation.ir.connections.end()) return {.independent_clear_coat_normal = false};
+
+    const auto texture =
+        std::ranges::find(compilation.descriptor.textures, input->source_node, &material_texture_binding::node_id);
+    // Swizzles, arithmetic and shader functions are not proven neutral by an empty texture.
+    if (texture == compilation.descriptor.textures.end() || input->source_pin != "rgb" ||
+        texture->type != shader_parameter_type::texture_2d || texture->semantic != texture_semantic::normal)
+        return {.independent_clear_coat_normal = true};
+
+    const auto override_value =
+        std::ranges::find(bindings, texture->parameter_id, &material_texture_binding_state::parameter_id);
+    if (texture->parameter_id.valid() && override_value != bindings.end())
+        return {.independent_clear_coat_normal = override_value->bound};
+    return {.independent_clear_coat_normal = !texture->default_source.empty()};
+}
+
 material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation,
                                                        material_shader_codegen_options options)
 {
@@ -1000,7 +1033,9 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         const auto subsurface = expressions.output(material_surface_output::subsurface, {});
 
         source_builder source{generated};
-        source.append("// ARC generated Material IR v1; Material ABI v2; codegen v5.");
+        source.append("// ARC generated Material IR v" + std::to_string(material_ir_version) + "; Material ABI v" +
+                      std::to_string(material_abi_version) + "; codegen v" +
+                      std::to_string(material_shader_codegen_version) + '.');
         append_material_abi(source);
 
         const auto has_material_parameters =
@@ -1056,6 +1091,9 @@ material_shader_codegen_result generate_material_slang(const material_graph_comp
         if (!metallic.empty()) source.append("    surface.metallic = " + metallic + ';');
         if (!roughness.empty()) source.append("    surface.roughness = " + roughness + ';');
         if (!normal.empty()) source.append("    surface.normalWS = " + normal + ';');
+        // Inherit the evaluated base/detail normal, not the geometric normal captured by
+        // arcDefaultSurface before the graph ran. An independent coat may then replace it.
+        source.append("    surface.clearCoatNormalWS = surface.normalWS;");
         if (!clear_coat_normal.empty()) source.append("    surface.clearCoatNormalWS = " + clear_coat_normal + ';');
         if (!tangent.empty()) source.append("    surface.tangentWS = " + tangent + ';');
         if (!ambient_occlusion.empty()) source.append("    surface.ambientOcclusion = " + ambient_occlusion + ';');
