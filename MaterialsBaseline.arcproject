@@ -1,0 +1,83 @@
+{
+  "format": "arc-project",
+  "formatVersion": 3,
+  "guid": "c9430000-0000-4000-8000-000000000003",
+  "name": "Materials Baseline",
+  "engineVersion": "0.1.0",
+  "paths": {
+    "source": "Source",
+    "content": "assets",
+    "config": "Config",
+    "plugins": "Plugins",
+    "saved": "Saved",
+    "intermediate": "Intermediate",
+    "build": "Build"
+  },
+  "assetRoots": [
+    "assets"
+  ],
+  "modules": [],
+  "plugins": [],
+  "defaultScene": {
+    "guid": "c9430000-0000-4000-8000-000000000002",
+    "expectedType": "scene",
+    "pathHint": "assets/fixtures/materials_baseline.arcscene"
+  },
+  "startupScenes": [
+    {
+      "guid": "c9430000-0000-4000-8000-000000000002",
+      "expectedType": "scene",
+      "pathHint": "assets/fixtures/materials_baseline.arcscene"
+    }
+  ],
+  "targetPlatforms": [
+    {
+      "id": "windows-x64-vulkan",
+      "enabled": true
+    }
+  ],
+  "toolchain": {
+    "compiler": "auto",
+    "minimumVersion": "",
+    "generator": "auto",
+    "architecture": "x86_64",
+    "cppStandard": 20
+  },
+  "buildConfigurations": [
+    "Debug",
+    "RelWithDebInfo",
+    "Shipping"
+  ],
+  "renderer": {
+    "backend": "vulkan",
+    "api": "1.2",
+    "quality": "standard"
+  },
+  "cookProfiles": [
+    {
+      "id": "windows-x64-vulkan",
+      "platform": "windows",
+      "architecture": "x86_64",
+      "renderer": "vulkan",
+      "api": "1.2",
+      "textures": {
+        "outputs": [
+          "bc"
+        ],
+        "quality": "balanced"
+      },
+      "configuration": "Shipping"
+    }
+  ],
+  "package": {
+    "applicationName": "Materials Baseline",
+    "companyName": "",
+    "output": "Build/Packages",
+    "regionChunks": true
+  },
+  "settings": {
+    "editor": "Config/Editor.json",
+    "renderer": "Config/Renderer.json",
+    "input": "Config/Input.json"
+  }
+}
