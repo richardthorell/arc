@@ -50,6 +50,8 @@ class editor_history
 public:
     void clear(const editor_scene_state& scene, bool mark_saved = false);
     void record(std::string label, editor_scene_state before, const editor_scene_state& after);
+    // Snapshot restoration can replace ECS storage. Reacquire component/proxy
+    // references after undo, redo, or cancel; only persistent identities survive.
     bool undo(editor_scene_state& scene);
     bool redo(editor_scene_state& scene);
     bool begin(std::uint64_t transaction_id, std::string label, const editor_scene_state& scene);

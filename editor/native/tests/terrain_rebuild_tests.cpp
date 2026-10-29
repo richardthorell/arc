@@ -4,6 +4,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <vector>
+#include <future>
+#include <memory>
 
 namespace
 {
@@ -16,6 +18,46 @@ bool rebuild(arc::editor::terrain_rebuild_session& session, arc::scene::terrain_
     return session.pump(jobs, cache, guid, terrain, renderer);
 }
 } // namespace
+
+TEST_CASE("terrain rebuild workers outlive discarded authoring sessions without publishing")
+{
+    using namespace arc;
+    render::renderer renderer;
+    scene::terrain_render_proxy_cache cache;
+    jobs::job_system jobs({.worker_count = 1u, .io_worker_count = 1u, .enable_render_thread = false});
+    // Hold the only worker until both the session and its source component are gone.
+    // Promise destruction also releases the worker if setup throws.
+    std::promise<void> release;
+    auto gate = release.get_future().share();
+    std::promise<void> started;
+    auto entered = started.get_future();
+    auto blocker = jobs.submit_future({.name = "terrain.test.lifetime-gate"},
+                                      [gate, &started]
+                                      {
+                                          started.set_value();
+                                          gate.wait();
+                                      });
+    entered.wait();
+    auto terrain = std::make_unique<scene::terrain_component>();
+    terrain->size = 32.0f;
+    terrain->subdivisions = 4u;
+    terrain->heights.assign(25u, 0.0f);
+    terrain->layer_weights.assign(25u, {255u, 0u, 0u, 0u});
+    scene::terrain_asset asset;
+    asset.source.id = scene::generate_terrain_stable_id();
+    const auto guid = ecs::generate_entity_guid();
+    auto session = std::make_unique<editor::terrain_rebuild_session>(asset, *terrain);
+    const bool published = session->pump(jobs, cache, guid, *terrain, renderer);
+    const bool pending = session->status().phase == editor::terrain_rebuild_phase::building;
+    session.reset();
+    terrain.reset();
+    release.set_value();
+    jobs.shutdown();
+    CHECK_FALSE(published);
+    CHECK(pending);
+    CHECK(blocker.status() == jobs::job_status::succeeded);
+    CHECK(cache.find(guid) == nullptr);
+}
 
 TEST_CASE("M3.4 sculpt preview transitions to asset-owned regions and preserves distant generations")
 {
