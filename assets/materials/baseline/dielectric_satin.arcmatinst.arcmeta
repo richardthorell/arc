@@ -1,0 +1,12 @@
+{
+  "format": "arc.asset-meta",
+  "formatVersion": 1,
+  "guid": "c9430000-0000-4000-8000-000000000010",
+  "importer": "a7ca55e7-0000-0002-0000-00000000000e",
+  "settings": {},
+  "settingsVersion": 1,
+  "subassets": [],
+  "type": "a7ca55e7-0000-0001-0000-00000000000e",
+  "title": "Baseline Dielectric Satin",
+  "description": "Authored Materials Baseline instance."
+}
