@@ -138,10 +138,16 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
         arc::editor::host_create_terrain_command{.minimum_elevation = -12.0f, .maximum_elevation = 36.0f});
     REQUIRE(created.succeeded);
     const auto terrain_entity = host->scene_state().terrain_entity;
-    auto& terrain = host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity);
-    REQUIRE(terrain.asset.guid.valid());
-    REQUIRE(terrain.asset.expected_type == arc::assets::asset_types::terrain);
-    const auto terrain_path = root / terrain.asset.path_hint;
+    // History restoration replaces component storage. Keep identity, not a borrowed
+    // component reference, across commands (including modifier undo/redo and cancel).
+    const auto terrain = [&]() -> const arc::scene::terrain_component&
+    {
+        const auto& state = static_cast<const arc::editor::editor_scene_state&>(host->scene_state());
+        return state.scene.get<arc::scene::terrain_component>(terrain_entity);
+    };
+    REQUIRE(terrain().asset.guid.valid());
+    REQUIRE(terrain().asset.expected_type == arc::assets::asset_types::terrain);
+    const auto terrain_path = root / terrain().asset.path_hint;
     REQUIRE(std::filesystem::is_regular_file(terrain_path));
     REQUIRE(std::filesystem::is_regular_file(root / "Content" / "Terrain" / "Terrain.height.png"));
 
@@ -160,7 +166,7 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
     CHECK(rebuild_status.payload_json.find("\"rebuild\"") != std::string::npos);
     CHECK(rebuild_status.payload_json.find("\"state\":\"idle\"") != std::string::npos);
     CHECK(host->scene_snapshot().undo_label == "Create Terrain");
-    CHECK(terrain.heights.front() == Catch::Approx(-12.0f));
+    CHECK(terrain().heights.front() == Catch::Approx(-12.0f));
     const auto* initial_proxy = host->scene_state().terrain_render_proxies.find(guid);
     REQUIRE(initial_proxy != nullptr);
     std::vector<arc::render::geometry_resource_handle> geometry;
@@ -182,7 +188,7 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
     REQUIRE(
         host->execute(arc::editor::host_terrain_hover_command{.entity = terrain_id, .x = 400u, .y = 300u}).succeeded);
     REQUIRE(host->terrain_tool_snapshot().hover_visible);
-    const auto before = terrain.layer_weights;
+    const auto before = terrain().layer_weights;
     REQUIRE(
         host
             ->execute(arc::editor::host_command_envelope{
@@ -190,7 +196,7 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
                                                                     arc::editor::host_edit_phase::begin, false},
                 .edit = arc::editor::host_edit_transaction{935u, arc::editor::host_edit_phase::begin, "Terrain Paint"}})
             .succeeded);
-    REQUIRE(terrain.layer_weights != before);
+    REQUIRE(terrain().layer_weights != before);
     host->request_viewport({.frame_index = 102u, .width = 800u, .height = 600u});
     const auto* preview_proxy = host->scene_state().terrain_render_proxies.find(guid);
     REQUIRE(preview_proxy != nullptr);
@@ -221,7 +227,7 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
     REQUIRE(paint != decoded.value().modifiers.end());
     CHECK_FALSE(paint->region_payloads.empty());
 
-    const auto committed_weights = terrain.layer_weights;
+    const auto committed_weights = terrain().layer_weights;
     REQUIRE(host->execute(arc::editor::host_history_undo_command{}).succeeded);
     CHECK(host->scene_state().scene.get<arc::scene::terrain_component>(terrain_entity).layer_weights == before);
     const auto undone_asset = read_authored_asset();
@@ -262,7 +268,7 @@ TEST_CASE("M3.5 newly created terrain persists paint into its asset without leav
                                                                     arc::editor::host_edit_phase::begin, false},
                 .edit = arc::editor::host_edit_transaction{936u, arc::editor::host_edit_phase::begin, "Terrain Paint"}})
             .succeeded);
-    REQUIRE(terrain.layer_weights != committed_weights);
+    REQUIRE(terrain().layer_weights != committed_weights);
     host->request_viewport({.frame_index = 103u, .width = 800u, .height = 600u});
     REQUIRE(host
                 ->execute(arc::editor::host_command_envelope{
