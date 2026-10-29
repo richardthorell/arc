@@ -29,7 +29,15 @@ TEST_CASE("terrain rebuild workers outlive discarded authoring sessions without 
     // Promise destruction also releases the worker if setup throws.
     std::promise<void> release;
     auto gate = release.get_future().share();
-    auto blocker = jobs.submit_future({.name = "terrain.test.lifetime-gate"}, [gate] { gate.wait(); });
+    std::promise<void> started;
+    auto entered = started.get_future();
+    auto blocker = jobs.submit_future({.name = "terrain.test.lifetime-gate"},
+                                      [gate, &started]
+                                      {
+                                          started.set_value();
+                                          gate.wait();
+                                      });
+    entered.wait();
     auto terrain = std::make_unique<scene::terrain_component>();
     terrain->size = 32.0f;
     terrain->subdivisions = 4u;
