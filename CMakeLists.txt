@@ -65,6 +65,19 @@ if(BUILD_TESTING)
     add_subdirectory(tests/public_api)
 endif()
 
+if(BUILD_TESTING)
+    add_test(
+        NAME arc-materials-baseline-contract
+        COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/tests/materials_baseline.py"
+            --root "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    set_tests_properties(arc-materials-baseline-contract PROPERTIES
+        LABELS "materials;assets;regression"
+        TIMEOUT 30
+    )
+endif()
+
 if(ARC_BUILD_ASSET_COOKER)
     add_subdirectory(tools/asset_cooker)
 endif()
