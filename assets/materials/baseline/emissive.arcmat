@@ -1,0 +1,1650 @@
+{
+  "version": 4,
+  "name": "Baseline Emissive",
+  "domain": "surface",
+  "blendMode": "opaque",
+  "shadingModel": "standard",
+  "doubleSided": false,
+  "graph": {
+    "version": 1,
+    "nodes": [
+      {
+        "id": "material-output",
+        "type": "output",
+        "position": [
+          1460,
+          1120
+        ],
+        "values": {}
+      },
+      {
+        "id": "base-color-source",
+        "type": "functionCall",
+        "position": [
+          900,
+          -20
+        ],
+        "values": {
+          "slotId": "base-color-source",
+          "path": "material_functions/default_base_color.arcmatfn",
+          "name": "Base Color Source",
+          "inputPins": [
+            {
+              "id": "uv",
+              "name": "UV",
+              "type": "vec2"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "color",
+              "name": "Color",
+              "type": "vec3"
+            }
+          ],
+          "functions": [
+            {
+              "path": "material_functions/default_base_color.arcmatfn"
+            },
+            {
+              "path": "material_functions/checker.arcmatfn"
+            },
+            {
+              "path": "material_functions/gradient.arcmatfn"
+            },
+            {
+              "path": "material_functions/noise.arcmatfn"
+            }
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Base Color Source"
+        }
+      },
+      {
+        "id": "metallic",
+        "type": "constant",
+        "position": [
+          100,
+          330
+        ],
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Metallic",
+          "group": "surface",
+          "order": 10
+        }
+      },
+      {
+        "id": "roughness",
+        "type": "constant",
+        "position": [
+          100,
+          610
+        ],
+        "values": {
+          "value": 0.55,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness",
+          "group": "surface",
+          "order": 20
+        }
+      },
+      {
+        "id": "metallic-roughness-texture",
+        "type": "textureSample2D",
+        "position": [
+          420,
+          470
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Metallic Roughness Texture",
+          "group": "surface",
+          "order": 30
+        }
+      },
+      {
+        "id": "metallic-multiply",
+        "type": "multiply",
+        "position": [
+          850,
+          370
+        ],
+        "values": {}
+      },
+      {
+        "id": "roughness-multiply",
+        "type": "multiply",
+        "position": [
+          850,
+          650
+        ],
+        "values": {}
+      },
+      {
+        "id": "ambient-occlusion-texture",
+        "type": "textureSample2D",
+        "position": [
+          420,
+          830
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Ambient Occlusion Texture",
+          "group": "surface",
+          "order": 40
+        }
+      },
+      {
+        "id": "normal-texture",
+        "type": "textureSample2D",
+        "position": [
+          100,
+          1165
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d",
+          "semantic": "normal"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Normal Texture",
+          "group": "normal",
+          "order": 10
+        }
+      },
+      {
+        "id": "normal-map",
+        "type": "normalMap",
+        "position": [
+          850,
+          1210
+        ],
+        "values": {
+          "strength": 1
+        }
+      },
+      {
+        "id": "clear-coat",
+        "type": "constant",
+        "position": [
+          100,
+          1590
+        ],
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat",
+          "group": "clear-coat",
+          "order": 10
+        }
+      },
+      {
+        "id": "clear-coat-roughness",
+        "type": "constant",
+        "position": [
+          100,
+          1880
+        ],
+        "values": {
+          "value": 0.1,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat Roughness",
+          "group": "clear-coat",
+          "order": 20
+        }
+      },
+      {
+        "id": "clear-coat-texture",
+        "type": "textureSample2D",
+        "position": [
+          420,
+          1730
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d",
+          "semantic": "clear_coat"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat Texture",
+          "group": "clear-coat",
+          "order": 30
+        }
+      },
+      {
+        "id": "clear-coat-multiply",
+        "type": "multiply",
+        "position": [
+          850,
+          1630
+        ],
+        "values": {}
+      },
+      {
+        "id": "clear-coat-roughness-multiply",
+        "type": "multiply",
+        "position": [
+          850,
+          1920
+        ],
+        "values": {}
+      },
+      {
+        "id": "emissive-color",
+        "type": "colorRgba",
+        "position": [
+          100,
+          2370
+        ],
+        "values": {
+          "value": [
+            0.2,
+            0.65,
+            1,
+            1
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Emissive Color",
+          "group": "emission",
+          "order": 10
+        }
+      },
+      {
+        "id": "emissive-texture",
+        "type": "textureSample2D",
+        "position": [
+          420,
+          2370
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Emissive Texture",
+          "group": "emission",
+          "order": 20
+        }
+      },
+      {
+        "id": "emissive-strength",
+        "type": "constant",
+        "position": [
+          420,
+          2670
+        ],
+        "values": {
+          "value": 4
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Emissive Strength",
+          "group": "emission",
+          "order": 30
+        }
+      },
+      {
+        "id": "emissive-color-multiply",
+        "type": "multiply",
+        "position": [
+          850,
+          2410
+        ],
+        "values": {}
+      },
+      {
+        "id": "emissive-strength-multiply",
+        "type": "multiply",
+        "position": [
+          1080,
+          2410
+        ],
+        "values": {}
+      },
+      {
+        "id": "orm-unpack",
+        "type": "functionCall",
+        "position": [
+          760,
+          680
+        ],
+        "values": {
+          "slotId": "orm-unpack",
+          "path": "material_functions/unpack_orm.arcmatfn",
+          "name": "Unpack ORM",
+          "inputPins": [
+            {
+              "id": "rgba",
+              "name": "Packed ORM RGBA",
+              "type": "vec4"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "ao",
+              "name": "Ambient Occlusion",
+              "type": "float"
+            },
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            },
+            {
+              "id": "metallic",
+              "name": "Metallic",
+              "type": "float"
+            }
+          ],
+          "functions": [
+            {
+              "path": "material_functions/unpack_orm.arcmatfn"
+            }
+          ]
+        },
+        "parameter": {
+          "exposed": false,
+          "name": "Unpack ORM"
+        }
+      },
+      {
+        "id": "ao-channel-mask",
+        "type": "functionCall",
+        "position": [
+          760,
+          860
+        ],
+        "values": {
+          "slotId": "ao-channel-mask",
+          "path": "material_functions/channel_mask.arcmatfn",
+          "name": "Channel Mask",
+          "inputPins": [
+            {
+              "id": "rgba",
+              "name": "RGBA",
+              "type": "vec4"
+            },
+            {
+              "id": "mask",
+              "name": "Channel Weights (RGBA)",
+              "type": "vec4"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "value",
+              "name": "Value",
+              "type": "float"
+            }
+          ],
+          "functions": [
+            {
+              "path": "material_functions/channel_mask.arcmatfn"
+            }
+          ]
+        },
+        "parameter": {
+          "exposed": false,
+          "name": "Channel Mask"
+        }
+      },
+      {
+        "id": "uv-tiling",
+        "type": "vector2",
+        "position": [
+          90,
+          650
+        ],
+        "values": {
+          "value": [
+            1,
+            1
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Tiling",
+          "group": "surface",
+          "order": 15
+        }
+      },
+      {
+        "id": "uv-offset",
+        "type": "vector2",
+        "position": [
+          90,
+          760
+        ],
+        "values": {
+          "value": [
+            0,
+            0
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Offset",
+          "group": "surface",
+          "order": 16
+        }
+      },
+      {
+        "id": "uv-pivot",
+        "type": "vector2",
+        "position": [
+          90,
+          870
+        ],
+        "values": {
+          "value": [
+            0.5,
+            0.5
+          ]
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Pivot",
+          "group": "surface",
+          "order": 17
+        }
+      },
+      {
+        "id": "uv-rotation",
+        "type": "constant",
+        "position": [
+          90,
+          980
+        ],
+        "values": {
+          "value": 0
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "UV Rotation (radians)",
+          "group": "surface",
+          "order": 18
+        }
+      },
+      {
+        "id": "shared-uv-transform",
+        "type": "functionCall",
+        "position": [
+          570,
+          760
+        ],
+        "parameter": {
+          "exposed": false,
+          "name": "UV Transform"
+        },
+        "values": {
+          "slotId": "shared-uv-transform",
+          "path": "material_functions/uv_transform.arcmatfn",
+          "name": "UV Transform",
+          "functions": [
+            {
+              "path": "material_functions/uv_transform.arcmatfn"
+            }
+          ],
+          "inputPins": [
+            {
+              "id": "tiling",
+              "name": "Tiling",
+              "type": "vec2"
+            },
+            {
+              "id": "offset",
+              "name": "Offset",
+              "type": "vec2"
+            },
+            {
+              "id": "pivot",
+              "name": "Pivot",
+              "type": "vec2"
+            },
+            {
+              "id": "rotation",
+              "name": "Rotation (radians)",
+              "type": "float"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "uv",
+              "name": "UV",
+              "type": "vec2"
+            }
+          ]
+        }
+      },
+      {
+        "id": "detail-normal-texture",
+        "type": "textureSample2D",
+        "position": [
+          410,
+          1330
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d",
+          "semantic": "normal"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Detail Normal Texture",
+          "group": "normal",
+          "order": 20
+        }
+      },
+      {
+        "id": "detail-normal-strength",
+        "type": "constant",
+        "position": [
+          410,
+          1520
+        ],
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Detail Normal Strength",
+          "group": "normal",
+          "order": 30
+        }
+      },
+      {
+        "id": "normal-two",
+        "type": "vector3",
+        "position": [
+          650,
+          1110
+        ],
+        "values": {
+          "value": [
+            2,
+            2,
+            2
+          ]
+        }
+      },
+      {
+        "id": "normal-one",
+        "type": "vector3",
+        "position": [
+          650,
+          1250
+        ],
+        "values": {
+          "value": [
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      {
+        "id": "normal-half",
+        "type": "vector3",
+        "position": [
+          650,
+          1400
+        ],
+        "values": {
+          "value": [
+            0.5,
+            0.5,
+            0.5
+          ]
+        }
+      },
+      {
+        "id": "base-normal-double",
+        "type": "multiply",
+        "position": [
+          930,
+          1396
+        ],
+        "values": {}
+      },
+      {
+        "id": "base-normal-signed",
+        "type": "subtract",
+        "position": [
+          930,
+          1404
+        ],
+        "values": {}
+      },
+      {
+        "id": "detail-normal-double",
+        "type": "multiply",
+        "position": [
+          930,
+          1412
+        ],
+        "values": {}
+      },
+      {
+        "id": "detail-normal-signed",
+        "type": "subtract",
+        "position": [
+          930,
+          1420
+        ],
+        "values": {}
+      },
+      {
+        "id": "combined-normal-plus-one",
+        "type": "add",
+        "position": [
+          930,
+          1428
+        ],
+        "values": {}
+      },
+      {
+        "id": "combined-normal-encoded",
+        "type": "multiply",
+        "position": [
+          930,
+          1436
+        ],
+        "values": {}
+      },
+      {
+        "id": "detail-normal-rnm",
+        "type": "functionCall",
+        "position": [
+          1340,
+          1340
+        ],
+        "values": {
+          "slotId": "detail-normal-rnm",
+          "path": "material_functions/reoriented_normal_blend.arcmatfn",
+          "name": "Reoriented Normal Blend",
+          "functions": [
+            {
+              "path": "material_functions/reoriented_normal_blend.arcmatfn"
+            }
+          ],
+          "inputPins": [
+            {
+              "id": "base",
+              "name": "Base Tangent Normal",
+              "type": "vec3"
+            },
+            {
+              "id": "detail",
+              "name": "Detail Tangent Normal",
+              "type": "vec3"
+            },
+            {
+              "id": "weight",
+              "name": "Detail Weight",
+              "type": "float"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "normal",
+              "name": "Tangent Normal",
+              "type": "vec3"
+            }
+          ]
+        },
+        "parameter": {
+          "exposed": false,
+          "name": "Reoriented Normal Blend"
+        }
+      },
+      {
+        "id": "roughness-remap-min",
+        "type": "constant",
+        "position": [
+          110,
+          850
+        ],
+        "values": {
+          "value": 0,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness Minimum",
+          "group": "surface",
+          "order": 35
+        }
+      },
+      {
+        "id": "roughness-remap-max",
+        "type": "constant",
+        "position": [
+          110,
+          1010
+        ],
+        "values": {
+          "value": 1,
+          "min": 0,
+          "max": 1
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness Maximum",
+          "group": "surface",
+          "order": 36
+        }
+      },
+      {
+        "id": "roughness-remap-power",
+        "type": "constant",
+        "position": [
+          110,
+          1170
+        ],
+        "values": {
+          "value": 1,
+          "min": 0.0001,
+          "max": 8
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Roughness Curve",
+          "group": "surface",
+          "order": 37
+        }
+      },
+      {
+        "id": "roughness-remap",
+        "type": "functionCall",
+        "position": [
+          1120,
+          670
+        ],
+        "values": {
+          "slotId": "roughness-remap",
+          "path": "material_functions/roughness_remap.arcmatfn",
+          "name": "Roughness Remap",
+          "functions": [
+            {
+              "path": "material_functions/roughness_remap.arcmatfn"
+            }
+          ],
+          "inputPins": [
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            },
+            {
+              "id": "min",
+              "name": "Minimum Roughness",
+              "type": "float"
+            },
+            {
+              "id": "max",
+              "name": "Maximum Roughness",
+              "type": "float"
+            },
+            {
+              "id": "power",
+              "name": "Curve Exponent",
+              "type": "float"
+            }
+          ],
+          "outputPins": [
+            {
+              "id": "roughness",
+              "name": "Roughness",
+              "type": "float"
+            }
+          ]
+        },
+        "parameter": {
+          "exposed": false,
+          "name": "Roughness Remap"
+        }
+      },
+      {
+        "id": "index-of-refraction",
+        "type": "constant",
+        "position": [
+          100,
+          780
+        ],
+        "values": {
+          "value": 1.5,
+          "min": 1.0001,
+          "max": 3
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Index of Refraction",
+          "group": "surface",
+          "order": 25
+        }
+      },
+      {
+        "id": "clear-coat-normal-texture",
+        "type": "textureSample2D",
+        "position": [
+          400,
+          2200
+        ],
+        "values": {
+          "texture": "",
+          "dimension": "2d",
+          "semantic": "normal"
+        },
+        "parameter": {
+          "exposed": true,
+          "name": "Clear Coat Normal Texture",
+          "group": "clear-coat",
+          "order": 40
+        }
+      },
+      {
+        "id": "clear-coat-normal-map",
+        "type": "normalMap",
+        "position": [
+          900,
+          2200
+        ],
+        "values": {
+          "strength": 1
+        }
+      }
+    ],
+    "connections": [
+      {
+        "id": "metallic-value-out",
+        "from": {
+          "nodeId": "metallic",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "metallic-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "metallic-texture-out",
+        "from": {
+          "nodeId": "orm-unpack",
+          "pin": "metallic"
+        },
+        "to": {
+          "nodeId": "metallic-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "metallic-out",
+        "from": {
+          "nodeId": "metallic-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "metallic"
+        }
+      },
+      {
+        "id": "roughness-value-out",
+        "from": {
+          "nodeId": "roughness",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "roughness-texture-out",
+        "from": {
+          "nodeId": "orm-unpack",
+          "pin": "roughness"
+        },
+        "to": {
+          "nodeId": "roughness-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "roughness-out",
+        "from": {
+          "nodeId": "roughness-remap",
+          "pin": "roughness"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "roughness"
+        }
+      },
+      {
+        "id": "ambient-occlusion-out",
+        "from": {
+          "nodeId": "ao-channel-mask",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "ao"
+        }
+      },
+      {
+        "id": "normal-texture-out",
+        "from": {
+          "nodeId": "normal-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "base-normal-double",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "normal-out",
+        "from": {
+          "nodeId": "normal-map",
+          "pin": "normal"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "normal"
+        }
+      },
+      {
+        "id": "clear-coat-value-out",
+        "from": {
+          "nodeId": "clear-coat",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clear-coat-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "clear-coat-texture-out",
+        "from": {
+          "nodeId": "clear-coat-texture",
+          "pin": "r"
+        },
+        "to": {
+          "nodeId": "clear-coat-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "clear-coat-out",
+        "from": {
+          "nodeId": "clear-coat-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "clearCoat"
+        }
+      },
+      {
+        "id": "clear-coat-roughness-value-out",
+        "from": {
+          "nodeId": "clear-coat-roughness",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "clear-coat-roughness-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "clear-coat-roughness-texture-out",
+        "from": {
+          "nodeId": "clear-coat-texture",
+          "pin": "g"
+        },
+        "to": {
+          "nodeId": "clear-coat-roughness-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "clear-coat-roughness-out",
+        "from": {
+          "nodeId": "clear-coat-roughness-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "clearCoatRoughness"
+        }
+      },
+      {
+        "id": "emissive-color-out",
+        "from": {
+          "nodeId": "emissive-color",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "emissive-color-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "emissive-texture-out",
+        "from": {
+          "nodeId": "emissive-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "emissive-color-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "emissive-color-product",
+        "from": {
+          "nodeId": "emissive-color-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "emissive-strength-multiply",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "emissive-strength-out",
+        "from": {
+          "nodeId": "emissive-strength",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "emissive-strength-multiply",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "emissive-out",
+        "from": {
+          "nodeId": "emissive-strength-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "emissive"
+        }
+      },
+      {
+        "id": "base-color-out",
+        "from": {
+          "nodeId": "base-color-source",
+          "pin": "color"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "baseColor"
+        }
+      },
+      {
+        "id": "packed-orm-to-unpack",
+        "from": {
+          "nodeId": "metallic-roughness-texture",
+          "pin": "rgba"
+        },
+        "to": {
+          "nodeId": "orm-unpack",
+          "pin": "rgba"
+        }
+      },
+      {
+        "id": "ao-texture-to-channel-mask",
+        "from": {
+          "nodeId": "ambient-occlusion-texture",
+          "pin": "rgba"
+        },
+        "to": {
+          "nodeId": "ao-channel-mask",
+          "pin": "rgba"
+        }
+      },
+      {
+        "id": "shared-uv-tiling",
+        "from": {
+          "nodeId": "uv-tiling",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "tiling"
+        }
+      },
+      {
+        "id": "shared-uv-offset",
+        "from": {
+          "nodeId": "uv-offset",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "offset"
+        }
+      },
+      {
+        "id": "shared-uv-pivot",
+        "from": {
+          "nodeId": "uv-pivot",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "pivot"
+        }
+      },
+      {
+        "id": "shared-uv-rotation",
+        "from": {
+          "nodeId": "uv-rotation",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "shared-uv-transform",
+          "pin": "rotation"
+        }
+      },
+      {
+        "id": "shared-uv-to-metallic-roughness-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "metallic-roughness-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-ambient-occlusion-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "ambient-occlusion-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-normal-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "normal-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-clear-coat-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "clear-coat-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-to-emissive-texture",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "emissive-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "shared-uv-base-color",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "base-color-source",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "base-double-factor",
+        "from": {
+          "nodeId": "normal-two",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "base-normal-double",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "base-signed-a",
+        "from": {
+          "nodeId": "base-normal-double",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "base-normal-signed",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "base-signed-b",
+        "from": {
+          "nodeId": "normal-one",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "base-normal-signed",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "detail-rgb",
+        "from": {
+          "nodeId": "detail-normal-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "detail-normal-double",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "detail-double-factor",
+        "from": {
+          "nodeId": "normal-two",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "detail-normal-double",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "detail-signed-a",
+        "from": {
+          "nodeId": "detail-normal-double",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "detail-normal-signed",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "detail-signed-b",
+        "from": {
+          "nodeId": "normal-one",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "detail-normal-signed",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "rnm-base",
+        "from": {
+          "nodeId": "base-normal-signed",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "detail-normal-rnm",
+          "pin": "base"
+        }
+      },
+      {
+        "id": "rnm-detail",
+        "from": {
+          "nodeId": "detail-normal-signed",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "detail-normal-rnm",
+          "pin": "detail"
+        }
+      },
+      {
+        "id": "rnm-strength",
+        "from": {
+          "nodeId": "detail-normal-strength",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "detail-normal-rnm",
+          "pin": "weight"
+        }
+      },
+      {
+        "id": "encode-shift-a",
+        "from": {
+          "nodeId": "detail-normal-rnm",
+          "pin": "normal"
+        },
+        "to": {
+          "nodeId": "combined-normal-plus-one",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "encode-shift-b",
+        "from": {
+          "nodeId": "normal-one",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "combined-normal-plus-one",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "encode-scale-a",
+        "from": {
+          "nodeId": "combined-normal-plus-one",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "combined-normal-encoded",
+          "pin": "a"
+        }
+      },
+      {
+        "id": "encode-scale-b",
+        "from": {
+          "nodeId": "normal-half",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "combined-normal-encoded",
+          "pin": "b"
+        }
+      },
+      {
+        "id": "rnm-encoded-to-normal",
+        "from": {
+          "nodeId": "combined-normal-encoded",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "normal-map",
+          "pin": "texture"
+        }
+      },
+      {
+        "id": "detail-uv",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "detail-normal-texture",
+          "pin": "uv"
+        }
+      },
+      {
+        "id": "remap-input",
+        "from": {
+          "nodeId": "roughness-multiply",
+          "pin": "result"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "roughness"
+        }
+      },
+      {
+        "id": "remap-min",
+        "from": {
+          "nodeId": "roughness-remap-min",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "min"
+        }
+      },
+      {
+        "id": "remap-max",
+        "from": {
+          "nodeId": "roughness-remap-max",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "max"
+        }
+      },
+      {
+        "id": "remap-power",
+        "from": {
+          "nodeId": "roughness-remap-power",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "roughness-remap",
+          "pin": "power"
+        }
+      },
+      {
+        "id": "ior-out",
+        "from": {
+          "nodeId": "index-of-refraction",
+          "pin": "value"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "indexOfRefraction"
+        }
+      },
+      {
+        "id": "clear-coat-normal-rgb",
+        "from": {
+          "nodeId": "clear-coat-normal-texture",
+          "pin": "rgb"
+        },
+        "to": {
+          "nodeId": "clear-coat-normal-map",
+          "pin": "texture"
+        }
+      },
+      {
+        "id": "clear-coat-normal-out",
+        "from": {
+          "nodeId": "clear-coat-normal-map",
+          "pin": "normal"
+        },
+        "to": {
+          "nodeId": "material-output",
+          "pin": "clearCoatNormal"
+        }
+      },
+      {
+        "id": "clear-coat-normal-uv",
+        "from": {
+          "nodeId": "shared-uv-transform",
+          "pin": "uv"
+        },
+        "to": {
+          "nodeId": "clear-coat-normal-texture",
+          "pin": "uv"
+        }
+      }
+    ],
+    "viewport": {
+      "x": 30,
+      "y": 60,
+      "zoom": 0.55
+    },
+    "groups": [
+      {
+        "id": "base-color",
+        "name": "Base Color",
+        "nodeIds": [
+          "base-color-source"
+        ],
+        "position": [
+          830,
+          -90
+        ],
+        "size": [
+          370,
+          250
+        ],
+        "order": 10
+      },
+      {
+        "id": "surface",
+        "name": "Surface",
+        "nodeIds": [
+          "metallic",
+          "roughness",
+          "metallic-roughness-texture",
+          "metallic-multiply",
+          "roughness-multiply",
+          "ambient-occlusion-texture",
+          "orm-unpack",
+          "ao-channel-mask",
+          "uv-tiling",
+          "uv-offset",
+          "uv-pivot",
+          "uv-rotation",
+          "shared-uv-transform",
+          "roughness-remap-min",
+          "roughness-remap-max",
+          "roughness-remap-power",
+          "roughness-remap",
+          "index-of-refraction"
+        ],
+        "position": [
+          40,
+          260
+        ],
+        "size": [
+          1160,
+          780
+        ],
+        "order": 20
+      },
+      {
+        "id": "normal",
+        "name": "Normal",
+        "nodeIds": [
+          "normal-texture",
+          "normal-map",
+          "detail-normal-texture",
+          "detail-normal-strength",
+          "normal-two",
+          "normal-one",
+          "normal-half",
+          "base-normal-double",
+          "base-normal-signed",
+          "detail-normal-double",
+          "detail-normal-signed",
+          "combined-normal-plus-one",
+          "combined-normal-encoded",
+          "detail-normal-rnm"
+        ],
+        "position": [
+          40,
+          1120
+        ],
+        "size": [
+          1160,
+          320
+        ],
+        "order": 30
+      },
+      {
+        "id": "clear-coat",
+        "name": "Clear Coat",
+        "nodeIds": [
+          "clear-coat",
+          "clear-coat-roughness",
+          "clear-coat-texture",
+          "clear-coat-multiply",
+          "clear-coat-roughness-multiply",
+          "clear-coat-normal-texture",
+          "clear-coat-normal-map"
+        ],
+        "position": [
+          40,
+          1520
+        ],
+        "size": [
+          1160,
+          700
+        ],
+        "order": 40
+      },
+      {
+        "id": "emission",
+        "name": "Emission",
+        "nodeIds": [
+          "emissive-color",
+          "emissive-texture",
+          "emissive-strength",
+          "emissive-color-multiply",
+          "emissive-strength-multiply"
+        ],
+        "position": [
+          40,
+          2300
+        ],
+        "size": [
+          1160,
+          700
+        ],
+        "order": 50
+      }
+    ]
+  }
+}
