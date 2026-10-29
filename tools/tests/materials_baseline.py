@@ -40,7 +40,7 @@ def validate(root: Path) -> None:
     require(camera["Transform"]["position"] == [0, 6.4, 17.5], "Baseline camera moved")
     require(camera["Camera"]["exposure"]["mode"] == 0, "Camera exposure must be manual")
     environment = by_name["Fixed World Environment"]["components"]["WorldEnvironment"]
-    require(environment["skySource"] == "solidColor" and environment["timeMode"] == "fixed", "Environment is not fixed")
+    require(environment["skySource"] == "solidColor" and environment["timeMode"] == "fixed" and environment["lightingSource"] == "constantColor", "Environment is not fixed")
     for key in ("cloudsEnabled", "fogEnabled", "starsEnabled", "moonEnabled", "playing"):
         require(environment[key] is False, f"Nondeterministic environment property: {key}")
     require("DirectionalLight" in by_name["Key Directional Light"]["components"], "Fixed directional light missing")
