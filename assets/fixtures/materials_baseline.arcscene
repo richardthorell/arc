@@ -297,7 +297,7 @@
           "fogMaxOpacity": 0.34,
           "fogSunScattering": 0.25,
           "lightingEnabled": true,
-          "lightingSource": "manual",
+          "lightingSource": "constantColor",
           "lightingColor": [
             0.2,
             0.23,
