@@ -330,3 +330,115 @@ TEST_CASE("Material shader codegen specializes neutral and independent clear-coa
     REQUIRE(neutral.value().source.find("surface.clearCoatNormalWS = surface.normalWS;") != std::string::npos);
     REQUIRE(active.value().source != neutral.value().source);
 }
+
+TEST_CASE("Coat normal specialization uses native texture identity and explicit instance binding state")
+{
+    using namespace arc::render;
+    using namespace arc::render::tools;
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"coat","type":"normalMap","values":{}},
+        {"id":"texture","type":"textureSample2D","values":{"texture":"","semantic":"normal"},
+         "parameter":{"exposed":true,"name":"Arbitrary texture"}},
+        {"id":"weight","type":"constant","values":{"value":0},
+         "parameter":{"exposed":true,"name":"Arbitrary weight"}}
+      ],
+      "connections":[
+        {"id":"a","from":{"nodeId":"texture","pin":"rgb"},"to":{"nodeId":"coat","pin":"texture"}},
+        {"id":"b","from":{"nodeId":"coat","pin":"normal"},"to":{"nodeId":"out","pin":"clearCoatNormal"}},
+        {"id":"c","from":{"nodeId":"weight","pin":"value"},"to":{"nodeId":"out","pin":"clearCoat"}}
+      ]
+    })";
+    auto compiled = compile_material_graph_json(graph);
+    REQUIRE(compiled);
+    auto& compilation = compiled.value();
+    REQUIRE(compilation.descriptor.textures.size() == 1);
+    auto& texture = compilation.descriptor.textures.front();
+    REQUIRE(texture.parameter_id.valid());
+    REQUIRE_FALSE(resolve_material_shader_codegen_options(compilation).independent_clear_coat_normal);
+
+    const std::array bound{material_texture_binding_state{texture.parameter_id, true}};
+    const std::array cleared{material_texture_binding_state{texture.parameter_id, false}};
+    // A zero, dynamically editable coat weight cannot remove the normal permutation.
+    REQUIRE(resolve_material_shader_codegen_options(compilation, bound).independent_clear_coat_normal);
+    texture.default_source = "textures/coat.png";
+    REQUIRE(resolve_material_shader_codegen_options(compilation).independent_clear_coat_normal);
+    REQUIRE_FALSE(resolve_material_shader_codegen_options(compilation, cleared).independent_clear_coat_normal);
+    REQUIRE(resolve_material_shader_codegen_options(compilation).independent_clear_coat_normal);
+
+    const auto neutral =
+        generate_material_slang(compilation, resolve_material_shader_codegen_options(compilation, cleared));
+    const auto active =
+        generate_material_slang(compilation, resolve_material_shader_codegen_options(compilation, bound));
+    REQUIRE(neutral);
+    REQUIRE(active);
+    REQUIRE(neutral.value().source.find("arc_node_coat_normal") == std::string::npos);
+    REQUIRE(active.value().source.find("arc_node_coat_normal") != std::string::npos);
+    REQUIRE(neutral.value().parameters.size() == active.value().parameters.size());
+    for (std::size_t index = 0; index < neutral.value().parameters.size(); ++index)
+        REQUIRE(neutral.value().parameters[index].id == active.value().parameters[index].id);
+
+    SECTION("Unknown authored expressions remain independent")
+    {
+        auto& output = *std::ranges::find(compilation.descriptor.outputs, material_surface_output::clear_coat_normal,
+                                          &material_surface_output_binding::output);
+        output.source_node = "weight";
+        REQUIRE(resolve_material_shader_codegen_options(compilation, cleared).independent_clear_coat_normal);
+    }
+    SECTION("Missing output inherits the evaluated base normal")
+    {
+        auto& output = *std::ranges::find(compilation.descriptor.outputs, material_surface_output::clear_coat_normal,
+                                          &material_surface_output_binding::output);
+        output.connected = false;
+        REQUIRE_FALSE(resolve_material_shader_codegen_options(compilation, bound).independent_clear_coat_normal);
+    }
+    SECTION("Unconnected normal-map input is neutral")
+    {
+        std::erase_if(compilation.ir.connections, [](const auto& edge) { return edge.target_node == "coat"; });
+        REQUIRE_FALSE(resolve_material_shader_codegen_options(compilation, bound).independent_clear_coat_normal);
+    }
+    SECTION("Empty color textures do not have a neutral normal fallback")
+    {
+        texture.semantic = texture_semantic::generic_color;
+        REQUIRE(resolve_material_shader_codegen_options(compilation, cleared).independent_clear_coat_normal);
+    }
+    SECTION("Neutral specialization retains nodes also used by the base normal")
+    {
+        auto& base = *std::ranges::find(compilation.descriptor.outputs, material_surface_output::normal,
+                                        &material_surface_output_binding::output);
+        base.connected = true;
+        base.source_node = "coat";
+        base.source_pin = "normal";
+        const auto shared =
+            generate_material_slang(compilation, resolve_material_shader_codegen_options(compilation, cleared));
+        REQUIRE(shared);
+        REQUIRE(shared.value().source.find("surface.normalWS = arc_node_coat_normal;") != std::string::npos);
+        REQUIRE(shared.value().source.find("surface.clearCoatNormalWS = arc_node_coat_normal;") == std::string::npos);
+    }
+}
+
+TEST_CASE("Neutral coat normal inherits graph evaluated base normal instead of geometric normal")
+{
+    using namespace arc::render::tools;
+    constexpr std::string_view graph = R"({
+      "version":1,
+      "nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"base","type":"vector3","values":{"value":[0,1,0]}}
+      ],
+      "connections":[
+        {"id":"a","from":{"nodeId":"base","pin":"value"},"to":{"nodeId":"out","pin":"normal"}}
+      ]
+    })";
+    const auto compiled = compile_material_graph_json(graph);
+    REQUIRE(compiled);
+    const auto generated =
+        generate_material_slang(compiled.value(), resolve_material_shader_codegen_options(compiled.value()));
+    REQUIRE(generated);
+    const auto& source = generated.value().source;
+    const auto base_assignment = source.find("surface.normalWS = arc_node_base_value;");
+    REQUIRE(base_assignment != std::string::npos);
+    REQUIRE(source.find("surface.clearCoatNormalWS = surface.normalWS;", base_assignment) != std::string::npos);
+}

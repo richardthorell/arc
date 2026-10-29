@@ -26,7 +26,7 @@ namespace arc::render::tools
 inline constexpr std::uint32_t material_ir_version = 1;
 
 /** @brief Version of the deterministic Material IR to Slang generator. */
-inline constexpr std::uint32_t material_shader_codegen_version = 6;
+inline constexpr std::uint32_t material_shader_codegen_version = 7;
 
 /** @brief Version of first-class reusable Material/Shader Function documents. */
 inline constexpr std::uint32_t material_function_version = 1;
@@ -380,6 +380,25 @@ struct material_shader_codegen_options
     // the authored clearCoatNormal output. The caller owns permutation selection.
     bool independent_clear_coat_normal = true;
 };
+
+/** @brief Resolved instance binding state, keyed by compiler-assigned texture parameter identity. */
+struct material_texture_binding_state
+{
+    shader_parameter_id parameter_id{};
+    bool bound{};
+};
+
+/**
+ * @brief Select coat-normal specialization from expanded native IR and resolved instance bindings.
+ *
+ * Missing overrides use authored texture sources. Explicit empty bindings override those sources.
+ * Only the direct normal-map/texture pattern can be stripped; arbitrary authored expressions remain
+ * independent. Coat weight is deliberately irrelevant: parameter-only weight changes must not
+ * require a new shader. Callers must reselect after texture or function topology changes.
+ */
+[[nodiscard]] material_shader_codegen_options
+resolve_material_shader_codegen_options(const material_graph_compilation& compilation,
+                                        std::span<const material_texture_binding_state> bindings = {});
 
 [[nodiscard]] material_shader_codegen_result generate_material_slang(const material_graph_compilation& compilation,
                                                                      material_shader_codegen_options options);
