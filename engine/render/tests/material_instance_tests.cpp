@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstring>
 
 namespace
 {
@@ -13,6 +14,84 @@ material_parameter_override make_override(std::uint64_t id, float value)
     return {shader_parameter_id{id}, "Parameter", value};
 }
 } // namespace
+
+TEST_CASE("coat normal instances atomically select cached programs and preserve inherited parameters",
+          "[render][material-instance]")
+{
+    auto neutral = std::make_shared<material_runtime_program>();
+    auto active = std::make_shared<material_runtime_program>();
+    const shader_parameter_id texture{91};
+    const shader_parameter_id weight{92};
+    neutral->generation = 100;
+    active->generation = 200;
+    neutral->parameter_block_size = 4;
+    active->parameter_block_size = 8;
+    neutral->parameters.push_back({.id = weight, .type = shader_parameter_type::float32, .offset = 0, .size = 4});
+    active->parameters.push_back({.id = weight, .type = shader_parameter_type::float32, .offset = 4, .size = 4});
+    neutral->texture_bindings.push_back({.slot = 0, .parameter_id = texture});
+    active->texture_bindings = neutral->texture_bindings;
+    auto variants = std::make_shared<material_coat_normal_variants>();
+    variants->texture_parameter = texture;
+    variants->neutral = neutral;
+    variants->independent = active;
+    material_definition_descriptor definition;
+    definition.material.runtime_program = neutral;
+    definition.material.coat_normal_variants = variants;
+    definition.material.parameters.push_back({.id = weight, .value = 0.75f});
+    definition.parameter_layout = neutral->parameters;
+    definition.parameter_layout.push_back({.id = texture, .type = shader_parameter_type::texture_2d});
+
+    material_instance_descriptor instance;
+    instance.parent = material_handle{1};
+    instance.overrides.push_back({.id = texture, .value = resource_handle{7}});
+    const auto bound = resolve_material_instance(definition, instance);
+    REQUIRE(bound);
+    CHECK(bound.value().render_path == material_render_path::clustered_forward);
+    CHECK(bound.value().runtime_program->generation == 200);
+    CHECK(bound.value().runtime_textures[0] == resource_handle{7});
+    float inherited{};
+    std::memcpy(&inherited, bound.value().runtime_program->parameter_defaults.data() + 4, sizeof(inherited));
+    CHECK(inherited == 0.75f);
+    CHECK(neutral->parameter_defaults.empty());
+    CHECK(active->parameter_defaults.empty());
+
+    SECTION("Explicit clearing overrides an inherited active binding")
+    {
+        definition.material = bound.value();
+        instance.overrides[0].value = resource_handle{};
+        const auto cleared = resolve_material_instance(definition, instance);
+        REQUIRE(cleared);
+        CHECK(cleared.value().render_path == material_render_path::deferred);
+        CHECK(cleared.value().runtime_program->generation == 100);
+        CHECK_FALSE(cleared.value().runtime_textures[0].valid());
+        std::memcpy(&inherited, cleared.value().runtime_program->parameter_defaults.data(), sizeof(inherited));
+        CHECK(inherited == 0.75f);
+    }
+    SECTION("Zero coat weight keeps the texture-controlled program")
+    {
+        instance.overrides.push_back({.id = weight, .value = 0.0f});
+        const auto zero = resolve_material_instance(definition, instance);
+        REQUIRE(zero);
+        CHECK(zero.value().runtime_program->generation == 200);
+        CHECK(zero.value().render_path == material_render_path::clustered_forward);
+    }
+    SECTION("Unavailable replacements fail without modifying the previous material")
+    {
+        variants->independent.reset();
+        CHECK_FALSE(resolve_material_instance(definition, instance));
+        CHECK(definition.material.runtime_program == neutral);
+        CHECK_FALSE(definition.material.independent_clear_coat_normal);
+    }
+    SECTION("Resetting to the parent is isolated from another instance")
+    {
+        instance.overrides.clear();
+        const auto reset = resolve_material_instance(definition, instance);
+        REQUIRE(reset);
+        CHECK(reset.value().runtime_program->generation == 100);
+        CHECK(reset.value().render_path == material_render_path::deferred);
+        CHECK(bound.value().runtime_program->generation == 200);
+    }
+}
 
 TEST_CASE("material instance requires a valid parent", "[render][material-instance]")
 {

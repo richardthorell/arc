@@ -36,6 +36,7 @@ struct material_evaluator_source
     std::vector<shader_parameter_descriptor> parameters;
     std::vector<shader_diagnostic> diagnostics;
     bool handwritten{};
+    bool independent_clear_coat_normal{true};
 };
 
 using material_evaluator_result = core::result<material_evaluator_source, shader_compile_error>;

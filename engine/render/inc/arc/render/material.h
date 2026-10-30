@@ -371,6 +371,15 @@ struct material_runtime_program
     bool uses_texture_sampling{};
 };
 
+/** Immutable, precompiled alternatives for one texture-controlled coat-normal branch. */
+struct material_coat_normal_variants
+{
+    shader_parameter_id texture_parameter{};
+    bool default_bound{};
+    std::shared_ptr<const material_runtime_program> neutral;
+    std::shared_ptr<const material_runtime_program> independent;
+};
+
 /**
  * @brief Renderer material description used by scene rendering.
  *
@@ -388,9 +397,11 @@ struct material_descriptor
     shader_package_id shader_package{};
     shader_permutation_id shader_permutation{};
     bool deferred_compatible{true};
+    bool independent_clear_coat_normal{};
 
     /** Compiled Material ABI programs used by runtime backends when present. */
     std::shared_ptr<const material_runtime_program> runtime_program;
+    std::shared_ptr<const material_coat_normal_variants> coat_normal_variants;
     std::vector<texture_handle> runtime_textures;
 
     math::vector4f base_color = math::vector4f::one;

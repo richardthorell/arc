@@ -96,6 +96,45 @@ TEST_CASE("material preview realizes authored base color through native Material
     }
 }
 
+TEST_CASE("native material realization caches neutral and independent coat normal programs")
+{
+    const std::string source = R"({
+      "version":4,"name":"Coat variant","domain":"surface","blendMode":"opaque","shadingModel":"standard",
+      "graph":{"version":1,"nodes":[
+        {"id":"out","type":"output","values":{}},
+        {"id":"tex","type":"textureSample2D","values":{"texture":"","semantic":"normal"},
+         "parameter":{"exposed":true,"name":"Custom normal input"}},
+        {"id":"coat","type":"normalMap","values":{}},
+        {"id":"weight","type":"constant","values":{"value":0},
+         "parameter":{"exposed":true,"name":"Custom weight"}}
+      ],"connections":[
+        {"id":"a","from":{"nodeId":"tex","pin":"rgb"},"to":{"nodeId":"coat","pin":"texture"}},
+        {"id":"b","from":{"nodeId":"coat","pin":"normal"},"to":{"nodeId":"out","pin":"clearCoatNormal"}},
+        {"id":"c","from":{"nodeId":"weight","pin":"value"},"to":{"nodeId":"out","pin":"clearCoat"}}
+      ]}
+    })";
+    const auto result = arc::editor::realize_material_preview_descriptor(source);
+    INFO(result.message);
+    for (const auto& diagnostic : result.diagnostics)
+        INFO(diagnostic);
+    REQUIRE(result.succeeded);
+    CHECK(result.material.render_path == arc::render::material_render_path::deferred);
+    CHECK_FALSE(result.material.independent_clear_coat_normal);
+    const arc::render::tools::slang_shader_compiler compiler;
+    if (!compiler.available()) SKIP("Pinned Slang is unavailable; descriptor routing checked, bytecode checks skipped");
+    REQUIRE(result.material.coat_normal_variants);
+    const auto& variants = *result.material.coat_normal_variants;
+    REQUIRE(variants.neutral);
+    REQUIRE(variants.independent);
+    CHECK(result.material.runtime_program == variants.neutral);
+    CHECK(variants.neutral->generation != variants.independent->generation);
+    CHECK(arc::render::find_material_runtime_pass(*variants.neutral, arc::render::material_pass::gbuffer));
+    CHECK_FALSE(arc::render::find_material_runtime_pass(*variants.independent, arc::render::material_pass::gbuffer));
+    CHECK(arc::render::find_material_runtime_pass(*variants.independent, arc::render::material_pass::forward));
+    CHECK(variants.neutral->texture_bindings.size() == variants.independent->texture_bindings.size());
+    CHECK(variants.texture_parameter == variants.neutral->texture_bindings.front().parameter_id);
+}
+
 TEST_CASE("runtime program generation changes when compiled material shader changes")
 {
     const std::string green_source = R"({

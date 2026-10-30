@@ -58,7 +58,8 @@ bool apply_runtime_parameter_override(material_runtime_program& program,
                                       const material_parameter_override& override_value) noexcept
 {
     const auto parameter = std::ranges::find(program.parameters, override_value.id, &shader_parameter_descriptor::id);
-    if (parameter == program.parameters.end()) return false;
+    if (parameter == program.parameters.end() || !parameter_type_matches(parameter->type, override_value.value))
+        return false;
 
     switch (parameter->type)
     {
@@ -134,7 +135,8 @@ void apply_runtime_parameter_overrides(material_descriptor& material,
 
 material_render_path resolve_material_render_path(const material_descriptor& material) noexcept
 {
-    if (!material.deferred_compatible || material.shading_model != material_shading_model::standard ||
+    if (!material.deferred_compatible || material.independent_clear_coat_normal ||
+        material.shading_model != material_shading_model::standard ||
         material.alpha_mode == material_alpha_mode::blend || material.clear_coat_texture.valid() ||
         material.clear_coat_roughness_texture.valid() || material.clear_coat_normal_texture.valid() ||
         material.sheen_factor > 0.0f || material.transmission_factor > 0.0f || material.subsurface_factor > 0.0f ||
@@ -153,6 +155,10 @@ material_instance_result resolve_material_instance(const material_definition_des
 
     std::unordered_set<std::uint64_t> seen;
     material_descriptor result = definition.material;
+    if (result.coat_normal_variants && instance.specialized_runtime_program)
+        return material_instance_result::failure(
+            {.code = material_instance_error_code::invalid_parent,
+             .message = "function-specialized coat materials require a matching specialized material definition"});
     if (!instance.name.empty()) result.name = instance.name;
     const auto& parameter_layout = instance.specialized_parameter_layout.empty()
                                        ? definition.parameter_layout
@@ -203,7 +209,24 @@ material_instance_result resolve_material_instance(const material_definition_des
         else
             *existing = override_value;
     }
-    apply_runtime_parameter_overrides(result, instance.overrides);
+    if (result.coat_normal_variants)
+    {
+        const auto& variants = *result.coat_normal_variants;
+        bool bound = variants.default_bound;
+        const auto binding =
+            std::ranges::find(result.parameters, variants.texture_parameter, &material_parameter_override::id);
+        if (binding != result.parameters.end() && std::holds_alternative<resource_handle>(binding->value))
+            bound = std::get<resource_handle>(binding->value).valid();
+        const auto& program = bound ? variants.independent : variants.neutral;
+        if (!program)
+            return material_instance_result::failure({.code = material_instance_error_code::invalid_parent,
+                                                      .message = "material coat-normal shader variant is unavailable"});
+        result.runtime_program = program;
+        result.independent_clear_coat_normal = bound;
+    }
+    // Variant reflection offsets can differ. Reapply inherited as well as local values
+    // to the selected immutable program before publishing the replacement descriptor.
+    apply_runtime_parameter_overrides(result, result.parameters);
 
     if (result.runtime_program)
     {

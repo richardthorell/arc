@@ -44,6 +44,26 @@ TEST_CASE("material pass permutations are stable and pass-specific")
     REQUIRE_FALSE(shadow.writes_motion);
 }
 
+TEST_CASE("independent coat normal routing and permutation do not depend on coat weight")
+{
+    using namespace arc::render;
+    material_descriptor material;
+    const auto neutral = make_material_pass_permutation_key(material, material_pass::forward);
+    CHECK(material_supports_pass(material, material_pass::gbuffer));
+    material.independent_clear_coat_normal = true;
+    CHECK(material.clear_coat_factor == 0.0f);
+    CHECK(resolve_material_render_path(material) == material_render_path::clustered_forward);
+    CHECK_FALSE(material_supports_pass(material, material_pass::gbuffer));
+    const auto active = make_material_pass_permutation_key(material, material_pass::forward);
+    CHECK(active.independent_clear_coat_normal);
+    CHECK_FALSE(neutral.independent_clear_coat_normal);
+    CHECK(make_material_pass_permutation_id(active) != make_material_pass_permutation_id(neutral));
+    material.clear_coat_factor = 1.0f;
+    CHECK(resolve_material_render_path(material) == material_render_path::clustered_forward);
+    material.independent_clear_coat_normal = false;
+    CHECK(material_supports_pass(material, material_pass::gbuffer));
+}
+
 TEST_CASE("material pass eligibility follows alpha and render routing")
 {
     arc::render::material_descriptor material;

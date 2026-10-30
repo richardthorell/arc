@@ -111,7 +111,8 @@ material_pass_permutation_key make_material_pass_permutation_key(const material_
             .material = make_shader_permutation_key(material, debug_view, wireframe),
             .evaluates_material = material_pass_evaluates_surface(pass, material.alpha_mode),
             .writes_motion = pass == material_pass::motion || pass == material_pass::gbuffer,
-            .virtual_shadow_sampling = pass == material_pass::forward && virtual_shadow_sampling};
+            .virtual_shadow_sampling = pass == material_pass::forward && virtual_shadow_sampling,
+            .independent_clear_coat_normal = material.independent_clear_coat_normal};
 }
 
 std::uint64_t hash_material_pass_permutation_key(const material_pass_permutation_key& key) noexcept
