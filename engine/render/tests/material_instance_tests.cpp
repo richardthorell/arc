@@ -58,6 +58,8 @@ TEST_CASE("coat normal instances atomically select cached programs and preserve 
     SECTION("Explicit clearing overrides an inherited active binding")
     {
         definition.material = bound.value();
+        // Legacy resource metadata must not override the selected compiled variant.
+        definition.material.clear_coat_normal_texture = resource_handle{7};
         instance.overrides[0].value = resource_handle{};
         const auto cleared = resolve_material_instance(definition, instance);
         REQUIRE(cleared);
@@ -90,6 +92,12 @@ TEST_CASE("coat normal instances atomically select cached programs and preserve 
         CHECK(reset.value().runtime_program->generation == 100);
         CHECK(reset.value().render_path == material_render_path::deferred);
         CHECK(bound.value().runtime_program->generation == 200);
+    }
+    SECTION("A function-specialized program cannot reuse another topology's alternatives")
+    {
+        instance.specialized_runtime_program = active;
+        CHECK_FALSE(resolve_material_instance(definition, instance));
+        CHECK(definition.material.runtime_program == neutral);
     }
 }
 

@@ -138,7 +138,8 @@ material_render_path resolve_material_render_path(const material_descriptor& mat
     if (!material.deferred_compatible || material.independent_clear_coat_normal ||
         material.shading_model != material_shading_model::standard ||
         material.alpha_mode == material_alpha_mode::blend || material.clear_coat_texture.valid() ||
-        material.clear_coat_roughness_texture.valid() || material.clear_coat_normal_texture.valid() ||
+        material.clear_coat_roughness_texture.valid() ||
+        (!material.coat_normal_variants && material.clear_coat_normal_texture.valid()) ||
         material.sheen_factor > 0.0f || material.transmission_factor > 0.0f || material.subsurface_factor > 0.0f ||
         material.anisotropy_factor != 0.0f || material.parallax_height_scale != 0.0f ||
         material.displacement_mode != material_displacement_mode::none)
