@@ -40,8 +40,7 @@ assets::asset_guid guid_of(const std::string& text, std::string_view context)
     return *guid;
 }
 
-const assets::cook_manifest_artifact* find_artifact(const assets::cook_manifest& manifest,
-                                                    assets::asset_guid guid,
+const assets::cook_manifest_artifact* find_artifact(const assets::cook_manifest& manifest, assets::asset_guid guid,
                                                     assets::artifact_schema_id schema)
 {
     const auto it = std::find_if(manifest.artifacts.begin(), manifest.artifacts.end(),
@@ -64,8 +63,7 @@ std::vector<std::byte> require_artifact(const assets::cook_manifest& manifest,
     return loaded.value();
 }
 
-void require_dependency(const assets::cook_manifest& manifest, assets::asset_guid guid,
-                        const std::string& label)
+void require_dependency(const assets::cook_manifest& manifest, assets::asset_guid guid, const std::string& label)
 {
     check(std::find(manifest.dependency_closure.begin(), manifest.dependency_closure.end(), guid) !=
               manifest.dependency_closure.end(),
@@ -88,8 +86,7 @@ void verify_texture_sources(const std::filesystem::path& project, const json& ma
         const auto meta = read_json(source.string() + ".arcmeta");
         const auto guid = guid_of(meta.at("guid").get<std::string>(), label);
         require_dependency(manifest, guid, label + ": texture " + path);
-        require_artifact(manifest, reader, guid, assets::artifact_schemas::texture,
-                         label + ": texture " + path);
+        require_artifact(manifest, reader, guid, assets::artifact_schemas::texture, label + ": texture " + path);
         ++texture_count;
     }
 }
@@ -115,8 +112,7 @@ int main(int argc, char** argv)
         {
             const assets::cooked_artifact_address address{artifact.asset, artifact.schema, artifact.name};
             auto payload = reader.read(address);
-            check(static_cast<bool>(payload),
-                  "Cannot load " + assets::to_string(artifact.asset) + ":" + artifact.name);
+            check(static_cast<bool>(payload), "Cannot load " + assets::to_string(artifact.asset) + ":" + artifact.name);
             check(assets::hash_bytes(payload.value()) == artifact.hash,
                   "Hash mismatch " + assets::to_string(artifact.asset) + ":" + artifact.name);
         }
@@ -156,14 +152,13 @@ int main(int argc, char** argv)
             require_dependency(manifest, guid, label);
             const auto authored = read_json(source);
 
-            const bool is_instance =
-                reference.at("expectedType").get<std::string>() == assets::to_string(assets::asset_types::material_instance);
+            const bool is_instance = reference.at("expectedType").get<std::string>() ==
+                                     assets::to_string(assets::asset_types::material_instance);
             if (!is_instance)
             {
                 check(reference.at("expectedType") == assets::to_string(assets::asset_types::material),
                       label + ": unexpected material asset type");
-                const auto bytes =
-                    require_artifact(manifest, reader, guid, assets::artifact_schemas::material, label);
+                const auto bytes = require_artifact(manifest, reader, guid, assets::artifact_schemas::material, label);
                 const auto decoded = materials::deserialize_material_package_v4(bytes);
                 check(static_cast<bool>(decoded), label + ": cooked Material payload cannot be deserialized");
                 check(!decoded.value().compiled.passes.empty(), label + ": cooked Material has no render passes");
@@ -184,9 +179,8 @@ int main(int argc, char** argv)
                 check(decoded.value().parent_guid == parent_guid_text, label + ": wrong cooked parent GUID");
                 const auto parent_guid = guid_of(parent_guid_text, label);
                 require_dependency(manifest, parent_guid, label + ": parent Material");
-                const auto parent_bytes = require_artifact(manifest, reader, parent_guid,
-                                                           assets::artifact_schemas::material,
-                                                           label + ": parent Material");
+                const auto parent_bytes = require_artifact(
+                    manifest, reader, parent_guid, assets::artifact_schemas::material, label + ": parent Material");
                 const auto parent = materials::deserialize_material_package_v4(parent_bytes);
                 check(static_cast<bool>(parent), label + ": parent Material package failed to deserialize");
 
@@ -223,13 +217,13 @@ int main(int argc, char** argv)
         }
 
         check(specimens == 13, "Expected 12 material specimens plus ground; saw " + std::to_string(specimens));
-        check(instances == 6, "Expected six Material Instance bindings (Floor is reused); saw " + std::to_string(instances));
+        check(instances == 6,
+              "Expected six Material Instance bindings (Floor is reused); saw " + std::to_string(instances));
         check(specialized == 3, "Expected Checker + two Floor Function Slot bindings");
         check(textures >= 1, "Expected at least one real 2D texture dependency to be cooked");
-        std::cout << "Materials Baseline native runtime package: " << specimens << " assignments, "
-                  << instances << " instances, " << specialized << " function specialization, "
-                  << textures << " texture bindings, " << manifest.artifacts.size()
-                  << " named artifacts loaded and hash-verified\n";
+        std::cout << "Materials Baseline native runtime package: " << specimens << " assignments, " << instances
+                  << " instances, " << specialized << " function specialization, " << textures << " texture bindings, "
+                  << manifest.artifacts.size() << " named artifacts loaded and hash-verified\n";
         return 0;
     }
     catch (const std::exception& error)
