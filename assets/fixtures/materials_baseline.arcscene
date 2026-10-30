@@ -1,0 +1,1441 @@
+{
+  "format": "arc.scene",
+  "formatVersion": 3,
+  "scene": {
+    "id": "c9430000-0000-4000-8000-000000000001",
+    "name": "Materials Baseline"
+  },
+  "entities": [
+    {
+      "id": "d9430000-0000-4000-8000-000000000001",
+      "parent": null,
+      "order": 0,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Baseline Camera"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0,
+            6.4,
+            17.5
+          ],
+          "rotation": [
+            -0.16,
+            0,
+            0,
+            0.987117
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline / Fixed Camera"
+        },
+        "Camera": {
+          "typeId": "a7c00000000000010000000000000007",
+          "version": 2,
+          "projection": 0,
+          "fovY": 1.0471975512,
+          "near": 0.1,
+          "far": 2000,
+          "orthographicHeight": 10,
+          "active": true,
+          "clearColor": [
+            0.1,
+            0.22,
+            0.34,
+            1
+          ],
+          "exposure": {
+            "mode": 0,
+            "metering": 0,
+            "manualEV100": 10,
+            "compensationEV": 0,
+            "minimumEV100": -6,
+            "maximumEV100": 16,
+            "brightenSpeed": 3,
+            "darkenSpeed": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000002",
+      "parent": null,
+      "order": 1,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Key Directional Light"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0,
+            12,
+            0
+          ],
+          "rotation": [
+            -0.258819,
+            -0.22,
+            0.061,
+            0.938
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline / Fixed Lighting"
+        },
+        "DirectionalLight": {
+          "typeId": "a7c0000000000001000000000000000e",
+          "version": 3,
+          "color": [
+            1,
+            0.95,
+            0.88
+          ],
+          "intensity": 50000,
+          "castsShadows": true,
+          "enabled": true,
+          "useColorTemperature": false,
+          "temperatureKelvin": 5300,
+          "intensityUnit": 1,
+          "shadow": {
+            "enabled": true,
+            "resolution": 2048,
+            "bias": 0.0015,
+            "normalBias": 0.01,
+            "strength": 0.85,
+            "filter": 1,
+            "priority": 255,
+            "contactShadows": true,
+            "contactShadowLength": 0.5,
+            "cacheMode": 0
+          },
+          "cascades": {
+            "count": 4,
+            "maximumDistance": 200,
+            "splitLambda": 0.65,
+            "blendFraction": 0.1,
+            "stable": true
+          }
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000003",
+      "parent": null,
+      "order": 2,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Fixed World Environment"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline / Fixed Environment"
+        },
+        "WorldEnvironment": {
+          "typeId": "a7c00000000000010000000000000013",
+          "version": 1,
+          "enabled": true,
+          "skyVisible": true,
+          "affectLighting": true,
+          "skySource": "solidColor",
+          "solidColor": [
+            0.12,
+            0.14,
+            0.18
+          ],
+          "hdriPath": "",
+          "hdriRotationDegrees": 0,
+          "radianceIntensity": 1,
+          "atmosphereTint": [
+            0.5,
+            0.7,
+            1
+          ],
+          "exposure": 1,
+          "sunDiskSize": 0.025,
+          "sunDiskIntensity": 1.4,
+          "rayleighStrength": 1.12,
+          "rayleighScaleHeight": 8,
+          "mieStrength": 0.18,
+          "mieScaleHeight": 1.2,
+          "mieAnisotropy": 0.8,
+          "ozoneStrength": 0.24,
+          "groundAlbedo": [
+            0.18,
+            0.18,
+            0.18
+          ],
+          "planetRadius": 6360,
+          "atmosphereRadius": 6420,
+          "multiScatteringFactor": 1,
+          "sunMode": "manualLight",
+          "sunLight": "d9430000-0000-4000-8000-000000000002",
+          "latitudeDegrees": 46.8,
+          "longitudeDegrees": 8.2,
+          "northOffsetDegrees": 0,
+          "year": 2026,
+          "month": 7,
+          "day": 14,
+          "localTimeHours": 10.5,
+          "utcOffsetHours": 2,
+          "timeMode": "fixed",
+          "playing": false,
+          "timeScale": 60,
+          "loopDay": true,
+          "automaticSunLight": false,
+          "sunIntensityMultiplier": 1,
+          "sunTemperatureMultiplier": 1,
+          "moonEnabled": false,
+          "automaticMoonPhase": true,
+          "moonPhase": 0.65,
+          "moonIntensity": 0.22,
+          "moonAngularRadiusDegrees": 0.2725,
+          "starsEnabled": false,
+          "starDensity": 0.42,
+          "starIntensity": 0.75,
+          "starTwinkle": 0,
+          "cloudsEnabled": false,
+          "cumulus": {
+            "enabled": false,
+            "coverage": 0.24,
+            "density": 0.52,
+            "altitude": 1800,
+            "thickness": 450,
+            "scale": 0.00045,
+            "detail": 0.55,
+            "softness": 0.18,
+            "windX": 0.8,
+            "windY": 0.35,
+            "windSpeed": 8,
+            "lightingStrength": 1,
+            "silverLining": 0.35
+          },
+          "cirrus": {
+            "enabled": false,
+            "coverage": 0.1,
+            "density": 0.28,
+            "altitude": 6200,
+            "thickness": 180,
+            "scale": 0.00018,
+            "detail": 0.72,
+            "softness": 0.32,
+            "windX": -0.4,
+            "windY": 0.9,
+            "windSpeed": 18,
+            "lightingStrength": 0.75,
+            "silverLining": 0.12
+          },
+          "cloudShadows": false,
+          "fogEnabled": false,
+          "fogColor": [
+            0.67,
+            0.76,
+            0.84
+          ],
+          "fogDensity": 0.005,
+          "fogHeightFalloff": 0.05,
+          "fogStartDistance": 42,
+          "fogMaxOpacity": 0.34,
+          "fogSunScattering": 0.25,
+          "lightingEnabled": true,
+          "lightingSource": "constantColor",
+          "lightingColor": [
+            0.2,
+            0.23,
+            0.28
+          ],
+          "diffuseIntensity": 1,
+          "specularIntensity": 1
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000004",
+      "parent": null,
+      "order": 3,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "01 / Core Material Families"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Material Baseline Group"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000005",
+      "parent": "d9430000-0000-4000-8000-000000000004",
+      "order": 4,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Standard Lit"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            -4.725,
+            0.65,
+            3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/1/1"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "b36d1554-ddb0-4692-8a2c-a7dde15e0456",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/standard_lit.arcmat"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000006",
+      "parent": "d9430000-0000-4000-8000-000000000004",
+      "order": 5,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Unlit"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            -1.575,
+            0.65,
+            3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/1/2"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "7f76ac2c-5fc2-4f56-b0c5-8df5ed8b8b61",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/unlit.arcmat"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000007",
+      "parent": "d9430000-0000-4000-8000-000000000004",
+      "order": 6,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Glass / Forward"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            1.575,
+            0.65,
+            3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/1/3"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Cylinder",
+        "material": {
+          "guid": "72efdfc0-73be-4a3f-aea6-b4c882b4c451",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/glass.arcmat"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000008",
+      "parent": "d9430000-0000-4000-8000-000000000004",
+      "order": 7,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Subsurface"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            4.725,
+            0.65,
+            3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/1/4"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "37d05a92-86d6-48b1-8f39-ec276c67bc61",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/subsurface.arcmat"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000009",
+      "parent": null,
+      "order": 8,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "02 / Standard Lit Response"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Material Baseline Group"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-00000000000a",
+      "parent": "d9430000-0000-4000-8000-000000000009",
+      "order": 9,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Dielectric / Satin"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            -4.725,
+            0.65,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/2/1"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "c9430000-0000-4000-8000-000000000010",
+          "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+          "pathHint": "assets/materials/baseline/dielectric_satin.arcmatinst"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-00000000000b",
+      "parent": "d9430000-0000-4000-8000-000000000009",
+      "order": 10,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Metal / Polished"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            -1.575,
+            0.65,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/2/2"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "c9430000-0000-4000-8000-000000000011",
+          "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+          "pathHint": "assets/materials/baseline/metal_polished.arcmatinst"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-00000000000c",
+      "parent": "d9430000-0000-4000-8000-000000000009",
+      "order": 11,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Metal / Rough"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            1.575,
+            0.65,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/2/3"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Cylinder",
+        "material": {
+          "guid": "c9430000-0000-4000-8000-000000000012",
+          "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+          "pathHint": "assets/materials/baseline/metal_rough.arcmatinst"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-00000000000d",
+      "parent": "d9430000-0000-4000-8000-000000000009",
+      "order": 12,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Clear Coat"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            4.725,
+            0.65,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/2/4"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "c9430000-0000-4000-8000-000000000013",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/baseline/clear_coat.arcmat"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-00000000000e",
+      "parent": null,
+      "order": 13,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "03 / Composition, Textures & Emission"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Material Baseline Group"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-00000000000f",
+      "parent": "d9430000-0000-4000-8000-00000000000e",
+      "order": 14,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Floor / Default Checker"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            -4.725,
+            0.65,
+            -3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/3/1"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91",
+          "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+          "pathHint": "assets/materials/floor.arcmatinst"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000010",
+      "parent": "d9430000-0000-4000-8000-00000000000e",
+      "order": 15,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Checker / Blue"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            -1.575,
+            0.65,
+            -3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/3/2"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "c9430000-0000-4000-8000-000000000014",
+          "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+          "pathHint": "assets/materials/baseline/checker_blue.arcmatinst"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000011",
+      "parent": "d9430000-0000-4000-8000-00000000000e",
+      "order": 16,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Unlit / Textured"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            1.575,
+            0.65,
+            -3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/3/3"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Cylinder",
+        "material": {
+          "guid": "c9430000-0000-4000-8000-000000000015",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/baseline/unlit_texture.arcmat"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000012",
+      "parent": "d9430000-0000-4000-8000-00000000000e",
+      "order": 17,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Emissive"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            4.725,
+            0.65,
+            -3.15
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1,
+            1,
+            1
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/3/4"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Sphere",
+        "material": {
+          "guid": "c9430000-0000-4000-8000-000000000016",
+          "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+          "pathHint": "assets/materials/baseline/emissive.arcmat"
+        }
+      }
+    },
+    {
+      "id": "d9430000-0000-4000-8000-000000000013",
+      "parent": null,
+      "order": 18,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Ground / Floor"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "value": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0,
+            -0.36,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "scale": [
+            1.8,
+            1,
+            1.8
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline / Floor"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true,
+          "baseColorTint": [
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "assetBinding": {
+        "version": 2,
+        "kind": "primitive",
+        "source": {
+          "guid": "",
+          "expectedType": "",
+          "pathHint": ""
+        },
+        "subresource": "Plane",
+        "material": {
+          "guid": "6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91",
+          "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+          "pathHint": "assets/materials/floor.arcmatinst"
+        }
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "guid": "b36d1554-ddb0-4692-8a2c-a7dde15e0456",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/standard_lit.arcmat",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000005",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "7f76ac2c-5fc2-4f56-b0c5-8df5ed8b8b61",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/unlit.arcmat",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000006",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "72efdfc0-73be-4a3f-aea6-b4c882b4c451",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/glass.arcmat",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000007",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "37d05a92-86d6-48b1-8f39-ec276c67bc61",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/subsurface.arcmat",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000008",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000010",
+      "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+      "pathHint": "assets/materials/baseline/dielectric_satin.arcmatinst",
+      "ownerEntity": "d9430000-0000-4000-8000-00000000000a",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000011",
+      "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+      "pathHint": "assets/materials/baseline/metal_polished.arcmatinst",
+      "ownerEntity": "d9430000-0000-4000-8000-00000000000b",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000012",
+      "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+      "pathHint": "assets/materials/baseline/metal_rough.arcmatinst",
+      "ownerEntity": "d9430000-0000-4000-8000-00000000000c",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000013",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/baseline/clear_coat.arcmat",
+      "ownerEntity": "d9430000-0000-4000-8000-00000000000d",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91",
+      "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+      "pathHint": "assets/materials/floor.arcmatinst",
+      "ownerEntity": "d9430000-0000-4000-8000-00000000000f",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000014",
+      "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+      "pathHint": "assets/materials/baseline/checker_blue.arcmatinst",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000010",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000015",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/baseline/unlit_texture.arcmat",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000011",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000016",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "assets/materials/baseline/emissive.arcmat",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000012",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    },
+    {
+      "guid": "6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91",
+      "expectedType": "a7ca55e7-0000-0001-0000-00000000000e",
+      "pathHint": "assets/materials/floor.arcmatinst",
+      "ownerEntity": "d9430000-0000-4000-8000-000000000013",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": false
+    }
+  ]
+}

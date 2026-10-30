@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "name": "Baseline Dielectric Satin",
+  "parent": {
+    "guid": "b36d1554-ddb0-4692-8a2c-a7dde15e0456",
+    "pathHint": "materials/standard_lit.arcmat"
+  },
+  "parameterOverrides": [
+    {
+      "parameterId": "16113330016842241480",
+      "value": 0
+    },
+    {
+      "parameterId": "14293098357166276437",
+      "value": 0.56
+    }
+  ],
+  "functionOverrides": []
+}

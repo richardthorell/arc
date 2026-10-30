@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "name": "Baseline Blue Checker",
+  "parent": {
+    "guid": "b36d1554-ddb0-4692-8a2c-a7dde15e0456",
+    "pathHint": "materials/standard_lit.arcmat"
+  },
+  "parameterOverrides": [
+    {
+      "parameterId": "16113330016842241480",
+      "value": 0
+    },
+    {
+      "parameterId": "14293098357166276437",
+      "value": 0.44
+    }
+  ],
+  "functionOverrides": [
+    {
+      "slotId": "base-color-source",
+      "function": {
+        "guid": "76433716-d257-4cc4-974a-921f393a9602",
+        "pathHint": "material_functions/checker.arcmatfn"
+      },
+      "inputOverrides": [
+        {
+          "pinId": "colorA",
+          "value": [
+            0.08,
+            0.45,
+            0.88
+          ]
+        },
+        {
+          "pinId": "colorB",
+          "value": [
+            0.02,
+            0.08,
+            0.2
+          ]
+        },
+        {
+          "pinId": "cellSize",
+          "value": 0.43
+        }
+      ]
+    }
+  ]
+}
