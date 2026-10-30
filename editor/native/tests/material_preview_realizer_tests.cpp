@@ -138,9 +138,10 @@ TEST_CASE("native material realization caches neutral and independent coat norma
     CHECK(variants.default_bound == authored_texture);
     CHECK(result.material.runtime_program == (authored_texture ? variants.independent : variants.neutral));
     CHECK(variants.neutral->generation != variants.independent->generation);
-    CHECK(arc::render::find_material_runtime_pass(*variants.neutral, arc::render::material_pass::gbuffer));
-    CHECK_FALSE(arc::render::find_material_runtime_pass(*variants.independent, arc::render::material_pass::gbuffer));
-    CHECK(arc::render::find_material_runtime_pass(*variants.independent, arc::render::material_pass::forward));
+    CHECK(arc::render::find_material_runtime_pass(*variants.neutral, arc::render::material_pass::gbuffer, false));
+    CHECK_FALSE(
+        arc::render::find_material_runtime_pass(*variants.independent, arc::render::material_pass::gbuffer, false));
+    CHECK(arc::render::find_material_runtime_pass(*variants.independent, arc::render::material_pass::forward, false));
     CHECK(variants.neutral->texture_bindings.size() == variants.independent->texture_bindings.size());
     CHECK(variants.texture_parameter == variants.neutral->texture_bindings.front().parameter_id);
 }
