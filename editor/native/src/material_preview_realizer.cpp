@@ -387,7 +387,9 @@ std::shared_ptr<render::material_runtime_program>
 compile_preview_runtime_program(const material_graph_compilation& compilation,
                                 const render::material_descriptor& material, std::vector<std::string>& diagnostics)
 {
-    auto evaluator = render::tools::make_graph_material_evaluator(compilation);
+    const render::tools::material_shader_codegen_options options{.independent_clear_coat_normal =
+                                                                     material.independent_clear_coat_normal};
+    auto evaluator = render::tools::make_graph_material_evaluator(compilation, options);
     if (!evaluator)
     {
         diagnostics.push_back("Compiled Material ABI preview evaluator generation failed: " +
@@ -646,9 +648,51 @@ realize_material_preview_descriptor(std::string_view source, std::string_view na
     append_dynamic_diagnostic(result, evaluator, material_surface_output::ambient_occlusion);
     append_dynamic_diagnostic(result, evaluator, material_surface_output::sheen_roughness);
 
+    const auto options = render::tools::resolve_material_shader_codegen_options(compiled.value());
+    result.material.independent_clear_coat_normal = options.independent_clear_coat_normal;
     result.material.render_path = render::resolve_material_render_path(result.material);
     result.material.runtime_program =
         compile_preview_runtime_program(compiled.value(), result.material, result.diagnostics);
+    const bool has_coat_normal = std::ranges::any_of(
+        compiled.value().descriptor.outputs, [](const auto& output)
+        { return output.output == material_surface_output::clear_coat_normal && output.connected; });
+    if (has_coat_normal && result.material.domain == render::material_domain::surface &&
+        !result.material.runtime_program && render::tools::slang_shader_compiler{}.available())
+    {
+        result.message = "Material runtime program could not be compiled; replacement was not published";
+        return result;
+    }
+    // Cache both alternatives only when a texture binding can change the topology.
+    // Numeric parameter edits (including coat weight) then reuse compiled programs.
+    for (const auto& texture : compiled.value().descriptor.textures)
+    {
+        if (!result.material.runtime_program) break;
+        if (!texture.parameter_id.valid()) continue;
+        const std::array bound{render::tools::material_texture_binding_state{texture.parameter_id, true}};
+        const std::array cleared{render::tools::material_texture_binding_state{texture.parameter_id, false}};
+        if (!render::tools::resolve_material_shader_codegen_options(compiled.value(), bound)
+                 .independent_clear_coat_normal ||
+            render::tools::resolve_material_shader_codegen_options(compiled.value(), cleared)
+                .independent_clear_coat_normal)
+            continue;
+        auto alternate = result.material;
+        alternate.independent_clear_coat_normal = !options.independent_clear_coat_normal;
+        alternate.render_path = render::resolve_material_render_path(alternate);
+        const auto alternate_program = compile_preview_runtime_program(compiled.value(), alternate, result.diagnostics);
+        if (!alternate_program)
+        {
+            result.message = "Material coat-normal variants could not be compiled; replacement was not published";
+            return result;
+        }
+        auto variants = std::make_shared<render::material_coat_normal_variants>();
+        variants->texture_parameter = texture.parameter_id;
+        variants->default_bound = options.independent_clear_coat_normal;
+        variants->neutral = options.independent_clear_coat_normal ? alternate_program : result.material.runtime_program;
+        variants->independent =
+            options.independent_clear_coat_normal ? result.material.runtime_program : alternate_program;
+        result.material.coat_normal_variants = std::move(variants);
+        break;
+    }
     if (result.material.runtime_program)
     {
         std::erase_if(

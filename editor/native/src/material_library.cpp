@@ -151,7 +151,8 @@ bool load_instance_function_sources(const std::filesystem::path& parent_path, co
 std::optional<render::material_parameter_value>
 instance_parameter_value(editor_material_library& library, render::renderer& renderer,
                          const std::filesystem::path& asset_root, const render::shader_parameter_descriptor& parameter,
-                         std::string_view value_json)
+                         std::string_view value_json,
+                         render::texture_semantic semantic = render::texture_semantic::generic_color)
 {
     const auto value = nlohmann::json::parse(value_json, nullptr, false);
     if (value.is_discarded()) return std::nullopt;
@@ -197,9 +198,9 @@ instance_parameter_value(editor_material_library& library, render::renderer& ren
         case render::shader_parameter_type::texture_2d:
             if (value.is_string())
             {
+                if (value.get_ref<const std::string&>().empty()) return render::resource_handle{};
                 const auto path = resolve_instance_reference_path({}, asset_root, value.get<std::string>());
-                return render::resource_handle{
-                    ensure_texture(library, renderer, path, render::texture_semantic::generic_color)};
+                return render::resource_handle{ensure_texture(library, renderer, path, semantic)};
             }
             break;
         default:
@@ -613,13 +614,23 @@ render::material_handle load_material_for_editor(editor_material_library& librar
         render::material_instance_descriptor instance;
         instance.parent = parent;
         instance.name = authored.value().name;
-        const auto& layout = realized.material.runtime_program->parameters;
+        auto layout = realized.material.runtime_program->parameters;
+        for (const auto& binding : realized.material.runtime_program->texture_bindings)
+            if (binding.parameter_id.valid() &&
+                std::ranges::find(layout, binding.parameter_id, &render::shader_parameter_descriptor::id) ==
+                    layout.end())
+                layout.push_back({.id = binding.parameter_id, .name = "Texture", .type = binding.type});
         for (const auto& override_value : authored.value().parameter_overrides)
         {
             const auto parameter =
                 std::ranges::find(layout, override_value.parameter_id, &render::shader_parameter_descriptor::id);
             if (parameter == layout.end()) continue;
-            auto value = instance_parameter_value(library, renderer, asset_root, *parameter, override_value.value_json);
+            const auto& textures = realized.material.runtime_program->texture_bindings;
+            const auto texture =
+                std::ranges::find(textures, parameter->id, &render::material_runtime_texture_binding::parameter_id);
+            auto value = instance_parameter_value(library, renderer, asset_root, *parameter, override_value.value_json,
+                                                  texture == textures.end() ? render::texture_semantic::generic_color
+                                                                            : texture->semantic);
             if (!value) continue;
             instance.overrides.push_back(
                 {.id = override_value.parameter_id, .name = parameter->name, .value = std::move(*value)});

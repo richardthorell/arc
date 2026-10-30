@@ -379,6 +379,14 @@ TEST_CASE("Material pass evaluator retains requested clear-coat normal specializ
     REQUIRE(neutral_evaluator.value().source.find("surface.clearCoatNormalWS = surface.normalWS;") !=
             std::string::npos);
     REQUIRE(default_evaluator.value().source != neutral_evaluator.value().source);
+    const arc::render::material_descriptor material;
+    const auto active_pass = arc::render::tools::generate_material_pass_slang(default_evaluator.value(), material,
+                                                                              arc::render::material_pass::forward);
+    const auto neutral_pass = arc::render::tools::generate_material_pass_slang(neutral_evaluator.value(), material,
+                                                                               arc::render::material_pass::forward);
+    REQUIRE(active_pass);
+    REQUIRE(neutral_pass);
+    CHECK(active_pass.value().permutation != neutral_pass.value().permutation);
 }
 
 TEST_CASE("Graph material pass codegen selects the authored coat-normal shader variant")

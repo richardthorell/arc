@@ -712,7 +712,8 @@ material_evaluator_result make_graph_material_evaluator(const material_graph_com
     return material_evaluator_result::success({.source = std::move(evaluator.source),
                                                .generated_line_nodes = std::move(evaluator.generated_line_nodes),
                                                .parameters = std::move(evaluator.parameters),
-                                               .diagnostics = std::move(evaluator.diagnostics)});
+                                               .diagnostics = std::move(evaluator.diagnostics),
+                                               .independent_clear_coat_normal = options.independent_clear_coat_normal});
 }
 
 material_evaluator_result make_graph_material_evaluator(const material_graph_compilation& compilation)
@@ -792,7 +793,8 @@ material_pass_codegen_result generate_material_pass_slang(const material_evaluat
             break;
     }
 
-    const auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe, virtual_shadow_sampling);
+    auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe, virtual_shadow_sampling);
+    key.independent_clear_coat_normal = evaluator.independent_clear_coat_normal;
     return material_pass_codegen_result::success({.pass = pass,
                                                   .permutation = make_material_pass_permutation_id(key),
                                                   .source = std::move(pass_source).str(),
@@ -810,14 +812,8 @@ material_pass_codegen_result generate_material_pass_slang(const material_graph_c
 {
     auto evaluator = make_graph_material_evaluator(compilation, options);
     if (!evaluator) return material_pass_codegen_result::failure(evaluator.error());
-    auto generated =
-        generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe, virtual_shadow_sampling);
-    if (!generated || options.independent_clear_coat_normal) return generated;
-    auto variant = std::move(generated).value();
-    auto key = make_material_pass_permutation_key(material, pass, debug_view, wireframe, virtual_shadow_sampling);
-    key.independent_clear_coat_normal = false;
-    variant.permutation = make_material_pass_permutation_id(key);
-    return material_pass_codegen_result::success(std::move(variant));
+    return generate_material_pass_slang(evaluator.value(), material, pass, debug_view, wireframe,
+                                        virtual_shadow_sampling);
 }
 
 material_pass_codegen_result generate_material_pass_slang(const material_graph_compilation& compilation,
