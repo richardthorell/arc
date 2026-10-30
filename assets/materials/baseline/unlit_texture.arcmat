@@ -45,7 +45,7 @@
           260
         ],
         "values": {
-          "texture": "textures/editor/default_checker_floor.png",
+          "texture": "textures/terrain/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg",
           "dimension": "2d"
         },
         "parameter": {
