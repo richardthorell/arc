@@ -98,7 +98,7 @@ TEST_CASE("material preview realizes authored base color through native Material
 
 TEST_CASE("native material realization caches neutral and independent coat normal programs")
 {
-    const std::string source = R"({
+    std::string source = R"({
       "version":4,"name":"Coat variant","domain":"surface","blendMode":"opaque","shadingModel":"standard",
       "graph":{"version":1,"nodes":[
         {"id":"out","type":"output","values":{}},
@@ -113,20 +113,30 @@ TEST_CASE("native material realization caches neutral and independent coat norma
         {"id":"c","from":{"nodeId":"weight","pin":"value"},"to":{"nodeId":"out","pin":"clearCoat"}}
       ]}
     })";
+    bool authored_texture{};
+    SECTION("Empty authored texture starts deferred") {}
+    SECTION("Bound authored texture starts forward even with zero coat weight")
+    {
+        const std::string empty_binding = "\"texture\":\"\"";
+        source.replace(source.find(empty_binding), empty_binding.size(), "\"texture\":\"coat.png\"");
+        authored_texture = true;
+    }
     const auto result = arc::editor::realize_material_preview_descriptor(source);
     INFO(result.message);
     for (const auto& diagnostic : result.diagnostics)
         INFO(diagnostic);
     REQUIRE(result.succeeded);
-    CHECK(result.material.render_path == arc::render::material_render_path::deferred);
-    CHECK_FALSE(result.material.independent_clear_coat_normal);
+    CHECK(result.material.render_path == (authored_texture ? arc::render::material_render_path::clustered_forward
+                                                           : arc::render::material_render_path::deferred));
+    CHECK(result.material.independent_clear_coat_normal == authored_texture);
     const arc::render::tools::slang_shader_compiler compiler;
     if (!compiler.available()) SKIP("Pinned Slang is unavailable; descriptor routing checked, bytecode checks skipped");
     REQUIRE(result.material.coat_normal_variants);
     const auto& variants = *result.material.coat_normal_variants;
     REQUIRE(variants.neutral);
     REQUIRE(variants.independent);
-    CHECK(result.material.runtime_program == variants.neutral);
+    CHECK(variants.default_bound == authored_texture);
+    CHECK(result.material.runtime_program == (authored_texture ? variants.independent : variants.neutral));
     CHECK(variants.neutral->generation != variants.independent->generation);
     CHECK(arc::render::find_material_runtime_pass(*variants.neutral, arc::render::material_pass::gbuffer));
     CHECK_FALSE(arc::render::find_material_runtime_pass(*variants.independent, arc::render::material_pass::gbuffer));
