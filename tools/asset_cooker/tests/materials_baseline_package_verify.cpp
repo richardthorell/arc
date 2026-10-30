@@ -224,7 +224,7 @@ int main(int argc, char** argv)
 
         check(specimens == 13, "Expected 12 material specimens plus ground; saw " + std::to_string(specimens));
         check(instances == 5, "Expected five authored Material Instances; saw " + std::to_string(instances));
-        check(specialized == 1, "Expected exactly one Function Slot specialization");
+        check(specialized == 2, "Expected Checker + Floor Function Slot specializations");
         check(textures >= 1, "Expected at least one real 2D texture dependency to be cooked");
         std::cout << "Materials Baseline native runtime package: " << specimens << " assignments, "
                   << instances << " instances, " << specialized << " function specialization, "
