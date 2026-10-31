@@ -131,6 +131,17 @@ std::vector<std::string> nested_function_paths(std::string_view source)
                 const auto values = value.value("values", json::object());
                 const auto path = values.value("path", "");
                 if (!path.empty()) paths.push_back(path);
+                // Function Calls can expose a list of compatible selectable
+                // functions. Every declared option must be present for graph
+                // validation even when the default/selected path is different.
+                const auto choices = values.value("functions", json::array());
+                if (choices.is_array())
+                    for (const auto& choice : choices)
+                        if (choice.is_object())
+                        {
+                            const auto selected = choice.value("path", "");
+                            if (!selected.empty()) paths.push_back(selected);
+                        }
             }
             for (const auto& [key, child] : value.items())
             {
