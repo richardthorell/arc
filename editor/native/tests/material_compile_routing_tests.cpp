@@ -15,7 +15,7 @@
 TEST_CASE("built-in material routing is resolved by native material realization")
 {
     const auto root = std::filesystem::path(ARC_SOURCE_ROOT) / "assets";
-    for (const auto* file : {"standard_lit.arcmat", "unlit.arcmat", "transmission.arcmat", "subsurface.arcmat"})
+    for (const auto* file : {"standard_lit.arcmat", "unlit.arcmat", "glass.arcmat", "subsurface.arcmat"})
     {
         CAPTURE(file);
         arc::render::renderer renderer;
