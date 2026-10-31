@@ -439,6 +439,14 @@ cook_result asset_cooker::cook(const cook_request& request)
                                    .canonical_settings = std::move(canonical_settings),
                                    .dependencies = std::move(dependencies),
                                    .cancellation = request.cancellation};
+        // The Asset Database stores project-relative source paths, while native
+        // cook processors open source/dependency files directly. Resolve them
+        // against the selected project, never the arc-cook process working
+        // directory (which may be the CTest build directory or a CI runner).
+        context.source.source_path = absolute_source;
+        for (auto& dependency : context.dependencies)
+            if (!dependency.source_path.is_absolute())
+                dependency.source_path = registry.project_root / dependency.source_path;
         auto cooked = processor->cook(context);
         result.diagnostics.insert(result.diagnostics.end(), cooked.diagnostics.begin(), cooked.diagnostics.end());
         if (!cooked.succeeded())
