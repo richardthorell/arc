@@ -641,17 +641,13 @@ private:
     cook_parent_reuse(const assets::asset_cook_context& context, const assets::asset_snapshot& parent,
                       const render::tools::material_instance_authoring_document& instance) const
     {
-        const auto artifact = std::ranges::find_if(parent.artifacts, [](const assets::asset_artifact_snapshot& value)
-                                                   { return value.path.extension() == ".arcmatc"; });
-        if (artifact == parent.artifacts.end())
+        const auto artifact = std::ranges::find_if(
+            context.cooked_dependencies, [&](const assets::cooked_dependency_artifact& value)
+            { return value.asset == parent.guid && value.schema == assets::artifact_schemas::material; });
+        if (artifact == context.cooked_dependencies.end())
             return failure(context, "Material Instance parent has no cooked Material artifact to reuse");
-        std::ifstream input(artifact->path, std::ios::binary);
-        if (!input) return failure(context, "Material Instance parent cooked Material artifact could not be read");
-        std::vector<std::byte> bytes(static_cast<std::size_t>(artifact->size));
-        input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        if (!input) return failure(context, "Material Instance parent cooked Material artifact is truncated");
 
-        auto parent_package = render::tools::deserialize_material_package_v4(bytes);
+        auto parent_package = render::tools::deserialize_material_package_v4(artifact->bytes);
         if (!parent_package) return failure(context, parent_package.error().message);
 
         for (const auto& override_value : instance.parameter_overrides)
