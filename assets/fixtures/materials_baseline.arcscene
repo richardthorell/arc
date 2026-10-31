@@ -1327,7 +1327,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000005",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "7f76ac2c-5fc2-4f56-b0c5-8df5ed8b8b61",
@@ -1336,7 +1336,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000006",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "72efdfc0-73be-4a3f-aea6-b4c882b4c451",
@@ -1345,7 +1345,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000007",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "37d05a92-86d6-48b1-8f39-ec276c67bc61",
@@ -1354,7 +1354,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000008",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "c9430000-0000-4000-8000-000000000010",
@@ -1363,7 +1363,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-00000000000a",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "c9430000-0000-4000-8000-000000000011",
@@ -1372,7 +1372,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-00000000000b",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "c9430000-0000-4000-8000-000000000012",
@@ -1381,7 +1381,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-00000000000c",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "c9430000-0000-4000-8000-000000000013",
@@ -1390,7 +1390,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-00000000000d",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91",
@@ -1399,7 +1399,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-00000000000f",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "c9430000-0000-4000-8000-000000000014",
@@ -1408,7 +1408,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000010",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "c9430000-0000-4000-8000-000000000015",
@@ -1417,7 +1417,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000011",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "c9430000-0000-4000-8000-000000000016",
@@ -1426,7 +1426,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000012",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     },
     {
       "guid": "6a8c7339-3a9f-49d5-9d4f-1b5a73d02a91",
@@ -1435,7 +1435,7 @@
       "ownerEntity": "d9430000-0000-4000-8000-000000000013",
       "ownerComponent": "a7c00000000000010000000000000008",
       "ownerField": "0000000000000002",
-      "required": false
+      "required": true
     }
   ]
 }
