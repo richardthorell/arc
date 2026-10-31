@@ -194,7 +194,7 @@ struct viewport_surface_registry
 
     struct live_material_preview
     {
-        std::string source;
+        material_preview_descriptor_result realized;
         std::uint64_t generation{};
     };
 
@@ -605,9 +605,9 @@ bool refresh_asset_preview_material(HostState& host, viewport_surface_registry::
 
 template <class HostState>
 bool apply_live_asset_preview_material(HostState& host, viewport_surface_registry::surface_state& surface,
-                                       std::string_view source)
+                                       const material_preview_descriptor_result& compiled)
 {
-    if (surface.preview_kind != asset_preview_kind::material || !surface.preview_scene || source.empty()) return false;
+    if (surface.preview_kind != asset_preview_kind::material || !surface.preview_scene) return false;
     if (!host.asset_registry || !host.renderer || !surface.preview_guid.valid()) return false;
 
     const auto asset = host.asset_registry->find(surface.preview_guid);
@@ -615,11 +615,12 @@ bool apply_live_asset_preview_material(HostState& host, viewport_surface_registr
     const host_asset_reference reference{.guid = assets::to_string(asset->guid),
                                          .expected_type = assets::to_string(asset->type),
                                          .path_hint = assets::normalize_asset_path(asset->source_path)};
-    const auto resolved =
-        resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, reference);
+    const auto resolved = resolve_editor_asset(host.assets, host.asset_registry.get(), host.project.root, reference);
     if (!resolved || !is_material_asset_path(resolved->path)) return false;
 
-    auto realized = realize_material_preview_descriptor(source, resolved->path.stem().string());
+    // Copy the descriptor for texture realization; immutable compiled programs are shared.
+    // Reusing compilation also preserves the registered function expansion used for the label.
+    auto realized = compiled;
     if (!realized.succeeded)
     {
         surface.preview_error =
@@ -1441,6 +1442,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             asset_preview_scene_scope preview_scope(*state_, *viewport_surface);
             response = execute_base(command);
         }
+        auto compiled_preview = std::exchange(state_->compiled_material_preview, std::nullopt);
         if (response.succeeded)
         {
             if (const auto* compile = std::get_if<host_shader_compile_command>(&command.payload);
@@ -1449,11 +1451,12 @@ host_response arc_host::execute(const host_command_envelope& command)
             {
                 const auto compile_result = nlohmann::json::parse(response.payload_json, nullptr, false);
                 const auto preview_guid = assets::parse_asset_guid(compile->preview_guid);
-                if (!compile_result.is_discarded() && compile_result.value("succeeded", false) && preview_guid)
+                if (!compile_result.is_discarded() && compile_result.value("succeeded", false) && preview_guid &&
+                    compiled_preview && compiled_preview->succeeded)
                 {
                     const auto live_generation = ++surfaces.next_live_material_generation;
                     surfaces.live_material_previews[*preview_guid] = {
-                        .source = compile->preview_source,
+                        .realized = std::move(*compiled_preview),
                         .generation = live_generation,
                     };
                     for (auto& [_, preview_surface] : surfaces.surfaces)
@@ -1462,7 +1465,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                             preview_surface.preview_guid != *preview_guid)
                             continue;
                         if (!preview_surface.preview_scene) (void)ensure_asset_preview_scene(*state_, preview_surface);
-                        if (apply_live_asset_preview_material(*state_, preview_surface, compile->preview_source))
+                        if (apply_live_asset_preview_material(
+                                *state_, preview_surface, surfaces.live_material_previews.at(*preview_guid).realized))
                             preview_surface.preview_live_material_generation = live_generation;
                     }
                 }
@@ -1889,7 +1893,7 @@ host_viewport_frame arc_host::request_viewport(const host_viewport_request& requ
             live != surfaces.live_material_previews.end() &&
             live->second.generation != viewport_surface->preview_live_material_generation)
         {
-            if (apply_live_asset_preview_material(*state_, *viewport_surface, live->second.source))
+            if (apply_live_asset_preview_material(*state_, *viewport_surface, live->second.realized))
                 viewport_surface->preview_live_material_generation = live->second.generation;
         }
     }

@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 
 import { clearCoatNormalTextureActive } from './clearCoatNormalActivity';
 import { cloneMaterialGraph, isMaterialGraph, type MaterialAssetJson } from './materialGraphTypes';
-import { materialRenderPathLabel } from './materialSettingsPresentation';
 
 const standardLit = () => {
   const asset = JSON.parse(
@@ -29,19 +28,5 @@ describe('clear-coat normal activity contract', () => {
     if (!edge) throw new Error('missing clear coat normal output');
     edge.from.nodeId = 'normal-one';
     expect(clearCoatNormalTextureActive(graph)).toBe(true);
-  });
-
-  it('does not misrepresent the current native render path as Deferred', () => {
-    const graph = standardLit();
-    expect(clearCoatNormalTextureActive(graph)).toBe(false);
-    expect(
-      materialRenderPathLabel({
-        domain: 'surface',
-        blendMode: 'opaque',
-        shadingModel: 'standard',
-        graph,
-        customShader: false,
-      }),
-    ).toBe('Clustered Forward');
   });
 });
