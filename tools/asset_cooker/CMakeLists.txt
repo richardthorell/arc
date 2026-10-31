@@ -61,4 +61,29 @@ if(BUILD_TESTING)
         LABELS "integration;assets;persistence"
         TIMEOUT 900
     )
+
+    add_executable(arc-materials-baseline-package-verify
+        tests/materials_baseline_package_verify.cpp)
+    arc_configure_first_party_target(arc-materials-baseline-package-verify)
+    target_compile_features(arc-materials-baseline-package-verify PRIVATE cxx_std_20)
+    target_link_libraries(arc-materials-baseline-package-verify PRIVATE
+        arc-assets
+        arc-render-tools
+        arc-third-party-json)
+    set_target_properties(arc-materials-baseline-package-verify PROPERTIES FOLDER "Tools")
+
+    add_test(
+        NAME arc-materials-baseline-cook
+        COMMAND "${CMAKE_COMMAND}"
+            -DARC_COOK=$<TARGET_FILE:arc-cook>
+            -DARC_MATERIALS_VERIFY=$<TARGET_FILE:arc-materials-baseline-package-verify>
+            -DARC_SOURCE_ROOT=${CMAKE_SOURCE_DIR}
+            -DARC_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/materials-baseline
+            -DARC_BASELINE_TIMEOUT=${ARC_COOK_COLD_TIMEOUT}
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/materials_baseline_cook.cmake")
+    set_tests_properties(arc-materials-baseline-cook PROPERTIES
+        LABELS "integration;assets;materials;cook"
+        TIMEOUT 1200
+        RESOURCE_LOCK arc_materials_baseline_cook)
+
 endif()

@@ -335,6 +335,15 @@ struct cooked_artifact
     std::vector<std::byte> bytes;
 };
 
+// Native cook artifacts for direct dependencies that have already been cooked
+// in the current transaction. These are not source-importer artifact records.
+struct cooked_dependency_artifact
+{
+    asset_guid asset{};
+    artifact_schema_id schema{};
+    std::vector<std::byte> bytes;
+};
+
 struct asset_cook_context
 {
     asset_snapshot asset;
@@ -343,6 +352,7 @@ struct asset_cook_context
     std::uint32_t settings_version{1};
     std::string canonical_settings{"{}"};
     std::vector<asset_snapshot> dependencies;
+    std::vector<cooked_dependency_artifact> cooked_dependencies;
     jobs::cancellation_token cancellation;
 };
 

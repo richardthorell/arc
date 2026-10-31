@@ -439,6 +439,46 @@ cook_result asset_cooker::cook(const cook_request& request)
                                    .canonical_settings = std::move(canonical_settings),
                                    .dependencies = std::move(dependencies),
                                    .cancellation = request.cancellation};
+        // The Asset Database stores project-relative source paths, while native
+        // cook processors open source/dependency files directly. Resolve them
+        // against the selected project, never the arc-cook process working
+        // directory (which may be the CTest build directory or a CI runner).
+        context.source.source_path = absolute_source;
+        for (auto& dependency : context.dependencies)
+            if (!dependency.source_path.is_absolute())
+                dependency.source_path = registry.project_root / dependency.source_path;
+        if (snapshot->type == asset_types::material_instance)
+        {
+            // Material Instances must reuse the exact parent Material artifact
+            // from this cook, including when its action was a DDC cache hit.
+            // Importer snapshots contain only source artifacts, not .arcmatc.
+            for (const auto& dependency : context.dependencies)
+            {
+                if (dependency.type != asset_types::material) continue;
+                const auto artifact = std::ranges::find_if(
+                    result.manifest.artifacts, [&](const cook_manifest_artifact& candidate)
+                    { return candidate.asset == dependency.guid && candidate.schema == artifact_schemas::material; });
+                if (artifact == result.manifest.artifacts.end())
+                {
+                    result.error = {.code = asset_error_code::dependency_failed,
+                                    .guid = guid,
+                                    .message = "Material Instance parent has no cooked Material artifact"};
+                    return result;
+                }
+                cache_error dependency_error;
+                auto bytes = implementation_->cache->get_blob(artifact->hash, dependency_error);
+                if (!bytes)
+                {
+                    result.error = {.code = asset_error_code::dependency_failed,
+                                    .guid = guid,
+                                    .message =
+                                        "Could not load cooked Material parent from DDC: " + dependency_error.message};
+                    return result;
+                }
+                context.cooked_dependencies.push_back(
+                    {.asset = dependency.guid, .schema = artifact->schema, .bytes = std::move(bytes->bytes)});
+            }
+        }
         auto cooked = processor->cook(context);
         result.diagnostics.insert(result.diagnostics.end(), cooked.diagnostics.begin(), cooked.diagnostics.end());
         if (!cooked.succeeded())

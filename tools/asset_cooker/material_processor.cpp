@@ -99,6 +99,17 @@ std::vector<std::string> nested_function_paths(std::string_view source)
                 const auto values = value.value("values", json::object());
                 const auto path = values.value("path", "");
                 if (!path.empty()) paths.push_back(path);
+                // Function Calls can expose a list of compatible selectable
+                // functions. Every declared option must be present for graph
+                // validation even when the default/selected path is different.
+                const auto choices = values.value("functions", json::array());
+                if (choices.is_array())
+                    for (const auto& choice : choices)
+                        if (choice.is_object())
+                        {
+                            const auto selected = choice.value("path", "");
+                            if (!selected.empty()) paths.push_back(selected);
+                        }
             }
             for (const auto& [key, child] : value.items())
             {
@@ -136,10 +147,18 @@ std::filesystem::path resolve_function_path(const std::filesystem::path& owner, 
     const std::filesystem::path authored_path(authored);
     if (authored_path.is_absolute()) return authored_path.lexically_normal();
     const auto text = normalized_path(authored_path);
+    const auto root = assets_root_for(owner);
     if (text.starts_with("assets/"))
     {
-        const auto root = assets_root_for(owner);
         if (!root.empty()) return (root.parent_path() / authored_path).lexically_normal();
+    }
+    // Material and Material Function documents author references relative to
+    // their asset root (e.g. "material_functions/checker.arcmatfn"), not to
+    // the directory containing the parent material. Match the Asset Database
+    // dependency resolver so cooker discovery and compilation agree.
+    else if (text.starts_with("material_functions/"))
+    {
+        if (!root.empty()) return (root / authored_path).lexically_normal();
     }
     return (owner.parent_path() / authored_path).lexically_normal();
 }
@@ -590,17 +609,13 @@ private:
     cook_parent_reuse(const assets::asset_cook_context& context, const assets::asset_snapshot& parent,
                       const render::tools::material_instance_authoring_document& instance) const
     {
-        const auto artifact = std::ranges::find_if(parent.artifacts, [](const assets::asset_artifact_snapshot& value)
-                                                   { return value.path.extension() == ".arcmatc"; });
-        if (artifact == parent.artifacts.end())
+        const auto artifact = std::ranges::find_if(
+            context.cooked_dependencies, [&](const assets::cooked_dependency_artifact& value)
+            { return value.asset == parent.guid && value.schema == assets::artifact_schemas::material; });
+        if (artifact == context.cooked_dependencies.end())
             return failure(context, "Material Instance parent has no cooked Material artifact to reuse");
-        std::ifstream input(artifact->path, std::ios::binary);
-        if (!input) return failure(context, "Material Instance parent cooked Material artifact could not be read");
-        std::vector<std::byte> bytes(static_cast<std::size_t>(artifact->size));
-        input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        if (!input) return failure(context, "Material Instance parent cooked Material artifact is truncated");
 
-        auto parent_package = render::tools::deserialize_material_package_v4(bytes);
+        auto parent_package = render::tools::deserialize_material_package_v4(artifact->bytes);
         if (!parent_package) return failure(context, parent_package.error().message);
 
         for (const auto& override_value : instance.parameter_overrides)
