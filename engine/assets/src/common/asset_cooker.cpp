@@ -457,9 +457,7 @@ cook_result asset_cooker::cook(const cook_request& request)
                 if (dependency.type != asset_types::material) continue;
                 const auto artifact = std::ranges::find_if(
                     result.manifest.artifacts, [&](const cook_manifest_artifact& candidate)
-                    {
-                        return candidate.asset == dependency.guid && candidate.schema == artifact_schemas::material;
-                    });
+                    { return candidate.asset == dependency.guid && candidate.schema == artifact_schemas::material; });
                 if (artifact == result.manifest.artifacts.end())
                 {
                     result.error = {.code = asset_error_code::dependency_failed,
@@ -473,8 +471,8 @@ cook_result asset_cooker::cook(const cook_request& request)
                 {
                     result.error = {.code = asset_error_code::dependency_failed,
                                     .guid = guid,
-                                    .message = "Could not load cooked Material parent from DDC: " +
-                                               dependency_error.message};
+                                    .message =
+                                        "Could not load cooked Material parent from DDC: " + dependency_error.message};
                     return result;
                 }
                 context.cooked_dependencies.push_back(
