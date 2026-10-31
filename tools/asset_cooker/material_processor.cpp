@@ -168,10 +168,18 @@ std::filesystem::path resolve_function_path(const std::filesystem::path& owner, 
     const std::filesystem::path authored_path(authored);
     if (authored_path.is_absolute()) return authored_path.lexically_normal();
     const auto text = normalized_path(authored_path);
+    const auto root = assets_root_for(owner);
     if (text.starts_with("assets/"))
     {
-        const auto root = assets_root_for(owner);
         if (!root.empty()) return (root.parent_path() / authored_path).lexically_normal();
+    }
+    // Material and Material Function documents author references relative to
+    // their asset root (e.g. "material_functions/checker.arcmatfn"), not to
+    // the directory containing the parent material. Match the Asset Database
+    // dependency resolver so cooker discovery and compilation agree.
+    else if (text.starts_with("material_functions/"))
+    {
+        if (!root.empty()) return (root / authored_path).lexically_normal();
     }
     return (owner.parent_path() / authored_path).lexically_normal();
 }
