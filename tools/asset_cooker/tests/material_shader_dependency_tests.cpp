@@ -23,7 +23,8 @@ TEST_CASE("Material Shader dependency resolution uses the authored path")
     REQUIRE_FALSE(result.ambiguous);
     REQUIRE(result.dependency == &dependencies[1]);
 
-    const auto prefixed = arc::tools::detail::find_material_shader_dependency(dependencies, "assets/Shaders/custom.slang");
+    const auto prefixed =
+        arc::tools::detail::find_material_shader_dependency(dependencies, "assets/Shaders/custom.slang");
     REQUIRE_FALSE(prefixed.ambiguous);
     REQUIRE(prefixed.dependency == &dependencies[1]);
 }

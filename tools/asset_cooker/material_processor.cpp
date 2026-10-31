@@ -717,8 +717,8 @@ public:
         }
         else
         {
-            const auto dependency = detail::find_material_shader_dependency(context.dependencies,
-                                                                            authored.value().shader_path);
+            const auto dependency =
+                detail::find_material_shader_dependency(context.dependencies, authored.value().shader_path);
             if (!dependency.dependency)
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
