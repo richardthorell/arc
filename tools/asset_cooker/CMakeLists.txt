@@ -22,6 +22,17 @@ install(TARGETS arc-cook
     COMPONENT tools)
 
 if(BUILD_TESTING)
+    add_executable(arc_cook_material_shader_dependency_tests
+        tests/material_shader_dependency_tests.cpp
+    )
+    arc_configure_first_party_target(arc_cook_material_shader_dependency_tests)
+    target_compile_features(arc_cook_material_shader_dependency_tests PRIVATE cxx_std_20)
+    target_link_libraries(arc_cook_material_shader_dependency_tests
+        PRIVATE arc-assets Catch2::Catch2WithMain
+    )
+    add_test(NAME arc-cook-material-shader-dependency COMMAND arc_cook_material_shader_dependency_tests)
+    set_tests_properties(arc-cook-material-shader-dependency PROPERTIES LABELS "unit;assets;materials")
+
     if(ARC_ENABLE_COVERAGE)
         set(ARC_COOK_COLD_TIMEOUT 360)
         set(ARC_COOK_WARM_TIMEOUT 180)

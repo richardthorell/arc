@@ -1,4 +1,5 @@
 #include "material_processor.h"
+#include "material_shader_dependency.h"
 
 #include <arc/render_tools/render_tools.h>
 
@@ -71,16 +72,6 @@ std::string normalized_path(const std::filesystem::path& path)
     return text;
 }
 
-bool path_matches(const std::filesystem::path& dependency, std::string_view authored)
-{
-    auto dependency_text = normalized_path(dependency);
-    auto authored_text = normalized_path(std::filesystem::path(authored));
-    if (authored_text.starts_with("assets/")) authored_text.erase(0, 7);
-    if (dependency_text == authored_text) return true;
-    return dependency_text.size() > authored_text.size() && dependency_text.ends_with(authored_text) &&
-           dependency_text[dependency_text.size() - authored_text.size() - 1] == '/';
-}
-
 core::result<std::string, std::string> read_text_file(const std::filesystem::path& path)
 {
     std::ifstream input(path, std::ios::binary);
@@ -91,29 +82,6 @@ core::result<std::string, std::string> read_text_file(const std::filesystem::pat
     if (!input.eof() && input.fail())
         return core::result<std::string, std::string>::failure("source could not be read: " + path.generic_string());
     return core::result<std::string, std::string>::success(std::move(source).str());
-}
-
-const assets::asset_snapshot* find_material_shader_dependency(const assets::asset_cook_context& context,
-                                                              std::string_view shader_path)
-{
-    const assets::asset_snapshot* fallback{};
-    for (const auto& dependency : context.dependencies)
-    {
-        if (dependency.type != assets::asset_types::shader) continue;
-        if (!fallback) fallback = &dependency;
-        if (path_matches(dependency.source_path, shader_path)) return &dependency;
-    }
-    return fallback;
-}
-
-core::result<std::string, std::string> read_material_shader(const assets::asset_cook_context& context,
-                                                            std::string_view shader_path)
-{
-    const auto* dependency = find_material_shader_dependency(context, shader_path);
-    if (!dependency)
-        return core::result<std::string, std::string>::failure("Material Shader '" + std::string(shader_path) +
-                                                               "' is not a registered shader dependency");
-    return read_text_file(dependency->source_path);
 }
 
 std::vector<std::string> nested_function_paths(std::string_view source)
@@ -749,15 +717,22 @@ public:
         }
         else
         {
-            auto custom_source = read_material_shader(context, authored.value().shader_path);
-            if (!custom_source)
+            const auto dependency =
+                detail::find_material_shader_dependency(context.dependencies, authored.value().shader_path);
+            if (!dependency.dependency)
                 return {.error = {.code = assets::asset_error_code::import_failed,
                                   .guid = context.asset.guid,
                                   .path = context.source.source_path,
+                                  .message = "Material Shader '" + authored.value().shader_path +
+                                             (dependency.ambiguous ? "' matches multiple shader dependencies"
+                                                                   : "' is not a registered shader dependency")}};
+            custom_shader_path = dependency.dependency->source_path;
+            auto custom_source = read_text_file(custom_shader_path);
+            if (!custom_source)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = custom_shader_path,
                                   .message = custom_source.error()}};
-            const auto* dependency = find_material_shader_dependency(context, authored.value().shader_path);
-            custom_shader_path =
-                dependency ? dependency->source_path : std::filesystem::path(authored.value().shader_path);
             auto custom_evaluator = render::tools::make_custom_material_evaluator(custom_source.value(),
                                                                                   custom_shader_path.generic_string());
             if (!custom_evaluator)
