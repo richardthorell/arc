@@ -1,8 +1,7 @@
-import type { MaterialBlendMode, MaterialDomain, MaterialGraph, MaterialShadingModel } from './materialGraphTypes';
+import type { MaterialCompileResult } from './materialCompiler';
+import type { MaterialGraph } from './materialGraphTypes';
 
-export type MaterialRenderPathLabel = 'Deferred' | 'Clustered Forward' | 'Terrain Renderer';
-
-const forwardFeaturePins = ['clearCoatNormal', 'sheen', 'transmission', 'subsurface', 'anisotropy'] as const;
+export type MaterialRenderPathLabel = 'Deferred' | 'Clustered Forward' | 'Pending compilation' | 'Unavailable';
 
 export const materialGraphOutputConnected = (graph: MaterialGraph, pin: string): boolean => {
   const output = graph.nodes.find((node) => node.type === 'output');
@@ -13,26 +12,10 @@ export const materialGraphOutputConnected = (graph: MaterialGraph, pin: string):
 export const materialGraphOutputSource = (graph: MaterialGraph, pin: string, fallback: string): string =>
   materialGraphOutputConnected(graph, pin) ? 'Graph' : `Default ${fallback}`;
 
-export const materialRenderPathLabel = ({
-  domain,
-  blendMode,
-  shadingModel,
-  graph,
-  customShader,
-}: {
-  domain: MaterialDomain;
-  blendMode: MaterialBlendMode;
-  shadingModel: MaterialShadingModel;
-  graph: MaterialGraph;
-  customShader: boolean;
-}): MaterialRenderPathLabel => {
-  if (domain === 'terrain') return 'Terrain Renderer';
-  if (
-    customShader ||
-    blendMode === 'blend' ||
-    shadingModel !== 'standard' ||
-    forwardFeaturePins.some((pin) => materialGraphOutputConnected(graph, pin))
-  )
-    return 'Clustered Forward';
-  return 'Deferred';
+export const materialRenderPathLabel = (compilation: MaterialCompileResult): MaterialRenderPathLabel => {
+  if (compilation.status === 'idle' || compilation.status === 'compiling') return 'Pending compilation';
+  if (!compilation.succeeded) return 'Unavailable';
+  if (compilation.materialRenderPath === 'deferred') return 'Deferred';
+  if (compilation.materialRenderPath === 'clusteredForward') return 'Clustered Forward';
+  return 'Unavailable';
 };
