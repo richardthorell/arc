@@ -776,8 +776,15 @@ public:
         }
         auto progress = std::make_shared<std::atomic<float>>(0.0f);
         auto untyped = load_untyped(request);
+        // A cooperative import wait must not execute its own typed consumer:
+        // that consumer would wait for the suspended import to finish.
+        // Capture the handle before moving the future (argument evaluation order is unspecified).
+        const auto prerequisite = untyped.handle();
         auto future = jobs().submit_future(
-            {.name = "assets.load.typed", .priority = to_job_priority(request.priority)},
+            {.name = "assets.load.typed",
+             .priority = to_job_priority(request.priority),
+             .dependencies = {prerequisite},
+             .dependency_policy = jobs::job_dependency_policy::run_always},
             [untyped = std::move(untyped), progress]() mutable
             {
                 auto result = untyped.get();
