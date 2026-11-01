@@ -7,6 +7,7 @@
 #include <arc/editor/editor_interaction.h>
 #include <arc/editor/editor_state.h>
 #include <arc/editor/material_preview.h>
+#include <arc/editor/material_preview_realizer.h>
 #include <arc/editor/material_inspection.h>
 #include <arc/editor/entity_material_service.h>
 #include <charconv>
@@ -1957,6 +1958,9 @@ struct cached_play_flow_source
 
 struct arc_host::state
 {
+    // Command-local handoff: the wrapper reuses the exact compiled descriptor for live preview.
+    std::optional<material_preview_descriptor_result> compiled_material_preview;
+
     explicit state(std::unique_ptr<render::renderer> renderer_value)
         : renderer(std::move(renderer_value)), simulation(simulation_application)
     {
@@ -3186,6 +3190,7 @@ host_response arc_host::execute(const host_command_envelope& command)
             }
             else if constexpr (std::is_same_v<command_type, host_shader_compile_command>)
             {
+                state_->compiled_material_preview.reset();
                 if (!state_->project_open) return fail("Cannot compile a shader before a project is open");
                 const auto source_path = resolve_project_document(state_->project.root, payload.path, false);
                 if (!source_path) return fail("Shader source path must remain inside the open project");
@@ -3198,6 +3203,7 @@ host_response arc_host::execute(const host_command_envelope& command)
                 std::string source = payload.source;
                 std::unordered_map<std::uint32_t, std::string> graph_line_nodes;
                 std::vector<render::shader_parameter_descriptor> graph_parameters;
+                std::vector<render::tools::material_function_source> functions;
                 if (payload.domain == "materialFunction")
                 {
                     auto validated =
@@ -3225,7 +3231,6 @@ host_response arc_host::execute(const host_command_envelope& command)
                 }
                 if (payload.domain == "materialGraph")
                 {
-                    std::vector<render::tools::material_function_source> functions;
                     if (state_->asset_registry)
                     {
                         for (const auto& asset : state_->asset_registry->search())
@@ -3309,6 +3314,21 @@ host_response arc_host::execute(const host_command_envelope& command)
                 response["succeeded"] = true;
                 response["message"] = "Transient shader generation compiled";
                 response["bytecodeBytes"] = compiled.value().bytecode.size();
+                if (payload.domain == "materialGraph" && !payload.preview_source.empty())
+                {
+                    // Resolve the exact editor-visible definition, including settings and expanded
+                    // functions. A graph connection alone cannot establish executable routing.
+                    auto realized = realize_material_preview_descriptor(payload.preview_source,
+                                                                        source_path->stem().string(), functions, {});
+                    if (realized.succeeded && realized.material.runtime_program)
+                    {
+                        response["materialRenderPath"] = render::resolve_material_render_path(realized.material) ==
+                                                                 render::material_render_path::deferred
+                                                             ? "deferred"
+                                                             : "clusteredForward";
+                    }
+                    state_->compiled_material_preview = std::move(realized);
+                }
                 response["parameters"] = nlohmann::json::array();
                 for (const auto& parameter : compiled.value().reflection.parameters)
                     response["parameters"].push_back({{"id", parameter.id.representation()},

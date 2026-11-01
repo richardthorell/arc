@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <semaphore>
 
 namespace
 {
@@ -42,8 +43,8 @@ public:
 
 struct asset_fixture
 {
-    asset_fixture(temporary_project& project)
-        : jobs({.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory}),
+    asset_fixture(temporary_project& project, std::size_t workers = 2)
+        : jobs({.worker_count = workers, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory}),
           files(jobs), manager({.project_root = project.root,
                                 .asset_root = project.assets,
                                 .cache_root = project.root / ".arc" / "cache",
@@ -796,6 +797,43 @@ TEST_CASE("read-only source roots mount built-in assets without allowing source 
     manager.on_shutdown(context);
     std::error_code cleanup_error;
     std::filesystem::remove_all(builtin_root, cleanup_error);
+}
+
+TEST_CASE("typed asset loads wait for their prerequisite before becoming runnable")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    project.write("pending.arcmat", R"({"version":4,"name":"Pending"})");
+    asset_fixture fixture(project, 1);
+    asset_reference reference{generate_asset_guid(), asset_types::material, {}};
+    bool missing = true;
+    SECTION("Missing asset errors remain available") {}
+    SECTION("Cold imports finish before typed conversion")
+    {
+        const auto asset = fixture.manager.find("assets/pending.arcmat");
+        REQUIRE(asset);
+        reference.guid = asset->guid;
+        missing = false;
+    }
+    std::binary_semaphore entered{0};
+    std::binary_semaphore release{0};
+    auto blocker = fixture.jobs.submit(
+        [&]
+        {
+            entered.release();
+            release.acquire();
+        });
+    entered.acquire();
+    // The underlying result cannot finish on the blocked worker.
+    // Its typed continuation must stay off the runnable queue, not enter a nested wait.
+    auto pending = fixture.manager.load<source_asset_data>({.reference = reference, .allow_fallback = false});
+    const auto status = pending.status();
+    release.release();
+    blocker.wait();
+    CHECK(status == arc::jobs::job_status::waiting_dependencies);
+    const auto result = pending.get();
+    CHECK(result.succeeded() == !missing);
+    if (missing) CHECK(result.error.code == asset_error_code::not_found);
 }
 
 TEST_CASE("shader include paths classify as source dependencies")

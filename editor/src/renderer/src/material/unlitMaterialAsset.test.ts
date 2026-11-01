@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { materialEditorParameters } from './materialCompiler';
 import { materialGraphFromAsset, type MaterialAssetJson } from './materialGraphTypes';
-import { materialGraphOutputConnected, materialRenderPathLabel } from './materialSettingsPresentation';
+import { materialGraphOutputConnected } from './materialSettingsPresentation';
 
 const unlitAssetPath = path.resolve(process.cwd(), '..', 'assets', 'materials', 'unlit.arcmat');
 
@@ -52,15 +52,5 @@ describe('built-in Unlit material', () => {
           connection.from.nodeId === texture?.id && connection.from.pin === 'a' && connection.to.pin === 'b',
       ),
     ).toBe(true);
-
-    expect(
-      materialRenderPathLabel({
-        domain: 'surface',
-        blendMode: 'opaque',
-        shadingModel: 'unlit',
-        graph,
-        customShader: false,
-      }),
-    ).toBe('Clustered Forward');
   });
 });

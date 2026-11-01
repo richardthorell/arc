@@ -58,6 +58,28 @@ afterEach(() => {
 });
 
 describe('material live preview compilation', () => {
+  it.each([true, false])('discards old replies immediately after an edit with live update %s', async (liveUpdate) => {
+    await loadMaterialDocument(document, true);
+    await vi.advanceTimersByTimeAsync(250);
+    setMaterialLiveUpdate(document, liveUpdate);
+    let finish!: (response: Awaited<ReturnType<typeof command>>) => void;
+    command.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = compileMaterialDocument(document, { quiet: true });
+    expect(getMaterialDocumentState(document).compiling).toBe(true);
+    replaceMaterialSettings(document, { blendMode: 'blend' });
+    finish({ succeeded: true, payload: { succeeded: true, diagnostics: [] } });
+    expect(await pending).toBe(false);
+    expect(getMaterialDocumentState(document).compilation.status).toBe('idle');
+    expect(getMaterialDocumentState(document).compiling).toBe(false);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(getMaterialDocumentState(document).compilation.status).toBe(liveUpdate ? 'succeeded' : 'idle');
+  });
+
   it('compiles semantic edits but ignores node movement and viewport changes', async () => {
     await loadMaterialDocument(document, true);
     await vi.advanceTimersByTimeAsync(250);
@@ -143,7 +165,7 @@ describe('material toolbar session controls', () => {
 });
 
 describe('material settings editing', () => {
-  it('keeps authored setting edits in memory until an explicit compile', async () => {
+  it('recompiles authored setting edits without saving the document', async () => {
     await loadMaterialDocument(document, true);
     await vi.advanceTimersByTimeAsync(250);
     expect(getMaterialDocumentState(document).compilation.status).toBe('succeeded');
@@ -164,12 +186,9 @@ describe('material settings editing', () => {
     expect(updated.asset.shadingModel).toBe('unlit');
     expect(updated.asset.doubleSided).toBe(true);
     expect(updated.asset.castShadows).toBe(false);
-    expect(updated.compilation.status).toBe('succeeded');
+    expect(updated.compilation.status).toBe('idle');
 
     await vi.advanceTimersByTimeAsync(250);
-    expect(command).not.toHaveBeenCalled();
-
-    expect(await compileMaterialDocument(document, { quiet: true })).toBe(true);
     expect(command).toHaveBeenCalledTimes(1);
     const payload = command.mock.calls[0]?.[1] as { previewSource?: string };
     const previewSource = JSON.parse(payload.previewSource ?? '{}');

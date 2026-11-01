@@ -75,13 +75,7 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
   const isSurfaceMaterial = materialDomain === 'surface';
   const isMaskedMaterial = isSurfaceMaterial && materialBlendMode === 'masked';
   const isTranslucentMaterial = isSurfaceMaterial && materialBlendMode === 'blend';
-  const renderPathLabel = materialRenderPathLabel({
-    domain: materialDomain,
-    blendMode: materialBlendMode,
-    shadingModel: materialShadingModel,
-    graph: state.graph,
-    customShader: Boolean(customShader),
-  });
+  const renderPathLabel = customShader ? 'Unavailable' : materialRenderPathLabel(state.compilation);
   const outputSource = (pin: string, fallback: string) =>
     customShader ? 'Material Shader' : materialGraphOutputSource(state.graph, pin, fallback);
   const editorRef = useRef<HTMLElement | null>(null);
@@ -427,7 +421,12 @@ export function MaterialEditor({ document }: { document: EditorDocument }) {
                 onToggle={() => setAdvancedSettingsCollapsed((collapsed) => !collapsed)}
               >
                 <UiPanelCardRow label="Render Path">
-                  <span className="material-setting-readonly">{renderPathLabel}</span>
+                  <span
+                    className="material-setting-readonly"
+                    title="Native compiled document routing; not a verification of the rendered viewport. Unavailable paths are not inferred from graph connections."
+                  >
+                    {renderPathLabel}
+                  </span>
                 </UiPanelCardRow>
               </UiPanelCard>
             )}

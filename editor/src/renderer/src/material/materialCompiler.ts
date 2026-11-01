@@ -23,9 +23,11 @@ export type MaterialCompileResult = {
   status: 'idle' | 'compiling' | 'succeeded' | 'failed';
   succeeded: boolean;
   diagnostics: MaterialCompileDiagnostic[];
+  materialRenderPath?: 'deferred' | 'clusteredForward';
 };
 
 export type NativeMaterialCompilePayload = {
+  materialRenderPath?: string;
   succeeded?: boolean;
   message?: string;
   diagnostics?: Array<{
@@ -48,6 +50,7 @@ export const emptyMaterialCompileResult = (): MaterialCompileResult => ({
 export const compilingMaterialResult = (previous: MaterialCompileResult): MaterialCompileResult => ({
   ...previous,
   status: 'compiling',
+  materialRenderPath: undefined,
 });
 
 export const nativeMaterialCompileResult = (
@@ -68,7 +71,11 @@ export const nativeMaterialCompileResult = (
   const succeeded = responseSucceeded && payload?.succeeded === true;
   if (!succeeded && diagnostics.length === 0)
     diagnostics.push({ severity: 'error', message: payload?.message || fallbackMessage });
-  return { status: succeeded ? 'succeeded' : 'failed', succeeded, diagnostics };
+  const materialRenderPath =
+    succeeded && (payload?.materialRenderPath === 'deferred' || payload?.materialRenderPath === 'clusteredForward')
+      ? payload.materialRenderPath
+      : undefined;
+  return { status: succeeded ? 'succeeded' : 'failed', succeeded, diagnostics, materialRenderPath };
 };
 
 export const materialGraphDiagnostics = (diagnostics: readonly MaterialCompileDiagnostic[]): GraphDiagnostic[] =>

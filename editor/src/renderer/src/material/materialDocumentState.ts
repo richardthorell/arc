@@ -204,8 +204,11 @@ const cancelScheduledCompile = (documentId: string) => {
 
 const scheduleNativeCompile = (document: EditorDocument) => {
   cancelScheduledCompile(document.id);
+  // Invalidate in-flight replies immediately, including while live update is disabled.
+  compileGenerations.set(document.id, (compileGenerations.get(document.id) ?? 0) + 1);
+  setState(document.id, { compiling: false });
   const current = ensureState(document);
-  if (!current.liveUpdate) return;
+  if (!current.liveUpdate || materialShaderPath(current.asset)) return;
   const timer = setTimeout(() => {
     compileTimers.delete(document.id);
     void compileMaterialDocument(document, { quiet: true });
@@ -375,6 +378,7 @@ export const replaceMaterialSettings = (document: EditorDocument, patch: Partial
 
   setState(document.id, {
     asset: nextAsset,
+    compilation: emptyMaterialCompileResult(),
     message: '',
   });
   updateDirtyState(
@@ -385,6 +389,7 @@ export const replaceMaterialSettings = (document: EditorDocument, patch: Partial
     current.confirmedSettings,
     current.schemaUpgradePending,
   );
+  scheduleNativeCompile(document);
   return true;
 };
 

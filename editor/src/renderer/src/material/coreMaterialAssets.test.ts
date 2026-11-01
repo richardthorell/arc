@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { materialEditorParameters } from './materialCompiler';
 import { materialFunctionCompatibleWithSlot } from './materialInstanceAuthoring';
 import { materialGraphFromAsset, type MaterialAssetJson, type MaterialFunctionAssetJson } from './materialGraphTypes';
-import { materialGraphOutputConnected, materialRenderPathLabel } from './materialSettingsPresentation';
+import { materialGraphOutputConnected } from './materialSettingsPresentation';
 
 const readBuiltIn = (name: string) =>
   JSON.parse(
@@ -70,15 +70,6 @@ describe('core built-in material families', () => {
     expect(materialGraphOutputConnected(graph, 'normal')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'clearCoat')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'clearCoatRoughness')).toBe(true);
-    expect(
-      materialRenderPathLabel({
-        domain: 'surface',
-        blendMode: 'opaque',
-        shadingModel: 'standard',
-        graph,
-        customShader: false,
-      }),
-    ).toBe('Clustered Forward');
 
     const baseColorSource = graph.nodes.find((node) => node.id === 'base-color-source');
     expect(baseColorSource).toMatchObject({
@@ -225,15 +216,6 @@ describe('core built-in material families', () => {
     expect(materialGraphOutputConnected(graph, 'thickness')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'attenuationColor')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'attenuationDistance')).toBe(true);
-    expect(
-      materialRenderPathLabel({
-        domain: 'surface',
-        blendMode: 'blend',
-        shadingModel: 'transmission',
-        graph,
-        customShader: false,
-      }),
-    ).toBe('Clustered Forward');
   });
 
   it('ships a texture-ready Subsurface material', () => {
@@ -270,14 +252,5 @@ describe('core built-in material families', () => {
     expect(materialGraphOutputConnected(graph, 'subsurfaceColor')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'subsurface')).toBe(true);
     expect(materialGraphOutputConnected(graph, 'thickness')).toBe(true);
-    expect(
-      materialRenderPathLabel({
-        domain: 'surface',
-        blendMode: 'opaque',
-        shadingModel: 'skin',
-        graph,
-        customShader: false,
-      }),
-    ).toBe('Clustered Forward');
   });
 });
