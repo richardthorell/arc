@@ -7195,11 +7195,14 @@ host_response arc_host::query(const host_query_envelope& query) const
                 {
                     const auto* mesh = state_->scene.scene.try_get<scene::mesh_renderer_component>(entity);
                     const auto material = mesh ? mesh->material : render::material_handle{};
+                    const auto* applied_material = state_->renderer->material_data_for(material);
+                    description["runtimeStatus"] = applied_material ? "descriptorAvailable" : "unavailable";
                     description["entity"] = {
                         {"guid", payload.entity_guid},
                         {"materialGuid", material_guid},
                         {"runtimeHandle", {{"index", material.index}, {"generation", material.generation}}},
-                        {"resourceAlive", state_->renderer->material_alive(material)}};
+                        {"resourceAlive", state_->renderer->material_alive(material)},
+                        {"appliedRuntime", nlohmann::json::parse(inspect_applied_material(applied_material))}};
                 }
                 return {.request_id = request_id, .succeeded = true, .payload_json = description.dump()};
             }
