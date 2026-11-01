@@ -3,6 +3,8 @@
 #include <arc/editor/editor_state.h>
 #include <arc/editor/entity_material_service.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/render/material_instance.h>
+#include <arc/render/renderer.h>
 #include <arc/render_tools/material_graph.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -13,6 +15,81 @@
 #include <fstream>
 #include <map>
 #include <set>
+
+TEST_CASE("applied material readback reports attached routing without claiming GPU readiness")
+{
+    using nlohmann::json;
+    const auto missing = json::parse(arc::editor::inspect_applied_material(nullptr));
+    CHECK(missing["status"] == "unavailable");
+    CHECK(missing["renderPath"].is_null());
+    CHECK(missing["programGeneration"].is_null());
+
+    arc::render::material_descriptor material;
+    auto program = std::make_shared<arc::render::material_runtime_program>();
+    program->generation = 9007199254740993ULL;
+    material.runtime_program = program;
+    for (const bool independent : {false, true, false})
+    {
+        material.independent_clear_coat_normal = independent;
+        material.render_path = independent ? arc::render::material_render_path::clustered_forward
+                                           : arc::render::material_render_path::deferred;
+        const auto result = json::parse(arc::editor::inspect_applied_material(&material));
+        CHECK(result["renderPath"] == (independent ? "clusteredForward" : "deferred"));
+        CHECK(result["independentClearCoatNormal"] == independent);
+        CHECK(result["programGeneration"] == "9007199254740993");
+        CHECK(result["gpuVerified"] == false);
+        CHECK(result["visualVerified"] == false);
+    }
+    material.runtime_program.reset();
+    CHECK(json::parse(arc::editor::inspect_applied_material(&material))["programGeneration"].is_null());
+}
+
+TEST_CASE("applied readback follows published instance variants and rejects stale handles")
+{
+    using namespace arc::render;
+    using nlohmann::json;
+    auto neutral = std::make_shared<material_runtime_program>();
+    auto active = std::make_shared<material_runtime_program>();
+    neutral->generation = 100;
+    active->generation = 200;
+    const shader_parameter_id texture{91};
+    neutral->texture_bindings.push_back({.slot = 0, .parameter_id = texture});
+    active->texture_bindings = neutral->texture_bindings;
+    auto variants = std::make_shared<material_coat_normal_variants>();
+    variants->texture_parameter = texture;
+    variants->neutral = neutral;
+    variants->independent = active;
+    material_definition_descriptor definition;
+    definition.material.runtime_program = neutral;
+    definition.material.coat_normal_variants = variants;
+    definition.parameter_layout.push_back({.id = texture, .type = shader_parameter_type::texture_2d});
+    material_instance_descriptor instance;
+    instance.parent = material_handle{1};
+    instance.overrides.push_back({.id = texture, .value = resource_handle{7}});
+    const auto bound = resolve_material_instance(definition, instance);
+    REQUIRE(bound);
+    renderer renderer;
+    const auto handle = renderer.create_material(bound.value());
+    auto read = [&] { return json::parse(arc::editor::inspect_applied_material(renderer.material_data_for(handle))); };
+    CHECK(read()["programGeneration"] == "200");
+    CHECK(read()["renderPath"] == "clusteredForward");
+    definition.material = bound.value();
+    instance.overrides[0].value = resource_handle{};
+    const auto cleared = resolve_material_instance(definition, instance);
+    REQUIRE(cleared);
+    REQUIRE(renderer.update_material(handle, cleared.value()));
+    CHECK(read()["programGeneration"] == "100");
+    CHECK(read()["renderPath"] == "deferred");
+    // A failed replacement cannot turn last-good readback into the requested state.
+    variants->independent.reset();
+    instance.overrides[0].value = resource_handle{7};
+    CHECK_FALSE(resolve_material_instance(definition, instance));
+    CHECK(read()["programGeneration"] == "100");
+    auto stale = handle;
+    ++stale.generation;
+    CHECK(json::parse(arc::editor::inspect_applied_material(renderer.material_data_for(stale)))["status"] ==
+          "unavailable");
+}
 
 namespace
 {

@@ -57,10 +57,11 @@ export function registerMaterialReadOperations(
   harness.registerOperation({
     ...readMetadata,
     id: 'materials.inspectEntity',
+    version: 2,
     domain: 'materials',
     effects: { reads: ['asset-catalog', 'saved-material-definition', 'scene', 'runtime-material'], writes: [] },
     description:
-      'Inspect an entity material binding by entity GUID, including inherited values, local overrides, selected functions and runtime resource handle. Resource existence is not visual verification.',
+      'Inspect an entity material binding by entity GUID, including inherited values, local overrides and selected functions from saved sources. appliedRuntime separately reports the attached renderer descriptor path and program generation after instance overrides, not GPU completion or visual verification. Handle generation identifies resource lifetime; programGeneration identifies the compiled program, not every parameter edit.',
     references: [{ field: 'entityGuid', resource: 'entity', temporary: false }],
     input: materialEntityInspectInput,
     output: materialDescribeOutput,

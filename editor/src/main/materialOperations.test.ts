@@ -312,6 +312,60 @@ describe('native material discovery operations', () => {
     expect(command).not.toHaveBeenCalled();
   });
 
+  it.each(['deferred', 'clusteredForward'])(
+    'reads applied entity routing (%s) without claiming rendered success',
+    async (renderPath) => {
+      const result = {
+        ...description,
+        kind: 'materialInstance',
+        runtimeStatus: 'descriptorAvailable',
+        entity: {
+          guid,
+          materialGuid: guid,
+          runtimeHandle: { index: 4, generation: 3 },
+          resourceAlive: true,
+          appliedRuntime: {
+            authority: 'rendererDescriptor',
+            status: 'available',
+            renderPath,
+            programGeneration: '9007199254740993',
+            independentClearCoatNormal: renderPath === 'clusteredForward',
+            gpuVerified: false,
+            visualVerified: false,
+          },
+        },
+      };
+      const { harness, query, command } = setup(result);
+      const { catalogRevision } = (await harness.invoke('agent.capabilities', {}, 'agent')) as {
+        catalogRevision: string;
+      };
+      expect(
+        await harness.invoke(
+          'materials.inspectEntity',
+          {
+            entityGuid: guid,
+            operationContract: { version: 2, catalogRevision },
+          },
+          'agent',
+        ),
+      ).toEqual(result);
+      expect(query).toHaveBeenCalledExactlyOnceWith('materials.describe', { entityGuid: guid });
+      expect(command).not.toHaveBeenCalled();
+      expect(
+        materialDescribeOutput.safeParse({
+          ...result,
+          entity: { ...result.entity, appliedRuntime: { ...result.entity.appliedRuntime, visualVerified: true } },
+        }).success,
+      ).toBe(false);
+      expect(
+        materialDescribeOutput.safeParse({
+          ...result,
+          entity: { ...result.entity, appliedRuntime: { ...result.entity.appliedRuntime, programGeneration: 1 } },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
   it('rejects paths and unregistered input fields before native dispatch', async () => {
     const { harness, query } = setup();
     await expect(harness.invoke('materials.describe', { guid: 'Content/material.arcmat' }, 'agent')).rejects.toThrow();

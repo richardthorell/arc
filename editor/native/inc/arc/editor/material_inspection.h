@@ -6,6 +6,11 @@
 #include <string>
 #include <string_view>
 
+namespace arc::render
+{
+struct material_descriptor;
+}
+
 namespace arc::editor
 {
 
@@ -17,6 +22,9 @@ struct material_inspection_source
     std::string kind;
     std::string source;
 };
+
+/** Snapshot of the attached renderer descriptor, not GPU completion or visual verification. */
+[[nodiscard]] std::string inspect_applied_material(const render::material_descriptor* material);
 
 /** A nonempty GUID is authoritative; hints are only used for legacy path-only dependencies. */
 using material_inspection_resolver =

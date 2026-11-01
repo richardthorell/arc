@@ -145,7 +145,7 @@ export const materialDescribeOutput = z
       .nullable(),
     diagnostics: z.array(z.object({ code: z.string(), message: z.string() }).strict()),
     definitionReady: z.boolean(),
-    runtimeStatus: z.literal('notInspected'),
+    runtimeStatus: z.enum(['notInspected', 'descriptorAvailable', 'unavailable']),
     entity: z
       .object({
         guid,
@@ -154,6 +154,17 @@ export const materialDescribeOutput = z
           .object({ index: z.number().int().nonnegative(), generation: z.number().int().nonnegative() })
           .strict(),
         resourceAlive: z.boolean(),
+        appliedRuntime: z
+          .object({
+            authority: z.literal('rendererDescriptor'),
+            status: z.enum(['available', 'unavailable']),
+            renderPath: z.enum(['deferred', 'clusteredForward']).nullable(),
+            programGeneration: unsignedId.nullable(),
+            independentClearCoatNormal: z.boolean().nullable(),
+            gpuVerified: z.literal(false),
+            visualVerified: z.literal(false),
+          })
+          .strict(),
       })
       .strict()
       .nullable(),

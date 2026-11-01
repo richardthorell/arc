@@ -1,6 +1,7 @@
 #include <arc/editor/material_inspection.h>
 
 #include <arc/assets/assets.h>
+#include <arc/render/material.h>
 #include <arc/render_tools/material_asset.h>
 #include <arc/render_tools/material_graph.h>
 #include <arc/render_tools/texture_cooker.h>
@@ -17,6 +18,26 @@
 
 namespace arc::editor
 {
+std::string inspect_applied_material(const render::material_descriptor* material)
+{
+    nlohmann::json result{{"authority", "rendererDescriptor"},
+                          {"status", material ? "available" : "unavailable"},
+                          {"renderPath", nullptr},
+                          {"programGeneration", nullptr},
+                          {"independentClearCoatNormal", nullptr},
+                          {"gpuVerified", false},
+                          {"visualVerified", false}};
+    if (material)
+    {
+        result["renderPath"] =
+            material->render_path == render::material_render_path::deferred ? "deferred" : "clusteredForward";
+        result["independentClearCoatNormal"] = material->independent_clear_coat_normal;
+        if (material->runtime_program)
+            result["programGeneration"] = std::to_string(material->runtime_program->generation);
+    }
+    return result.dump();
+}
+
 namespace
 {
 using json = nlohmann::json;

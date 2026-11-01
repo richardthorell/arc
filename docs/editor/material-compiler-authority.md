@@ -20,7 +20,15 @@ The label describes the compiled document candidate, not GPU publication or visu
 
 Semantic graph and setting edits invalidate in-flight compile replies immediately, including during the debounce window and while live update is disabled. Settings are compiled automatically only when live update is enabled; changes remain unsaved until explicit Save.
 
-Issue #1050 still owns live rendered/instance agreement and the Materials Baseline performance acceptance. A compiled-program label alone does not satisfy those gates.
+### Applied entity readback
+
+`materials.inspectEntity` contract v2 returns `entity.appliedRuntime` from the renderer descriptor attached to the entity, after inherited and entity-local instance overrides. It does not recompile the saved definition to guess the applied path. `renderPath`, `independentClearCoatNormal`, and the decimal-string `programGeneration` describe that attached descriptor; missing resources report `unavailable` with null values. A descriptor without a compiled program has a null program generation.
+
+The existing `runtimeHandle.generation` identifies resource lifetime. `programGeneration` identifies the compiled program, not a monotonic edit counter: switching back to a cached variant may restore an earlier generation, and parameter-only edits may retain it. Saved-source reflection and `definitionRevision` remain distinct from applied runtime state; a rejected replacement can leave the last-good descriptor attached.
+
+`runtimeStatus` is `notInspected` for asset-only descriptions, `descriptorAvailable` for an attached renderer descriptor, or `unavailable` for a missing descriptor. Renderer publication queues backend work, so descriptor availability is **not** GPU completion. `gpuVerified` and `visualVerified` remain false. No dirty document is saved or implicitly applied by this query.
+
+Issue #1050 still owns live rendered switching verification and the Materials Baseline performance acceptance. Neither a compiled-program label nor descriptor readback alone satisfies those gates.
 
 ## Remaining audit work
 
