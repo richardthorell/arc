@@ -38,24 +38,21 @@ bool valid_guid(std::string_view guid)
 
 bool valid_sha256(std::string_view value)
 {
-    return value.size() == 64 &&
-           std::all_of(value.begin(), value.end(), [](unsigned char c) {
-               return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-           });
+    return value.size() == 64 && std::all_of(value.begin(), value.end(), [](unsigned char c)
+                                             { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
 }
 
 bool valid_relative_path(std::string_view path)
 {
-    if (path.empty() || path[0] == '/' || path.find('\\') != path.npos || path.find(':') != path.npos)
-        return false;
+    if (path.empty() || path[0] == '/' || path.find('\\') != path.npos || path.find(':') != path.npos) return false;
     std::size_t start = 0;
     while (start < path.size())
     {
         const auto end = path.find('/', start);
         const auto length = (end == path.npos ? path.size() : end) - start;
         const auto component = path.substr(start, length);
-        if (component.empty() || component == "." || component == ".." ||
-            component.back() == '.' || component.back() == ' ')
+        if (component.empty() || component == "." || component == ".." || component.back() == '.' ||
+            component.back() == ' ')
             return false;
         for (const unsigned char c : component)
             if (c < 32 || c == 127) return false;
@@ -68,9 +65,8 @@ bool valid_relative_path(std::string_view path)
 std::string portable_key(std::string_view path)
 {
     std::string key(path);
-    std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
+    std::transform(key.begin(), key.end(), key.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return key;
 }
 
@@ -92,8 +88,11 @@ bool valid_finalizer(std::string_view value)
 
 json target_json(const distribution_target& value)
 {
-    return {{"id", value.id}, {"platform", value.platform}, {"architecture", value.architecture},
-            {"renderer", value.renderer}, {"configuration", value.configuration},
+    return {{"id", value.id},
+            {"platform", value.platform},
+            {"architecture", value.architecture},
+            {"renderer", value.renderer},
+            {"configuration", value.configuration},
             {"cookProfile", value.cook_profile}};
 }
 
@@ -105,14 +104,13 @@ json file_json(const distribution_file& file)
 
 project_status validate_distribution_manifest(const distribution_manifest& manifest)
 {
-    const auto invalid = [](std::string field, std::string message) {
-        return project_status::failure(failure(project_error_code::invalid_descriptor,
-                                               std::move(field), std::move(message)));
+    const auto invalid = [](std::string field, std::string message)
+    {
+        return project_status::failure(
+            failure(project_error_code::invalid_descriptor, std::move(field), std::move(message)));
     };
-    const auto unsafe = [](std::string field, std::string message) {
-        return project_status::failure(failure(project_error_code::unsafe_path,
-                                               std::move(field), std::move(message)));
-    };
+    const auto unsafe = [](std::string field, std::string message)
+    { return project_status::failure(failure(project_error_code::unsafe_path, std::move(field), std::move(message))); };
     if (manifest.format_version != distribution_format_version)
         return project_status::failure(failure(project_error_code::unsupported_version, "formatVersion",
                                                "Unsupported distribution manifest version; only v1 is accepted"));
@@ -144,8 +142,7 @@ project_status validate_distribution_manifest(const distribution_manifest& manif
         return invalid("finalizer", "Finalizer must be a nonempty portable identifier");
     if (manifest.entrypoint.kind == "android-activity")
     {
-        if (target.platform != "android" || manifest.role != "client" ||
-            !valid_activity(manifest.entrypoint.value))
+        if (target.platform != "android" || manifest.role != "client" || !valid_activity(manifest.entrypoint.value))
             return invalid("entrypoint", "Android activity requires an Android client and a qualified component name");
     }
     else if (manifest.entrypoint.kind == "executable")
@@ -174,15 +171,14 @@ project_status validate_distribution_manifest(const distribution_manifest& manif
         if (!valid_sha256(file.sha256))
             return invalid("files.sha256", "Staged file requires a lower-case SHA-256: " + file.path);
     }
-    const auto has_file = [&](std::string_view path, std::string_view kind) {
-        return std::any_of(manifest.files.begin(), manifest.files.end(), [&](const auto& file) {
-            return file.path == path && file.kind == kind;
-        });
+    const auto has_file = [&](std::string_view path, std::string_view kind)
+    {
+        return std::any_of(manifest.files.begin(), manifest.files.end(),
+                           [&](const auto& file) { return file.path == path && file.kind == kind; });
     };
     if (!has_file(manifest.runtime_config, "configuration"))
         return invalid("runtimeConfig", "Runtime configuration is missing from staged file inventory");
-    if (manifest.entrypoint.kind == "executable" &&
-        !has_file(manifest.entrypoint.value, "executable"))
+    if (manifest.entrypoint.kind == "executable" && !has_file(manifest.entrypoint.value, "executable"))
         return invalid("entrypoint.value", "Executable is missing from staged file inventory");
 
     std::set<std::string> cook_keys;
@@ -215,30 +211,36 @@ distribution_json_result serialize_distribution_manifest(const distribution_mani
     std::sort(cook_manifests.begin(), cook_manifests.end());
 
     json inventory = json::array();
-    for (const auto& file : files) inventory.push_back(file_json(file));
-    const json document{{"format", std::string(distribution_format)}, {"formatVersion", distribution_format_version},
-                        {"projectGuid", manifest.project_guid}, {"engineVersion", manifest.engine_version},
-                        {"sdkVersion", manifest.sdk_version}, {"target", target_json(manifest.target)},
-                        {"role", manifest.role}, {"finalizer", manifest.finalizer},
+    for (const auto& file : files)
+        inventory.push_back(file_json(file));
+    const json document{{"format", std::string(distribution_format)},
+                        {"formatVersion", distribution_format_version},
+                        {"projectGuid", manifest.project_guid},
+                        {"engineVersion", manifest.engine_version},
+                        {"sdkVersion", manifest.sdk_version},
+                        {"target", target_json(manifest.target)},
+                        {"role", manifest.role},
+                        {"finalizer", manifest.finalizer},
                         {"entrypoint", {{"kind", manifest.entrypoint.kind}, {"value", manifest.entrypoint.value}}},
-                        {"startupScenes", manifest.startup_scenes}, {"runtimeConfig", manifest.runtime_config},
-                        {"content", {{"cookManifests", cook_manifests}}}, {"files", std::move(inventory)}};
+                        {"startupScenes", manifest.startup_scenes},
+                        {"runtimeConfig", manifest.runtime_config},
+                        {"content", {{"cookManifests", cook_manifests}}},
+                        {"files", std::move(inventory)}};
     return distribution_json_result::success(document.dump(2) + "\n");
 }
 
 distribution_manifest_result parse_distribution_manifest(std::string_view source)
 {
-    const auto fail = [](project_error_code code, std::string field, std::string message) {
-        return distribution_manifest_result::failure(failure(code, std::move(field), std::move(message)));
-    };
+    const auto fail = [](project_error_code code, std::string field, std::string message)
+    { return distribution_manifest_result::failure(failure(code, std::move(field), std::move(message))); };
     try
     {
         const auto document = json::parse(source.begin(), source.end());
         if (!document.is_object() || !document.contains("format") ||
             document.at("format").get<std::string>() != distribution_format)
             return fail(project_error_code::invalid_descriptor, "format", "Not an ARC distribution manifest");
-        if (!document.contains("formatVersion") || !document.at("formatVersion").is_number_unsigned() &&
-            !document.at("formatVersion").is_number_integer())
+        if (!document.contains("formatVersion") ||
+            !document.at("formatVersion").is_number_unsigned() && !document.at("formatVersion").is_number_integer())
             return fail(project_error_code::invalid_descriptor, "formatVersion", "Missing distribution schema version");
         if (document.at("formatVersion").get<std::int64_t>() != distribution_format_version)
             return fail(project_error_code::unsupported_version, "formatVersion",
@@ -259,8 +261,7 @@ distribution_manifest_result parse_distribution_manifest(std::string_view source
                            .cook_profile = t.at("cookProfile").get<std::string>()};
         manifest.role = document.at("role").get<std::string>();
         manifest.finalizer = document.at("finalizer").get<std::string>();
-        manifest.entrypoint = {.kind = e.at("kind").get<std::string>(),
-                               .value = e.at("value").get<std::string>()};
+        manifest.entrypoint = {.kind = e.at("kind").get<std::string>(), .value = e.at("value").get<std::string>()};
         manifest.startup_scenes = document.at("startupScenes").get<std::vector<std::string>>();
         manifest.runtime_config = document.at("runtimeConfig").get<std::string>();
         manifest.cook_manifests = content.at("cookManifests").get<std::vector<std::string>>();
@@ -275,8 +276,8 @@ distribution_manifest_result parse_distribution_manifest(std::string_view source
     }
     catch (const json::exception& error)
     {
-        return fail(project_error_code::invalid_json, "manifest", "Invalid distribution manifest: " +
-                    std::string(error.what()));
+        return fail(project_error_code::invalid_json, "manifest",
+                    "Invalid distribution manifest: " + std::string(error.what()));
     }
 }
 } // namespace arc::project

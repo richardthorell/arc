@@ -12,8 +12,12 @@ arc::project::distribution_manifest client()
     m.project_guid = "11111111-1111-1111-1111-111111111111";
     m.engine_version = "0.1.0";
     m.sdk_version = "0.1.0";
-    m.target = {.id = "windows-x64-vulkan", .platform = "windows", .architecture = "x86_64",
-                .renderer = "vulkan", .configuration = "Shipping", .cook_profile = "windows-x64-vulkan"};
+    m.target = {.id = "windows-x64-vulkan",
+                .platform = "windows",
+                .architecture = "x86_64",
+                .renderer = "vulkan",
+                .configuration = "Shipping",
+                .cook_profile = "windows-x64-vulkan"};
     m.role = "client";
     m.finalizer = "windows-directory";
     m.entrypoint = {.kind = "executable", .value = "bin/Game.exe"};
@@ -28,13 +32,17 @@ arc::project::distribution_manifest client()
 arc::project::distribution_manifest android()
 {
     auto m = client();
-    m.target = {.id = "android-arm64-vulkan", .platform = "android", .architecture = "arm64",
-                .renderer = "vulkan", .configuration = "Shipping", .cook_profile = "android-arm64-vulkan"};
+    m.target = {.id = "android-arm64-vulkan",
+                .platform = "android",
+                .architecture = "arm64",
+                .renderer = "vulkan",
+                .configuration = "Shipping",
+                .cook_profile = "android-arm64-vulkan"};
     m.finalizer = "android-gradle";
     m.entrypoint = {.kind = "android-activity", .value = "com.example.game.MainActivity"};
-    m.files.erase(std::remove_if(m.files.begin(), m.files.end(), [](const auto& file) {
-        return file.kind == "executable";
-    }), m.files.end());
+    m.files.erase(
+        std::remove_if(m.files.begin(), m.files.end(), [](const auto& file) { return file.kind == "executable"; }),
+        m.files.end());
     return m;
 }
 void rejected(const arc::project::distribution_manifest& m, arc::project::project_error_code code)
@@ -90,8 +98,8 @@ TEST_CASE("distribution file and manifest reference ordering is canonical")
 }
 TEST_CASE("distribution rejects unsafe paths and case collisions")
 {
-    for (const auto* path : {"../Game.exe", "/Game.exe", "C:/Game.exe", "bin\\Game.exe",
-                             "bin//Game.exe", "bin/./Game.exe", "bin/../Game.exe", "bin/Game.exe/"})
+    for (const auto* path : {"../Game.exe", "/Game.exe", "C:/Game.exe", "bin\\Game.exe", "bin//Game.exe",
+                             "bin/./Game.exe", "bin/../Game.exe", "bin/Game.exe/"})
     {
         auto m = client();
         m.files[1].path = path;
@@ -164,7 +172,7 @@ TEST_CASE("distribution parser rejects malformed or incomplete documents")
     const auto invalid = arc::project::parse_distribution_manifest("{");
     REQUIRE_FALSE(invalid);
     CHECK(invalid.error().code == arc::project::project_error_code::invalid_json);
-    const auto missing = arc::project::parse_distribution_manifest(
-        R"({"format":"arc.distribution","formatVersion":1})");
+    const auto missing =
+        arc::project::parse_distribution_manifest(R"({"format":"arc.distribution","formatVersion":1})");
     REQUIRE_FALSE(missing);
 }

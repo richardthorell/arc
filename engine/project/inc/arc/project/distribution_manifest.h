@@ -17,7 +17,7 @@ inline constexpr std::uint32_t distribution_format_version = 1;
 struct distribution_file
 {
     std::string path;
-    std::string kind;   ///< executable, library, configuration, content, or metadata.
+    std::string kind; ///< executable, library, configuration, content, or metadata.
     std::uint64_t size{};
     std::string sha256; ///< Lower-case SHA-256 of the final staged bytes.
 };
@@ -55,8 +55,8 @@ struct distribution_manifest
     distribution_entrypoint entrypoint;
     std::vector<std::string> startup_scenes; ///< Ordered scene GUIDs.
     std::string runtime_config;              ///< Relative staged config path.
-    std::vector<std::string> cook_manifests;  ///< Relative staged arc-cook manifests.
-    std::vector<distribution_file> files;     ///< Inventory sorted on serialization.
+    std::vector<std::string> cook_manifests; ///< Relative staged arc-cook manifests.
+    std::vector<distribution_file> files;    ///< Inventory sorted on serialization.
 };
 
 using distribution_manifest_result = core::result<distribution_manifest, project_error>;
