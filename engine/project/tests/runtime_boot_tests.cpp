@@ -54,7 +54,7 @@ void write(const fs::path& path, std::string_view contents)
 {
     fs::create_directories(path.parent_path());
     std::ofstream output(path, std::ios::binary);
-    REQUIRE(output);
+    REQUIRE(output.good());
     output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
     REQUIRE(output.good());
 }
@@ -167,7 +167,8 @@ struct mounted_fixture
 
     mounted_fixture()
     {
-        REQUIRE(vfs.mount({.root = arc::io::virtual_path::parse("package://app").value(), .provider = provider}));
+        REQUIRE(vfs.mount({.root = arc::io::virtual_path::parse("package://app").value(), .provider = provider})
+                    .succeeded());
     }
 
     void stage(const project::distribution_manifest& m, std::string_view config = config_bytes)
@@ -178,14 +179,14 @@ struct mounted_fixture
             {.relative_path = base + "arc-distribution.json", .bytes = bytes(serialized.value())},
             {.relative_path = base + m.runtime_config, .bytes = bytes(config)},
             {.relative_path = base + m.cook_manifests.front(), .bytes = bytes(cook_bytes)}};
-        REQUIRE(provider->publish(updates));
+        REQUIRE(provider->publish(updates).succeeded());
     }
 
-    project::runtime_boot_request request() const
+    project::runtime_boot_request request()
     {
         project::runtime_boot_request r;
         r.host.distribution.kind = project::runtime_distribution_location_kind::mounted_vfs;
-        r.host.distribution.files = const_cast<arc::io::virtual_file_system*>(&vfs);
+        r.host.distribution.files = &vfs;
         r.host.distribution.virtual_root = arc::io::virtual_path::parse("package://app/games/demo").value();
         r.host.writable_storage_root = fs::temp_directory_path() / "arc-android-user";
         r.host.capabilities.family = arc::framework::platform_family::android;
