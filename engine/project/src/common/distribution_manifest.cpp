@@ -240,7 +240,7 @@ distribution_manifest_result parse_distribution_manifest(std::string_view source
             document.at("format").get<std::string>() != distribution_format)
             return fail(project_error_code::invalid_descriptor, "format", "Not an ARC distribution manifest");
         if (!document.contains("formatVersion") ||
-            !document.at("formatVersion").is_number_unsigned() && !document.at("formatVersion").is_number_integer())
+            (!document.at("formatVersion").is_number_unsigned() && !document.at("formatVersion").is_number_integer()))
             return fail(project_error_code::invalid_descriptor, "formatVersion", "Missing distribution schema version");
         if (document.at("formatVersion").get<std::int64_t>() != distribution_format_version)
             return fail(project_error_code::unsupported_version, "formatVersion",
