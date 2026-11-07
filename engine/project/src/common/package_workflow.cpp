@@ -38,8 +38,8 @@ package_workflow_result plan_package_workflow(const project_descriptor& descript
     const auto& platform = profile->platform;
     const auto& renderer = profile->renderer;
     const auto& architecture = profile->architecture;
-    if ((platform != "windows" && platform != "linux" && platform != "macos" &&
-         platform != "android" && platform != "ios") ||
+    if ((platform != "windows" && platform != "linux" && platform != "macos" && platform != "android" &&
+         platform != "ios") ||
         (architecture != "x86_64" && architecture != "arm64") ||
         (renderer != "none" && renderer != "vulkan" && renderer != "direct3d12" && renderer != "metal"))
         return package_workflow_result::failure(
@@ -56,19 +56,19 @@ package_workflow_result plan_package_workflow(const project_descriptor& descript
 
     const auto expected_target = platform + "-" + (architecture == "x86_64" ? "x64" : architecture) + "-" +
                                  (renderer == "none" ? "headless" : renderer);
-    const auto target = std::find_if(descriptor.target_platforms.begin(), descriptor.target_platforms.end(),
-                                     [&](const auto& candidate) {
-                                         return candidate.id == expected_target && candidate.enabled;
-                                     });
+    const auto target =
+        std::find_if(descriptor.target_platforms.begin(), descriptor.target_platforms.end(),
+                     [&](const auto& candidate) { return candidate.id == expected_target && candidate.enabled; });
     if (target == descriptor.target_platforms.end())
         return package_workflow_result::failure(
             workflow_error(project_error_code::unsupported_platform, "targetPlatforms",
                            "Cook profile '" + profile_id + "' requires enabled target '" + expected_target + "'"));
 
-    const auto default_finalizer = platform == "windows" ? "windows-directory" :
-                                   platform == "android" ? "android-gradle" :
-                                   platform == "linux" ? "linux-directory" :
-                                   platform == "macos" ? "macos-bundle" : "ios-bundle";
+    const auto default_finalizer = platform == "windows"   ? "windows-directory"
+                                   : platform == "android" ? "android-gradle"
+                                   : platform == "linux"   ? "linux-directory"
+                                   : platform == "macos"   ? "macos-bundle"
+                                                           : "ios-bundle";
     const auto finalizer = request.finalizer.empty() ? default_finalizer : request.finalizer;
     if (finalizer != default_finalizer)
         return package_workflow_result::failure(
@@ -92,9 +92,8 @@ package_workflow_result plan_package_workflow(const project_descriptor& descript
     }
 
     if (request.role == package_workflow_role::runtime && profile->renderer == "none")
-        return package_workflow_result::failure(
-            workflow_error(project_error_code::invalid_descriptor, "cookProfiles",
-                           "Client workflow requires a graphical cook profile"));
+        return package_workflow_result::failure(workflow_error(project_error_code::invalid_descriptor, "cookProfiles",
+                                                               "Client workflow requires a graphical cook profile"));
 
     if (request.role == package_workflow_role::server && profile->renderer != "none")
         return package_workflow_result::failure(

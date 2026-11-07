@@ -37,7 +37,7 @@ public:
  * disagrees with the workflow. No filesystem mutation occurs in this function.
  */
 [[nodiscard]] project_status validate_distribution_finalization(const distribution_finalize_request& request,
-                                                                 const distribution_finalizer& finalizer);
+                                                                const distribution_finalizer& finalizer);
 
 /** Validate, then dispatch to the selected native finalizer. */
 [[nodiscard]] project_status run_distribution_finalizer(const distribution_finalize_request& request,

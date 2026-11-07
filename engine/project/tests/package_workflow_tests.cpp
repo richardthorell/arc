@@ -101,8 +101,7 @@ TEST_CASE("package workflow rejects incompatible cook target and platform finali
     CHECK(plan.error().code == arc::project::project_error_code::unsupported_platform);
 
     plan = arc::project::plan_package_workflow(descriptor(), context(),
-                                               {.profile = "windows-client",
-                                                .finalizer = "android-gradle"});
+                                               {.profile = "windows-client", .finalizer = "android-gradle"});
     REQUIRE_FALSE(plan);
     CHECK(plan.error().field == "finalizer");
 }
@@ -116,8 +115,7 @@ TEST_CASE("package workflow resolves the same Android target metadata without pa
                                      .architecture = "arm64",
                                      .renderer = "vulkan",
                                      .configuration = "Shipping"});
-    const auto plan = arc::project::plan_package_workflow(project, context(),
-                                                          {.profile = "android-mobile"});
+    const auto plan = arc::project::plan_package_workflow(project, context(), {.profile = "android-mobile"});
     REQUIRE(plan);
     CHECK(plan.value().target_id == "android-arm64-vulkan");
     CHECK(plan.value().profile == "android-mobile");
@@ -126,15 +124,13 @@ TEST_CASE("package workflow resolves the same Android target metadata without pa
 
 TEST_CASE("package workflow rejects a headless client and unsupported configuration")
 {
-    auto client = arc::project::plan_package_workflow(descriptor(), context(),
-                                                     {.profile = "windows-server"});
+    auto client = arc::project::plan_package_workflow(descriptor(), context(), {.profile = "windows-server"});
     REQUIRE_FALSE(client);
     CHECK(client.error().field == "cookProfiles");
 
     auto project = descriptor();
     project.cook_profiles.front().configuration = "Experimental";
-    const auto invalid = arc::project::plan_package_workflow(project, context(),
-                                                             {.profile = "windows-client"});
+    const auto invalid = arc::project::plan_package_workflow(project, context(), {.profile = "windows-client"});
     REQUIRE_FALSE(invalid);
     CHECK(invalid.error().field == "buildConfigurations");
 }
