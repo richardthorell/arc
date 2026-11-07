@@ -18,12 +18,18 @@ std::string_view platform_name(framework::platform_family family)
 {
     switch (family)
     {
-        case framework::platform_family::windows: return "windows";
-        case framework::platform_family::linux_os: return "linux";
-        case framework::platform_family::android: return "android";
-        case framework::platform_family::macos: return "macos";
-        case framework::platform_family::ios: return "ios";
-        case framework::platform_family::unknown: break;
+        case framework::platform_family::windows:
+            return "windows";
+        case framework::platform_family::linux_os:
+            return "linux";
+        case framework::platform_family::android:
+            return "android";
+        case framework::platform_family::macos:
+            return "macos";
+        case framework::platform_family::ios:
+            return "ios";
+        case framework::platform_family::unknown:
+            break;
     }
     return {};
 }
@@ -105,9 +111,9 @@ runtime_launch_result prepare_runtime_launch(runtime_launch_descriptor descripto
     if (!checked) return runtime_launch_result::failure(std::move(checked).error());
 
     return runtime_launch_result::success({.manifest = std::move(descriptor.manifest),
-                                          .role = descriptor.role,
-                                          .host = std::move(descriptor.host),
-                                          .startup_bundles = std::move(descriptor.startup_bundles)});
+                                           .role = descriptor.role,
+                                           .host = std::move(descriptor.host),
+                                           .startup_bundles = std::move(descriptor.startup_bundles)});
 }
 
 } // namespace arc::project

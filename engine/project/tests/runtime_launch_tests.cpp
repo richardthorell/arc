@@ -30,8 +30,7 @@ project::distribution_manifest client_manifest()
     manifest.role = "client";
     manifest.finalizer = "windows-directory";
     manifest.entrypoint = {.kind = "executable", .value = "bin/Game.exe"};
-    manifest.startup_scenes = {"22222222-2222-2222-2222-222222222222",
-                               "33333333-3333-3333-3333-333333333333"};
+    manifest.startup_scenes = {"22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333"};
     manifest.runtime_config = "config/runtime.json";
     manifest.cook_manifests = {"content/game.arccookmanifest"};
     manifest.files = {{.path = "bin/Game.exe", .kind = "executable", .size = 100, .sha256 = digest},
