@@ -114,7 +114,7 @@ TEST_CASE("D1 rejects host/manifest role mismatches and an empty client entry sc
     reject(descriptor, project::project_error_code::invalid_descriptor, "role");
     descriptor = client();
     descriptor.manifest.startup_scenes.clear();
-    reject(descriptor, project::project_error_code::invalid_scene, "startupScenes");
+    reject(descriptor, project::project_error_code::invalid_descriptor, "startupScenes");
     descriptor = client();
     descriptor.role = static_cast<project::runtime_launch_role>(99);
     reject(descriptor, project::project_error_code::invalid_descriptor, "role");
