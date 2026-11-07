@@ -44,7 +44,7 @@ bool absolute_normalized(const std::filesystem::path& path)
 project_status validate_runtime_launch(const runtime_launch_descriptor& descriptor)
 {
     // Keep target, role, version, scene GUID and staged-path policy in D0.
-    const auto valid_manifest = validate_distribution_manifest(descriptor.manifest);
+    auto valid_manifest = validate_distribution_manifest(descriptor.manifest);
     if (!valid_manifest) return valid_manifest;
 
     if (descriptor.role != runtime_launch_role::client && descriptor.role != runtime_launch_role::server)
