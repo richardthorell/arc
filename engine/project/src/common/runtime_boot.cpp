@@ -28,10 +28,9 @@ project_error fail(project_error_code code, std::string field, std::filesystem::
 
 template <class T>
 core::result<T, project_error> failure(project_error_code code, std::string field, std::filesystem::path path,
-                                        std::string message)
+                                       std::string message)
 {
-    return core::result<T, project_error>::failure(
-        fail(code, std::move(field), std::move(path), std::move(message)));
+    return core::result<T, project_error>::failure(fail(code, std::move(field), std::move(path), std::move(message)));
 }
 
 bool inside_root(const std::filesystem::path& root, const std::filesystem::path& path)
@@ -49,16 +48,15 @@ bool inside_root(const std::filesystem::path& root, const std::filesystem::path&
 
 using native_path_result = core::result<std::filesystem::path, project_error>;
 
-native_path_result contained_file(const std::filesystem::path& root, std::string_view relative,
-                                  std::string_view field)
+native_path_result contained_file(const std::filesystem::path& root, std::string_view relative, std::string_view field)
 {
     const auto physical = root / std::filesystem::path(relative);
     std::error_code ec;
     const auto canonical = std::filesystem::canonical(physical, ec);
     if (ec)
     {
-        const auto code = ec == std::errc::no_such_file_or_directory ? project_error_code::not_found
-                                                                      : project_error_code::io_failed;
+        const auto code =
+            ec == std::errc::no_such_file_or_directory ? project_error_code::not_found : project_error_code::io_failed;
         return failure<std::filesystem::path>(code, std::string(field), physical,
                                               "Required staged file is unavailable: " + ec.message());
     }
@@ -106,8 +104,8 @@ virtual_path_result virtual_child(const runtime_distribution_location& location,
     std::string combined(location.virtual_root.relative_path());
     if (!combined.empty()) combined += '/';
     combined += relative;
-    auto path = io::virtual_path::from_parts(location.virtual_root.scheme(), location.virtual_root.authority(),
-                                            combined);
+    auto path =
+        io::virtual_path::from_parts(location.virtual_root.scheme(), location.virtual_root.authority(), combined);
     if (!path)
         return failure<io::virtual_path>(project_error_code::unsafe_path, "host.distribution", {},
                                          "Invalid staged virtual path: " + std::string(relative));
@@ -213,9 +211,10 @@ native_discovery_result discover_native(const runtime_distribution_location& loc
             if (!found) return found; // Never mask an invalid nearer manifest by searching higher up.
             const auto& entry = found.value().manifest.entrypoint;
             if (entry.kind != "executable")
-                return failure<native_discovery>(project_error_code::invalid_descriptor, "entrypoint.kind",
-                                                 candidate / runtime_distribution_manifest_name,
-                                                 "Native executable host requires a distribution executable entrypoint");
+                return failure<native_discovery>(
+                    project_error_code::invalid_descriptor, "entrypoint.kind",
+                    candidate / runtime_distribution_manifest_name,
+                    "Native executable host requires a distribution executable entrypoint");
             auto staged_executable = contained_file(found.value().root, entry.value, "entrypoint.value");
             if (!staged_executable) return native_discovery_result::failure(std::move(staged_executable).error());
             if (staged_executable.value() != executable)
@@ -236,9 +235,9 @@ project_status check_expectations(const distribution_manifest& manifest, const r
 {
     const auto mismatch = [](std::string field, std::string required, std::string staged)
     {
-        return project_status::failure(fail(project_error_code::incompatible_engine, field, {},
-                                            "Packaged " + field + " '" + staged +
-                                                "' does not match host expectation '" + required + "'"));
+        return project_status::failure(
+            fail(project_error_code::incompatible_engine, field, {},
+                 "Packaged " + field + " '" + staged + "' does not match host expectation '" + required + "'"));
     };
     if (manifest.engine_version != expected.engine_version)
         return mismatch("engineVersion", expected.engine_version, manifest.engine_version);
@@ -278,8 +277,7 @@ project_status validate_request(const runtime_boot_request& request)
         source.kind == runtime_distribution_location_kind::directory)
     {
         if (source.native_path.empty() || !source.native_path.is_absolute() ||
-            source.native_path != source.native_path.lexically_normal() || source.files ||
-            !source.virtual_root.empty())
+            source.native_path != source.native_path.lexically_normal() || source.files || !source.virtual_root.empty())
             return project_status::failure(fail(project_error_code::unsafe_path, "host.distribution",
                                                 source.native_path, "Host must supply one absolute native location"));
     }
@@ -297,9 +295,8 @@ project_status validate_request(const runtime_boot_request& request)
 
 bool boot_required(const distribution_manifest& manifest, std::string_view path)
 {
-    return path == manifest.runtime_config ||
-           std::find(manifest.cook_manifests.begin(), manifest.cook_manifests.end(), path) !=
-               manifest.cook_manifests.end();
+    return path == manifest.runtime_config || std::find(manifest.cook_manifests.begin(), manifest.cook_manifests.end(),
+                                                        path) != manifest.cook_manifests.end();
 }
 
 project_status verify_native_inventory(const distribution_manifest& manifest, const std::filesystem::path& root,
@@ -351,13 +348,13 @@ project_status verify_virtual_inventory(const distribution_manifest& manifest,
             return project_status::failure(std::move(error));
         }
         if (data.value().size() != file.size)
-            return project_status::failure(fail(project_error_code::corrupt_content, "files.size", {},
-                                                "Staged virtual file size differs from distribution manifest: " +
-                                                    file.path));
+            return project_status::failure(
+                fail(project_error_code::corrupt_content, "files.size", {},
+                     "Staged virtual file size differs from distribution manifest: " + file.path));
         if (assets::to_string(assets::hash_bytes(data.value())) != file.sha256)
-            return project_status::failure(fail(project_error_code::corrupt_content, "files.sha256", {},
-                                                "Staged virtual file SHA-256 differs from distribution manifest: " +
-                                                    file.path));
+            return project_status::failure(
+                fail(project_error_code::corrupt_content, "files.sha256", {},
+                     "Staged virtual file SHA-256 differs from distribution manifest: " + file.path));
     }
     return project_status::success();
 }
@@ -399,14 +396,14 @@ runtime_boot_result discover_runtime_boot(runtime_boot_request request)
     if (!checked) return runtime_boot_result::failure(std::move(checked).error());
 
     if (prepared.value().host.distribution.kind == runtime_distribution_location_kind::mounted_vfs)
-        checked = verify_virtual_inventory(prepared.value().manifest, prepared.value().host.distribution,
-                                           request.integrity);
+        checked =
+            verify_virtual_inventory(prepared.value().manifest, prepared.value().host.distribution, request.integrity);
     else
         checked = verify_native_inventory(prepared.value().manifest, native_root, request.integrity);
     if (!checked) return runtime_boot_result::failure(std::move(checked).error());
 
-    return runtime_boot_result::success({.launch = std::move(prepared).value(),
-                                         .native_distribution_root = std::move(native_root)});
+    return runtime_boot_result::success(
+        {.launch = std::move(prepared).value(), .native_distribution_root = std::move(native_root)});
 }
 
 } // namespace arc::project

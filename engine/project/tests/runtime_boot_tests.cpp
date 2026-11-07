@@ -67,10 +67,7 @@ std::string hash(std::string_view contents)
 
 project::distribution_file staged(std::string path, std::string kind, std::string_view contents)
 {
-    return {.path = std::move(path),
-            .kind = std::move(kind),
-            .size = contents.size(),
-            .sha256 = hash(contents)};
+    return {.path = std::move(path), .kind = std::move(kind), .size = contents.size(), .sha256 = hash(contents)};
 }
 
 project::distribution_manifest manifest(bool server = false, bool android = false)
@@ -87,10 +84,10 @@ project::distribution_manifest manifest(bool server = false, bool android = fals
                      .cook_profile = android ? "android-arm64-vulkan" : (server ? "windows-server" : "windows-client")};
     result.role = server ? "server" : "client";
     result.finalizer = android ? "android-gradle" : "windows-directory";
-    result.entrypoint = android ? project::distribution_entrypoint{.kind = "android-activity",
-                                                                    .value = "com.example.arc.GameActivity"}
-                                : project::distribution_entrypoint{.kind = "executable",
-                                                                    .value = server ? "bin/Server.exe" : "bin/Game.exe"};
+    result.entrypoint =
+        android ? project::distribution_entrypoint{.kind = "android-activity", .value = "com.example.arc.GameActivity"}
+                : project::distribution_entrypoint{.kind = "executable",
+                                                   .value = server ? "bin/Server.exe" : "bin/Game.exe"};
     if (!server) result.startup_scenes = {"22222222-2222-2222-2222-222222222222"};
     result.runtime_config = "Config/runtime.json";
     result.cook_manifests = {"Content/startup.arccookmanifest"};
@@ -106,7 +103,7 @@ void stage_native(const fs::path& root, const project::distribution_manifest& st
     {
         const auto contents = file.kind == "configuration" ? config_bytes
                               : file.kind == "executable"  ? executable_bytes
-                                                            : cook_bytes;
+                                                           : cook_bytes;
         write(root / file.path, contents);
     }
     const auto text = project::serialize_distribution_manifest(staged_manifest);
@@ -114,17 +111,16 @@ void stage_native(const fs::path& root, const project::distribution_manifest& st
     write(root / project::runtime_distribution_manifest_name, text.value());
 }
 
-project::runtime_boot_request native_request(const fs::path& root, bool server = false,
-                                              project::runtime_distribution_location_kind kind =
-                                                  project::runtime_distribution_location_kind::executable)
+project::runtime_boot_request native_request(
+    const fs::path& root, bool server = false,
+    project::runtime_distribution_location_kind kind = project::runtime_distribution_location_kind::executable)
 {
     auto m = manifest(server);
     project::runtime_boot_request request;
     request.role = server ? project::runtime_launch_role::server : project::runtime_launch_role::client;
     request.host.distribution.kind = kind;
-    request.host.distribution.native_path = kind == project::runtime_distribution_location_kind::directory
-                                                ? root
-                                                : root / m.entrypoint.value;
+    request.host.distribution.native_path =
+        kind == project::runtime_distribution_location_kind::directory ? root : root / m.entrypoint.value;
     request.host.writable_storage_root = root / "UserData";
     request.host.capabilities.family = arc::framework::platform_family::windows;
     request.host.capabilities.window_system = !server;
@@ -157,10 +153,8 @@ arc::io::file_buffer bytes(std::string_view content)
 
 struct mounted_fixture
 {
-    arc::jobs::job_system jobs{ {.worker_count = 1,
-                                 .run_inline = false,
-                                 .io_worker_count = 1,
-                                 .enable_render_thread = false} };
+    arc::jobs::job_system jobs{
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false}};
     arc::io::virtual_file_system vfs{jobs};
     std::shared_ptr<arc::io::memory_file_provider> provider{std::make_shared<arc::io::memory_file_provider>(jobs)};
     std::string base = "games/demo/";
