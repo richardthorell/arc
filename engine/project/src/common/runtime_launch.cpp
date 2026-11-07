@@ -47,6 +47,9 @@ project_status validate_runtime_launch(const runtime_launch_descriptor& descript
     const auto valid_manifest = validate_distribution_manifest(descriptor.manifest);
     if (!valid_manifest) return valid_manifest;
 
+    if (descriptor.role != runtime_launch_role::client && descriptor.role != runtime_launch_role::server)
+        return invalid(project_error_code::invalid_descriptor, "role", "Unknown packaged runtime launch role");
+
     const auto expected_role = descriptor.role == runtime_launch_role::server ? "server" : "client";
     if (descriptor.manifest.role != expected_role)
         return invalid(project_error_code::invalid_descriptor, "role",
