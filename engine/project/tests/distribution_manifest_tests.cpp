@@ -176,3 +176,24 @@ TEST_CASE("distribution parser rejects malformed or incomplete documents")
         arc::project::parse_distribution_manifest(R"({"format":"arc.distribution","formatVersion":1})");
     REQUIRE_FALSE(missing);
 }
+
+TEST_CASE("distribution Shipping excludes development symbols and supports required plugin file kind")
+{
+    auto shipping = client();
+    shipping.files.push_back({.path = "symbols/Game.pdb", .kind = "symbols", .size = 10, .sha256 = digest});
+    rejected(shipping, arc::project::project_error_code::invalid_descriptor);
+
+    auto development = shipping;
+    development.target.configuration = "Debug";
+    const auto serialized = arc::project::serialize_distribution_manifest(development);
+    REQUIRE(serialized);
+    const auto parsed = arc::project::parse_distribution_manifest(serialized.value());
+    REQUIRE(parsed);
+    CHECK(parsed.value().files.back().kind == "symbols");
+
+    auto plugins = client();
+    plugins.files.push_back({.path = "plugins/physics.dll", .kind = "plugin", .size = 80, .sha256 = digest});
+    const auto written = arc::project::serialize_distribution_manifest(plugins);
+    REQUIRE(written);
+    CHECK(arc::project::parse_distribution_manifest(written.value()));
+}

@@ -1,6 +1,10 @@
 #include <arc/project/distribution_finalizer.h>
 
 #include <utility>
+#include <algorithm>
+#include <cctype>
+#include <set>
+#include <string>
 
 namespace arc::project
 {
@@ -39,6 +43,33 @@ project_status validate_distribution_finalization(const distribution_finalize_re
         return incompatible("paths", "Finalizer requires absolute staging and output roots");
     if (request.staging_root.lexically_normal() == request.output_root.lexically_normal())
         return incompatible("paths", "Staging and output roots must be distinct");
+
+    // The assembler owns transitive dependency discovery. The dispatcher checks
+    // its declared closure against the actual, hashed staged file inventory.
+    std::set<std::string> seen;
+    for (const auto& dependency : request.dependencies)
+    {
+        if (dependency.kind != "library" && dependency.kind != "plugin")
+            return incompatible("dependencies.kind", "Native dependency must be classified as library or plugin");
+        // Reject destination path aliases by comparing only canonical inventory paths.
+        const auto found = std::find_if(manifest.files.begin(), manifest.files.end(),
+                                        [&](const auto& file) { return file.path == dependency.destination; });
+        if (found == manifest.files.end())
+        {
+            if (dependency.required)
+                return incompatible("dependencies", "Missing required native " + dependency.kind +
+                                                        " in staged inventory: " + dependency.destination);
+            continue;
+        }
+        if (found->kind != dependency.kind)
+            return incompatible("dependencies.kind",
+                                "Native dependency has wrong staged kind: " + dependency.destination);
+        std::string key = dependency.destination;
+        std::transform(key.begin(), key.end(), key.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (!seen.insert(key).second)
+            return incompatible("dependencies", "Duplicate native dependency: " + dependency.destination);
+    }
 
     return finalizer.validate(request);
 }
