@@ -53,6 +53,22 @@ save/reopen. Entity-local loaders must use the selected program's texture-bindin
 semantic, including function-specialized bindings; normal maps must not reuse a
 generic-color cached upload.
 
+`coat texture assignments clear and inheritance survive scene save and fresh reopen`
+adds the scene-file persistence gate. It creates registered `.arcmat`, `.arcmatinst`,
+and generated TGA sources, edits one of two shared-material entities, and saves
+separate assigned/cleared/reset scenes. Each file is reopened with a fresh asset
+registry, scene, renderer, and texture cache. Checks cover persistent material and
+entity GUIDs, exact local override records, inherited versus explicit-empty routing,
+independent entity state, valid active texture bindings, and linear normal uploads.
+Runtime handle numbers and program generations are deliberately not compared across
+reloads. Slang is required; an unavailable compiler is an explicit skip, not a pass.
+The fixture deliberately uses `Content`, not the legacy `assets` directory: scene
+reload must pass the asset registry's configured root to material realization so
+inherited instance textures do not disappear or silently change routing.
+This exercises real compilation and renderer publication but still does not render
+GPU images. Device-backed switching/RNM captures and performance acceptance remain
+outstanding.
+
 Run the remaining device-backed check in this baseline with the authenticated editor
 gateway. Discover current operation schemas; `materials.inspectEntity` requires its
 v2 operation contract and current catalog revision. Obtain edit approval before

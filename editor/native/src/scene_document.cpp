@@ -2250,7 +2250,9 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
                 if (!stored_material.path_hint.empty() && loaded.scene.has<scene::mesh_renderer_component>(entity))
                 {
                     std::string material_message;
-                    if (!apply_material_asset_to_entity(loaded.material_library, renderer, project_root / "assets",
+                    const auto material_asset_root =
+                        asset_registry ? asset_registry->config().asset_root : project_root / "assets";
+                    if (!apply_material_asset_to_entity(loaded.material_library, renderer, material_asset_root,
                                                         project_root / stored_material.path_hint, loaded.scene, entity,
                                                         &material_message))
                         diagnostics.push_back("Material '" + stored_material.path_hint +
