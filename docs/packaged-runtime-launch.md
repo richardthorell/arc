@@ -2,7 +2,7 @@
 
 A packaged game and a dedicated server must enter ARC through the same startup contract. The platform host owns process entry, native surfaces, input, writable user storage and the distribution locator. ARC owns distribution validation, cooked-content mounting, project registrations, startup worlds and shutdown.
 
-D1.1 is **only the platform-neutral launch contract and deterministic validation**. It does not start a game, discover a distribution root, open a manifest, mount a package, load a scene or change an existing host/template yet. Those are D1.2–D1.8 and must retain the same contract.
+D1.1 established the **platform-neutral launch contract and deterministic validation**. D1.2 adds manifest discovery, identity checks and staged-file integrity verification. Neither slice starts a game, mounts content, loads a scene or changes an existing native host/template; those integrations remain in D1.3–D1.8.
 
 ## API and authority
 
