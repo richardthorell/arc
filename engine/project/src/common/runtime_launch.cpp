@@ -56,9 +56,8 @@ project_status validate_runtime_launch(const runtime_launch_descriptor& descript
                        "Platform host requested '" + std::string(expected_role) +
                            "' but the distribution manifest declares '" + descriptor.manifest.role + "'");
 
-    if (descriptor.role == runtime_launch_role::client && descriptor.manifest.startup_scenes.empty())
-        return invalid(project_error_code::invalid_scene, "startupScenes",
-                       "Packaged client has no startup scene; refusing to launch an implicit empty world");
+    // D0 rejects a client with no startupScenes; do not duplicate that policy
+    // with a different error code or accidentally allow an implicit empty world.
 
     const auto actual_platform = platform_name(descriptor.host.capabilities.family);
     if (actual_platform.empty() || actual_platform != descriptor.manifest.target.platform)
