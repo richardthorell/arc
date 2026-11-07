@@ -17,7 +17,7 @@ inline constexpr std::uint32_t distribution_format_version = 1;
 struct distribution_file
 {
     std::string path;
-    std::string kind; ///< executable, library, configuration, content, or metadata.
+    std::string kind; ///< executable, library, plugin, configuration, content, metadata, or symbols.
     std::uint64_t size{};
     std::string sha256; ///< Lower-case SHA-256 of the final staged bytes.
 };

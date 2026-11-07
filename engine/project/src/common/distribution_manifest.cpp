@@ -166,8 +166,10 @@ project_status validate_distribution_manifest(const distribution_manifest& manif
             return unsafe("files.path", "Staged file path must be normalized and package-relative: " + file.path);
         if (!file_keys.insert(portable_key(file.path)).second)
             return invalid("files.path", "Duplicate staged destination (case-insensitive): " + file.path);
-        if (!contains(file.kind, {"executable", "library", "configuration", "content", "metadata", "symbols"}))
+        if (!contains(file.kind, {"executable", "library", "plugin", "configuration", "content", "metadata", "symbols"}))
             return invalid("files.kind", "Unknown staged file kind for " + file.path);
+        if (manifest.target.configuration == "Shipping" && file.kind == "symbols")
+            return invalid("files.kind", "Shipping runtime payload cannot contain development symbols: " + file.path);
         if (!valid_sha256(file.sha256))
             return invalid("files.sha256", "Staged file requires a lower-case SHA-256: " + file.path);
     }

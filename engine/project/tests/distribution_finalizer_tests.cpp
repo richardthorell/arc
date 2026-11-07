@@ -157,3 +157,57 @@ TEST_CASE("distribution dispatcher rejects missing or aliased staging roots")
     REQUIRE_FALSE(result);
     CHECK_FALSE(finalizer.called);
 }
+
+TEST_CASE("distribution finalizer requires discovered native dependencies to be staged")
+{
+    const auto workflow = plan();
+    auto dist = manifest();
+    const auto root = std::filesystem::temp_directory_path();
+    recording_finalizer finalizer;
+    arc::project::distribution_finalize_request request{
+        .workflow = workflow, .manifest = dist,
+        .staging_root = root / "arc-stage", .output_root = root / "arc-dist",
+        .dependencies = {{.destination = "plugins/physics.dll", .kind = "plugin", .required = true}}};
+
+    auto result = arc::project::run_distribution_finalizer(request, finalizer);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "dependencies");
+    CHECK_FALSE(finalizer.validated);
+    CHECK_FALSE(finalizer.called);
+
+    dist.files.push_back({.path = "plugins/physics.dll", .kind = "plugin",
+                          .size = 25, .sha256 = digest});
+    result = arc::project::run_distribution_finalizer(request, finalizer);
+    REQUIRE(result);
+    CHECK(finalizer.validated);
+    CHECK(finalizer.called);
+}
+
+TEST_CASE("distribution finalizer rejects mislabeled and duplicate dependency destinations")
+{
+    const auto workflow = plan();
+    auto dist = manifest();
+    dist.files.push_back({.path = "bin/runtime.dll", .kind = "library", .size = 25, .sha256 = digest});
+    const auto root = std::filesystem::temp_directory_path();
+    recording_finalizer finalizer;
+    arc::project::distribution_finalize_request request{
+        .workflow = workflow, .manifest = dist,
+        .staging_root = root / "arc-stage", .output_root = root / "arc-dist",
+        .dependencies = {{.destination = "bin/runtime.dll", .kind = "plugin"}}};
+
+    auto result = arc::project::run_distribution_finalizer(request, finalizer);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "dependencies.kind");
+    CHECK_FALSE(finalizer.called);
+
+    request.dependencies = {{.destination = "bin/runtime.dll", .kind = "library"},
+                            {.destination = "bin/runtime.dll", .kind = "library"}};
+    result = arc::project::run_distribution_finalizer(request, finalizer);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "dependencies");
+    CHECK_FALSE(finalizer.called);
+
+    request.dependencies = {{.destination = "plugins/optional.dll", .kind = "plugin", .required = false}};
+    result = arc::project::run_distribution_finalizer(request, finalizer);
+    REQUIRE(result);
+}

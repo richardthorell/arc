@@ -5,9 +5,25 @@
 
 #include <filesystem>
 #include <string_view>
+#include <vector>
 
 namespace arc::project
 {
+
+/**
+ * Dependency closure discovered by the common assembler from build/link metadata
+ * and project plugin declarations. The assembler must inspect transitive native
+ * dependencies and classify host-provided/system libraries separately.
+ *
+ * Paths here are final distribution-relative destinations, not build source paths.
+ * Empty dependencies are valid for statically linked distributions.
+ */
+struct distribution_native_dependency
+{
+    std::string destination; ///< Staged relative filename, e.g. bin/physics.dll.
+    std::string kind;        ///< library or plugin; plugins remain distinguishable.
+    bool required{true};    ///< Optional dependencies may be absent.
+};
 
 /**
  * Finalizer invocation receives a fully staged directory and a validated
@@ -20,6 +36,7 @@ struct distribution_finalize_request
     const distribution_manifest& manifest;
     std::filesystem::path staging_root; ///< Host path, never serialized.
     std::filesystem::path output_root;  ///< Host path, never serialized.
+    std::vector<distribution_native_dependency> dependencies; ///< Resolved native dependency closure.
 };
 
 /** Native packagers implement this interface, not the shared assembler. */

@@ -74,5 +74,34 @@ constraints before producing archives/metadata/signatures.
 
 The current adapter IDs are windows-directory, linux-directory, macos-bundle,
 ios-bundle and android-gradle. These are contract identities, not implementations.
-Native stages, runtime dependency discovery and package creation belong to #1095.
- Shared runtime startup belongs to #1094, native staging to #1095, relocation CI to #1096 and content variant/bundle semantics to #994/#995.
+## Native dependency closure and Shipping symbols (D0 hardening)
+
+The **common assembler** (#1095) discovers the runtime-native dependency closure from
+CMake build artifacts and native binary/linker metadata, including transitive shared
+libraries. Project plugin declarations supply their identities and whether they are
+required. System/OS-provided libraries must be resolved against a target-specific
+system-library allowlist and excluded from staging; an unknown/unresolved dependency
+is **not** assumed to be a system library. No filename guessing or silent omissions.
+
+The assembler stages each non-system dependency under a portable relative path,
+classifies it as `library` or `plugin`, and hashes the final bytes into the
+manifest `files` inventory. A plugin has distinct `kind: "plugin"` so it is
+never mistaken for an ordinary content file or silently satisfied by a same-named
+library. The host-only `distribution_finalize_request.dependencies` provides
+the resolved closure to the common dispatcher. Required missing files, wrong kinds
+and duplicate dependency destinations fail before the native finalizer executes;
+an explicitly optional dependency may be absent. Empty closure is valid for a
+fully static target.
+
+Shipping runtime manifests reject file entries with `kind: "symbols"`.
+Development/Debug distributions may stage symbols. Unstripped private symbols
+for Shipping builds must be emitted separately as debugging artifacts, outside
+the runnable runtime manifest/payload. The assembler must avoid including
+authoring tools and development metadata as unclassified files. The native
+packager may apply post-stage signing/transformations before the final hashes
+are published, or use detached signatures.
+
+This D0 contract does not perform actual binary inspection, signature generation,
+platform-specific staging or integrity reads. Those remain in #1095.
+
+Shared runtime startup belongs to #1094, native staging to #1095, relocation CI to #1096 and content variant/bundle semantics to #994/#995.
