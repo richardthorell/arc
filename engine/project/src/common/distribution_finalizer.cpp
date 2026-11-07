@@ -58,11 +58,12 @@ project_status validate_distribution_finalization(const distribution_finalize_re
         {
             if (dependency.required)
                 return incompatible("dependencies", "Missing required native " + dependency.kind +
-                                                    " in staged inventory: " + dependency.destination);
+                                                        " in staged inventory: " + dependency.destination);
             continue;
         }
         if (found->kind != dependency.kind)
-            return incompatible("dependencies.kind", "Native dependency has wrong staged kind: " + dependency.destination);
+            return incompatible("dependencies.kind",
+                                "Native dependency has wrong staged kind: " + dependency.destination);
         std::string key = dependency.destination;
         std::transform(key.begin(), key.end(), key.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });

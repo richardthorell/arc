@@ -165,8 +165,10 @@ TEST_CASE("distribution finalizer requires discovered native dependencies to be 
     const auto root = std::filesystem::temp_directory_path();
     recording_finalizer finalizer;
     arc::project::distribution_finalize_request request{
-        .workflow = workflow, .manifest = dist,
-        .staging_root = root / "arc-stage", .output_root = root / "arc-dist",
+        .workflow = workflow,
+        .manifest = dist,
+        .staging_root = root / "arc-stage",
+        .output_root = root / "arc-dist",
         .dependencies = {{.destination = "plugins/physics.dll", .kind = "plugin", .required = true}}};
 
     auto result = arc::project::run_distribution_finalizer(request, finalizer);
@@ -175,8 +177,7 @@ TEST_CASE("distribution finalizer requires discovered native dependencies to be 
     CHECK_FALSE(finalizer.validated);
     CHECK_FALSE(finalizer.called);
 
-    dist.files.push_back({.path = "plugins/physics.dll", .kind = "plugin",
-                          .size = 25, .sha256 = digest});
+    dist.files.push_back({.path = "plugins/physics.dll", .kind = "plugin", .size = 25, .sha256 = digest});
     result = arc::project::run_distribution_finalizer(request, finalizer);
     REQUIRE(result);
     CHECK(finalizer.validated);
@@ -191,8 +192,10 @@ TEST_CASE("distribution finalizer rejects mislabeled and duplicate dependency de
     const auto root = std::filesystem::temp_directory_path();
     recording_finalizer finalizer;
     arc::project::distribution_finalize_request request{
-        .workflow = workflow, .manifest = dist,
-        .staging_root = root / "arc-stage", .output_root = root / "arc-dist",
+        .workflow = workflow,
+        .manifest = dist,
+        .staging_root = root / "arc-stage",
+        .output_root = root / "arc-dist",
         .dependencies = {{.destination = "bin/runtime.dll", .kind = "plugin"}}};
 
     auto result = arc::project::run_distribution_finalizer(request, finalizer);

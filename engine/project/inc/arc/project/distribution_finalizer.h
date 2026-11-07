@@ -22,7 +22,7 @@ struct distribution_native_dependency
 {
     std::string destination; ///< Staged relative filename, e.g. bin/physics.dll.
     std::string kind;        ///< library or plugin; plugins remain distinguishable.
-    bool required{true};    ///< Optional dependencies may be absent.
+    bool required{true};     ///< Optional dependencies may be absent.
 };
 
 /**
@@ -34,8 +34,8 @@ struct distribution_finalize_request
 {
     const package_workflow_plan& workflow;
     const distribution_manifest& manifest;
-    std::filesystem::path staging_root; ///< Host path, never serialized.
-    std::filesystem::path output_root;  ///< Host path, never serialized.
+    std::filesystem::path staging_root;                       ///< Host path, never serialized.
+    std::filesystem::path output_root;                        ///< Host path, never serialized.
     std::vector<distribution_native_dependency> dependencies; ///< Resolved native dependency closure.
 };
 
