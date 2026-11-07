@@ -43,6 +43,16 @@ reset to inherited routing, entity isolation, and weight edits without program c
 It requires Slang and skips explicitly when unavailable. It does **not** load the
 fixture's texture on a GPU or claim image correctness.
 
+`registered coat texture overrides preserve linear semantics and isolate color cache
+entries` covers real-file GUID assignment using a generated TGA and the native asset
+registry. It verifies normal-versus-color upload semantics, separate cache handles
+for the same file, Forward/Deferred switching on assign/clear/reset, and rehydration
+of persisted override records. It uses synthetic program metadata (no shader compiler
+required) and inspects renderer upload events, not GPU images or a full scene-file
+save/reopen. Entity-local loaders must use the selected program's texture-binding
+semantic, including function-specialized bindings; normal maps must not reuse a
+generic-color cached upload.
+
 Run the remaining device-backed check in this baseline with the authenticated editor
 gateway. Discover current operation schemas; `materials.inspectEntity` requires its
 v2 operation contract and current catalog revision. Obtain edit approval before

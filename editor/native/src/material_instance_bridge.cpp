@@ -583,14 +583,15 @@ std::filesystem::path resolve_asset_reference_path(const editor_scene_state& sce
 
 render::texture_handle ensure_override_texture(editor_scene_state& scene, render::renderer& renderer,
                                                const editor_material_record& material,
-                                               const assets::asset_reference& reference)
+                                               const assets::asset_reference& reference,
+                                               render::texture_semantic semantic)
 {
     auto resolved = resolve_asset_reference_path(scene, material, reference);
     if (resolved.empty()) return {};
     std::error_code ec;
     auto key = std::filesystem::absolute(resolved, ec).lexically_normal();
     if (ec) key = resolved.lexically_normal();
-    key += "#material-parameter";
+    key += "#material-parameter-" + std::to_string(static_cast<unsigned>(semantic));
     for (const auto& [texture_path, handle] : scene.material_library.textures)
         if (texture_path == key) return handle;
 
@@ -601,7 +602,7 @@ render::texture_handle ensure_override_texture(editor_scene_state& scene, render
                                                        resolved.generic_string() + " (" + loaded.message + ")");
         return {};
     }
-    loaded.texture.semantic = render::texture_semantic::generic_color;
+    loaded.texture.semantic = semantic;
     loaded.texture.color_space = render::required_color_space(loaded.texture.semantic);
     const auto handle = renderer.create_texture(std::move(loaded.texture));
     if (handle.valid()) scene.material_library.textures.push_back({std::move(key), handle});
@@ -609,14 +610,15 @@ render::texture_handle ensure_override_texture(editor_scene_state& scene, render
 }
 
 render::texture_handle ensure_override_texture(editor_scene_state& scene, render::renderer& renderer,
-                                               const editor_material_record& material, std::string_view path)
+                                               const editor_material_record& material, std::string_view path,
+                                               render::texture_semantic semantic)
 {
     if (path.empty()) return {};
     auto resolved = resolve_texture_path(scene, material, path);
     std::error_code ec;
     auto key = std::filesystem::absolute(resolved, ec).lexically_normal();
     if (ec) key = resolved.lexically_normal();
-    key += "#material-parameter";
+    key += "#material-parameter-" + std::to_string(static_cast<unsigned>(semantic));
     for (const auto& [texture_path, handle] : scene.material_library.textures)
         if (texture_path == key) return handle;
 
@@ -627,17 +629,31 @@ render::texture_handle ensure_override_texture(editor_scene_state& scene, render
                                                        resolved.generic_string() + " (" + loaded.message + ")");
         return {};
     }
-    loaded.texture.semantic = render::texture_semantic::generic_color;
+    loaded.texture.semantic = semantic;
     loaded.texture.color_space = render::required_color_space(loaded.texture.semantic);
     const auto handle = renderer.create_texture(std::move(loaded.texture));
     if (handle.valid()) scene.material_library.textures.push_back({std::move(key), handle});
     return handle;
 }
 
+render::texture_semantic parameter_texture_semantic(const render::material_descriptor& material,
+                                                    render::shader_parameter_id parameter)
+{
+    if (material.runtime_program)
+    {
+        const auto& bindings = material.runtime_program->texture_bindings;
+        const auto binding =
+            std::ranges::find(bindings, parameter, &render::material_runtime_texture_binding::parameter_id);
+        if (binding != bindings.end()) return binding->semantic;
+    }
+    return render::texture_semantic::generic_color;
+}
+
 std::optional<render::material_parameter_value> override_value(editor_scene_state& scene, render::renderer& renderer,
                                                                const editor_material_record& base,
                                                                const render::shader_parameter_descriptor& parameter,
-                                                               const json& authored)
+                                                               const json& authored,
+                                                               const render::material_descriptor& material)
 {
     const auto values = authored.value("value", std::vector<float>{});
     const auto finite = [](const std::vector<float>& source, std::size_t count)
@@ -663,10 +679,12 @@ std::optional<render::material_parameter_value> override_value(editor_scene_stat
             {
                 const auto reference = asset_reference_from_json(*found);
                 if (!reference) return std::nullopt;
-                return render::resource_handle{ensure_override_texture(scene, renderer, base, *reference)};
+                return render::resource_handle{ensure_override_texture(
+                    scene, renderer, base, *reference, parameter_texture_semantic(material, parameter.id))};
             }
-            return render::resource_handle{
-                ensure_override_texture(scene, renderer, base, authored.value("texture", std::string{}))};
+            return render::resource_handle{ensure_override_texture(scene, renderer, base,
+                                                                   authored.value("texture", std::string{}),
+                                                                   parameter_texture_semantic(material, parameter.id))};
         }
         default:
             break;
@@ -676,7 +694,8 @@ std::optional<render::material_parameter_value> override_value(editor_scene_stat
 
 std::optional<render::material_parameter_value>
 authored_instance_value(editor_scene_state& scene, render::renderer& renderer, const editor_material_record& base,
-                        const render::shader_parameter_descriptor& parameter, const json& value)
+                        const render::shader_parameter_descriptor& parameter, const json& value,
+                        const render::material_descriptor& material)
 {
     const auto number_array = [&](std::size_t count) -> std::optional<std::vector<float>>
     {
@@ -711,7 +730,8 @@ authored_instance_value(editor_scene_state& scene, render::renderer& renderer, c
         case render::shader_parameter_type::texture_2d:
             if (value.is_string())
                 return render::resource_handle{
-                    ensure_override_texture(scene, renderer, base, value.get<std::string>())};
+                    ensure_override_texture(scene, renderer, base, value.get<std::string>(),
+                                            parameter_texture_semantic(material, parameter.id))};
             break;
         default:
             break;
@@ -921,7 +941,8 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
                                     &render::shader_parameter_descriptor::id)
                 : std::ranges::find(parameter_layout, requested->name, &render::shader_parameter_descriptor::name);
         if (parameter == parameter_layout.end() || parameter->type != requested->type ||
-            (!requested->reset && !override_value(scene, renderer, base, *parameter, edit_to_json(*requested))))
+            (!requested->reset &&
+             !override_value(scene, renderer, base, *parameter, edit_to_json(*requested), specialized_material)))
         {
             set_material_edit_error("Requested material parameter is missing or has an incompatible value");
             return false;
@@ -959,7 +980,8 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
                     const auto layout = std::ranges::find(parameter_layout, render::shader_parameter_id{parameter_id},
                                                           &render::shader_parameter_descriptor::id);
                     if (layout == parameter_layout.end()) continue;
-                    const auto value = authored_instance_value(scene, renderer, base, *layout, authored["value"]);
+                    const auto value = authored_instance_value(scene, renderer, base, *layout, authored["value"],
+                                                               specialized_material);
                     if (!value) continue;
                     instance.overrides.push_back({.id = layout->id, .name = layout->name, .value = *value});
                 }
@@ -993,7 +1015,7 @@ bool realize_overrides(editor_scene_state& scene, render::renderer& renderer, ec
             arc::diagnostics::warn("editor.materials", "Ignoring stale material instance parameter '" + name + "'");
             continue;
         }
-        const auto value = override_value(scene, renderer, base, *layout, authored);
+        const auto value = override_value(scene, renderer, base, *layout, authored, specialized_material);
         if (!value)
         {
             arc::diagnostics::warn("editor.materials",
@@ -1152,7 +1174,9 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
                 return false;
             }
             const auto* base = base_material_record(scene, entity);
-            if (!base || !ensure_override_texture(scene, renderer, *base, reference).valid())
+            if (!base || !ensure_override_texture(scene, renderer, *base, reference,
+                                                  parameter_texture_semantic(record->asset.material, parameter))
+                              .valid())
             {
                 error = "Texture realization failed; previous material override retained";
                 return false;

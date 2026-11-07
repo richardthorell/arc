@@ -32,6 +32,9 @@ struct editor_scene_state;
 
 void clear_entity_material_overrides(editor_scene_state& scene, ecs::entity entity);
 
+/** Rehydrate persisted entity overrides after scene/history restoration, including procedural geometry. */
+void synchronize_procedural_and_material_instances(editor_scene_state& scene, render::renderer& renderer);
+
 /** Structured readback independent of the compatibility display-name encoding. */
 [[nodiscard]] std::string entity_material_overrides_json(const editor_scene_state& scene, ecs::entity entity);
 } // namespace arc::editor

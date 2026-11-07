@@ -3,6 +3,7 @@
 #include <arc/editor/editor_state.h>
 #include <arc/editor/entity_material_service.h>
 #include <arc/editor/material_preview_realizer.h>
+#include <arc/editor/procedural_mesh.h>
 #include <arc/render/material_instance.h>
 #include <arc/render/renderer.h>
 #include <arc/render_tools/material_graph.h>
@@ -15,6 +16,143 @@
 #include <fstream>
 #include <map>
 #include <set>
+
+TEST_CASE("registered coat texture overrides preserve linear semantics and isolate color cache entries")
+{
+    using namespace arc::render;
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("arc-coat-texture-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
+    std::filesystem::create_directories(root / "Content");
+    struct cleanup
+    {
+        std::filesystem::path root;
+        ~cleanup()
+        {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+        }
+    } cleanup_root{root};
+    // A real uncompressed 1x1 TGA, shared by a normal slot and a color slot.
+    const std::array<unsigned char, 21> tga{0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 24, 32, 255, 128, 128};
+    {
+        std::ofstream output(root / "Content" / "sample.tga", std::ios::binary);
+        output.write(reinterpret_cast<const char*>(tga.data()), tga.size());
+        REQUIRE(output.good());
+    }
+    arc::memory::memory_system memory;
+    arc::jobs::job_system jobs(
+        {.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory});
+    arc::io::async_file_service files(jobs);
+    arc::assets::asset_manager manager({.project_root = root,
+                                        .asset_root = root / "Content",
+                                        .cache_root = root / ".arc/cache",
+                                        .enable_source_monitor = false},
+                                       jobs, files, memory);
+    arc::framework::runtime_service_registry services;
+    arc::framework::runtime_service_context context(services);
+    manager.on_start(context);
+    struct shutdown
+    {
+        arc::assets::asset_manager& manager;
+        arc::framework::runtime_service_context& context;
+        ~shutdown()
+        {
+            manager.on_shutdown(context);
+        }
+    } stop{manager, context};
+    (void)manager.scan();
+    const auto texture_asset = manager.find(std::string_view{"Content/sample.tga"});
+    REQUIRE(texture_asset);
+    const arc::assets::asset_reference texture{.guid = texture_asset->guid,
+                                               .expected_type = arc::assets::asset_types::texture_2d};
+    auto neutral = std::make_shared<material_runtime_program>();
+    neutral->generation = 100;
+    const shader_parameter_id normal_id{91}, color_id{92};
+    neutral->texture_bindings = {{.slot = 0, .parameter_id = normal_id, .semantic = texture_semantic::normal},
+                                 {.slot = 1, .parameter_id = color_id, .semantic = texture_semantic::generic_color}};
+    auto active = std::make_shared<material_runtime_program>(*neutral);
+    active->generation = 200;
+    auto variants = std::make_shared<material_coat_normal_variants>();
+    variants->texture_parameter = normal_id;
+    variants->neutral = neutral;
+    variants->independent = active;
+    arc::editor::editor_scene_state scene;
+    scene.project_root = root;
+    scene.asset_registry = &manager;
+    renderer renderer;
+    auto asset = arc::editor::make_default_material_asset("Texture semantics");
+    asset.path = root / "Content/test.arcmat";
+    asset.material.runtime_program = neutral;
+    asset.material.coat_normal_variants = variants;
+    const auto shared = renderer.create_material(asset.material);
+    scene.material_library.materials.push_back({asset.path, asset, shared});
+    const auto entity = scene.scene.create();
+    scene.scene.emplace<arc::scene::mesh_renderer_component>(entity,
+                                                             arc::scene::mesh_renderer_component{.material = shared});
+    arc::editor::ensure_scene_authoring_metadata(scene);
+    std::string error;
+    // Color first catches accidental reuse of its sRGB resource by the normal slot.
+    REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, entity, color_id, {}, &texture, false, error));
+    REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, entity, normal_id, {}, &texture, false, error));
+    auto read = [&]()
+    { return renderer.material_data_for(scene.scene.get<arc::scene::mesh_renderer_component>(entity).material); };
+    REQUIRE(read());
+    CHECK(read()->render_path == material_render_path::clustered_forward);
+    CHECK(read()->runtime_program->generation == 200);
+    REQUIRE(read()->runtime_textures.size() == 2);
+    CHECK(read()->runtime_textures[0] != read()->runtime_textures[1]);
+    const auto normal_handle = read()->runtime_textures[0];
+    const auto color_handle = read()->runtime_textures[1];
+    const auto packet = renderer.frame_queue().commit(1);
+    std::size_t normal_uploads{}, color_uploads{};
+    for (const auto& event : packet.events)
+    {
+        const auto* upload = std::get_if<texture_upload_event>(&event.payload);
+        if (!upload) continue;
+        if (upload->texture->semantic == texture_semantic::normal)
+        {
+            ++normal_uploads;
+            CHECK(upload->texture->color_space == required_color_space(texture_semantic::normal));
+        }
+        else if (upload->texture->semantic == texture_semantic::generic_color)
+        {
+            ++color_uploads;
+            CHECK(upload->texture->color_space == required_color_space(texture_semantic::generic_color));
+        }
+    }
+    CHECK(normal_uploads == 1);
+    CHECK(color_uploads == 1);
+    const auto persisted = scene.preserved_component_records;
+    REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, entity, normal_id, {}, nullptr, false, error,
+                                                       {}, true));
+    CHECK(read()->render_path == material_render_path::deferred);
+    CHECK(read()->runtime_program->generation == 100);
+    CHECK(read()->runtime_textures[1] == color_handle);
+    // Rehydrate serialized override records through the same path as history/load.
+    scene.preserved_component_records = persisted;
+    SECTION("GUID-backed override records") {}
+    SECTION("Legacy path-backed override records")
+    {
+        for (auto& record : scene.preserved_component_records)
+        {
+            if (record.component_name != "MeshRenderer") continue;
+            auto data = nlohmann::json::parse(record.json);
+            for (auto& value : data["materialParameterOverrides"])
+            {
+                value.erase("textureReference");
+                value["texture"] = "sample.tga";
+            }
+            record.json = data.dump();
+        }
+    }
+    scene.scene.get<arc::scene::mesh_renderer_component>(entity).material = shared;
+    arc::editor::synchronize_procedural_and_material_instances(scene, renderer);
+    CHECK(read()->render_path == material_render_path::clustered_forward);
+    CHECK(read()->runtime_textures[0] == normal_handle);
+    CHECK(read()->runtime_textures[1] == color_handle);
+    REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, entity, normal_id, {}, nullptr, true, error));
+    CHECK(read()->render_path == material_render_path::deferred);
+}
 
 TEST_CASE("applied material readback reports attached routing without claiming GPU readiness")
 {
