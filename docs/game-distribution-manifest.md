@@ -55,4 +55,24 @@ All staged paths must be package-root-relative, use forward slashes, and exclude
 
 Serialization sorts file records and cooked-manifest references, preserving startup scene order. The manifest never includes machine build paths, checkout/SDK roots, timestamps or secrets. Signing that changes bytes must precede final file hashing or be detached. This contract does not itself perform hash verification against the filesystem.
 
-D0 PR 1 provides types, serialization and validation only. PR 2 introduces the planner/finalizer interface. Shared runtime startup belongs to #1094, native staging to #1095, relocation CI to #1096 and content variant/bundle semantics to #994/#995.
+D0 PR 1 provides types, serialization and validation. D0 PR 2 extends the
+existing `plan_package_workflow` with a validated, enabled platform target,
+resolved architecture, renderer and platform finalizer ID. The cook profile ID
+remains separate from the canonical enabled target ID, so multiple quality/cook
+profiles may use the same platform host. The workflow planner rejects inconsistent
+renderers, disabled target platforms, unsupported build configurations, wrong
+client/server role and incompatible explicit finalizer selection.
+
+The native adapter interface is `distribution_finalizer` in
+`arc/project/distribution_finalizer.h`. Its caller supplies an already staged
+distribution root, a manifest validated by `validate_distribution_manifest`,
+and host-only staging/output paths. `run_distribution_finalizer` enforces that
+the manifest's role, platform, architecture, renderer, configuration, cook
+profile, target identity and adapter ID match the workflow before dispatching.
+No host paths are serialized. Native finalizers may validate their own package
+constraints before producing archives/metadata/signatures.
+
+The current adapter IDs are windows-directory, linux-directory, macos-bundle,
+ios-bundle and android-gradle. These are contract identities, not implementations.
+Native stages, runtime dependency discovery and package creation belong to #1095.
+ Shared runtime startup belongs to #1094, native staging to #1095, relocation CI to #1096 and content variant/bundle semantics to #994/#995.
