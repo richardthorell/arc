@@ -1,6 +1,7 @@
 #include <arc/project/package_workflow.h>
 
 #include <algorithm>
+#include <string_view>
 
 namespace arc::project
 {
@@ -33,6 +34,47 @@ package_workflow_result plan_package_workflow(const project_descriptor& descript
             workflow_error(project_error_code::invalid_descriptor, "cookProfiles",
                            "Cook profile '" + profile_id + "' is not declared by the project"));
 
+    // A cook profile is not an authority to package a disabled or unsupported target.
+    const auto& platform = profile->platform;
+    const auto& renderer = profile->renderer;
+    const auto& architecture = profile->architecture;
+    if ((platform != "windows" && platform != "linux" && platform != "macos" &&
+         platform != "android" && platform != "ios") ||
+        (architecture != "x86_64" && architecture != "arm64") ||
+        (renderer != "none" && renderer != "vulkan" && renderer != "direct3d12" && renderer != "metal"))
+        return package_workflow_result::failure(
+            workflow_error(project_error_code::unsupported_platform, "cookProfiles",
+                           "Cook profile contains unsupported platform, architecture or renderer"));
+
+    if ((renderer == "direct3d12" && platform != "windows") ||
+        (renderer == "metal" && platform != "macos" && platform != "ios") ||
+        (platform == "android" && renderer != "vulkan") ||
+        ((platform == "android" || platform == "ios") && architecture != "arm64"))
+        return package_workflow_result::failure(
+            workflow_error(project_error_code::unsupported_platform, "cookProfiles",
+                           "Cook profile renderer or architecture is incompatible with target platform"));
+
+    const auto expected_target = platform + "-" + (architecture == "x86_64" ? "x64" : architecture) + "-" +
+                                 (renderer == "none" ? "headless" : renderer);
+    const auto target = std::find_if(descriptor.target_platforms.begin(), descriptor.target_platforms.end(),
+                                     [&](const auto& candidate) {
+                                         return candidate.id == expected_target && candidate.enabled;
+                                     });
+    if (target == descriptor.target_platforms.end())
+        return package_workflow_result::failure(
+            workflow_error(project_error_code::unsupported_platform, "targetPlatforms",
+                           "Cook profile '" + profile_id + "' requires enabled target '" + expected_target + "'"));
+
+    const auto default_finalizer = platform == "windows" ? "windows-directory" :
+                                   platform == "android" ? "android-gradle" :
+                                   platform == "linux" ? "linux-directory" :
+                                   platform == "macos" ? "macos-bundle" : "ios-bundle";
+    const auto finalizer = request.finalizer.empty() ? default_finalizer : request.finalizer;
+    if (finalizer != default_finalizer)
+        return package_workflow_result::failure(
+            workflow_error(project_error_code::unsupported_platform, "finalizer",
+                           "Finalizer '" + finalizer + "' is incompatible with target platform '" + platform + "'"));
+
     if (std::find(descriptor.build_configurations.begin(), descriptor.build_configurations.end(),
                   profile->configuration) == descriptor.build_configurations.end())
         return package_workflow_result::failure(
@@ -49,6 +91,11 @@ package_workflow_result plan_package_workflow(const project_descriptor& descript
                            "Project does not declare an enabled " + std::string(role_name) + " module for packaging"));
     }
 
+    if (request.role == package_workflow_role::runtime && profile->renderer == "none")
+        return package_workflow_result::failure(
+            workflow_error(project_error_code::invalid_descriptor, "cookProfiles",
+                           "Client workflow requires a graphical cook profile"));
+
     if (request.role == package_workflow_role::server && profile->renderer != "none")
         return package_workflow_result::failure(
             workflow_error(project_error_code::invalid_descriptor, "cookProfiles",
@@ -61,7 +108,14 @@ package_workflow_result plan_package_workflow(const project_descriptor& descript
     const auto role_directory = request.role == package_workflow_role::server ? "Server" : "Runtime";
     return package_workflow_result::success(
         {.profile = profile->id,
+         .project_guid = descriptor.guid,
+         .engine_version = descriptor.engine_version,
          .configuration = profile->configuration,
+         .target_id = target->id,
+         .platform = platform,
+         .architecture = architecture,
+         .renderer = renderer,
+         .finalizer = finalizer,
          .action = request.action,
          .role = request.role,
          .cook_output = (context.build_root / "Cooked" / profile->id).lexically_normal(),
