@@ -33,6 +33,47 @@ ctest --preset default -R '^arc-materials-baseline-cook
 This first milestone establishes the canonical scene and structural contract. **It now includes native cooked package-load validation, but does not yet implement deterministic GPU captures, image tolerances or versioned golden images.** Those require a device-backed test runner, explicit capture of active render/material path and device profile, and reviewed reference PNG updates. Never auto-update goldens from a normal test run; missing shader/texture, wrong permutation, unplanned fallback or unavailable required path must fail clearly.
 
 Expand this baseline rather than creating unrelated fixture scenes: normal/AO maps, anisotropy, masking/two-sided, mip/HDR and material function variants as executable. Follow #359 for authoritative compiler/runtime cleanup, #858 for the Blank 3D starter migration, and #478 for visibility-buffer coverage.
+
+### Clear-coat switching acceptance (#1050)
+
+The native test `compiled coat variants survive typed clearing reset and scene history`
+uses real compiled programs, the entity-local editing service, renderer publication,
+and scene undo/redo. It checks inherited active routing, explicit clearing to neutral,
+reset to inherited routing, entity isolation, and weight edits without program changes.
+It requires Slang and skips explicitly when unavailable. It does **not** load the
+fixture's texture on a GPU or claim image correctness.
+
+Run the remaining device-backed check in this baseline with the authenticated editor
+gateway. Discover current operation schemas; `materials.inspectEntity` requires its
+v2 operation contract and current catalog revision. Obtain edit approval before
+changing the scene, use GUIDs, and carry returned scene/world revisions through edits.
+
+1. Use two visible entities sharing Standard Lit (including an authored Material
+   Instance). Inspect parameter metadata to identify the exposed coat-normal texture
+   and coat weight IDs; do not infer IDs from names or embed IDs from another graph.
+2. Frame both objects with fixed camera, light, exposure, and device profile. Capture
+   color, depth, objectId, and normals. Require ObjectID coverage for both target GUIDs
+   before claiming visual verification.
+3. Start with no independent coat-normal binding: require Deferred readback. Assign
+   a registered normal-semantic texture to only one entity: require Clustered Forward
+   readback and a changed program generation, leaving the second entity unchanged.
+4. Explicitly clear the texture: require Deferred and the cached neutral generation.
+   Reset the override: require the inherited route (Forward if the instance inherits
+   a binding, Deferred otherwise). Repeat the cycle, then verify undo and redo.
+5. Toggle coat weight between zero and nonzero while bound: routing and compiled
+   program generation must remain unchanged. Test base/detail RNM normals with coat
+   both disabled and enabled; neutral coat must inherit the evaluated base normal.
+6. Request a missing/incompatible texture and verify failure preserves the binding,
+   overrides, generation, and image. Save/reopen a separate test scene explicitly to
+   check persistence; never implicitly save the user's current scene or dirty graphs.
+
+Settle frames and capture after each successful mutation; associate comparisons with
+the intended entity via ObjectID, not whole-image differences alone. Record effective
+render options, profile/device, revisions, applied descriptors, and capture IDs.
+Descriptor availability and successful compilation are not GPU success. Missing
+captures, off-screen targets, fallback pipelines, or a skipped test leave this gate
+unverified. Cancel the test transaction to restore user content when verification is
+complete. Performance measurements remain a separate acceptance gate.
  --output-on-failure
 ```
 
