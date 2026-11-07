@@ -130,6 +130,21 @@ TEST_CASE("registered coat texture overrides preserve linear semantics and isola
     CHECK(read()->runtime_textures[1] == color_handle);
     // Rehydrate serialized override records through the same path as history/load.
     scene.preserved_component_records = persisted;
+    SECTION("GUID-backed override records") {}
+    SECTION("Legacy path-backed override records")
+    {
+        for (auto& record : scene.preserved_component_records)
+        {
+            if (record.component_name != "MeshRenderer") continue;
+            auto data = nlohmann::json::parse(record.json);
+            for (auto& value : data["materialParameterOverrides"])
+            {
+                value.erase("textureReference");
+                value["texture"] = "sample.tga";
+            }
+            record.json = data.dump();
+        }
+    }
     scene.scene.get<arc::scene::mesh_renderer_component>(entity).material = shared;
     arc::editor::synchronize_procedural_and_material_instances(scene, renderer);
     CHECK(read()->render_path == material_render_path::clustered_forward);
