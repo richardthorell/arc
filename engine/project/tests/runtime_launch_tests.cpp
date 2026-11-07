@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -90,7 +91,8 @@ TEST_CASE("D1 launch preserves D0 identities and ordered startup scenes and bund
     REQUIRE(prepared.value().manifest.startup_scenes.size() == 2);
     CHECK(prepared.value().manifest.startup_scenes[0] == "22222222-2222-2222-2222-222222222222");
     CHECK(prepared.value().manifest.startup_scenes[1] == "33333333-3333-3333-3333-333333333333");
-    CHECK(prepared.value().startup_bundles == std::vector<std::string>{"Engine", "Boot", "Startup/Common"});
+    const std::vector<std::string> expected_bundles = {"Engine", "Boot", "Startup/Common"};
+    CHECK(prepared.value().startup_bundles == expected_bundles);
     CHECK(prepared.value().host.device_profile == "desktop-high");
 }
 
@@ -113,6 +115,9 @@ TEST_CASE("D1 rejects host/manifest role mismatches and an empty client entry sc
     descriptor = client();
     descriptor.manifest.startup_scenes.clear();
     reject(descriptor, project::project_error_code::invalid_scene, "startupScenes");
+    descriptor = client();
+    descriptor.role = static_cast<project::runtime_launch_role>(99);
+    reject(descriptor, project::project_error_code::invalid_descriptor, "role");
 }
 
 TEST_CASE("D1 rejects incompatible host target and malformed D0 manifest")
