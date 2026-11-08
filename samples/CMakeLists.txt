@@ -49,6 +49,27 @@ if(BUILD_TESTING)
     set_tests_properties(arc-packaged-server-cli-arguments PROPERTIES WILL_FAIL TRUE)
 endif()
 
+if(WIN32 AND TARGET arc-platform-windows-packaged-entry)
+    # Compile the actual Blank 3D packaged game entry with sample identities.
+    # No manifest is synthesized; runtime relocation belongs to D1.8.
+    set(_arc_client_template "${CMAKE_SOURCE_DIR}/templates/blank-3d/Source/__PROJECT__Runtime/Game.cpp")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_arc_client_template}")
+    file(READ "${_arc_client_template}" _arc_client_source)
+    string(REPLACE "{{PROJECT_TOKEN}}" "arc_packaged_sample" _arc_client_source "${_arc_client_source}")
+    string(REPLACE "{{PROJECT_NAME}}" "ARC Packaged Sample" _arc_client_source "${_arc_client_source}")
+    string(REPLACE "{{ENGINE_VERSION}}" "${PROJECT_VERSION}" _arc_client_source "${_arc_client_source}")
+    string(REPLACE "{{PROJECT_GUID}}" "11111111-1111-1111-1111-111111111111" _arc_client_source "${_arc_client_source}")
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/generated/packaged_client_game.cpp" "${_arc_client_source}")
+
+    add_executable(arc_packaged_client WIN32
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/packaged_client_game.cpp"
+        boot_app/packaged_client_registration.cpp)
+    arc_configure_first_party_target(arc_packaged_client)
+    target_compile_features(arc_packaged_client PRIVATE cxx_std_20)
+    target_compile_definitions(arc_packaged_client PRIVATE ARC_GAME_BUILD_CONFIGURATION="$<CONFIG>")
+    target_link_libraries(arc_packaged_client PRIVATE arc-platform-windows-packaged-entry)
+endif()
+
 if(WIN32 AND COMMAND arc_add_windows_app)
     arc_add_windows_app(
         NAME arc_sample_game
