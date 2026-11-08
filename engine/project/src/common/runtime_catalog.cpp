@@ -172,7 +172,7 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
             failure(project_error_code::invalid_descriptor, "host.distribution",
                     "Cooked artifact mount must use a separate virtual provider namespace"));
 
-    auto session = std::make_unique<runtime_catalog_session>(request.files);
+    auto session = std::unique_ptr<runtime_catalog_session>(new runtime_catalog_session(request.files));
     if (native)
     {
         auto provider =
