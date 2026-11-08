@@ -81,8 +81,7 @@ private:
     prepare_packaged_application(packaged_application_request request);
 
     packaged_runtime_application(runtime_launch_role role, framework::application_config config,
-                                 packaged_game_registrations registrations,
-                                 std::vector<packaged_scene_payload> scenes);
+                                 packaged_game_registrations registrations, std::vector<packaged_scene_payload> scenes);
 
     runtime_launch_role role_{runtime_launch_role::client};
     framework::application_config config_;

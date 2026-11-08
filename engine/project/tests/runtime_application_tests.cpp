@@ -159,8 +159,8 @@ struct packaged_world_fixture
 
     std::unique_ptr<project::runtime_catalog_session> catalog(const project::runtime_boot_context& boot)
     {
-        auto mounted = project::bootstrap_runtime_catalog(
-            {.boot = boot, .files = files, .native_files = &native_files});
+        auto mounted =
+            project::bootstrap_runtime_catalog({.boot = boot, .files = files, .native_files = &native_files});
         REQUIRE(mounted);
         return std::move(mounted).value();
     }
@@ -181,9 +181,18 @@ class recording_module final : public framework::module
 {
 public:
     explicit recording_module(std::vector<std::string>& events) : events_(&events) {}
-    std::string_view name() const override { return "packaged.test.module"; }
-    void on_start(framework::module_context&) override { events_->push_back("module:start"); }
-    void on_shutdown(framework::module_context&) override { events_->push_back("module:stop"); }
+    std::string_view name() const override
+    {
+        return "packaged.test.module";
+    }
+    void on_start(framework::module_context&) override
+    {
+        events_->push_back("module:start");
+    }
+    void on_shutdown(framework::module_context&) override
+    {
+        events_->push_back("module:stop");
+    }
 
 private:
     std::vector<std::string>* events_{};
@@ -207,8 +216,7 @@ TEST_CASE("D1.4 packaged client loads verified scene bytes then explicitly regis
         events.push_back("modules:register");
         registry.emplace<recording_module>(events);
     };
-    registrations.materialize_scene = [&](framework::runtime_world& world,
-                                           const project::packaged_scene_payload& scene)
+    registrations.materialize_scene = [&](framework::runtime_world& world, const project::packaged_scene_payload& scene)
     {
         materialized.push_back(scene.guid);
         CHECK(scene.bytes == fixture.scene_data);
@@ -219,9 +227,8 @@ TEST_CASE("D1.4 packaged client loads verified scene bytes then explicitly regis
         return project::project_status::success();
     };
 
-    auto app = project::prepare_packaged_application({.boot = boot,
-                                                       .catalog = *catalog,
-                                                       .registrations = std::move(registrations)});
+    auto app = project::prepare_packaged_application(
+        {.boot = boot, .catalog = *catalog, .registrations = std::move(registrations)});
     REQUIRE(app);
     CHECK(app.value()->scenes().size() == 2);
     CHECK(app.value()->role() == project::runtime_launch_role::client);
@@ -251,15 +258,15 @@ TEST_CASE("D1.4 dedicated server explicitly creates a headless world with no sta
     auto boot = fixture.boot(true);
     auto catalog = fixture.catalog(boot);
     std::size_t initialized{};
-    auto app = project::prepare_packaged_application({
-        .boot = boot,
-        .catalog = *catalog,
-        .registrations = {.initialize_headless_world = [&](framework::runtime_world& world)
-                          {
-                              CHECK(world.role() == framework::runtime_world_role::server);
-                              ++initialized;
-                              return project::project_status::success();
-                          }}});
+    auto app = project::prepare_packaged_application(
+        {.boot = boot,
+         .catalog = *catalog,
+         .registrations = {.initialize_headless_world = [&](framework::runtime_world& world)
+                           {
+                               CHECK(world.role() == framework::runtime_world_role::server);
+                               ++initialized;
+                               return project::project_status::success();
+                           }}});
     REQUIRE(app);
     CHECK(app.value()->configure().simulation.headless);
     CHECK_FALSE(app.value()->configure().simulation.presentation_enabled);
@@ -294,11 +301,11 @@ TEST_CASE("D1.4 incorrect startup GUID order fails instead of launching a differ
     auto boot = fixture.boot();
     auto catalog = fixture.catalog(boot);
     std::reverse(boot.launch.manifest.startup_scenes.begin(), boot.launch.manifest.startup_scenes.end());
-    auto app = project::prepare_packaged_application({
-        .boot = boot,
-        .catalog = *catalog,
-        .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&)
-                          { return project::project_status::success(); }}});
+    auto app = project::prepare_packaged_application(
+        {.boot = boot,
+         .catalog = *catalog,
+         .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&)
+                           { return project::project_status::success(); }}});
     REQUIRE_FALSE(app);
     CHECK(app.error().code == project::project_error_code::invalid_scene);
     CHECK(app.error().field == "startupScenes");
@@ -311,11 +318,11 @@ TEST_CASE("D1.4 rejects corrupted cooked scene payload before a runtime exists")
     auto boot = fixture.boot();
     auto catalog = fixture.catalog(boot);
     fixture.corrupt_scene_bytes();
-    auto app = project::prepare_packaged_application({
-        .boot = boot,
-        .catalog = *catalog,
-        .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&)
-                          { return project::project_status::success(); }}});
+    auto app = project::prepare_packaged_application(
+        {.boot = boot,
+         .catalog = *catalog,
+         .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&)
+                           { return project::project_status::success(); }}});
     REQUIRE_FALSE(app);
     CHECK(app.error().code == project::project_error_code::corrupt_content);
     CHECK(app.error().field == "startupScenes");
@@ -328,20 +335,19 @@ TEST_CASE("D1.4 scene materialization failure rolls back worlds and propagates s
     auto boot = fixture.boot();
     auto catalog = fixture.catalog(boot);
     std::size_t attempted{};
-    auto app = project::prepare_packaged_application({
-        .boot = boot,
-        .catalog = *catalog,
-        .registrations = {.materialize_scene = [&](framework::runtime_world& world,
-                                                   const project::packaged_scene_payload&)
-                          {
-                              world.entities().create();
-                              if (++attempted == 2)
-                                  return project::project_status::failure(
-                                      {.code = project::project_error_code::invalid_scene,
-                                       .field = "startupScenes",
-                                       .message = "test scene decode failure"});
-                              return project::project_status::success();
-                          }}});
+    auto app = project::prepare_packaged_application(
+        {.boot = boot,
+         .catalog = *catalog,
+         .registrations = {
+             .materialize_scene = [&](framework::runtime_world& world, const project::packaged_scene_payload&)
+             {
+                 world.entities().create();
+                 if (++attempted == 2)
+                     return project::project_status::failure({.code = project::project_error_code::invalid_scene,
+                                                              .field = "startupScenes",
+                                                              .message = "test scene decode failure"});
+                 return project::project_status::success();
+             }}});
     REQUIRE(app);
     framework::runtime host(*app.value());
     try
@@ -365,16 +371,16 @@ TEST_CASE("D1.4 server world initialization errors also roll back without fallba
     fixture.stage(true);
     auto boot = fixture.boot(true);
     auto catalog = fixture.catalog(boot);
-    auto app = project::prepare_packaged_application({
-        .boot = boot,
-        .catalog = *catalog,
-        .registrations = {.initialize_headless_world = [](framework::runtime_world&)
-                          {
-                              return project::project_status::failure(
-                                  {.code = project::project_error_code::missing_module,
-                                   .field = "server",
-                                   .message = "Server bootstrap registration unavailable"});
-                          }}});
+    auto app = project::prepare_packaged_application(
+        {.boot = boot,
+         .catalog = *catalog,
+         .registrations = {.initialize_headless_world = [](framework::runtime_world&)
+                           {
+                               return project::project_status::failure(
+                                   {.code = project::project_error_code::missing_module,
+                                    .field = "server",
+                                    .message = "Server bootstrap registration unavailable"});
+                           }}});
     REQUIRE(app);
     framework::runtime host(*app.value());
     CHECK_THROWS_AS(host.start(), project::packaged_runtime_startup_error);

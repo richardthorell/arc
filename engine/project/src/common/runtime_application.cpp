@@ -52,18 +52,17 @@ scene_result read_scene(runtime_catalog_session& session, assets::asset_guid gui
 
         auto bytes = session.files().read_all(resolved.value()).get();
         if (!bytes)
-            return scene_result::failure(
-                failure(project_error_code::io_failed, "startupScenes",
-                        "Could not read cooked startup scene " + assets::to_string(guid) + ": " + bytes.error().message));
+            return scene_result::failure(failure(project_error_code::io_failed, "startupScenes",
+                                                 "Could not read cooked startup scene " + assets::to_string(guid) +
+                                                     ": " + bytes.error().message));
         if (bytes.value().size() != representation.size ||
             assets::hash_bytes(bytes.value()) != representation.content_hash)
             return scene_result::failure(
                 failure(project_error_code::corrupt_content, "startupScenes",
                         "Cooked startup scene SHA-256 or size does not match its package manifest: " +
                             assets::to_string(guid)));
-        return scene_result::success({.guid = guid,
-                                      .artifact_name = representation.name,
-                                      .bytes = std::move(bytes).value()});
+        return scene_result::success(
+            {.guid = guid, .artifact_name = representation.name, .bytes = std::move(bytes).value()});
     }
 
     return scene_result::failure(
@@ -112,9 +111,8 @@ void packaged_runtime_application::register_modules(framework::module_registry& 
 void packaged_runtime_application::register_worlds(framework::runtime_world_manager& worlds)
 {
     if (worlds.size() != 0)
-        throw packaged_runtime_startup_error(
-            failure(project_error_code::invalid_descriptor, "startupScenes",
-                    "Packaged startup requires an initially empty world manager"));
+        throw packaged_runtime_startup_error(failure(project_error_code::invalid_descriptor, "startupScenes",
+                                                     "Packaged startup requires an initially empty world manager"));
 
     std::vector<framework::runtime_world_id> created;
     try
@@ -143,14 +141,14 @@ void packaged_runtime_application::register_worlds(framework::runtime_world_mana
             for (std::size_t index = 0; index < scenes_.size(); ++index)
             {
                 const auto& scene = scenes_[index];
-                auto& world = worlds.create(
-                    {.name = "Scene " + assets::to_string(scene.guid),
-                     .role = role_ == runtime_launch_role::server ? framework::runtime_world_role::server
-                                                                  : framework::runtime_world_role::client,
-                     .seed = config_.simulation.process_seed + index,
-                     .install_placeholder_systems = false,
-                     .presentation_enabled = role_ == runtime_launch_role::client &&
-                                             config_.simulation.presentation_enabled});
+                auto& world =
+                    worlds.create({.name = "Scene " + assets::to_string(scene.guid),
+                                   .role = role_ == runtime_launch_role::server ? framework::runtime_world_role::server
+                                                                                : framework::runtime_world_role::client,
+                                   .seed = config_.simulation.process_seed + index,
+                                   .install_placeholder_systems = false,
+                                   .presentation_enabled = role_ == runtime_launch_role::client &&
+                                                           config_.simulation.presentation_enabled});
                 created.push_back(world.id());
                 if (!registrations_.materialize_scene)
                     throw packaged_runtime_startup_error(
@@ -232,9 +230,9 @@ packaged_application_result prepare_packaged_application(packaged_application_re
     }
 
     auto config = std::move(request.config);
-    config.simulation.default_world_role =
-        boot.launch.role == runtime_launch_role::server ? framework::runtime_world_role::server
-                                                        : framework::runtime_world_role::client;
+    config.simulation.default_world_role = boot.launch.role == runtime_launch_role::server
+                                               ? framework::runtime_world_role::server
+                                               : framework::runtime_world_role::client;
     if (boot.launch.role == runtime_launch_role::server)
     {
         config.simulation.headless = true;
@@ -246,9 +244,8 @@ packaged_application_result prepare_packaged_application(packaged_application_re
         config.simulation.headless = false;
 
     return packaged_application_result::success(
-        std::unique_ptr<packaged_runtime_application>(
-            new packaged_runtime_application(boot.launch.role, std::move(config),
-                                             std::move(request.registrations), std::move(payloads))));
+        std::unique_ptr<packaged_runtime_application>(new packaged_runtime_application(
+            boot.launch.role, std::move(config), std::move(request.registrations), std::move(payloads))));
 }
 
 } // namespace arc::project
