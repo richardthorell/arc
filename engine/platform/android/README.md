@@ -144,3 +144,27 @@ The generic C6 quality/variant-selection policy remains in #994.
 surface + Vulkan rendering (#402). Automated Android content generation,
 APK packaging and device testing remain #403. This PR does not claim that
 an Android app renders a scene.
+
+## Vulkan V1 — Android WSI surface adapter (#402)
+
+The native host now includes the Android Vulkan WSI surface callback needed by
+`arc::render::vulkan::vulkan_backend_config::create_surface`. Pass the
+`create_android_vulkan_surface` function, the current borrowed
+`vulkan_native_window` as `surface_user_data`, and request
+`VK_KHR_ANDROID_SURFACE_EXTENSION_NAME` along with the common
+`VK_KHR_SURFACE_EXTENSION_NAME` instance extension. The callback resolves
+`vkCreateAndroidSurfaceKHR` through ARC's existing instance procedure
+resolver. The Vulkan backend owns the returned surface and its destruction.
+
+`active_vulkan_window` returns a binding only when the Activity is started,
+resumed, focused and has a nonzero native surface extent. Each attach receives
+a new window generation; resizing keeps the same generation. A new generation
+means the renderer must tear down its previous presentation resources before
+creating a new surface. Window pointers must never outlive
+`APP_CMD_TERM_WINDOW`.
+
+This is the **V1 WSI adapter**, not the full renderer. V2 connects the ARC
+renderer to the Android host and handles swapchain/device recreation, then
+V3 adds a representative scene, mobile capability fallbacks and device tests.
+Run the portable lifecycle contract tests through the Android `tests/` CMake
+harness; the WSI callback itself requires an Android NDK build and real device.
