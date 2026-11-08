@@ -38,8 +38,6 @@ jobs:
       - name: Configure Native Products
         run: >
           cmake -S . -B out/build/ci-windows -G Ninja
-          
-          
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
           -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -92,8 +90,6 @@ jobs:
       - name: Configure Cook Tools
         run: >
           cmake -S . -B out/build/cook -G Ninja
-          
-          
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
           -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -346,8 +342,6 @@ jobs:
       - name: Configure Shipping Runtime
         run: >
           cmake -S . -B out/build/ci-shipping -G Ninja
-          
-          
           -DCMAKE_BUILD_TYPE=Shipping
           -DARC_BUILD_SAMPLES=ON
           -DARC_WARNINGS_AS_ERRORS=ON
@@ -437,8 +431,6 @@ jobs:
       - name: Configure Editor Package Build
         run: >
           cmake -S . -B out/build/editor-package -G Ninja
-          
-          
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
           -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
