@@ -87,7 +87,13 @@ packaged_frame_result packaged_runtime_session::advance(double delta_seconds)
 {
     auto active = check_active();
     if (!active) return packaged_frame_result::failure(std::move(active).error());
-    if (host_paused_ || surface_unavailable_) return packaged_frame_result::success(last_frame_);
+    if (host_paused_ || surface_unavailable_)
+    {
+        auto skipped = last_frame_;
+        skipped.delta_seconds = 0.0;
+        skipped.completed_ticks = 0;
+        return packaged_frame_result::success(skipped);
+    }
 
     try
     {
