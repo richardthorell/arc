@@ -146,7 +146,12 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
     const auto& manifest = boot.launch.manifest;
     const bool native = source.kind != runtime_distribution_location_kind::mounted_vfs;
 
-    auto checked = validate_distribution_manifest(manifest);
+    // Recheck D1.1 role/host assumptions at the entry boundary, including
+    // direct callers that did not obtain the context from D1.2.
+    auto checked = validate_runtime_launch({.manifest = manifest,
+                                            .role = boot.launch.role,
+                                            .host = boot.launch.host,
+                                            .startup_bundles = boot.launch.startup_bundles});
     if (!checked) return runtime_catalog_result::failure(std::move(checked).error());
 
     auto package_root = source.virtual_root;
