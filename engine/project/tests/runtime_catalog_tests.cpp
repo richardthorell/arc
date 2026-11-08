@@ -75,8 +75,7 @@ struct cooked_distribution_fixture
         fs::remove_all(root, ignored);
     }
 
-    void stage(bool server = false, bool missing_scene = false, bool wrong_type = false,
-               bool wrong_renderer = false)
+    void stage(bool server = false, bool missing_scene = false, bool wrong_type = false, bool wrong_renderer = false)
     {
         assets::derived_data_cache cache({.root = root / "cache"});
         assets::cache_error error;
@@ -195,8 +194,8 @@ TEST_CASE("D1.3 native catalog mounts cooked scene metadata without resident ass
     fixture.stage();
     auto boot = fixture.boot();
     const auto before = fixture.files.telemetry().read_bytes;
-    auto started = project::bootstrap_runtime_catalog({.boot = boot, .files = fixture.files,
-                                                       .native_files = &fixture.native_files});
+    auto started = project::bootstrap_runtime_catalog(
+        {.boot = boot, .files = fixture.files, .native_files = &fixture.native_files});
     REQUIRE(started);
     CHECK(started.value()->startup_scenes() == std::vector<assets::asset_guid>{fixture.scene});
     const std::vector<std::string> expected_bundles{"Boot", "Startup/Common"};
@@ -229,8 +228,8 @@ TEST_CASE("D1.3 headless server accepts an intentionally absent startup scene")
     cooked_distribution_fixture fixture;
     fixture.stage(true);
     auto boot = fixture.boot(true);
-    auto session = project::bootstrap_runtime_catalog({.boot = boot, .files = fixture.files,
-                                                       .native_files = &fixture.native_files});
+    auto session = project::bootstrap_runtime_catalog(
+        {.boot = boot, .files = fixture.files, .native_files = &fixture.native_files});
     REQUIRE(session);
     CHECK(session.value()->startup_scenes().empty());
     CHECK(session.value()->startup_bundles().size() == 2);
@@ -294,8 +293,8 @@ TEST_CASE("D1.3 rejects native bootstrap without a native file service")
     cooked_distribution_fixture fixture;
     fixture.stage();
     auto boot = fixture.boot();
-    expect_failure({.boot = boot, .files = fixture.files},
-                   project::project_error_code::invalid_descriptor, "host.distribution");
+    expect_failure({.boot = boot, .files = fixture.files}, project::project_error_code::invalid_descriptor,
+                   "host.distribution");
     CHECK(fixture.files.telemetry().mounted_providers == 0);
 }
 
@@ -336,7 +335,9 @@ TEST_CASE("D1.3 rejects an artifact namespace overlapping the distribution provi
     cooked_distribution_fixture fixture;
     fixture.stage();
     auto boot = fixture.boot();
-    expect_failure({.boot = boot, .files = fixture.files, .native_files = &fixture.native_files,
+    expect_failure({.boot = boot,
+                    .files = fixture.files,
+                    .native_files = &fixture.native_files,
                     .artifact_mount = virtual_path("package://runtime")},
                    project::project_error_code::invalid_descriptor, "host.distribution");
     CHECK(fixture.files.telemetry().mounted_providers == 0);

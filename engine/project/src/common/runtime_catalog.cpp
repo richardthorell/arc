@@ -31,9 +31,8 @@ path_result virtual_child(const io::virtual_path& root, std::string_view relativ
     combined += relative;
     auto parsed = io::virtual_path::from_parts(root.scheme(), root.authority(), combined);
     if (!parsed)
-        return path_result::failure(
-            failure(project_error_code::unsafe_path, "content.cookManifests",
-                    "Invalid virtual path for staged cook manifest: " + std::string(relative)));
+        return path_result::failure(failure(project_error_code::unsafe_path, "content.cookManifests",
+                                            "Invalid virtual path for staged cook manifest: " + std::string(relative)));
     return path_result::success(std::move(parsed).value());
 }
 
@@ -50,13 +49,12 @@ cook_result read_cook_manifest(io::virtual_file_system& files, const io::virtual
     if (!bytes)
         return cook_result::failure(
             failure(project_error_code::io_failed, "content.cookManifests",
-                    "Staged cook manifest cannot be read: " + std::string(manifest_file.string()) +
-                        " (" + bytes.error().message + ")"));
+                    "Staged cook manifest cannot be read: " + std::string(manifest_file.string()) + " (" +
+                        bytes.error().message + ")"));
     auto parsed = assets::parse_cook_manifest(bytes.value(), manifest_file.string());
     if (!parsed)
-        return cook_result::failure(
-            failure(project_error_code::invalid_descriptor, "content.cookManifests",
-                    "Staged cook manifest is invalid: " + parsed.error().message));
+        return cook_result::failure(failure(project_error_code::invalid_descriptor, "content.cookManifests",
+                                            "Staged cook manifest is invalid: " + parsed.error().message));
     return cook_result::success(std::move(parsed).value());
 }
 
@@ -94,9 +92,8 @@ project_status verify_target(const assets::cook_target& cooked, const distributi
             failure(project_error_code::incompatible_engine, "target.renderer",
                     "Cooked manifest " + std::string(manifest_path) + " has an incompatible rendering backend"));
 
-    const auto configuration =
-        distribution.configuration == "Shipping" ? assets::cook_configuration::shipping
-                                                   : assets::cook_configuration::development;
+    const auto configuration = distribution.configuration == "Shipping" ? assets::cook_configuration::shipping
+                                                                        : assets::cook_configuration::development;
     if (cooked.configuration != configuration)
         return project_status::failure(
             failure(project_error_code::incompatible_engine, "target.configuration",
@@ -160,16 +157,16 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
             return runtime_catalog_result::failure(
                 failure(project_error_code::invalid_descriptor, "host.distribution",
                         "Native catalog bootstrap requires a validated absolute distribution root and file service"));
-        package_root = request.native_mount.empty() ? io::virtual_path::parse("package://runtime").value()
-                                                     : request.native_mount;
+        package_root =
+            request.native_mount.empty() ? io::virtual_path::parse("package://runtime").value() : request.native_mount;
     }
     else if (source.files != &request.files || !boot.native_distribution_root.empty())
         return runtime_catalog_result::failure(
             failure(project_error_code::invalid_descriptor, "host.distribution",
                     "Mounted distribution must use its original host VFS without a native root"));
 
-    const auto artifact_root = request.artifact_mount.empty() ? io::virtual_path::parse("artifact://game").value()
-                                                              : request.artifact_mount;
+    const auto artifact_root =
+        request.artifact_mount.empty() ? io::virtual_path::parse("artifact://game").value() : request.artifact_mount;
     if (package_root.empty() || artifact_root.empty() || same_provider_namespace(package_root, artifact_root))
         return runtime_catalog_result::failure(
             failure(project_error_code::invalid_descriptor, "host.distribution",
@@ -178,10 +175,12 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
     auto session = std::make_unique<runtime_catalog_session>(request.files);
     if (native)
     {
-        auto provider = std::make_shared<io::filesystem_file_provider>(*request.native_files,
-                                                                       boot.native_distribution_root);
-        auto mounted = request.files.mount(
-            {.root = package_root, .priority = 0, .provider = std::move(provider), .debug_name = "runtime distribution"});
+        auto provider =
+            std::make_shared<io::filesystem_file_provider>(*request.native_files, boot.native_distribution_root);
+        auto mounted = request.files.mount({.root = package_root,
+                                            .priority = 0,
+                                            .provider = std::move(provider),
+                                            .debug_name = "runtime distribution"});
         if (!mounted)
             return runtime_catalog_result::failure(
                 failure(project_error_code::io_failed, "host.distribution",
@@ -213,8 +212,7 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
         if (!available_bundles.contains(bundle))
             return runtime_catalog_result::failure(
                 failure(project_error_code::not_found, "startupBundles",
-                        "Required startup Content Bundle '" + bundle +
-                            "' is absent from the staged cooked manifests"));
+                        "Required startup Content Bundle '" + bundle + "' is absent from the staged cooked manifests"));
 
     session->catalog_ = std::make_unique<assets::cooked_asset_catalog>(request.files, artifact_root);
     // D0 cookManifest ordering is stable and determines deterministic overlay
