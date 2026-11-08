@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,17 @@ struct packaged_game_registrations
     std::function<project_status(framework::runtime_world&, const packaged_scene_payload&)> materialize_scene;
     /** Optional server world assembly for dedicated servers with no startup scene. */
     std::function<project_status(framework::runtime_world&)> initialize_headless_world;
+};
+
+/** Keeps a structured project_error across framework::runtime::start's exception boundary. */
+class packaged_runtime_startup_error final : public std::runtime_error
+{
+public:
+    explicit packaged_runtime_startup_error(project_error error);
+    [[nodiscard]] const project_error& detail() const noexcept;
+
+private:
+    project_error error_;
 };
 
 struct packaged_application_request
