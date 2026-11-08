@@ -194,6 +194,7 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
     std::vector<io::virtual_path> cook_paths;
     cook_paths.reserve(manifest.cook_manifests.size());
     std::set<std::string> available_bundles;
+    std::set<assets::asset_guid> cooked_scenes;
     for (const auto& relative : manifest.cook_manifests)
     {
         auto path = virtual_child(package_root, relative);
@@ -203,6 +204,9 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
         checked = verify_target(cooked.value().target, manifest.target, relative);
         if (!checked) return runtime_catalog_result::failure(std::move(checked).error());
         available_bundles.insert(cooked.value().bundle_ids.begin(), cooked.value().bundle_ids.end());
+        for (const auto& artifact : cooked.value().artifacts)
+            if (artifact.type == assets::asset_types::scene && artifact.schema == assets::artifact_schemas::scene)
+                cooked_scenes.insert(artifact.asset);
         cook_paths.push_back(std::move(path).value());
     }
     for (const auto& bundle : boot.launch.startup_bundles)
@@ -234,9 +238,7 @@ runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& 
             return runtime_catalog_result::failure(
                 failure(project_error_code::invalid_scene, "startupScenes", "Startup scene GUID is invalid: " + guid));
         const auto record = session->catalog_->database().query(*parsed, assets::asset_types::scene);
-        if (!record ||
-            std::none_of(record->representations.begin(), record->representations.end(),
-                         [](const auto& representation) { return representation.schema == assets::artifact_schemas::scene; }))
+        if (!record || !cooked_scenes.contains(*parsed))
             return runtime_catalog_result::failure(
                 failure(project_error_code::invalid_scene, "startupScenes",
                         "No compatible cooked scene representation for startup GUID: " + guid));
