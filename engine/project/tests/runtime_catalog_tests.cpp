@@ -206,7 +206,8 @@ TEST_CASE("D1.3 native catalog mounts cooked scene metadata without resident ass
     REQUIRE(record);
     CHECK(record->residency == assets::asset_residency::metadata_only);
     CHECK(record->state == assets::asset_state::ready);
-    CHECK(record->representations.front().schema == assets::artifact_schemas::scene);
+    REQUIRE_FALSE(record->representations.empty());
+    CHECK(record->representations.front().name == "startup/scene");
 
     auto resolved = started.value()->catalog().resolve(
         {.asset = fixture.scene, .schema = assets::artifact_schemas::scene, .name = "startup/scene"});
