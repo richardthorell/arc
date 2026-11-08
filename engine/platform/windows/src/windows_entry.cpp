@@ -327,11 +327,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 
     std::error_code storage_error;
     fs::create_directories(storage, storage_error);
-    if (storage_error)
-        return boot_failure("Cannot create writable application storage: " + storage_error.message());
+    if (storage_error) return boot_failure("Cannot create writable application storage: " + storage_error.message());
 
-    arc::jobs::job_system jobs{{.worker_count = 1, .run_inline = false, .io_worker_count = 2,
-                                .enable_render_thread = false}};
+    arc::jobs::job_system jobs{
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false}};
     arc::io::async_file_service native_files{jobs};
     arc::io::virtual_file_system files{jobs};
     project::runtime_boot_request boot;
@@ -342,10 +341,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     boot.host.capabilities = query_platform_capabilities();
     boot.expected = std::move(definition.expected);
     project::packaged_runtime_request request{.boot = std::move(boot),
-                                               .files = files,
-                                               .native_files = &native_files,
-                                               .registrations = std::move(definition.registrations),
-                                               .config = std::move(definition.config)};
+                                              .files = files,
+                                              .native_files = &native_files,
+                                              .registrations = std::move(definition.registrations),
+                                              .config = std::move(definition.config)};
     auto started = project::start_packaged_runtime(std::move(request));
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
@@ -359,9 +358,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 #endif
     arc::platform::windows::windows_input_backend input_backend(runtime.input());
     arc::platform::windows::windows_controller_manager controller_manager(runtime.input());
-    window_state state{.runtime = &runtime, .input = &input_backend, .controllers = &controller_manager
+    window_state state{.runtime = &runtime,
+                       .input = &input_backend,
+                       .controllers = &controller_manager
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
-                       , .session = session.get()
+                       ,
+                       .session = session.get()
 #endif
     };
     const arc::framework::application_config& config = runtime.config();
@@ -460,8 +462,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     state.runtime = nullptr;
     state.session = nullptr;
     auto stopped = session->shutdown();
-    if (!stopped && state.failure.empty())
-        state.failure = stopped.error().field + ": " + stopped.error().message;
+    if (!stopped && state.failure.empty()) state.failure = stopped.error().field + ": " + stopped.error().message;
     if (!state.failure.empty()) return boot_failure(state.failure);
 #else
     runtime.shutdown();
