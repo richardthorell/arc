@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.vulkan.level" android:required="false" />
+    <application
+        android:label="ARC Native Host"
+        android:hasCode="false"
+        android:allowBackup="false"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity
+            android:name="android.app.NativeActivity"
+            android:label="ARC Native Host"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:exported="true">
+            <meta-data android:name="android.app.lib_name" android:value="arc_android_host" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
