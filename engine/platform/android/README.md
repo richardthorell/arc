@@ -1,9 +1,9 @@
-# Android native host (M1 / A1)
+# Android native host (M1 / A1–A2)
 
 This is the **minimal Android platform host**, intentionally independent of the
 ARC runtime bootstrap (#1094), renderer (#402), and distribution finalizer (#403).
-The host currently starts a native `android.app.NativeActivity` with the Android
-NDK `native_app_glue` event loop. It does **not** render a frame or load content.
+The host starts a native `android.app.NativeActivity` and processes lifecycle and
+native-window events through the NDK `native_app_glue` loop. It does **not** render a frame or load content.
 
 ## Prerequisites
 
@@ -45,10 +45,33 @@ The native library is named `libarc_android_host.so`, and its
 explicitly rejects non-Android toolchains rather than pretending a desktop
 build is an Android APK.
 
+## A2 lifecycle behavior
+
+The NativeActivity callback maps START/STOP, RESUME/PAUSE, focus, native-window
+attach/detach, window resize, content rectangle and configuration updates,
+low-memory notifications and destroy into a host-owned `lifecycle_state`.
+The window is **borrowed** from the Android glue. The host does not retain or
+release it after `APP_CMD_TERM_WINDOW`. A new surface increases
+`window_generation` while the process and common runtime are preserved.
+Surface resize and orientation changes do not increment the generation.
+The host observes app-private writable storage and the APK asset manager
+without incorrectly treating packaged assets as ordinary files.
+
+The transition model deliberately contains no Android SDK or rendering headers.
+It has standalone host-buildable unit tests:
+
+```sh
+cmake -S tests -B build/lifecycle-tests
+cmake --build build/lifecycle-tests
+ctest --test-dir build/lifecycle-tests --output-on-failure
+```
+
+This A2 checkpoint establishes the lifecycle state contract only; hooking
+the renderer and shared runtime to those transitions happens in A3/#402.
+
 ## Planned follow-ups
 
-- **A2 (#401):** Map NativeActivity lifecycle, window/surface recreation,
-  orientation, input, and app-private writable/asset paths into a host adapter.
+- **A2 remaining (#401):** Input handling and richer storage/asset path services.
 - **A3 (#401/#1094):** Invoke the shared ARC runtime launch context from the
   Android host without introducing Android/JNI dependencies into shared code.
 - **#402:** Android Vulkan surface/swapchain and actual scene rendering.
