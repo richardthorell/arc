@@ -16,12 +16,18 @@ int android_priority(arc::diagnostics::log_level level) noexcept
     using arc::diagnostics::log_level;
     switch (level)
     {
-        case log_level::trace: return ANDROID_LOG_VERBOSE;
-        case log_level::debug: return ANDROID_LOG_DEBUG;
-        case log_level::info: return ANDROID_LOG_INFO;
-        case log_level::warn: return ANDROID_LOG_WARN;
-        case log_level::error: return ANDROID_LOG_ERROR;
-        case log_level::fatal: return ANDROID_LOG_FATAL;
+        case log_level::trace:
+            return ANDROID_LOG_VERBOSE;
+        case log_level::debug:
+            return ANDROID_LOG_DEBUG;
+        case log_level::info:
+            return ANDROID_LOG_INFO;
+        case log_level::warn:
+            return ANDROID_LOG_WARN;
+        case log_level::error:
+            return ANDROID_LOG_ERROR;
+        case log_level::fatal:
+            return ANDROID_LOG_FATAL;
     }
     return ANDROID_LOG_INFO;
 }
@@ -41,14 +47,12 @@ public:
         const auto priority = android_priority(record.level);
         if (record.category.empty())
         {
-            __android_log_print(priority, log_tag, "%.*s",
-                                precision(record.message.size()), record.message.data());
+            __android_log_print(priority, log_tag, "%.*s", precision(record.message.size()), record.message.data());
         }
         else
         {
-            __android_log_print(priority, log_tag, "[%.*s] %.*s",
-                                precision(record.category.size()), record.category.data(),
-                                precision(record.message.size()), record.message.data());
+            __android_log_print(priority, log_tag, "[%.*s] %.*s", precision(record.category.size()),
+                                record.category.data(), precision(record.message.size()), record.message.data());
         }
     }
 };

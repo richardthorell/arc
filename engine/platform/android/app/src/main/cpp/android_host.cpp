@@ -15,15 +15,13 @@ extern "C" void android_main(android_app* app)
     {
         int events = 0;
         android_poll_source* source = nullptr;
-        const int result = ALooper_pollOnce(-1, nullptr, &events,
-                                            reinterpret_cast<void**>(&source));
+        const int result = ALooper_pollOnce(-1, nullptr, &events, reinterpret_cast<void**>(&source));
         if (result == ALOOPER_POLL_ERROR)
         {
             arc::diagnostics::error("Android", "Native host event loop failed");
             break;
         }
-        if (source != nullptr)
-            source->process(app, source);
+        if (source != nullptr) source->process(app, source);
     }
     arc::diagnostics::info("Android", "Native host stopped");
 }
