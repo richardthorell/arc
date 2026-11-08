@@ -4,6 +4,7 @@
 #include <arc/framework/runtime_world.h>
 #include <arc/framework/service.h>
 
+#include <exception>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -119,12 +120,22 @@ void module_manager::start(module_context& context)
     }
     catch (...)
     {
+        // Keep the original module start failure even if an earlier module
+        // also fails during its best-effort unwind.
+        const auto failure = std::current_exception();
         while (started_count > 0)
         {
             --started_count;
-            registry_.modules()[order_[started_count]]->on_shutdown(context);
+            try
+            {
+                registry_.modules()[order_[started_count]]->on_shutdown(context);
+            }
+            catch (...)
+            {
+                // Continue releasing every already-started module.
+            }
         }
-        throw;
+        std::rethrow_exception(failure);
     }
 }
 
@@ -148,9 +159,20 @@ void module_manager::shutdown(module_context& context)
 {
     if (!started_) return;
 
+    std::exception_ptr first_failure;
     for (auto iterator = order_.rbegin(); iterator != order_.rend(); ++iterator)
-        registry_.modules()[*iterator]->on_shutdown(context);
+    {
+        try
+        {
+            registry_.modules()[*iterator]->on_shutdown(context);
+        }
+        catch (...)
+        {
+            if (!first_failure) first_failure = std::current_exception();
+        }
+    }
     started_ = false;
+    if (first_failure) std::rethrow_exception(first_failure);
 }
 
 bool module_manager::started() const noexcept
