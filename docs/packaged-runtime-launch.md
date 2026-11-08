@@ -31,9 +31,23 @@ Discovery and verification are **read-only**. D1.2 does not verify the runtime-c
 
 `engine/project/tests/runtime_boot_tests.cpp` covers relocations, exe-identity checks, no-scene servers, malformed/unsupported manifests, incompatible host metadata, missing/corrupt content, native symlink escape, startup/full verification and mounted nested Android assets.
 
+## Cooked catalog bootstrap (D1.3)
+
+`arc/project/runtime_catalog.h` adds `bootstrap_runtime_catalog(runtime_catalog_request)`, consuming the already-validated `runtime_boot_context` from D1.2. The resulting `runtime_catalog_session` owns any mounts created during bootstrap and exposes the existing `assets::cooked_asset_catalog`, ordered startup scene GUIDs and requested bundle IDs.
+
+- **Native staged content:** a host-owned `io::async_file_service` and `io::virtual_file_system` mount the D1.2 canonical distribution root under `package://runtime` (configurable). The source remains executable/CWD/SDK-independent.
+- **Already-mounted content:** an Android-style host supplies its existing VFS and virtual distribution root. The session does **not** take ownership or unmount the external source. The native and mounted paths use the same cook manifest validation, catalog and scene lookup.
+- **Cook manifests:** parse every D0 `content.cookManifests` reference and reject incompatible target platform, architecture, renderer and development/shipping configuration. The current `cook_target` supports Windows, Linux and macOS; Android/iOS cooked variants must wait for C6 (#994). A Windows cook is never silently treated as Android data. D0 cook-profile IDs are not conflated with cook-target display names; full C6 variant/quality selection remains #994.
+- **Content Bundle roots:** require each explicitly requested D1.1 `startup_bundles` ID (e.g. `Boot`, `Startup/Common`) to be advertised by at least one staged cook manifest. This is a mount/availability check only; no bundle is pinned, prefetched or made resident.
+- **Scenes:** resolve D0 ordered startup scene GUIDs through `catalog.database()` and require a cooked `scene` representation. Dedicated servers may have no startup scene. Actual deserialization, world creation and project registration are D1.4.
+- **Failure and teardown:** package providers are mounted in deterministic manifest order. Any invalid manifest, missing chunk, missing bundle or scene destroys the incomplete catalog and its mounts; the native distribution provider is then unmounted. A successful session follows the same order at shutdown. Externally supplied VFS mounts remain untouched.
+
+Mounting reads cook metadata and locates chunk ranges only. `asset_residency::metadata_only` is preserved until a downstream loader explicitly requests artifact bytes. **C4 (#992) remains responsible for asynchronous bundle load, prefetch, pin, unload and budget policy**; D1.3 deliberately does not duplicate that lifecycle.
+
+`engine/project/tests/runtime_catalog_tests.cpp` exercises client/server startup metadata, scene type checking, missing bundles/chunks, target mismatch, rolled-back native mounts, an externally owned mounted VFS provider, and metadata-only artifact resolution.
+
 ## Subsequent implementation
 
-- **D1.3:** mount referenced cooked manifests through `cooked_asset_catalog`, then integrate the C4 bundle mount/activation API (#992). Mount does not imply resident assets.
 - **D1.4:** register project runtime/server modules, realize cooked startup scenes in explicit framework worlds and report absent scene/content instead of accepting the framework's implicit default world.
 - **D1.5–D1.7:** wrap the validated launch in a running session with shared lifecycle/shutdown, and adapt existing Windows and headless host entries. Do not move native OS/surface code into `engine/project`.
 - **D1.8:** relocate packaged client/server fixtures and exercise repeated start/stop, failure cleanup, missing content, cancellation and native host parity. GPU rendering golden tests belong to their own track.
