@@ -210,6 +210,55 @@ private:
     bool throw_on_event_{};
 };
 
+
+class failure_module final : public framework::module
+{
+public:
+    failure_module(std::string name, std::vector<std::string>& events,
+                   bool fail_start = false, bool fail_shutdown = false)
+        : name_(std::move(name)), events_(&events), fail_start_(fail_start), fail_shutdown_(fail_shutdown)
+    {
+    }
+
+    std::string_view name() const override { return name_; }
+    void on_start(framework::module_context&) override
+    {
+        events_->push_back(name_ + ":start");
+        if (fail_start_) throw std::runtime_error(name_ + ":startup failure");
+    }
+    void on_shutdown(framework::module_context&) override
+    {
+        events_->push_back(name_ + ":shutdown");
+        if (fail_shutdown_) throw std::runtime_error(name_ + ":shutdown failure");
+    }
+
+private:
+    std::string name_;
+    std::vector<std::string>* events_{};
+    bool fail_start_{};
+    bool fail_shutdown_{};
+};
+
+class lifecycle_service final : public framework::runtime_service
+{
+public:
+    explicit lifecycle_service(std::vector<std::string>& events) : events_(&events) {}
+
+    framework::runtime_service_id id() const noexcept override
+    {
+        return framework::make_runtime_service_id("d1.5.lifecycle.service");
+    }
+    std::string_view name() const noexcept override { return "d1.5.lifecycle.service"; }
+    void on_start(framework::runtime_service_context&) override { events_->push_back("service:start"); }
+    void on_shutdown(framework::runtime_service_context&) noexcept override
+    {
+        events_->push_back("service:shutdown");
+    }
+
+private:
+    std::vector<std::string>* events_{};
+};
+
 project::packaged_runtime_request request_for(packaged_world_fixture& fixture, bool server = false)
 {
     project::runtime_boot_request boot;
@@ -396,6 +445,88 @@ TEST_CASE("D1.5 shutdown exceptions return errors but still release runtime and 
     CHECK(session->state() == project::packaged_runtime_state::stopped);
     CHECK(fixture.files.telemetry().mounted_providers == 0);
     REQUIRE(session->shutdown());
+}
+
+
+TEST_CASE("D1.5 a throwing module cannot prevent other module shutdown callbacks")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+    std::vector<std::string> events;
+    auto request = request_for(fixture, true);
+    request.registrations.modules = [&](framework::module_registry& registry)
+    {
+        registry.emplace<failure_module>("normal", events);
+        registry.emplace<failure_module>("throwing", events, false, true);
+    };
+    auto started = project::start_packaged_runtime(std::move(request));
+    REQUIRE(started);
+    auto session = std::move(started).value();
+    auto shutdown = session->shutdown();
+    REQUIRE_FALSE(shutdown);
+    CHECK(shutdown.error().message.find("throwing:shutdown failure") != std::string::npos);
+    REQUIRE(events.size() == 4);
+    CHECK(events[0] == "normal:start");
+    CHECK(events[1] == "throwing:start");
+    CHECK(events[2] == "throwing:shutdown");
+    CHECK(events[3] == "normal:shutdown");
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.5 failing module startup preserves original error and still stops services")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+    std::vector<std::string> events;
+    auto request = request_for(fixture, true);
+    request.registrations.services = [&](framework::runtime_service_registry& registry)
+    {
+        registry.emplace<lifecycle_service>(events);
+    };
+    request.registrations.modules = [&](framework::module_registry& registry)
+    {
+        registry.emplace<failure_module>("cleanup_throws", events, false, true);
+        registry.emplace<failure_module>("start_throws", events, true);
+    };
+    auto started = project::start_packaged_runtime(std::move(request));
+    REQUIRE_FALSE(started);
+    CHECK(started.error().code == project::project_error_code::process_failed);
+    CHECK(started.error().message.find("start_throws:startup failure") != std::string::npos);
+    REQUIRE(events.size() == 5);
+    CHECK(events[0] == "service:start");
+    CHECK(events[1] == "cleanup_throws:start");
+    CHECK(events[2] == "start_throws:start");
+    CHECK(events[3] == "cleanup_throws:shutdown");
+    CHECK(events[4] == "service:shutdown");
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.5 faulted simulation world is reported and unmounted")
+{
+    packaged_world_fixture fixture;
+    fixture.stage();
+    auto request = request_for(fixture);
+    request.registrations.materialize_scene = [](framework::runtime_world& world,
+                                                  const project::packaged_scene_payload&)
+    {
+        world.systems().add({
+            .name = "intentional fault",
+            .phase = arc::ecs::system_phase::movement,
+            .execute = [](arc::ecs::system_context&)
+            {
+                throw std::runtime_error("simulated system failure");
+            }});
+        return project::project_status::success();
+    };
+    auto started = project::start_packaged_runtime(std::move(request));
+    REQUIRE(started);
+    auto session = std::move(started).value();
+    auto result = session->advance(1.0 / 60.0);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "worlds");
+    CHECK(result.error().message.find("intentional fault") != std::string::npos);
+    CHECK(session->state() == project::packaged_runtime_state::stopped);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
 }
 
 TEST_CASE("D1.5 module event exception is reported and forces safe teardown")
