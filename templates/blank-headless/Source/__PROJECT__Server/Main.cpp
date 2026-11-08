@@ -160,6 +160,14 @@ int main(int argc, char** argv)
         return 2;
     }
 
+    std::error_code storage_error;
+    fs::create_directories(data_root, storage_error);
+    if (storage_error)
+    {
+        std::cerr << "Cannot initialize server writable data directory: " << storage_error.message() << '\n';
+        return 2;
+    }
+
     if (native_family() == arc::framework::platform_family::unknown || native_architecture().empty())
     {
         std::cerr << "Unsupported packaged server platform or architecture\n";
