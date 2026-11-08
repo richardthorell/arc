@@ -526,7 +526,7 @@ TEST_CASE("D1.5 faulted simulation world is reported and unmounted")
     auto result = session->advance(1.0 / 60.0);
     REQUIRE_FALSE(result);
     CHECK(result.error().field == "worlds");
-    CHECK(result.error().message.find("intentional fault") != std::string::npos);
+    CHECK(result.error().message.find("simulated system failure") != std::string::npos);
     CHECK(session->state() == project::packaged_runtime_state::stopped);
     CHECK(fixture.files.telemetry().mounted_providers == 0);
 }
