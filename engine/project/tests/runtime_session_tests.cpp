@@ -1,3 +1,4 @@
+#include <arc/project/headless_server.h>
 #include <arc/project/runtime_session.h>
 
 #include <arc/assets/cook.h>
@@ -555,5 +556,133 @@ TEST_CASE("D1.5 missing distribution fails before any catalog mount")
     auto started = project::start_packaged_runtime(request_for(fixture));
     REQUIRE_FALSE(started);
     CHECK(started.error().code == project::project_error_code::not_found);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.6 packaged headless server boots staged D0 content and runs exactly the requested ticks")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+
+    std::size_t world_initializations{};
+    std::size_t simulated_ticks{};
+    auto request = request_for(fixture, true);
+    request.registrations.initialize_headless_world = [&](framework::runtime_world& world)
+    {
+        ++world_initializations;
+        CHECK(world.role() == framework::runtime_world_role::server);
+        const bool installed = world.systems().add({.name = "d1.6.server.tick",
+                                                    .phase = arc::ecs::system_phase::movement,
+                                                    .execute = [&](arc::ecs::system_context&) { ++simulated_ticks; }});
+        if (!installed)
+            return project::project_status::failure({.code = project::project_error_code::process_failed,
+                                                     .message = "Cannot install the packaged server tick system"});
+        return project::project_status::success();
+    };
+
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = std::move(request), .maximum_ticks = 3, .sleep_to_clock = false});
+    REQUIRE(result);
+    CHECK(result.value() == 3);
+    CHECK(world_initializations == 1);
+    CHECK(simulated_ticks == 3);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.6 headless server shutdown signal is polled at a safe frame boundary")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+    std::size_t polls{};
+    const auto result = project::run_packaged_headless_server({.runtime = request_for(fixture, true),
+                                                               .sleep_to_clock = false,
+                                                               .stop_requested = [&] { return ++polls == 2; }});
+    REQUIRE(result);
+    CHECK(result.value() == 1);
+    CHECK(polls == 2);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.6 headless runner refuses client role and a non-headless compiled renderer")
+{
+    packaged_world_fixture fixture;
+    auto client = request_for(fixture);
+    const auto client_result = project::run_packaged_headless_server(
+        {.runtime = std::move(client), .maximum_ticks = 1, .sleep_to_clock = false});
+    REQUIRE_FALSE(client_result);
+    CHECK(client_result.error().code == project::project_error_code::invalid_descriptor);
+    CHECK(client_result.error().field == "role");
+
+    auto server = request_for(fixture, true);
+    server.boot.expected.renderer = "vulkan";
+    const auto renderer_result = project::run_packaged_headless_server(
+        {.runtime = std::move(server), .maximum_ticks = 1, .sleep_to_clock = false});
+    REQUIRE_FALSE(renderer_result);
+    CHECK(renderer_result.error().code == project::project_error_code::invalid_descriptor);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.6 server fails closed without a staged manifest and leaves host providers untouched")
+{
+    packaged_world_fixture fixture;
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = request_for(fixture, true), .maximum_ticks = 1, .sleep_to_clock = false});
+    REQUIRE_FALSE(result);
+    CHECK(result.error().code == project::project_error_code::not_found);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.6 server propagates shutdown callback errors and still unmounts packages")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+    std::vector<std::string> events;
+    auto request = request_for(fixture, true);
+    request.registrations.modules = [&](framework::module_registry& modules)
+    { modules.emplace<failure_module>("shutdown_failure", events, false, true); };
+
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = std::move(request), .maximum_ticks = 1, .sleep_to_clock = false});
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "shutdown");
+    CHECK(result.error().message.find("shutdown_failure") != std::string::npos);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.6 failing host stop callback preserves diagnostic and shuts the server down")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = request_for(fixture, true), .sleep_to_clock = false, .stop_requested = []() -> bool {
+             throw std::runtime_error("host stop signal failed");
+         }});
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "serverLoop");
+    CHECK(result.error().message.find("host stop signal failed") != std::string::npos);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.6 server surfaces faulted simulation worlds and destroys the session")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+    auto request = request_for(fixture, true);
+    request.registrations.initialize_headless_world = [](framework::runtime_world& world)
+    {
+        const bool installed = world.systems().add(
+            {.name = "d1.6.intentional-fault",
+             .phase = arc::ecs::system_phase::movement,
+             .execute = [](arc::ecs::system_context&) { throw std::runtime_error("server simulation fault"); }});
+        if (!installed)
+            return project::project_status::failure(
+                {.code = project::project_error_code::process_failed, .message = "Could not register system"});
+        return project::project_status::success();
+    };
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = std::move(request), .maximum_ticks = 2, .sleep_to_clock = false});
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "worlds");
+    CHECK(result.error().message.find("server simulation fault") != std::string::npos);
     CHECK(fixture.files.telemetry().mounted_providers == 0);
 }

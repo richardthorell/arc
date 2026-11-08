@@ -89,7 +89,7 @@ add_library(arc::runtime ALIAS arc-runtime)
 
 add_library(arc-server INTERFACE)
 target_link_libraries(arc-server INTERFACE
-    arc-framework arc-assets arc-water arc-physics arc-network arc-audio arc-animation arc-navigation arc-vfx arc-persistence arc-ecs arc-flow)
+    arc-project arc-framework arc-assets arc-water arc-physics arc-network arc-audio arc-animation arc-navigation arc-vfx arc-persistence arc-ecs arc-flow)
 set_target_properties(arc-server PROPERTIES EXPORT_NAME Server)
 install(TARGETS arc-server EXPORT ARCTargets COMPONENT sdk)
 add_library(arc::server ALIAS arc-server)

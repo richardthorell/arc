@@ -133,9 +133,68 @@ headless startup/shutdown with a shared VFS, client pause/surface transitions,
 close requests, corrupt/missing content, callback failures, and shutdown
 exceptions with no leaked mounts.
 
+## Dedicated packaged headless server (D1.6)
+
+`arc/project/headless_server.h` adds `run_packaged_headless_server` on top of the
+shared D1.5 session: enforce **server role + renderer none**, perform D1.2–D1.5
+boot/registration and scene validation, run fixed simulation ticks at the
+configured rate (preserving authoritative time debt), and stop at an outer
+frame boundary. The host can opt out of wall-clock pacing for tests with
+`sleep_to_clock = false`, bound execution with `maximum_ticks`, or supply a
+`stop_requested` callback for SIGINT/SIGTERM. Missing/corrupt staged content,
+incompatible target/profile, world faults and shutdown errors are propagated
+as structured `project_error`. All mounts are released before returning.
+This loop has no window, render backend, client presentation or debug
+time-control dependence. The old generic `arc_headless` diagnostic runner
+continues to work independently, for non-packaged framework tests.
+
+The `blank-headless` project template now compiles an actual packaged server
+entrypoint rather than calling `framework::run_headless` with an empty
+application. Its `Server.cpp` registration hook is the extension point for
+project ECS systems/services and optional headless world initialization; the
+blank template intentionally starts a zero-entity server world. The static
+server game module is linked at compile time; a dynamic project-native loader
+is not silently assumed. The template binds its **compiled** project GUID,
+engine/SDK version, target architecture and `$<CONFIG>` build configuration
+to D1.2 identity validation, and discovers the distribution from the native
+executable path (rather than working directory). Native Windows and Linux
+process paths are handled in the template host, not in `engine/project`.
+The staged `arc-distribution.json` plus cooked manifests/packages must be
+provided by a D0-compatible staging pipeline. The D0 contract and finalizer
+boundary do not themselves implement the still-pending D2 distribution
+assembler; this PR does not create packages or synthesize a manifest.
+
+Server command-line flags:
+
+- `--ticks N`: stop after N completed simulation ticks (0 means unlimited).
+- `--no-sleep`: run at maximum speed for a bounded integration test.
+- `--distribution-root /absolute/package`: use a verified explicit
+  distribution root instead of discovering from the executable. Intended for
+  relocated-package CI/testing; no source tree or SDK fallback.
+- `--data-root /absolute/writable`: host-owned writable storage, or set
+  `ARC_SERVER_DATA_ROOT`. If neither is provided, the example template uses
+  an OS temp directory; production deployments should explicitly configure
+  durable storage outside the package.
+
+Example (after staging a matching D0-compatible distribution with a server executable,
+config, cook manifest and inventory):
+
+```sh
+./MyGameServerApp --ticks 120 --no-sleep --distribution-root /absolute/staged-package --data-root /absolute/server-data
+```
+
+The installed `ARC::Server` SDK target now exports `arc-project`, so the
+template's packaged-session symbols and headers link correctly. When
+`ARC_BUILD_SAMPLES=ON`, the ARC build compiles a generated copy of the
+**actual** `blank-headless` main (with sample identities) as
+`arc_packaged_server`, preventing unnoticed template entrypoint breakage.
+Native D1.6 regression tests in `runtime_session_tests.cpp` cover exact
+tick bounds, stop polling, missing distribution, incompatible role/renderer,
+world faults, shutdown exceptions and provider cleanup.
+
 ## Subsequent implementation
 
-- **D1.6–D1.7:** adapt existing dedicated-server and Windows native host entries to the shared runtime session and bind packaged native game-module/scene materialization callbacks. Do not move native OS/surface code into `engine/project`.
+- **D1.7:** adapt the native Windows client entrypoint to the shared runtime session and bind its project module/scene materialization callbacks. Do not move native OS/surface code into `engine/project`.
 - **D1.8:** relocate packaged client/server fixtures and exercise repeated start/stop, failure cleanup, missing content, cancellation and native host parity. GPU rendering golden tests belong to their own track.
 
 The tests in `engine/project/tests/runtime_launch_tests.cpp` exercise role/target validation, scene/bundle ordering, relative-path rejection, explicit distribution roots, and a VFS-backed Android contract without requiring Android NDK on the native test runner.
