@@ -46,9 +46,50 @@ Mounting reads cook metadata and locates chunk ranges only. `asset_residency::me
 
 `engine/project/tests/runtime_catalog_tests.cpp` exercises client/server startup metadata, scene type checking, missing bundles/chunks, target mismatch, rolled-back native mounts, an externally owned mounted VFS provider, and metadata-only artifact resolution.
 
+## Packaged project registration and startup worlds (D1.4)
+
+`arc/project/runtime_application.h` exposes `prepare_packaged_application`, the shared
+adapter from D1.2's validated `runtime_boot_context` and D1.3's mounted
+`runtime_catalog_session` to `framework::application`.
+
+- **Preflight:** for each D0-ordered startup scene GUID, find the active cooked
+  scene-schema representation via the catalog's logical database and read its
+  artifact from the existing VFS. Verify its actual byte length and ARC SHA-256
+  against the cooked package manifest, with a 128 MiB per-scene and 256 MiB
+  aggregate startup budget. Missing, incompatible or corrupt startup scenes
+  fail before `framework::runtime` is constructed. Only requested startup
+  scenes are read; mounting the catalog still does not load unrelated assets.
+- **Game registrations:** the platform/game integration supplies in-process
+  `packaged_game_registrations` callbacks for runtime services, modules and
+  scene materialization. This delegates to the existing
+  `framework::application::register_services/register_modules/register_worlds`
+  lifecycle; there is no editor process, source-path inspection, implicit plugin
+  guessing or second module registry. The app does not load native libraries
+  itself. D1.6/D1.7 must connect the host's validated game-module loader and
+  project-specific scene materializer to these hooks.
+- **Explicit worlds:** one `framework::runtime_world` per ordered startup
+  scene; no placeholder systems and no implicit default scene. The materializer
+  receives verified cooked bytes and the specific world to populate. If any
+  materializer returns failure, previously created worlds are rolled back,
+  and a `packaged_runtime_startup_error` retains the structured
+  `project_error`. The startup stage does not attempt to interpret arbitrary
+  game-specific component types using editor-only scene codecs.
+- **Server:** server role enforces a headless simulation (no window or
+  presentation), and explicitly creates a single server world if the manifest
+  intentionally declares no startup scenes. A server-world initialization
+  callback is optional; a server with startup scenes uses the same checked
+  materialization path as clients.
+- **Ownership:** the returned packaged application owns its bounded startup
+  scene buffers and registration callbacks. The host retains ownership of the
+  cooked catalog/VFS, and must keep both alive through runtime shutdown.
+
+`engine/project/tests/runtime_application_tests.cpp` covers real framework
+startup/shutdown, ordered client worlds and module callbacks, scene-less
+headless server startup, corrupt packaged scene bytes, missing materializer,
+GUID ordering mismatch, and rollback on client/server world setup failures.
+
 ## Subsequent implementation
 
-- **D1.4:** register project runtime/server modules, realize cooked startup scenes in explicit framework worlds and report absent scene/content instead of accepting the framework's implicit default world.
 - **D1.5–D1.7:** wrap the validated launch in a running session with shared lifecycle/shutdown, and adapt existing Windows and headless host entries. Do not move native OS/surface code into `engine/project`.
 - **D1.8:** relocate packaged client/server fixtures and exercise repeated start/stop, failure cleanup, missing content, cancellation and native host parity. GPU rendering golden tests belong to their own track.
 
