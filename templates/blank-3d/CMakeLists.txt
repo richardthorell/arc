@@ -3,11 +3,11 @@ project({{PROJECT_TOKEN}} LANGUAGES CXX)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime Project EditorModuleSDK PlatformWindows Vulkan)
+find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime Project Scene EditorModuleSDK PlatformWindows Vulkan)
 
 add_library({{PROJECT_TOKEN}}Runtime STATIC Source/{{PROJECT_TOKEN}}Runtime/Runtime.cpp)
 target_compile_features({{PROJECT_TOKEN}}Runtime PUBLIC cxx_std_20)
-target_link_libraries({{PROJECT_TOKEN}}Runtime PUBLIC ARC::Runtime)
+target_link_libraries({{PROJECT_TOKEN}}Runtime PUBLIC ARC::Runtime ARC::Scene)
 arc_generate_reflection(
   TARGET {{PROJECT_TOKEN}}Runtime
   NAMESPACE {{PROJECT_TOKEN}}::generated
