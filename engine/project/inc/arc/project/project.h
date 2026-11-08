@@ -44,7 +44,8 @@ enum class project_error_code : std::uint8_t
     destination_not_empty,
     template_not_found,
     tool_not_found,
-    process_failed
+    process_failed,
+    corrupt_content ///< Staged bytes disagree with their distribution inventory digest or size.
 };
 
 /** @brief Structured failure returned by project-platform operations. */
