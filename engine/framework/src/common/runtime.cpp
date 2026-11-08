@@ -113,12 +113,22 @@ void runtime::start()
     }
     catch (...)
     {
+        // A startup failure must always release services, even if a project
+        // module's shutdown callback also throws during partial rollback.
+        const auto original = std::current_exception();
         worlds_.stop_all();
-        modules_.shutdown(module_context_);
+        try
+        {
+            modules_.shutdown(module_context_);
+        }
+        catch (...)
+        {
+            // Preserve the original startup error after finishing cleanup.
+        }
         services_.shutdown();
         started_ = false;
         running_ = false;
-        throw;
+        std::rethrow_exception(original);
     }
 
     started_ = true;
