@@ -129,6 +129,11 @@ const assets::cooked_asset_catalog& runtime_catalog_session::catalog() const noe
     return *catalog_;
 }
 
+io::virtual_file_system& runtime_catalog_session::files() const noexcept
+{
+    return *files_;
+}
+
 const std::vector<assets::asset_guid>& runtime_catalog_session::startup_scenes() const noexcept
 {
     return startup_scenes_;
