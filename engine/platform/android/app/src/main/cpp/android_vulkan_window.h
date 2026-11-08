@@ -15,8 +15,8 @@ struct vulkan_native_window
     std::uint64_t generation{};
 };
 
-[[nodiscard]] inline vulkan_native_window active_vulkan_window(
-    const lifecycle_state& lifecycle, ANativeWindow* attached_window) noexcept
+[[nodiscard]] inline vulkan_native_window active_vulkan_window(const lifecycle_state& lifecycle,
+                                                               ANativeWindow* attached_window) noexcept
 {
     if (!lifecycle.can_present() || !attached_window) return {};
     return {.window = attached_window, .generation = lifecycle.snapshot().window_generation};
