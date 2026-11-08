@@ -81,3 +81,45 @@ the renderer and shared runtime to those transitions happens in A3/#402.
 This isolated Gradle application is a build-system smoke fixture, not the
 final Android project generator or a replacement for the shared distribution
 manifest/cooker.
+
+## A3 — APK VFS and packaged runtime bootstrap
+
+The APK asset source reads distribution files using Android's `AAssetManager`.
+`android_apk_provider` now adapts that reader to the **existing**
+`arc::io::virtual_file_provider` contract (metadata, ranged asynchronous reads,
+cancellation, and structured IO failures). The NativeActivity owns an
+`android_runtime_bridge` for its process lifetime, which:
+
+1. Creates ARC's job scheduler and virtual filesystem.
+2. Mounts the APK provider at `package://runtime`.
+3. Supplies Android platform capabilities, absolute app-private storage,
+   arm64/Vulkan target expectations, and a mounted-VFS root to
+   `arc::project::discover_runtime_boot`.
+4. Holds the resulting validated boot context across pause/resume and native
+   surface loss, then unmounts and drains the scheduler on process shutdown.
+
+The Gradle CMake project now links actual ARC modules through the engine's
+module CMake definitions: `arc-project`, `arc-io`, `arc-jobs` and their
+required dependencies. Third-party content/JSON dependencies are fetched
+using the existing ARC CMake setup. ARC version expectations are currently
+pinned to 0.1.0 for the fixture, with Android `Debug` and
+`Shipping` (Gradle release) package configuration identities.
+
+**Packaged asset layout:** put `arc-distribution.json`, runtime config,
+cooked manifests and cooked chunks in `app/src/main/assets/` using their
+relative D0 file paths. The asset provider does not expose system-native
+libraries stored in `lib/arm64-v8a/`; D1's startup integrity mode verifies
+the runtime config and cooked manifests from the APK. The platform finalizer
+(#403) will automate this layout and package/module metadata generation.
+
+An APK with no staged D0 distribution now produces a clear structured boot
+error in Logcat rather than falsely claiming that a game has launched.
+With a valid staged manifest/content, D1 checks the manifest schema, target,
+engine/SDK versions, and boot-file hashes. **This does not yet activate a
+project game module, load a startup scene, or render with Vulkan.** Those
+integrations belong to #401 follow-ups / #402 / #403.
+
+For development, run `gradle :app:assembleDebug` and inspect
+`adb logcat -s ARC:I '*:S'`. Run portable path/lifecycle checks using the
+`tests/` CMake harness. Android SDK/NDK build and on-device boot validation
+remain necessary.
