@@ -27,7 +27,7 @@ project_error failure(project_error_code code, std::string field, std::string me
 
 using scene_result = core::result<packaged_scene_payload, project_error>;
 
-scene_result read_scene(const runtime_catalog_session& session, assets::asset_guid guid)
+scene_result read_scene(runtime_catalog_session& session, assets::asset_guid guid)
 {
     const auto record = session.catalog().database().query(guid, assets::asset_types::scene);
     if (!record)
@@ -41,7 +41,7 @@ scene_result read_scene(const runtime_catalog_session& session, assets::asset_gu
 
         const assets::cooked_artifact_address address{
             .asset = guid, .schema = assets::artifact_schemas::scene, .name = representation.name};
-        auto resolved = const_cast<assets::cooked_asset_catalog&>(session.catalog()).resolve(address);
+        auto resolved = session.catalog().resolve(address);
         if (!resolved) continue; // Another representation of this GUID may use a non-scene schema.
 
         if (resolved.value().size() != representation.size || representation.size == 0 ||
