@@ -212,7 +212,10 @@ TEST_CASE("D1.3 native catalog mounts cooked scene metadata without resident ass
         {.asset = fixture.scene, .schema = assets::artifact_schemas::scene, .name = "startup/scene"});
     REQUIRE(resolved.succeeded());
     CHECK(resolved.value().size() == fixture.payload.size());
-    CHECK(fixture.files.telemetry().read_bytes - before < fixture.payload.size() + 10000);
+    // Bootstrap reads the cooked manifest twice (preflight + package mount),
+    // but never reads the artifact's package chunk.
+    const auto manifest_size = fs::file_size(fixture.root / fixture.cook_manifest_relative);
+    CHECK(fixture.files.telemetry().read_bytes - before == manifest_size * 2);
 
     const auto content = fixture.files.read_all(resolved.value()).get();
     REQUIRE(content.succeeded());
