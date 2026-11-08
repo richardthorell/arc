@@ -18,12 +18,21 @@ runs:
             }
           }
 
-    - name: Set Up Compiler Cache
-      uses: ./.github/actions/setup-msvc-sccache
-
-    - name: Reset Compiler Cache Stats
+    # Compiler caching is an optimization, not a build requirement.
+    # GitHub release asset downloads for sccache can fail with HTTP 504.
+    - name: Enable available compiler cache (optional)
       shell: pwsh
-      run: sccache --zero-stats
+      run: |
+        $cache = Get-Command sccache -ErrorAction SilentlyContinue
+        if ($cache) {
+          "CMAKE_C_COMPILER_LAUNCHER=$($cache.Source)" >> $env:GITHUB_ENV
+          "CMAKE_CXX_COMPILER_LAUNCHER=$($cache.Source)" >> $env:GITHUB_ENV
+          "SCCACHE_IGNORE_SERVER_IO_ERROR=1" >> $env:GITHUB_ENV
+          & $cache.Source --zero-stats
+          Write-Host "Using preinstalled sccache compiler cache."
+        } else {
+          Write-Host "No preinstalled sccache found; compiling directly with MSVC."
+        }
 
     - name: Set Up Vulkan SDK 1.4.350.0
       uses: ./.github/actions/setup-vulkan

@@ -634,9 +634,10 @@ cook_target target_for(const project::cook_profile_descriptor& profile, std::str
 {
     cook_target result;
     result.name = profile.id;
-    result.platform = profile.platform == "linux"   ? cook_platform::linux_os
-                      : profile.platform == "macos" ? cook_platform::macos
-                                                    : cook_platform::windows;
+    result.platform = profile.platform == "linux"     ? cook_platform::linux_os
+                      : profile.platform == "macos"   ? cook_platform::macos
+                      : profile.platform == "android" ? cook_platform::android
+                                                      : cook_platform::windows;
     result.architecture = profile.architecture == "arm64" ? cook_architecture::arm64 : cook_architecture::x86_64;
     result.renderer = profile.renderer == "none"         ? cook_renderer::none
                       : profile.renderer == "direct3d12" ? cook_renderer::direct3d12

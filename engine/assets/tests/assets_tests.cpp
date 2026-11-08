@@ -884,3 +884,30 @@ TEST_CASE("asset manager refreshes authored tags and categories without reimport
     CHECK(after->revision > before->revision);
     CHECK(after->state == before->state);
 }
+
+TEST_CASE("Android cook target retains platform identity in manifest serialization")
+{
+    using namespace arc::assets;
+    auto android = windows_vulkan_cook_target();
+    android.name = "android-arm64-vulkan";
+    android.platform = cook_platform::android;
+    android.architecture = cook_architecture::arm64;
+    android.textures = cook_texture_family::astc;
+
+    const auto windows = windows_vulkan_cook_target();
+    CHECK(canonical_cook_target(android) != canonical_cook_target(windows));
+
+    cook_manifest manifest;
+    manifest.build_id = "android-platform-round-trip";
+    manifest.target = android;
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("arc-android-target-" + to_string(generate_asset_guid()) + ".arccookmanifest");
+    REQUIRE(save_cook_manifest(path, manifest));
+    const auto parsed = load_cook_manifest(path);
+    std::error_code ignored;
+    std::filesystem::remove(path, ignored);
+    REQUIRE(parsed);
+    CHECK(parsed.value().target.platform == cook_platform::android);
+    CHECK(parsed.value().target.architecture == cook_architecture::arm64);
+    CHECK(parsed.value().target.textures == cook_texture_family::astc);
+}

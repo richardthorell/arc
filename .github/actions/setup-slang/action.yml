@@ -4,6 +4,12 @@ description: Install and expose the pinned Slang compiler used by ARC shader too
 runs:
   using: composite
   steps:
+    - name: Restore pinned Slang toolchain cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/slang-2026.14.1
+        key: arc-slang-${{ runner.os }}-${{ runner.arch }}-2026.14.1-v1
+
     - name: Install Slang 2026.14.1 (Linux)
       if: runner.os == 'Linux'
       shell: bash
@@ -12,13 +18,20 @@ runs:
         version=2026.14.1
         archive="$RUNNER_TEMP/slang-${version}.tar.gz"
         root="$RUNNER_TEMP/slang-${version}"
-        rm -rf "$root"
-        mkdir -p "$root"
-        curl --fail --location --retry 3 \
-          "https://github.com/shader-slang/slang/releases/download/v${version}/slang-${version}-linux-x86_64.tar.gz" \
-          --output "$archive"
-        tar -xzf "$archive" -C "$root"
-        slangc="$(find "$root" -type f -name slangc -print -quit)"
+        slangc="$(find "$root" -type f -name slangc -print -quit 2>/dev/null || true)"
+        if [[ -z "$slangc" || ! -x "$slangc" ]]; then
+          echo "Pinned Slang cache miss; downloading v${version}"
+          rm -rf "$root"
+          mkdir -p "$root"
+          # Retry transient GitHub release CDN failures, including HTTP 504.
+          curl --fail --location --retry 12 --retry-all-errors --connect-timeout 30 --max-time 240 \
+            "https://github.com/shader-slang/slang/releases/download/v${version}/slang-${version}-linux-x86_64.tar.gz" \
+            --output "$archive"
+          tar -xzf "$archive" -C "$root"
+          slangc="$(find "$root" -type f -name slangc -print -quit)"
+        else
+          echo "Using cached Slang ${version}"
+        fi
         if [[ -z "$slangc" || ! -x "$slangc" ]]; then
           echo "Pinned slangc executable was not found under $root"
           exit 1
@@ -39,12 +52,18 @@ runs:
         $root = Join-Path $env:RUNNER_TEMP "slang-${version}"
         $url = "https://github.com/shader-slang/slang/releases/download/v${version}/slang-${version}-windows-x86_64.zip"
 
-        if (Test-Path $root) { Remove-Item $root -Recurse -Force }
-        & curl.exe --fail --location --retry 3 $url --output $archive
-        if ($LASTEXITCODE -ne 0) { throw "Failed to download pinned Slang ${version}" }
-        Expand-Archive -Path $archive -DestinationPath $root -Force
-
-        $slangc = Get-ChildItem -Path $root -Recurse -File -Filter slangc.exe | Select-Object -First 1
+        $slangc = Get-ChildItem -Path $root -Recurse -File -Filter slangc.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $slangc) {
+          Write-Host "Pinned Slang cache miss; downloading v${version}"
+          if (Test-Path $root) { Remove-Item $root -Recurse -Force }
+          # Retry transient GitHub release CDN failures, including HTTP 504.
+          & curl.exe --fail --location --retry 12 --retry-all-errors --connect-timeout 30 --max-time 240 $url --output $archive
+          if ($LASTEXITCODE -ne 0) { throw "Failed to download pinned Slang ${version}" }
+          Expand-Archive -Path $archive -DestinationPath $root -Force
+          $slangc = Get-ChildItem -Path $root -Recurse -File -Filter slangc.exe | Select-Object -First 1
+        } else {
+          Write-Host "Using cached Slang ${version}"
+        }
         if (-not $slangc) { throw "Pinned slangc.exe was not found under $root" }
         $versionOutput = (& $slangc.FullName -version 2>&1 | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) { throw "Pinned slangc failed its version check" }

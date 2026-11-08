@@ -23,6 +23,7 @@ android_runtime_bridge::android_runtime_bridge(const package_asset_source& asset
 
 android_runtime_bridge::~android_runtime_bridge()
 {
+    catalog_.reset();
     boot_.reset();
     if (mount_)
     {
@@ -35,7 +36,7 @@ android_runtime_bridge::~android_runtime_bridge()
 
 bool android_runtime_bridge::boot()
 {
-    if (boot_) return true;
+    if (catalog_) return true;
     if (!assets_.available() || writable_storage_.empty() || !writable_storage_.is_absolute())
     {
         arc::diagnostics::error("Android", "Missing APK asset provider or app-private writable storage");
@@ -93,6 +94,18 @@ bool android_runtime_bridge::boot()
     }
     boot_ = std::make_unique<arc::project::runtime_boot_context>(std::move(discovered).value());
     arc::diagnostics::info("Android", "ARC packaged distribution manifest verified");
+    auto mounted_catalog = arc::project::bootstrap_runtime_catalog({.boot = *boot_, .files = vfs_});
+    if (!mounted_catalog)
+    {
+        const auto& failure = mounted_catalog.error();
+        arc::diagnostics::error("Android", "Packaged cooked catalog bootstrap failed:");
+        arc::diagnostics::error("Android", failure.field);
+        arc::diagnostics::error("Android", failure.message);
+        boot_.reset();
+        return false;
+    }
+    catalog_ = std::move(mounted_catalog).value();
+    arc::diagnostics::info("Android", "ARC cooked startup catalog mounted");
     return true;
 }
 } // namespace arc::platform::android

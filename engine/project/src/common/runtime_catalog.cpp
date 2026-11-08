@@ -61,13 +61,14 @@ cook_result read_cook_manifest(io::virtual_file_system& files, const io::virtual
 project_status verify_target(const assets::cook_target& cooked, const distribution_target& distribution,
                              std::string_view manifest_path)
 {
-    // The current cook_target enumerates Windows, Linux and macOS. C6 (#994)
-    // will extend variant/profile matching and add mobile targets. Do not
-    // silently accept a Windows cook as an Android or iOS variant.
+    // Match the actual cooked platform. C6 (#994) will add richer
+    // feature/quality fallback and variant selection; never accept a Windows
+    // cooked representation for an Android distribution.
     const auto platform_matches =
         (distribution.platform == "windows" && cooked.platform == assets::cook_platform::windows) ||
         (distribution.platform == "linux" && cooked.platform == assets::cook_platform::linux_os) ||
-        (distribution.platform == "macos" && cooked.platform == assets::cook_platform::macos);
+        (distribution.platform == "macos" && cooked.platform == assets::cook_platform::macos) ||
+        (distribution.platform == "android" && cooked.platform == assets::cook_platform::android);
     if (!platform_matches)
         return project_status::failure(
             failure(project_error_code::unsupported_platform, "target.platform",

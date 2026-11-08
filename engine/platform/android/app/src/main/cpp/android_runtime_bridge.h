@@ -5,6 +5,7 @@
 #include <arc/io/virtual_file_system.h>
 #include <arc/jobs/jobs.h>
 #include <arc/project/runtime_boot.h>
+#include <arc/project/runtime_catalog.h>
 
 #include <memory>
 
@@ -33,5 +34,6 @@ private:
     arc::io::mount_id mount_{};
     std::shared_ptr<arc::io::virtual_file_provider> provider_;
     std::unique_ptr<arc::project::runtime_boot_context> boot_;
+    std::unique_ptr<arc::project::runtime_catalog_session> catalog_;
 };
 } // namespace arc::platform::android

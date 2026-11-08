@@ -38,8 +38,6 @@ jobs:
       - name: Configure Native Products
         run: >
           cmake -S . -B out/build/ci-windows -G Ninja
-          -DCMAKE_C_COMPILER_LAUNCHER=sccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
           -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -70,7 +68,13 @@ jobs:
 
       - name: Compiler Cache Stats
         if: always()
-        run: sccache --show-stats
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }
 
   asset-cook:
     name: Asset Cook
@@ -86,8 +90,6 @@ jobs:
       - name: Configure Cook Tools
         run: >
           cmake -S . -B out/build/cook -G Ninja
-          -DCMAKE_C_COMPILER_LAUNCHER=sccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
           -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -134,7 +136,13 @@ jobs:
 
       - name: Compiler Cache Stats
         if: always()
-        run: sccache --show-stats
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }
 
   sdk-validation:
     name: SDK Validation
@@ -152,7 +160,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake -S . -B out/build/sdk -G "Ninja Multi-Config" -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          cmake -S . -B out/build/sdk -G "Ninja Multi-Config"   -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "SDK configure failed with exit code ${exitCode}" }
 
@@ -243,7 +251,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake -S out/external-game -B out/external-game/Build/ci -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake -S out/external-game -B out/external-game/Build/ci -G Ninja   -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "External RelWithDebInfo configure failed with exit code ${exitCode}" }
 
@@ -256,7 +264,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja   -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "External Debug configure failed with exit code ${exitCode}" }
 
@@ -269,7 +277,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja   -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
           $exitCode = $LASTEXITCODE
           if ($exitCode -ne 0) { throw "External Shipping configure failed with exit code ${exitCode}" }
 
@@ -305,7 +313,13 @@ jobs:
 
       - name: Compiler Cache Stats
         if: always()
-        run: sccache --show-stats
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }
 
   shipping-runtime:
     name: Shipping Runtime
@@ -328,8 +342,6 @@ jobs:
       - name: Configure Shipping Runtime
         run: >
           cmake -S . -B out/build/ci-shipping -G Ninja
-          -DCMAKE_C_COMPILER_LAUNCHER=sccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
           -DCMAKE_BUILD_TYPE=Shipping
           -DARC_BUILD_SAMPLES=ON
           -DARC_WARNINGS_AS_ERRORS=ON
@@ -385,7 +397,13 @@ jobs:
 
       - name: Compiler Cache Stats
         if: always()
-        run: sccache --show-stats
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }
 
   editor-package:
     name: Editor Package
@@ -413,8 +431,6 @@ jobs:
       - name: Configure Editor Package Build
         run: >
           cmake -S . -B out/build/editor-package -G Ninja
-          -DCMAKE_C_COMPILER_LAUNCHER=sccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
           -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
           -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -454,7 +470,13 @@ jobs:
 
       - name: Compiler Cache Stats
         if: always()
-        run: sccache --show-stats
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }
 
   publish-artifacts:
     name: Publish Artifacts

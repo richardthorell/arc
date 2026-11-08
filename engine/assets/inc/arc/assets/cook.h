@@ -84,7 +84,8 @@ enum class cook_platform : std::uint8_t
 {
     windows,
     linux_os,
-    macos
+    macos,
+    android
 };
 enum class cook_architecture : std::uint8_t
 {

@@ -123,3 +123,24 @@ For development, run `gradle :app:assembleDebug` and inspect
 `adb logcat -s ARC:I '*:S'`. Run portable path/lifecycle checks using the
 `tests/` CMake harness. Android SDK/NDK build and on-device boot validation
 remain necessary.
+
+## A4 — Android cooked catalog activation
+
+After `discover_runtime_boot` verifies the staged D0 manifest, the Android
+runtime bridge now calls `bootstrap_runtime_catalog` with the already-mounted
+APK VFS. This validates target-specific cooked manifests, required startup
+bundles and startup scene GUIDs, and mounts cooked package metadata without
+making all asset bytes resident. A failed mount returns a structured ARC
+diagnostic; the host does not claim success. The catalog session is destroyed
+before the validated boot context, APK mount and job scheduler.
+
+The cook target platform now includes Android. The cooker reads and writes
+`platform: "android"` rather than silently converting it to Windows; the
+catalog requires an actual Android cooked target before accepting the APK.
+A new cook-manifest serialization regression test covers Android/arm64/ASTC.
+The generic C6 quality/variant-selection policy remains in #994.
+
+**Remaining:** activate the project game module/world and connect native
+surface + Vulkan rendering (#402). Automated Android content generation,
+APK packaging and device testing remain #403. This PR does not claim that
+an Android app renders a scene.

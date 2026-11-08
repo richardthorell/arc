@@ -48,6 +48,19 @@ jobs:
       - name: Install Electron Dependencies
         if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
         run: npm ci --prefix editor
+      - name: Ensure Electron binary for main-process tests
+        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
+        working-directory: editor
+        shell: bash
+        run: |
+          # npm ci can finish without the Electron binary if an optional
+          # postinstall download was skipped. Main-process tests import
+          # Electron directly and need the pinned platform binary installed.
+          if ! node -e 'require("electron")'; then
+            node node_modules/electron/install.js
+          fi
+          node -e 'require("electron")'
+
       - name: Dependency Policy
         run: |
           python3 tools/check_dependencies.py
