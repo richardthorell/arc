@@ -171,7 +171,8 @@ struct packaged_world_fixture
         std::fstream stream(chunk_path, std::ios::binary | std::ios::in | std::ios::out);
         REQUIRE(stream.good());
         stream.seekp(static_cast<std::streamoff>(first_offset));
-        stream.write("INVALID COOKED SC", static_cast<std::streamsize>(scene_data.size()));
+        const std::string invalid(scene_data.size(), 'X');
+        stream.write(invalid.data(), static_cast<std::streamsize>(invalid.size()));
         REQUIRE(stream.good());
     }
 };
