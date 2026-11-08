@@ -160,7 +160,9 @@ to D1.2 identity validation, and discovers the distribution from the native
 executable path (rather than working directory). Native Windows and Linux
 process paths are handled in the template host, not in `engine/project`.
 The staged `arc-distribution.json` plus cooked manifests/packages must be
-produced by the D0 finalizer; the host does not synthesize a manifest.
+provided by a D0-compatible staging pipeline. The D0 contract and finalizer
+boundary do not themselves implement the still-pending D2 distribution
+assembler; this PR does not create packages or synthesize a manifest.
 
 Server command-line flags:
 
@@ -174,7 +176,7 @@ Server command-line flags:
   an OS temp directory; production deployments should explicitly configure
   durable storage outside the package.
 
-Example (after producing a matching D0 distribution with a server executable,
+Example (after staging a matching D0-compatible distribution with a server executable,
 config, cook manifest and inventory):
 
 ```sh
