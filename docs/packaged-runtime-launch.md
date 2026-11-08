@@ -88,9 +88,54 @@ startup/shutdown, ordered client worlds and module callbacks, scene-less
 headless server startup, corrupt packaged scene bytes, missing materializer,
 GUID ordering mismatch, and rollback on client/server world setup failures.
 
+## Shared packaged runtime session and teardown (D1.5)
+
+`arc/project/runtime_session.h` adds `start_packaged_runtime(packaged_runtime_request)`, the
+single shared startup path for client and dedicated server. It calls D1.2 manifest discovery
+and integrity validation, D1.3 cooked-catalog mounting, D1.4 project registration and
+verified scene preflight, and then `framework::runtime::start()`. All steps run on the
+host's runtime thread. Startup either returns a fully running
+`packaged_runtime_session` or a structured `project_error`; no partial session
+escapes to host code. Project module and scene implementations remain host-provided
+callbacks and do not import editor code.
+
+- **Ownership:** the session owns its boot context, cooked catalog mounts,
+  packaged application with scene buffers and the framework runtime. The host
+  still owns its process, VFS, async file service and any pre-mounted package
+  providers. The host keeps those services alive through session destruction.
+- **Teardown:** stop framework worlds, project modules and services first;
+  destroy the framework runtime; release the application and scene buffers;
+  unmount cooked artifact providers; finally release only the native
+  distribution mount that this session created. Shutdown and the destructor
+  are idempotent; a shutdown callback exception is reported without skipping
+  lower-level catalog cleanup. A failed startup rolls back the same owned state.
+- **Host loop:** the host supplies measured deltas to `advance(delta_seconds)`
+  and forwards platform-neutral `framework::event` inputs to `dispatch`.
+  `request_stop()` stops the loop without releasing callback-owned resources
+  during that callback; hosts subsequently call `shutdown()`.
+  Frame/world exceptions and faulted simulation worlds cause structured errors
+  and clean teardown.
+- **Mobile/desktop lifecycle:** `pause()` and `resume()` suspend updates
+  independently of debug time controls. Clients also call `surface_lost()`
+  and `surface_ready(width, height)`, which convey focus/resize via the
+  existing framework event contract and keep the simulation suspended until
+  *both* host pause and missing surface conditions are cleared. ARC does
+  not allocate, own or recreate the OS window/swapchain in this layer.
+  Headless servers reject surface callbacks, but support host-level pause.
+- **Limits:** this is a synchronous lifecycle contract, not background work,
+  a new renderer, a native module loader or a replacement for C4 (#992)
+  bundle load/prefetch/pin/unload ownership. D1.6/D1.7 adapt the concrete
+  server/Windows host entrypoints. D1.8 expands relocated package and
+  cancellation coverage.
+
+`engine/project/tests/runtime_session_tests.cpp` covers repeated
+headless startup/shutdown with a shared VFS, client pause/surface transitions,
+close requests, corrupt/missing content, callback failures, and shutdown
+exceptions with no leaked mounts.
+
 ## Subsequent implementation
 
-- **D1.5–D1.7:** wrap the validated launch in a running session with shared lifecycle/shutdown, and adapt existing Windows and headless host entries. Do not move native OS/surface code into `engine/project`.
+- **D1.6–D1.7:** adapt existing dedicated-server and Windows native host entries to the shared runtime session and bind packaged native game-module/scene materialization callbacks. Do not move native OS/surface code into `engine/project`.
 - **D1.8:** relocate packaged client/server fixtures and exercise repeated start/stop, failure cleanup, missing content, cancellation and native host parity. GPU rendering golden tests belong to their own track.
 
 The tests in `engine/project/tests/runtime_launch_tests.cpp` exercise role/target validation, scene/bundle ordering, relative-path rejection, explicit distribution roots, and a VFS-backed Android contract without requiring Android NDK on the native test runner.
