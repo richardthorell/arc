@@ -31,6 +31,11 @@ android {
         }
     }
 
+    androidResources {
+        // Keep package chunks seekable through AAssetManager's ranged API.
+        noCompress += listOf("arcpak", "arccookmanifest")
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")

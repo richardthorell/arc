@@ -1,6 +1,7 @@
 #include "android_lifecycle.h"
 #include "android_log_sink.h"
 #include "android_package_assets.h"
+#include "android_runtime_bridge.h"
 
 #include <arc/diagnostics/log.h>
 #include <android/native_window.h>
@@ -117,7 +118,15 @@ extern "C" void android_main(android_app* app)
     if (package_assets.available())
         arc::diagnostics::info("Android", "APK asset manager available (no extraction to writable storage)");
 
-    arc::diagnostics::info("Android", "Native host started (A2 lifecycle)");
+    // Keep the VFS, job scheduler and validated launch alive across window
+    // destruction/recreation. Only the Android process owns this lifetime.
+    arc::platform::android::android_runtime_bridge runtime(
+        package_assets, app->activity ? app->activity->internalDataPath : nullptr);
+    const bool booted = runtime.boot();
+    if (!booted)
+        arc::diagnostics::warn("Android", "Host remains alive; no staged distribution was loaded");
+
+    arc::diagnostics::info("Android", "Native host started (A3 shared boot)");
 
     while (!app->destroyRequested && !host.lifecycle.snapshot().destroy_requested)
     {

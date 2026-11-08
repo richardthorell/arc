@@ -23,6 +23,7 @@ class package_asset_source
 public:
     explicit package_asset_source(void* manager) noexcept : manager_(manager) {}
     [[nodiscard]] bool available() const noexcept { return manager_ != nullptr; }
+    [[nodiscard]] bool file_size(std::string_view path, std::uint64_t& size) const;
     [[nodiscard]] asset_read_result read_range(std::string_view path, std::uint64_t offset,
                                                std::size_t bytes) const;
 private:
