@@ -3,7 +3,7 @@ project({{PROJECT_TOKEN}} LANGUAGES CXX)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime EditorModuleSDK Vulkan)
+find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime Project EditorModuleSDK PlatformWindows Vulkan)
 
 add_library({{PROJECT_TOKEN}}Runtime STATIC Source/{{PROJECT_TOKEN}}Runtime/Runtime.cpp)
 target_compile_features({{PROJECT_TOKEN}}Runtime PUBLIC cxx_std_20)
@@ -20,7 +20,10 @@ target_link_libraries({{PROJECT_TOKEN}}Editor PRIVATE {{PROJECT_TOKEN}}Runtime A
 
 if(WIN32)
   add_executable({{PROJECT_TOKEN}}Game WIN32 Source/{{PROJECT_TOKEN}}Runtime/Game.cpp)
-  target_link_libraries({{PROJECT_TOKEN}}Game PRIVATE {{PROJECT_TOKEN}}Runtime ARC::PlatformWindows ARC::RenderVulkan)
+  target_compile_definitions({{PROJECT_TOKEN}}Game PRIVATE
+    ARC_GAME_BUILD_CONFIGURATION="$<CONFIG>")
+  target_link_libraries({{PROJECT_TOKEN}}Game PRIVATE
+    ARC::PlatformWindowsPackagedEntry {{PROJECT_TOKEN}}Runtime ARC::Project ARC::RenderVulkan)
   add_custom_command(TARGET {{PROJECT_TOKEN}}Game POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "$<TARGET_FILE:ARC::RenderVulkan>"
