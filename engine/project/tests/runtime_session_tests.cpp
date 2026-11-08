@@ -559,7 +559,6 @@ TEST_CASE("D1.5 missing distribution fails before any catalog mount")
     CHECK(fixture.files.telemetry().mounted_providers == 0);
 }
 
-
 TEST_CASE("D1.6 packaged headless server boots staged D0 content and runs exactly the requested ticks")
 {
     packaged_world_fixture fixture;
@@ -572,14 +571,12 @@ TEST_CASE("D1.6 packaged headless server boots staged D0 content and runs exactl
     {
         ++world_initializations;
         CHECK(world.role() == framework::runtime_world_role::server);
-        const bool installed = world.systems().add(
-            {.name = "d1.6.server.tick",
-             .phase = arc::ecs::system_phase::movement,
-             .execute = [&](arc::ecs::system_context&) { ++simulated_ticks; }});
+        const bool installed = world.systems().add({.name = "d1.6.server.tick",
+                                                    .phase = arc::ecs::system_phase::movement,
+                                                    .execute = [&](arc::ecs::system_context&) { ++simulated_ticks; }});
         if (!installed)
-            return project::project_status::failure(
-                {.code = project::project_error_code::process_failed,
-                 .message = "Cannot install the packaged server tick system"});
+            return project::project_status::failure({.code = project::project_error_code::process_failed,
+                                                     .message = "Cannot install the packaged server tick system"});
         return project::project_status::success();
     };
 
@@ -597,10 +594,9 @@ TEST_CASE("D1.6 headless server shutdown signal is polled at a safe frame bounda
     packaged_world_fixture fixture;
     fixture.stage(true);
     std::size_t polls{};
-    const auto result = project::run_packaged_headless_server({
-        .runtime = request_for(fixture, true),
-        .sleep_to_clock = false,
-        .stop_requested = [&] { return ++polls == 2; }});
+    const auto result = project::run_packaged_headless_server({.runtime = request_for(fixture, true),
+                                                               .sleep_to_clock = false,
+                                                               .stop_requested = [&] { return ++polls == 2; }});
     REQUIRE(result);
     CHECK(result.value() == 1);
     CHECK(polls == 2);
@@ -629,8 +625,8 @@ TEST_CASE("D1.6 headless runner refuses client role and a non-headless compiled 
 TEST_CASE("D1.6 server fails closed without a staged manifest and leaves host providers untouched")
 {
     packaged_world_fixture fixture;
-    const auto result = project::run_packaged_headless_server({
-        .runtime = request_for(fixture, true), .maximum_ticks = 1, .sleep_to_clock = false});
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = request_for(fixture, true), .maximum_ticks = 1, .sleep_to_clock = false});
     REQUIRE_FALSE(result);
     CHECK(result.error().code == project::project_error_code::not_found);
     CHECK(fixture.files.telemetry().mounted_providers == 0);
@@ -657,10 +653,10 @@ TEST_CASE("D1.6 failing host stop callback preserves diagnostic and shuts the se
 {
     packaged_world_fixture fixture;
     fixture.stage(true);
-    const auto result = project::run_packaged_headless_server({
-        .runtime = request_for(fixture, true),
-        .sleep_to_clock = false,
-        .stop_requested = []() -> bool { throw std::runtime_error("host stop signal failed"); }});
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = request_for(fixture, true), .sleep_to_clock = false, .stop_requested = []() -> bool {
+             throw std::runtime_error("host stop signal failed");
+         }});
     REQUIRE_FALSE(result);
     CHECK(result.error().field == "serverLoop");
     CHECK(result.error().message.find("host stop signal failed") != std::string::npos);
@@ -677,8 +673,7 @@ TEST_CASE("D1.6 server surfaces faulted simulation worlds and destroys the sessi
         const bool installed = world.systems().add(
             {.name = "d1.6.intentional-fault",
              .phase = arc::ecs::system_phase::movement,
-             .execute = [](arc::ecs::system_context&)
-             { throw std::runtime_error("server simulation fault"); }});
+             .execute = [](arc::ecs::system_context&) { throw std::runtime_error("server simulation fault"); }});
         if (!installed)
             return project::project_status::failure(
                 {.code = project::project_error_code::process_failed, .message = "Could not register system"});

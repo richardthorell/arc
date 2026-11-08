@@ -20,12 +20,12 @@ project_error failed(std::string message)
 
 packaged_headless_server_result run_packaged_headless_server(packaged_headless_server_options options)
 {
-    if (options.runtime.boot.role != runtime_launch_role::server ||
-        options.runtime.boot.expected.renderer != "none")
+    if (options.runtime.boot.role != runtime_launch_role::server || options.runtime.boot.expected.renderer != "none")
         return packaged_headless_server_result::failure(
             {.code = project_error_code::invalid_descriptor,
              .field = "role",
-             .message = "Packaged headless server requires server role and a compiled-in renderer expectation of none"});
+             .message =
+                 "Packaged headless server requires server role and a compiled-in renderer expectation of none"});
 
     // Preserve simulated time debt rather than silently dropping authoritative
     // server ticks under load; never accept client/presentation time controls.
