@@ -4,6 +4,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <fstream>
 #include <set>
@@ -17,20 +18,18 @@ namespace
 
 using json = nlohmann::json;
 
+constexpr std::array<std::pair<std::string_view, cook_platform>, 4> cook_platforms{{
+    {"windows", cook_platform::windows},
+    {"linux", cook_platform::linux_os},
+    {"macos", cook_platform::macos},
+    {"android", cook_platform::android},
+}};
+
 std::string platform_name(cook_platform value)
 {
-    switch (value)
-    {
-        case cook_platform::windows:
-            return "windows";
-        case cook_platform::linux_os:
-            return "linux";
-        case cook_platform::macos:
-            return "macos";
-        case cook_platform::android:
-            return "android";
-    }
-    return "windows";
+    const auto match = std::find_if(cook_platforms.begin(), cook_platforms.end(),
+                                    [value](const auto& entry) { return entry.second == value; });
+    return match != cook_platforms.end() ? std::string(match->first) : "windows";
 }
 
 std::string architecture_name(cook_architecture value)
@@ -89,11 +88,10 @@ bool parse_target(const json& value, cook_target& target)
     if (!value.is_object()) return false;
     target.name = value.value("name", "windows-x64-vulkan");
     const auto platform = value.value("platform", "windows");
-    if (platform != "windows" && platform != "linux" && platform != "macos" && platform != "android") return false;
-    target.platform = platform == "linux"     ? cook_platform::linux_os
-                      : platform == "macos"   ? cook_platform::macos
-                      : platform == "android" ? cook_platform::android
-                                              : cook_platform::windows;
+    const auto match = std::find_if(cook_platforms.begin(), cook_platforms.end(),
+                                    [&platform](const auto& entry) { return entry.first == platform; });
+    if (match == cook_platforms.end()) return false;
+    target.platform = match->second;
     target.architecture =
         value.value("architecture", "x86_64") == "arm64" ? cook_architecture::arm64 : cook_architecture::x86_64;
     const auto renderer = value.value("renderer", "vulkan");
