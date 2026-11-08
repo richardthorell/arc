@@ -173,7 +173,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                                                     : arc::framework::event_type::focus_lost;
                 forward_event(state, event);
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
-                if (state && state->session && state->session->state() == arc::project::packaged_runtime_state::running)
+                if (state && state->session &&
+                    (state->session->state() == arc::project::packaged_runtime_state::running ||
+                     state->session->state() == arc::project::packaged_runtime_state::suspended))
                     record_status(state, message == WM_SETFOCUS ? state->session->resume() : state->session->pause());
 #endif
             }
