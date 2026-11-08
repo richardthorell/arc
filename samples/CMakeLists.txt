@@ -67,7 +67,7 @@ if(WIN32 AND TARGET arc-platform-windows-packaged-entry)
     arc_configure_first_party_target(arc_packaged_client)
     target_compile_features(arc_packaged_client PRIVATE cxx_std_20)
     target_compile_definitions(arc_packaged_client PRIVATE ARC_GAME_BUILD_CONFIGURATION="$<CONFIG>")
-    target_link_libraries(arc_packaged_client PRIVATE arc-platform-windows-packaged-entry)
+    target_link_libraries(arc_packaged_client PRIVATE arc-platform-windows-packaged-entry arc-scene)
 endif()
 
 if(WIN32 AND COMMAND arc_add_windows_app)
