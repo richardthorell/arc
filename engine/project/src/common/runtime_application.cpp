@@ -50,9 +50,17 @@ scene_result read_scene(runtime_catalog_session& session, assets::asset_guid gui
 
         auto bytes = session.files().read_all(resolved.value()).get();
         if (!bytes)
-            return scene_result::failure(failure(project_error_code::io_failed, "startupScenes",
+        {
+            // The VFS intentionally returns stale_handle if a packaged chunk
+            // changes after catalog mounting. Treat that as corrupt staged
+            // content rather than a generic I/O outage.
+            const auto code = bytes.error().code == io::file_error_code::stale_handle
+                                  ? project_error_code::corrupt_content
+                                  : project_error_code::io_failed;
+            return scene_result::failure(failure(code, "startupScenes",
                                                  "Could not read cooked startup scene " + assets::to_string(guid) +
                                                      ": " + bytes.error().message));
+        }
         if (bytes.value().size() != representation.size ||
             assets::hash_bytes(bytes.value()) != representation.content_hash)
             return scene_result::failure(
