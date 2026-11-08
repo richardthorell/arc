@@ -147,7 +147,7 @@ int main(int argc, char** argv)
         const DWORD required = GetEnvironmentVariableW(L"ARC_SERVER_DATA_ROOT", nullptr, 0);
         if (required > 1)
         {
-            std::wstring base(required, L'\\0');
+            std::wstring base(required, L'\0');
             const DWORD length = GetEnvironmentVariableW(L"ARC_SERVER_DATA_ROOT", base.data(), required);
             if (length > 0 && length < required)
             {
