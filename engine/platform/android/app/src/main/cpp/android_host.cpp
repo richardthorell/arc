@@ -29,9 +29,8 @@ void update_window(android_app* app, android_host_context& host, lifecycle_event
     const auto height = app->window ? dimension(ANativeWindow_getHeight(app->window)) : 0;
     host.lifecycle.apply(event, width, height);
     const auto& state = host.lifecycle.snapshot();
-    arc::diagnostics::info("Android", event == lifecycle_event::window_created
-                                         ? "Native surface attached"
-                                         : "Native surface size changed");
+    arc::diagnostics::info("Android", event == lifecycle_event::window_created ? "Native surface attached"
+                                                                               : "Native surface size changed");
     // The renderer (#402) will consume window_generation and dimensions.
     // Surface recreation must not restart the shared application runtime.
     (void)state;
@@ -67,8 +66,7 @@ void on_app_command(android_app* app, std::int32_t command)
         case APP_CMD_INIT_WINDOW:
             if (host.attached_window != app->window)
             {
-                if (host.attached_window)
-                    host.lifecycle.apply(lifecycle_event::window_destroyed);
+                if (host.attached_window) host.lifecycle.apply(lifecycle_event::window_destroyed);
                 host.attached_window = app->window;
                 update_window(app, host, lifecycle_event::window_created);
             }
@@ -113,8 +111,7 @@ extern "C" void android_main(android_app* app)
     // context; the asset manager is an Android asset-provider handle, not a path.
     if (app->activity && app->activity->internalDataPath)
         arc::diagnostics::info("Android", "App-private writable storage available");
-    if (app->activity && app->activity->assetManager)
-        arc::diagnostics::info("Android", "APK asset manager available");
+    if (app->activity && app->activity->assetManager) arc::diagnostics::info("Android", "APK asset manager available");
     arc::diagnostics::info("Android", "Native host started (A2 lifecycle)");
 
     while (!app->destroyRequested && !host.lifecycle.snapshot().destroy_requested)
@@ -128,8 +125,7 @@ extern "C" void android_main(android_app* app)
             arc::diagnostics::error("Android", "Native host event loop failed");
             break;
         }
-        if (source)
-            source->process(app, source);
+        if (source) source->process(app, source);
     }
 
     host.lifecycle.apply(lifecycle_event::destroy);

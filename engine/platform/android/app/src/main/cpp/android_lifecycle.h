@@ -41,7 +41,10 @@ class lifecycle_state
 {
 public:
     void apply(lifecycle_event event, std::uint32_t width = 0, std::uint32_t height = 0) noexcept;
-    [[nodiscard]] const lifecycle_snapshot& snapshot() const noexcept { return state_; }
+    [[nodiscard]] const lifecycle_snapshot& snapshot() const noexcept
+    {
+        return state_;
+    }
     [[nodiscard]] bool can_present() const noexcept
     {
         return state_.started && state_.resumed && state_.focused && state_.window_available &&
