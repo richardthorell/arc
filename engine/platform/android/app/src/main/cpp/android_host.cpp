@@ -1,5 +1,6 @@
 #include "android_lifecycle.h"
 #include "android_log_sink.h"
+#include "android_package_assets.h"
 
 #include <arc/diagnostics/log.h>
 #include <android/native_window.h>
@@ -111,7 +112,11 @@ extern "C" void android_main(android_app* app)
     // context; the asset manager is an Android asset-provider handle, not a path.
     if (app->activity && app->activity->internalDataPath)
         arc::diagnostics::info("Android", "App-private writable storage available");
-    if (app->activity && app->activity->assetManager) arc::diagnostics::info("Android", "APK asset manager available");
+    arc::platform::android::package_asset_source package_assets(
+        app->activity ? static_cast<void*>(app->activity->assetManager) : nullptr);
+    if (package_assets.available())
+        arc::diagnostics::info("Android", "APK asset manager available (no extraction to writable storage)");
+
     arc::diagnostics::info("Android", "Native host started (A2 lifecycle)");
 
     while (!app->destroyRequested && !host.lifecycle.snapshot().destroy_requested)

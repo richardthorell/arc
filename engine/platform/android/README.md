@@ -81,3 +81,18 @@ the renderer and shared runtime to those transitions happens in A3/#402.
 This isolated Gradle application is a build-system smoke fixture, not the
 final Android project generator or a replacement for the shared distribution
 manifest/cooker.
+
+## A3.1 — Packaged Android assets
+
+The host now has an NDK-backed `package_asset_source` with validated
+distribution-relative paths and range reads through `AAssetManager`.
+APK contents are never assumed to be ordinary files or automatically copied
+to writable storage. The path validator is platform-neutral and covered by
+`arc_android_asset_path_tests` (run the host tests with CMake/CTest).
+
+**Next integration step:** expose this source as
+`arc::io::virtual_file_provider` and mount it at the D1
+`runtime_distribution_location_kind::mounted_vfs` root. The Gradle fixture
+does not yet link the full ARC engine or call `discover_runtime_boot`;
+no packaged game launch is claimed by this change. Android packaging and
+project-side deployment remain owned by #403.
