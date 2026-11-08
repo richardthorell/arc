@@ -48,6 +48,8 @@ public:
 
     [[nodiscard]] assets::cooked_asset_catalog& catalog() noexcept;
     [[nodiscard]] const assets::cooked_asset_catalog& catalog() const noexcept;
+    /** Host-owned VFS used by this catalog and its cooked artifact providers. */
+    [[nodiscard]] io::virtual_file_system& files() const noexcept;
 
     /** D0 launch-order GUIDs verified to exist as cooked scene metadata. */
     [[nodiscard]] const std::vector<assets::asset_guid>& startup_scenes() const noexcept;
