@@ -9,11 +9,19 @@
 #include "windows_input_backend.h"
 
 #include <arc/framework/framework.h>
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+#include <arc/platform/windows/packaged_client.h>
+#include <chrono>
+#include <filesystem>
+#include <system_error>
+#include <utility>
+#endif
 
 #include <windows.h>
 #include <windowsx.h>
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 
@@ -25,6 +33,10 @@ struct window_state
     arc::framework::runtime* runtime{};
     arc::platform::windows::windows_input_backend* input{};
     arc::platform::windows::windows_controller_manager* controllers{};
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+    arc::project::packaged_runtime_session* session{};
+    std::string failure;
+#endif
 };
 
 std::wstring widen(const std::string& value)
@@ -68,6 +80,29 @@ window_state* state_from_window(HWND window)
     return reinterpret_cast<window_state*>(GetWindowLongPtrW(window, GWLP_USERDATA));
 }
 
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+void record_status(window_state* state, arc::project::project_status status)
+{
+    if (state && !status)
+    {
+        state->failure = status.error().field + ": " + status.error().message;
+        state->session->request_stop();
+    }
+}
+#endif
+
+void forward_event(window_state* state, const arc::framework::event& event)
+{
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+    if (state && state->session)
+    {
+        record_status(state, state->session->dispatch(event));
+        return;
+    }
+#endif
+    if (state && state->runtime) state->runtime->dispatch(event);
+}
+
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     if (message == WM_NCCREATE)
@@ -88,8 +123,11 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             {
                 arc::framework::event event{};
                 event.type = arc::framework::event_type::close_requested;
-                runtime->dispatch(event);
+                forward_event(state, event);
             }
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+            if (state && state->session) state->session->request_stop();
+#endif
             DestroyWindow(window);
             return 0;
 
@@ -104,7 +142,14 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 event.type = arc::framework::event_type::resized;
                 event.width = static_cast<std::uint32_t>(LOWORD(lparam));
                 event.height = static_cast<std::uint32_t>(HIWORD(lparam));
-                runtime->dispatch(event);
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+                if (state && state->session)
+                    record_status(state, event.width && event.height
+                                             ? state->session->surface_ready(event.width, event.height)
+                                             : state->session->surface_lost());
+                else
+#endif
+                    forward_event(state, event);
             }
             return 0;
 
@@ -126,7 +171,11 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 arc::framework::event event{};
                 event.type = message == WM_SETFOCUS ? arc::framework::event_type::focus_gained
                                                     : arc::framework::event_type::focus_lost;
-                runtime->dispatch(event);
+                forward_event(state, event);
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+                if (state && state->session && state->session->state() == arc::project::packaged_runtime_state::running)
+                    record_status(state, message == WM_SETFOCUS ? state->session->resume() : state->session->pause());
+#endif
             }
             return 0;
 
@@ -141,7 +190,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                                                                                  : arc::framework::event_type::key_up;
                 event.key_code = static_cast<int>(wparam);
                 event.repeat = (lparam & (1 << 30)) != 0;
-                runtime->dispatch(event);
+                forward_event(state, event);
             }
             return 0;
 
@@ -152,7 +201,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 event.type = arc::framework::event_type::mouse_moved;
                 event.x = GET_X_LPARAM(lparam);
                 event.y = GET_Y_LPARAM(lparam);
-                runtime->dispatch(event);
+                forward_event(state, event);
             }
             return 0;
 
@@ -174,7 +223,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 event.button = translate_mouse_button(message, wparam);
                 event.x = GET_X_LPARAM(lparam);
                 event.y = GET_Y_LPARAM(lparam);
-                runtime->dispatch(event);
+                forward_event(state, event);
             }
             return 0;
 
@@ -187,7 +236,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                     static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / static_cast<float>(WHEEL_DELTA);
                 event.x = GET_X_LPARAM(lparam);
                 event.y = GET_Y_LPARAM(lparam);
-                runtime->dispatch(event);
+                forward_event(state, event);
             }
             return 0;
 
