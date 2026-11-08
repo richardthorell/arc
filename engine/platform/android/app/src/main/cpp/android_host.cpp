@@ -120,11 +120,10 @@ extern "C" void android_main(android_app* app)
 
     // Keep the VFS, job scheduler and validated launch alive across window
     // destruction/recreation. Only the Android process owns this lifetime.
-    arc::platform::android::android_runtime_bridge runtime(
-        package_assets, app->activity ? app->activity->internalDataPath : nullptr);
+    arc::platform::android::android_runtime_bridge runtime(package_assets,
+                                                           app->activity ? app->activity->internalDataPath : nullptr);
     const bool booted = runtime.boot();
-    if (!booted)
-        arc::diagnostics::warn("Android", "Host remains alive; no staged distribution was loaded");
+    if (!booted) arc::diagnostics::warn("Android", "Host remains alive; no staged distribution was loaded");
 
     arc::diagnostics::info("Android", "Native host started (A3 shared boot)");
 

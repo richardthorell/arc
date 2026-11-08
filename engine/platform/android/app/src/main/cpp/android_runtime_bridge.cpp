@@ -16,9 +16,7 @@ constexpr auto package_root = "package://runtime";
 }
 
 android_runtime_bridge::android_runtime_bridge(const package_asset_source& assets, const char* storage_path)
-    : assets_(assets),
-      jobs_(arc::jobs::job_system_config{.worker_count = 1, .io_worker_count = 1}),
-      vfs_(jobs_),
+    : assets_(assets), jobs_(arc::jobs::job_system_config{.worker_count = 1, .io_worker_count = 1}), vfs_(jobs_),
       writable_storage_(storage_path ? std::filesystem::path(storage_path).lexically_normal() : std::filesystem::path{})
 {
 }
@@ -29,8 +27,7 @@ android_runtime_bridge::~android_runtime_bridge()
     if (mount_)
     {
         auto result = vfs_.unmount(mount_);
-        if (!result)
-            arc::diagnostics::warn("Android", "Could not unmount APK distribution");
+        if (!result) arc::diagnostics::warn("Android", "Could not unmount APK distribution");
     }
     provider_.reset();
     jobs_.shutdown(arc::jobs::job_shutdown_mode::drain);
@@ -71,14 +68,13 @@ bool android_runtime_bridge::boot()
                                  .files = &vfs_,
                                  .virtual_root = root.value()};
     request.host.writable_storage_root = writable_storage_;
-    request.host.capabilities = {
-        .family = arc::framework::platform_family::android,
-        .form_factor = arc::framework::device_form_factor::handheld,
-        .window_system = true,
-        .high_dpi = true,
-        .dynamic_libraries = true,
-        .persistent_local_storage = true,
-        .native_package_assets = true};
+    request.host.capabilities = {.family = arc::framework::platform_family::android,
+                                 .form_factor = arc::framework::device_form_factor::handheld,
+                                 .window_system = true,
+                                 .high_dpi = true,
+                                 .dynamic_libraries = true,
+                                 .persistent_local_storage = true,
+                                 .native_package_assets = true};
     request.expected.engine_version = ARC_ANDROID_ENGINE_VERSION;
     request.expected.sdk_version = ARC_ANDROID_SDK_VERSION;
     request.expected.architecture = "arm64";

@@ -21,8 +21,7 @@ bool package_asset_source::file_size(std::string_view path, std::uint64_t& size)
     return true;
 }
 
-asset_read_result package_asset_source::read_range(std::string_view path, std::uint64_t offset,
-                                                   std::size_t bytes) const
+asset_read_result package_asset_source::read_range(std::string_view path, std::uint64_t offset, std::size_t bytes) const
 {
     if (!valid_package_asset_path(path)) return {.error = asset_read_error::invalid_path};
     if (!manager_) return {.error = asset_read_error::unavailable};

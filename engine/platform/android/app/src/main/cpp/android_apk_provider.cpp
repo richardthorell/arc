@@ -36,8 +36,7 @@ android_apk_provider::read_range(const arc::io::provider_file& file, std::uint64
     // The source and AAssetManager outlive these reads; drain job_system before
     // destroying this provider during Android host shutdown.
     return jobs_->submit_future(
-        {.name = "android.apk.read", .affinity = arc::jobs::job_affinity::io_thread,
-         .cancellation = cancellation},
+        {.name = "android.apk.read", .affinity = arc::jobs::job_affinity::io_thread, .cancellation = cancellation},
         [source = source_, file, offset, bytes, cancellation]
         {
             using arc::io::file_result;
@@ -54,11 +53,10 @@ android_apk_provider::read_range(const arc::io::provider_file& file, std::uint64
             auto result = source->read_range(file.key, offset, bytes);
             if (!result)
             {
-                const auto code = result.error == asset_read_error::unavailable
-                                      ? arc::io::file_error_code::not_found
-                                      : result.error == asset_read_error::invalid_range
-                                            ? arc::io::file_error_code::invalid_range
-                                            : arc::io::file_error_code::read_failed;
+                const auto code = result.error == asset_read_error::unavailable ? arc::io::file_error_code::not_found
+                                  : result.error == asset_read_error::invalid_range
+                                      ? arc::io::file_error_code::invalid_range
+                                      : arc::io::file_error_code::read_failed;
                 return file_result<file_buffer>::failure(error(code, file.key, "APK asset read failed"));
             }
             return file_result<file_buffer>::success(std::move(result.bytes));
