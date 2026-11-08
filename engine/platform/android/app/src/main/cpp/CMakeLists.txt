@@ -30,7 +30,7 @@ target_include_directories(arc_android_diagnostics PUBLIC "${ARC_DIAGNOSTICS_ROO
 target_compile_features(arc_android_diagnostics PUBLIC cxx_std_20)
 set_target_properties(arc_android_diagnostics PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_library(arc_android_host SHARED android_host.cpp android_log_sink.cpp)
+add_library(arc_android_host SHARED android_host.cpp android_lifecycle.cpp android_log_sink.cpp)
 target_compile_features(arc_android_host PRIVATE cxx_std_20)
 target_link_libraries(arc_android_host PRIVATE arc_native_app_glue arc_android_diagnostics android log)
 target_link_options(arc_android_host PRIVATE "-Wl,-u,ANativeActivity_onCreate")
