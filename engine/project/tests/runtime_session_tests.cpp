@@ -178,7 +178,6 @@ struct packaged_world_fixture
     }
 };
 
-
 class lifecycle_module final : public framework::module
 {
 public:
@@ -187,8 +186,14 @@ public:
     {
     }
 
-    std::string_view name() const override { return "packaged.lifecycle.test"; }
-    void on_start(framework::module_context&) override { events_->push_back("module:start"); }
+    std::string_view name() const override
+    {
+        return "packaged.lifecycle.test";
+    }
+    void on_start(framework::module_context&) override
+    {
+        events_->push_back("module:start");
+    }
     void on_update(framework::module_context&, const framework::frame_time&) override
     {
         events_->push_back("module:update");
@@ -210,17 +215,19 @@ private:
     bool throw_on_event_{};
 };
 
-
 class failure_module final : public framework::module
 {
 public:
-    failure_module(std::string name, std::vector<std::string>& events,
-                   bool fail_start = false, bool fail_shutdown = false)
+    failure_module(std::string name, std::vector<std::string>& events, bool fail_start = false,
+                   bool fail_shutdown = false)
         : name_(std::move(name)), events_(&events), fail_start_(fail_start), fail_shutdown_(fail_shutdown)
     {
     }
 
-    std::string_view name() const override { return name_; }
+    std::string_view name() const override
+    {
+        return name_;
+    }
     void on_start(framework::module_context&) override
     {
         events_->push_back(name_ + ":start");
@@ -248,8 +255,14 @@ public:
     {
         return framework::make_runtime_service_id("d1.5.lifecycle.service");
     }
-    std::string_view name() const noexcept override { return "d1.5.lifecycle.service"; }
-    void on_start(framework::runtime_service_context&) override { events_->push_back("service:start"); }
+    std::string_view name() const noexcept override
+    {
+        return "d1.5.lifecycle.service";
+    }
+    void on_start(framework::runtime_service_context&) override
+    {
+        events_->push_back("service:start");
+    }
     void on_shutdown(framework::runtime_service_context&) noexcept override
     {
         events_->push_back("service:shutdown");
@@ -274,11 +287,10 @@ project::packaged_runtime_request request_for(packaged_world_fixture& fixture, b
                      .configuration = "Shipping"};
     boot.startup_bundles = {"Boot", "Startup/Common"};
 
-    project::packaged_runtime_request request{.boot = std::move(boot),
-                                               .files = fixture.files,
-                                               .native_files = &fixture.native_files};
-    request.registrations.materialize_scene = [](framework::runtime_world& world,
-                                                  const project::packaged_scene_payload& scene)
+    project::packaged_runtime_request request{
+        .boot = std::move(boot), .files = fixture.files, .native_files = &fixture.native_files};
+    request.registrations.materialize_scene =
+        [](framework::runtime_world& world, const project::packaged_scene_payload& scene)
     {
         if (scene.bytes.empty())
             return project::project_status::failure(
@@ -300,9 +312,7 @@ TEST_CASE("D1.5 client session forwards lifecycle events, suspends ticks, and sh
     std::vector<std::string> events;
     auto request = request_for(fixture);
     request.registrations.modules = [&](framework::module_registry& registry)
-    {
-        registry.emplace<lifecycle_module>(events);
-    };
+    { registry.emplace<lifecycle_module>(events); };
     auto started = project::start_packaged_runtime(std::move(request));
     REQUIRE(started);
     auto session = std::move(started).value();
@@ -414,8 +424,8 @@ TEST_CASE("D1.5 failed project scene setup propagates error and unmounts every o
     fixture.stage();
     auto request = request_for(fixture);
     request.registrations.materialize_scene = [](framework::runtime_world&,
-                                                  const project::packaged_scene_payload&)
-        -> project::project_status { throw std::runtime_error("deliberate scene failure"); };
+                                                 const project::packaged_scene_payload&) -> project::project_status
+    { throw std::runtime_error("deliberate scene failure"); };
     auto started = project::start_packaged_runtime(std::move(request));
     REQUIRE_FALSE(started);
     CHECK(started.error().code == project::project_error_code::process_failed);
@@ -431,9 +441,7 @@ TEST_CASE("D1.5 shutdown exceptions return errors but still release runtime and 
     std::vector<std::string> events;
     auto request = request_for(fixture, true);
     request.registrations.modules = [&](framework::module_registry& registry)
-    {
-        registry.emplace<lifecycle_module>(events, true);
-    };
+    { registry.emplace<lifecycle_module>(events, true); };
     auto started = project::start_packaged_runtime(std::move(request));
     REQUIRE(started);
     auto session = std::move(started).value();
@@ -446,7 +454,6 @@ TEST_CASE("D1.5 shutdown exceptions return errors but still release runtime and 
     CHECK(fixture.files.telemetry().mounted_providers == 0);
     REQUIRE(session->shutdown());
 }
-
 
 TEST_CASE("D1.5 a throwing module cannot prevent other module shutdown callbacks")
 {
@@ -480,9 +487,7 @@ TEST_CASE("D1.5 failing module startup preserves original error and still stops 
     std::vector<std::string> events;
     auto request = request_for(fixture, true);
     request.registrations.services = [&](framework::runtime_service_registry& registry)
-    {
-        registry.emplace<lifecycle_service>(events);
-    };
+    { registry.emplace<lifecycle_service>(events); };
     request.registrations.modules = [&](framework::module_registry& registry)
     {
         registry.emplace<failure_module>("cleanup_throws", events, false, true);
@@ -506,16 +511,13 @@ TEST_CASE("D1.5 faulted simulation world is reported and unmounted")
     packaged_world_fixture fixture;
     fixture.stage();
     auto request = request_for(fixture);
-    request.registrations.materialize_scene = [](framework::runtime_world& world,
-                                                  const project::packaged_scene_payload&)
+    request.registrations.materialize_scene =
+        [](framework::runtime_world& world, const project::packaged_scene_payload&)
     {
-        world.systems().add({
-            .name = "intentional fault",
-            .phase = arc::ecs::system_phase::movement,
-            .execute = [](arc::ecs::system_context&)
-            {
-                throw std::runtime_error("simulated system failure");
-            }});
+        world.systems().add(
+            {.name = "intentional fault",
+             .phase = arc::ecs::system_phase::movement,
+             .execute = [](arc::ecs::system_context&) { throw std::runtime_error("simulated system failure"); }});
         return project::project_status::success();
     };
     auto started = project::start_packaged_runtime(std::move(request));
@@ -536,9 +538,7 @@ TEST_CASE("D1.5 module event exception is reported and forces safe teardown")
     std::vector<std::string> events;
     auto request = request_for(fixture);
     request.registrations.modules = [&](framework::module_registry& registry)
-    {
-        registry.emplace<lifecycle_module>(events, false, true);
-    };
+    { registry.emplace<lifecycle_module>(events, false, true); };
     auto started = project::start_packaged_runtime(std::move(request));
     REQUIRE(started);
     auto session = std::move(started).value();

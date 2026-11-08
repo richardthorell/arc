@@ -254,8 +254,7 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
     auto boot = discover_runtime_boot(std::move(request.boot));
     if (!boot) return packaged_runtime_result::failure(std::move(boot).error());
 
-    auto session = std::unique_ptr<packaged_runtime_session>(
-        new packaged_runtime_session(std::move(boot).value()));
+    auto session = std::unique_ptr<packaged_runtime_session>(new packaged_runtime_session(std::move(boot).value()));
     try
     {
         auto catalog = bootstrap_runtime_catalog({.boot = session->boot_,

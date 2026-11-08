@@ -103,12 +103,12 @@ private:
     bool stopped_{};
 };
 
- /**
-  * One authoritative startup path: discover/validate -> mount -> preflight
-  * scenes/registrations -> start framework. Failure destroys partial state and
-  * never returns a half-initialized session. Hosts invoke request_stop/shutdown
-  * during OS termination, rather than directly manipulating the catalog.
-  */
+/**
+ * One authoritative startup path: discover/validate -> mount -> preflight
+ * scenes/registrations -> start framework. Failure destroys partial state and
+ * never returns a half-initialized session. Hosts invoke request_stop/shutdown
+ * during OS termination, rather than directly manipulating the catalog.
+ */
 [[nodiscard]] packaged_runtime_result start_packaged_runtime(packaged_runtime_request request);
 
 } // namespace arc::project
