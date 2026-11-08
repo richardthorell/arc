@@ -10,6 +10,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <span>
 #include <string>
@@ -91,7 +92,7 @@ struct cooked_distribution_fixture
         cooked.roots = {missing_scene ? other : scene};
         cooked.dependency_closure = cooked.roots;
         cooked.artifacts.push_back({.asset = missing_scene ? other : scene,
-                                    .type = wrong_type ? assets::asset_types::terrain : assets::asset_types::scene,
+                                    .type = wrong_type ? assets::asset_types::binary_blob : assets::asset_types::scene,
                                     .name = "startup/scene",
                                     .schema = assets::artifact_schemas::scene,
                                     .schema_version = 1,
@@ -167,8 +168,8 @@ struct cooked_distribution_fixture
         for (const auto& file : fs::recursive_directory_iterator(root))
         {
             if (!file.is_regular_file()) continue;
-            if (file.path().lexically_relative(root).begin()->string() == "cache") continue;
             const auto relative = fs::relative(file.path(), root).generic_string();
+            if (relative.starts_with("cache/")) continue;
             updates.push_back({.relative_path = "games/demo/" + relative, .bytes = bytes(read_text(file.path()))});
         }
         REQUIRE(provider.publish(updates).succeeded());
@@ -250,6 +251,16 @@ TEST_CASE("D1.3 missing or wrong-type startup scene fails instead of creating an
 {
     cooked_distribution_fixture fixture;
     fixture.stage(false, true);
+    auto boot = fixture.boot();
+    expect_failure({.boot = boot, .files = fixture.files, .native_files = &fixture.native_files},
+                   project::project_error_code::invalid_scene, "startupScenes");
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.3 refuses startup GUIDs whose cooked records are not scene assets")
+{
+    cooked_distribution_fixture fixture;
+    fixture.stage(false, false, true);
     auto boot = fixture.boot();
     expect_failure({.boot = boot, .files = fixture.files, .native_files = &fixture.native_files},
                    project::project_error_code::invalid_scene, "startupScenes");
