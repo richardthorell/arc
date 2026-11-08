@@ -222,7 +222,7 @@ TEST_CASE("D1.4 packaged client loads verified scene bytes then explicitly regis
         CHECK(scene.bytes == fixture.scene_data);
         CHECK(scene.artifact_name == "main/scene");
         CHECK(world.entities().live_count() == 0);
-        world.entities().create();
+        CHECK(world.entities().create().valid());
         events.push_back("scene:materialized");
         return project::project_status::success();
     };
@@ -341,7 +341,7 @@ TEST_CASE("D1.4 scene materialization failure rolls back worlds and propagates s
          .registrations = {
              .materialize_scene = [&](framework::runtime_world& world, const project::packaged_scene_payload&)
              {
-                 world.entities().create();
+                 CHECK(world.entities().create().valid());
                  if (++attempted == 2)
                      return project::project_status::failure({.code = project::project_error_code::invalid_scene,
                                                               .field = "startupScenes",
