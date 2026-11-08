@@ -24,7 +24,7 @@ Run from `engine/platform/android`:
 gradle :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n org.arcengine.host/android.app.NativeActivity
-adb logcat -s ARC.Android:I '*:S'
+adb logcat -s ARC:I '*:S'
 ```
 
 For a native-only configure diagnostic (using an installed NDK toolchain):
@@ -34,6 +34,11 @@ cmake -S app/src/main/cpp -B build/android-native \
   -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/<version>/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26
 ```
+
+The host uses ARC's existing `arc::diagnostics` logger with an Android Logcat
+sink. Severity and category are preserved; the sink maps trace/debug/info/warn/
+error/fatal onto Android priorities. This isolated fixture compiles the existing
+engine diagnostics source; the integrated A3 host will link `arc-diagnostics`.
 
 The native library is named `libarc_android_host.so`, and its
 `android_main` is exported through the NDK NativeActivity glue. CMake
