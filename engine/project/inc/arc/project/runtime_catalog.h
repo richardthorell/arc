@@ -39,7 +39,6 @@ using runtime_catalog_result = core::result<std::unique_ptr<runtime_catalog_sess
 class runtime_catalog_session final
 {
 public:
-    explicit runtime_catalog_session(io::virtual_file_system& files) noexcept;
     ~runtime_catalog_session();
 
     runtime_catalog_session(const runtime_catalog_session&) = delete;
@@ -57,6 +56,7 @@ public:
 
 private:
     friend runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& request);
+    explicit runtime_catalog_session(io::virtual_file_system& files) noexcept;
 
     io::virtual_file_system* files_{};
     io::mount_id native_mount_{};
