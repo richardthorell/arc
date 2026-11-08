@@ -271,20 +271,97 @@ arc::framework::platform_capabilities query_platform_capabilities() noexcept
             .native_package_assets = false};
 }
 
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+std::filesystem::path executable_path()
+{
+    std::wstring buffer(512, L'\0');
+    for (;;)
+    {
+        const DWORD size = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (!size || size >= 32768) return {};
+        if (size < buffer.size())
+        {
+            buffer.resize(size);
+            return std::filesystem::path(buffer);
+        }
+        buffer.resize(buffer.size() * 2);
+    }
+}
+
+std::filesystem::path writable_data_root(const std::string& project_guid)
+{
+    const DWORD required = GetEnvironmentVariableW(L"LOCALAPPDATA", nullptr, 0);
+    if (required <= 1) return {};
+    std::wstring value(required, L'\0');
+    const DWORD size = GetEnvironmentVariableW(L"LOCALAPPDATA", value.data(), required);
+    if (!size || size >= required) return {};
+    value.resize(size);
+    return std::filesystem::path(value) / L"ARC" / widen(project_guid);
+}
+
+int boot_failure(const std::string& message)
+{
+    const auto wide = widen(message);
+    OutputDebugStringW(wide.c_str());
+    MessageBoxW(nullptr, wide.c_str(), L"ARC packaged client failure", MB_OK | MB_ICONERROR);
+    return -5;
+}
+#endif
+
 } // namespace
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
 {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+    namespace fs = std::filesystem;
+    namespace project = arc::project;
+    auto definition = arc::platform::windows::configure_packaged_client();
+    const fs::path executable = executable_path();
+    const fs::path storage = writable_data_root(definition.expected.project_guid);
+    if (!executable.is_absolute() || !storage.is_absolute())
+        return boot_failure("Cannot resolve the native executable or per-user application storage");
+
+    std::error_code storage_error;
+    fs::create_directories(storage, storage_error);
+    if (storage_error)
+        return boot_failure("Cannot create writable application storage: " + storage_error.message());
+
+    arc::jobs::job_system jobs{{.worker_count = 1, .run_inline = false, .io_worker_count = 2,
+                                .enable_render_thread = false}};
+    arc::io::async_file_service native_files{jobs};
+    arc::io::virtual_file_system files{jobs};
+    project::runtime_boot_request boot;
+    boot.role = project::runtime_launch_role::client;
+    boot.host.distribution.kind = project::runtime_distribution_location_kind::executable;
+    boot.host.distribution.native_path = executable;
+    boot.host.writable_storage_root = storage;
+    boot.host.capabilities = query_platform_capabilities();
+    boot.expected = std::move(definition.expected);
+    project::packaged_runtime_request request{.boot = std::move(boot),
+                                               .files = files,
+                                               .native_files = &native_files,
+                                               .registrations = std::move(definition.registrations),
+                                               .config = std::move(definition.config)};
+    auto started = project::start_packaged_runtime(std::move(request));
+    if (!started) return boot_failure(started.error().field + ": " + started.error().message);
+    auto session = std::move(started).value();
+    arc::framework::runtime& runtime = *session->runtime();
+#else
     std::unique_ptr<arc::framework::application> app = arc::framework::create_application();
     if (!app) return -1;
 
     arc::framework::runtime runtime(*app);
     runtime.set_platform_capabilities(query_platform_capabilities());
+#endif
     arc::platform::windows::windows_input_backend input_backend(runtime.input());
     arc::platform::windows::windows_controller_manager controller_manager(runtime.input());
-    window_state state{.runtime = &runtime, .input = &input_backend, .controllers = &controller_manager};
+    window_state state{.runtime = &runtime, .input = &input_backend, .controllers = &controller_manager
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+                       , .session = session.get()
+#endif
+    };
     const arc::framework::application_config& config = runtime.config();
     const std::wstring class_name = L"ArcWindowsHost";
     const std::wstring title = widen(config.title);
@@ -316,7 +393,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     }
     static_cast<void>(controller_manager.attach(window));
 
+#if !defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     runtime.start();
+#else
+    record_status(&state, session->surface_ready(config.initial_width, config.initial_height));
+#endif
 
     if (config.visible)
     {
@@ -326,7 +407,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     }
 
     MSG message{};
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+    using clock = std::chrono::steady_clock;
+    auto last_frame = clock::now();
+    while (session->state() == project::packaged_runtime_state::running ||
+           session->state() == project::packaged_runtime_state::suspended)
+#else
     while (runtime.running())
+#endif
     {
         runtime.input().begin_frame();
         controller_manager.poll();
@@ -334,7 +422,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
         {
             if (message.message == WM_QUIT)
             {
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+                session->request_stop();
+#else
                 runtime.request_stop();
+#endif
                 break;
             }
 
@@ -342,9 +434,35 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
             DispatchMessageW(&message);
         }
 
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+        const auto now = clock::now();
+        const double delta = std::chrono::duration<double>(now - last_frame).count();
+        last_frame = now;
+        if (session->state() == project::packaged_runtime_state::running)
+        {
+            auto frame = session->advance(delta);
+            if (!frame)
+            {
+                state.failure = frame.error().field + ": " + frame.error().message;
+                session->request_stop();
+            }
+        }
+        else if (session->state() == project::packaged_runtime_state::suspended)
+            Sleep(8);
+#else
         if (runtime.running()) runtime.tick();
+#endif
     }
 
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+    state.runtime = nullptr;
+    state.session = nullptr;
+    auto stopped = session->shutdown();
+    if (!stopped && state.failure.empty())
+        state.failure = stopped.error().field + ": " + stopped.error().message;
+    if (!state.failure.empty()) return boot_failure(state.failure);
+#else
     runtime.shutdown();
+#endif
     return 0;
 }
