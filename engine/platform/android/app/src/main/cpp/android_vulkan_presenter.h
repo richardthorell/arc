@@ -27,5 +27,8 @@ private:
     std::unique_ptr<arc::render::render_backend> backend_;
     std::uint64_t generation_{};
     std::uint64_t failed_generation_{};
+    std::uint32_t submitted_width_{};
+    std::uint32_t submitted_height_{};
+    std::uint64_t frame_index_{};
 };
 } // namespace arc::platform::android
