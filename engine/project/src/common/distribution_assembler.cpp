@@ -34,8 +34,7 @@ bool within(const fs::path& root, const fs::path& candidate)
 
 bool portable_path(std::string_view value)
 {
-    if (value.empty() || value.front() == '/' || value.find('\\') != value.npos ||
-        value.find(':') != value.npos)
+    if (value.empty() || value.front() == '/' || value.find('\\') != value.npos || value.find(':') != value.npos)
         return false;
     std::size_t offset{};
     do
@@ -71,9 +70,7 @@ distribution_assembly_result assemble_distribution(const distribution_assembly_r
                                                    distribution_finalizer& finalizer)
 {
     const auto reject = [](project_error_code code, std::string field, std::string message)
-    {
-        return distribution_assembly_result::failure(failure(code, std::move(field), std::move(message)));
-    };
+    { return distribution_assembly_result::failure(failure(code, std::move(field), std::move(message))); };
 
     if (!request.manifest.files.empty())
         return reject(project_error_code::invalid_descriptor, "files",
@@ -128,13 +125,17 @@ distribution_assembly_result assemble_distribution(const distribution_assembly_r
         const auto staged = stage / fs::path(file.destination);
         fs::create_directories(staged.parent_path(), ec);
         if (!ec) fs::copy_file(file.source, staged, fs::copy_options::none, ec);
-        if (ec) return reject(project_error_code::io_failed, "files", "Cannot copy " + file.destination + ": " + ec.message());
+        if (ec)
+            return reject(project_error_code::io_failed, "files",
+                          "Cannot copy " + file.destination + ": " + ec.message());
         const auto digest = assets::hash_file(staged);
         const auto size = fs::file_size(staged, ec);
         if (ec || !digest)
             return reject(project_error_code::io_failed, "files", "Cannot hash staged file: " + file.destination);
-        manifest.files.push_back({.path = file.destination, .kind = file.kind,
-                                  .size = size, .sha256 = assets::to_string(digest.value())});
+        manifest.files.push_back({.path = file.destination,
+                                  .kind = file.kind,
+                                  .size = size,
+                                  .sha256 = assets::to_string(digest.value())});
     }
 
     distribution_finalize_request finalize{.workflow = request.workflow,
