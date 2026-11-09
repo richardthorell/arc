@@ -17,8 +17,7 @@ namespace project = arc::project;
 
 struct fixture
 {
-    fs::path root = fs::temp_directory_path() /
-                    ("arc-d2-assembler-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
+    fs::path root = fs::temp_directory_path() / arc::assets::to_string(arc::assets::generate_asset_guid());
     fs::path output = root / "Published";
     project::package_workflow_plan workflow;
     project::distribution_manifest manifest;
