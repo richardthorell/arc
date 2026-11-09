@@ -73,8 +73,7 @@ project_status verify_files(const distribution_finalize_request& request)
                         "Staged distribution cannot contain symbolic links or junctions");
         if (fs::is_directory(status)) continue;
         if (!fs::is_regular_file(status))
-            return fail(project_error_code::unsafe_path, "stagingRoot",
-                        "Staged directory contains a non-regular file");
+            return fail(project_error_code::unsafe_path, "stagingRoot", "Staged directory contains a non-regular file");
         const auto relative = fs::relative(entry.path(), root, ec).generic_string();
         if (ec || std::none_of(request.manifest.files.begin(), request.manifest.files.end(),
                                [&](const distribution_file& file) { return file.path == relative; }))
@@ -88,8 +87,7 @@ project_status verify_files(const distribution_finalize_request& request)
 
 project_status windows_directory_finalizer::validate(const distribution_finalize_request& request) const
 {
-    if (request.manifest.target.platform != "windows" ||
-        request.manifest.target.configuration != "Shipping" ||
+    if (request.manifest.target.platform != "windows" || request.manifest.target.configuration != "Shipping" ||
         request.manifest.entrypoint.kind != "executable" ||
         (request.manifest.target.renderer != "vulkan" && request.manifest.target.renderer != "direct3d12" &&
          request.manifest.target.renderer != "none"))

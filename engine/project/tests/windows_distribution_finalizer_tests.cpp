@@ -18,7 +18,7 @@ namespace project = arc::project;
 struct directory_fixture
 {
     fs::path root = fs::temp_directory_path() /
-        ("arc-d2-windows-finalizer-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
+                    ("arc-d2-windows-finalizer-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
     fs::path staging = root / "stage";
     fs::path output = root / "release";
     project::package_workflow_plan workflow;
