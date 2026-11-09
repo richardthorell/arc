@@ -16,8 +16,7 @@ namespace
 {
 
 template <class Component>
-bool decode_component(ecs::world& destination, ecs::entity entity,
-                      const persistence::archive_component_record& record,
+bool decode_component(ecs::world& destination, ecs::entity entity, const persistence::archive_component_record& record,
                       const persistence::component_persistence_registry& registry, std::string& error)
 {
     Component value{};
@@ -48,9 +47,9 @@ bool populate_component(ecs::world& destination, ecs::entity entity,
             return false;
         }
     }
-#define ARC_DECODE_SCENE_COMPONENT(Type) \
-    if (record.type == ecs::component_metadata<Type>().id) \
-        return decode_component<Type>(destination, entity, record, registry, error)
+#define ARC_DECODE_SCENE_COMPONENT(Type)                                                                               \
+    if (record.type == ecs::component_metadata<Type>().id)                                                             \
+    return decode_component<Type>(destination, entity, record, registry, error)
 
     ARC_DECODE_SCENE_COMPONENT(name_component);
     ARC_DECODE_SCENE_COMPONENT(transform_component);
@@ -154,7 +153,8 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
         ordered.reserve(archive.document.entities.size());
         for (const auto& record : archive.document.entities)
             if (record.parent.valid()) ordered.push_back(&record);
-        std::sort(ordered.begin(), ordered.end(), [](const auto* a, const auto* b)
+        std::sort(ordered.begin(), ordered.end(),
+                  [](const auto* a, const auto* b)
                   {
                       if (a->parent != b->parent) return a->parent < b->parent;
                       if (a->sibling_order != b->sibling_order) return a->sibling_order < b->sibling_order;
@@ -163,8 +163,7 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
         for (const auto* record : ordered)
         {
             const auto parent = handles.find(record->parent);
-            if (parent == handles.end() ||
-                !ecs::reparent(destination, handles.at(record->id), parent->second))
+            if (parent == handles.end() || !ecs::reparent(destination, handles.at(record->id), parent->second))
                 return rollback("Cooked scene has missing or cyclic parent for " + ecs::to_string(record->id));
         }
     }
