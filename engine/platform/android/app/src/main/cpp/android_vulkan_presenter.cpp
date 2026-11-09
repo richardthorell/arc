@@ -54,9 +54,8 @@ void android_vulkan_presenter::synchronize(const lifecycle_state& lifecycle, ANa
     backend_ = std::move(created).value();
     const auto& capabilities = backend_->capabilities();
     arc::diagnostics::info("Android", std::string("Vulkan adapter: ") + capabilities.adapter_name);
-    arc::diagnostics::info("Android", std::string("Vulkan API ") +
-                                      std::to_string(capabilities.api_major) + "." +
-                                      std::to_string(capabilities.api_minor));
+    arc::diagnostics::info("Android", std::string("Vulkan API ") + std::to_string(capabilities.api_major) + "." +
+                                          std::to_string(capabilities.api_minor));
     if (!capabilities.presentation || !capabilities.graphics_queue || !capabilities.compute_queue)
     {
         arc::diagnostics::error("Android", "Vulkan adapter lacks required graphics/compute/presentation queues");
