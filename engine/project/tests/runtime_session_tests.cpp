@@ -3,6 +3,10 @@
 
 #include <arc/assets/cook.h>
 #include <arc/framework/runtime.h>
+#include <arc/persistence/persistence.h>
+#include <arc/scene/components.h>
+#include <arc/scene/persistence.h>
+#include <arc/scene/runtime_scene.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -685,4 +689,192 @@ TEST_CASE("D1.6 server surfaces faulted simulation worlds and destroys the sessi
     CHECK(result.error().field == "worlds");
     CHECK(result.error().message.find("server simulation fault") != std::string::npos);
     CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+namespace
+{
+
+arc::io::file_buffer cooked_startup_scene()
+{
+    arc::persistence::component_persistence_registry registry;
+    REQUIRE(arc::scene::register_persistence_components(registry));
+
+    arc::persistence::archive_document scene;
+    scene.kind = arc::persistence::document_kind::scene;
+    scene.id = {0x123, 0x456};
+    scene.name = "D1.8 packaged integration scene";
+    arc::persistence::archive_entity_record entity;
+    entity.id = {0x789, 0xabc};
+    const arc::scene::name_component name{"Relocated Player"};
+    arc::persistence::archive_component_record component;
+    REQUIRE(registry.encode(arc::ecs::component_metadata<arc::scene::name_component>().id, &name, component));
+    entity.components.push_back(std::move(component));
+    scene.entities.push_back(std::move(entity));
+
+    auto cooked = arc::persistence::write_tagged_binary(scene, assets::canonical_cook_target(
+        assets::windows_vulkan_cook_target()));
+    REQUIRE(cooked);
+    return std::move(cooked).value();
+}
+
+void relocate_distribution(packaged_world_fixture& fixture)
+{
+    // A staged executable must never depend on the cooker cache or source checkout.
+    std::error_code error;
+    fs::remove_all(fixture.root / "cache", error);
+    REQUIRE_FALSE(error);
+    const fs::path relocated = fs::temp_directory_path() /
+        ("arc-relocated-d1-8-" + assets::to_string(assets::generate_asset_guid()));
+    REQUIRE_FALSE(fs::exists(relocated));
+    fs::rename(fixture.root, relocated, error);
+    REQUIRE_FALSE(error);
+    fixture.root = relocated;
+    CHECK_FALSE(fs::exists(fixture.root / "cache"));
+    CHECK_FALSE(fs::exists(fixture.root / "Source"));
+    CHECK_FALSE(fs::exists(fixture.root / "Intermediate"));
+}
+
+void use_executable_discovery(project::packaged_runtime_request& request, const packaged_world_fixture& fixture,
+                              bool server)
+{
+    request.boot.host.distribution.kind = project::runtime_distribution_location_kind::executable;
+    request.boot.host.distribution.native_path = fixture.root / "bin" / (server ? "Server.exe" : "Game.exe");
+    request.boot.host.writable_storage_root = fixture.root / "Saved";
+    request.boot.expected.project_guid = "11111111-1111-1111-1111-111111111111";
+}
+
+} // namespace
+
+TEST_CASE("D1.8 relocated packaged Windows client loads a real cooked scene through the shared session")
+{
+    packaged_world_fixture fixture;
+    fixture.scene_data = cooked_startup_scene();
+    fixture.stage();
+    relocate_distribution(fixture);
+
+    std::vector<std::string> events;
+    auto request = request_for(fixture);
+    use_executable_discovery(request, fixture, false);
+    request.registrations.materialize_scene =
+        [&](framework::runtime_world& world, const project::packaged_scene_payload& scene)
+    {
+        events.push_back("scene:materialize");
+        const auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes);
+        if (!error.empty())
+            return project::project_status::failure(
+                {.code = project::project_error_code::invalid_scene, .field = "startupScenes", .message = error});
+        return project::project_status::success();
+    };
+    request.registrations.modules = [&](framework::module_registry& modules)
+    { modules.emplace<lifecycle_module>(events); };
+    request.registrations.services = [&](framework::runtime_service_registry& services)
+    { services.emplace<lifecycle_service>(events); };
+
+    auto started = project::start_packaged_runtime(std::move(request));
+    REQUIRE(started);
+    auto session = std::move(started).value();
+    CHECK(session->boot().native_distribution_root == fs::canonical(fixture.root));
+    REQUIRE(session->runtime());
+    REQUIRE(session->runtime()->worlds().size() == 1);
+    auto* world = session->runtime()->worlds().find(session->runtime()->worlds().ordered_worlds().front());
+    REQUIRE(world);
+    CHECK(world->role() == framework::runtime_world_role::client);
+    CHECK(world->entities().live_count() == 1);
+    const auto entities = world->entities().entities_snapshot();
+    REQUIRE(entities.size() == 1);
+    CHECK(world->entities().get<arc::scene::name_component>(entities.front()).value == "Relocated Player");
+    CHECK(events.front() == "scene:materialize");
+
+    REQUIRE(session->surface_ready(800, 600));
+    REQUIRE(session->advance(1.0 / 60.0));
+    REQUIRE(session->pause());
+    CHECK(session->state() == project::packaged_runtime_state::suspended);
+    REQUIRE(session->resume());
+    session->request_stop();
+    REQUIRE(session->shutdown());
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+    CHECK(events.back() == "service:shutdown" || events.back() == "module:shutdown");
+}
+
+TEST_CASE("D1.8 relocated dedicated server uses the same manifest and catalog startup without a render surface")
+{
+    packaged_world_fixture fixture;
+    fixture.stage(true);
+    relocate_distribution(fixture);
+
+    auto request = request_for(fixture, true);
+    use_executable_discovery(request, fixture, true);
+    std::uint64_t ticks{};
+    request.registrations.initialize_headless_world = [&](framework::runtime_world& world)
+    {
+        CHECK(world.role() == framework::runtime_world_role::server);
+        CHECK_FALSE(world.entities().live_count());
+        const bool added = world.systems().add({
+            .name = "d1.8.packaged.server",
+            .phase = arc::ecs::system_phase::movement,
+            .execute = [&](arc::ecs::system_context&) { ++ticks; }});
+        REQUIRE(added);
+        return project::project_status::success();
+    };
+    const auto result = project::run_packaged_headless_server(
+        {.runtime = std::move(request), .maximum_ticks = 4, .sleep_to_clock = false});
+    REQUIRE(result);
+    CHECK(result.value() == 4);
+    CHECK(ticks == 4);
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.8 relocated client fails closed when required cooked package is missing")
+{
+    packaged_world_fixture fixture;
+    fixture.scene_data = cooked_startup_scene();
+    fixture.stage();
+    relocate_distribution(fixture);
+    REQUIRE_FALSE(fixture.chunk_path.empty());
+    // chunk_path was recorded before relocation; remove the same relative file
+    // from the new distribution, not from the stale original source location.
+    const auto chunk = fixture.root / "Content" / fixture.chunk_path.filename();
+    REQUIRE(fs::exists(chunk));
+    REQUIRE(fs::remove(chunk));
+
+    auto request = request_for(fixture);
+    use_executable_discovery(request, fixture, false);
+    auto started = project::start_packaged_runtime(std::move(request));
+    REQUIRE_FALSE(started);
+    CHECK_FALSE(started.error().message.empty());
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("D1.8 relocated client can restart and release mounts repeatedly with no source or SDK")
+{
+    packaged_world_fixture fixture;
+    fixture.scene_data = cooked_startup_scene();
+    fixture.stage();
+    relocate_distribution(fixture);
+
+    for (int iteration = 0; iteration < 3; ++iteration)
+    {
+        auto request = request_for(fixture);
+        use_executable_discovery(request, fixture, false);
+        request.registrations.materialize_scene =
+            [](framework::runtime_world& world, const project::packaged_scene_payload& scene)
+        {
+            auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes);
+            if (!error.empty())
+                return project::project_status::failure({
+                    .code = project::project_error_code::invalid_scene,
+                    .field = "startupScenes",
+                    .message = std::move(error)});
+            return project::project_status::success();
+        };
+        auto started = project::start_packaged_runtime(std::move(request));
+        REQUIRE(started);
+        auto session = std::move(started).value();
+        CHECK(fixture.files.telemetry().mounted_providers == 2);
+        REQUIRE(session->advance(1.0 / 60.0));
+        session->request_stop();
+        REQUIRE(session->shutdown());
+        REQUIRE(session->shutdown());
+        CHECK(fixture.files.telemetry().mounted_providers == 0);
+    }
 }
