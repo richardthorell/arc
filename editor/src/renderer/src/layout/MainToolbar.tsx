@@ -36,6 +36,8 @@ import {
   type UiSplitButtonOption,
 } from '../ui';
 import { PlatformBrandIcon } from './PlatformBrandIcon';
+import type { EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
+import { platformUnavailableReason } from './platformAvailability';
 
 import './MainToolbar.css';
 
@@ -369,6 +371,34 @@ export function MainToolbar({
   const hostPlatform = detectHostTargetPlatform();
   const [projectTargetPlatforms, setProjectTargetPlatforms] = useState<EditorTargetPlatform[]>(() => [hostPlatform]);
   const [localTargetDevice, setLocalTargetDevice] = useState('local');
+  const [localSettings, setLocalSettings] = useState<EditorSettingsSnapshot | null>(null);
+  useEffect(() => {
+    let revision = 0;
+    let disposed = false;
+    const refresh = () => {
+      const request = ++revision;
+      void window.arc?.settings
+        ?.snapshot()
+        .then((snapshot) => {
+          if (!disposed && request === revision) setLocalSettings(snapshot);
+        })
+        .catch(() => {
+          if (!disposed && request === revision) setLocalSettings(null);
+        });
+    };
+    const changed = (event: Event) => {
+      ++revision;
+      setLocalSettings((event as CustomEvent<EditorSettingsSnapshot>).detail ?? null);
+    };
+    refresh();
+    window.addEventListener('arc-editor-settings-changed', changed);
+    window.addEventListener('focus', refresh);
+    return () => {
+      disposed = true;
+      window.removeEventListener('arc-editor-settings-changed', changed);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
   const playLabel = runtimeState === 'paused' ? 'Resume' : 'Play';
   const runtimeLabel =
     runtimeState === 'stopped'
@@ -430,7 +460,18 @@ export function MainToolbar({
   const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
     ...projectTargetPlatforms.flatMap((platform) => {
       const option = platformOptions.find((candidate) => candidate.value === platform);
-      return option ? [{ ...option, value: option.value as PlatformMenuValue }] : [];
+      const reason = platformUnavailableReason(platform, localSettings);
+      return option
+        ? [
+            {
+              ...option,
+              value: option.value as PlatformMenuValue,
+              disabled: !!reason,
+              title: reason || undefined,
+              label: reason ? `${option.label} — Setup required` : option.label,
+            },
+          ]
+        : [];
     }),
     {
       value: '__platform-settings__',

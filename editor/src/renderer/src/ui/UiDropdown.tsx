@@ -21,6 +21,7 @@ export type UiDropdownOption<Value extends string = string> = {
   label: string;
   icon?: ReactNode;
   disabled?: boolean;
+  title?: string;
   separatorBefore?: boolean;
   onSelect?: () => void;
 };
@@ -163,6 +164,7 @@ export function UiDropdown<Value extends string = string>({
                     aria-selected={option.onSelect ? undefined : isSelected}
                     className={`ui-dropdown-option${option.onSelect ? ' is-action' : ''}`}
                     disabled={option.disabled}
+                    title={option.title}
                     role="option"
                     type="button"
                     variant="ghost"

@@ -139,13 +139,35 @@ describe('ProjectService', () => {
     expect(first.project?.descriptor.name).toBe('ARC Editor Development');
     expect(first.project?.descriptor.defaultScene).toBeNull();
     expect(first.project?.descriptor.startupScenes).toEqual([]);
+    expect(first.project?.descriptor.targetPlatforms).toContainEqual({ id: 'android-arm64-vulkan', enabled: true });
+    expect(first.project?.descriptor.cookProfiles).toContainEqual(
+      expect.objectContaining({ id: 'android-arm64-vulkan', platform: 'android', architecture: 'arm64' }),
+    );
     expect(fs.existsSync(path.join(destination, 'Content/Scenes/Startup.arcscene'))).toBe(false);
 
     await service.close();
+    const legacy = JSON.parse(fs.readFileSync(first.project!.descriptorPath, 'utf8'));
+    legacy.targetPlatforms = legacy.targetPlatforms.filter(
+      (target: { id: string }) => target.id !== 'android-arm64-vulkan',
+    );
+    legacy.cookProfiles = legacy.cookProfiles.filter(
+      (profile: { id: string }) => profile.id !== 'android-arm64-vulkan',
+    );
+    fs.writeFileSync(first.project!.descriptorPath, JSON.stringify(legacy));
     const second = await service.openOrCreateQuickStartProject(destination);
     expect(second.succeeded, second.error).toBe(true);
     expect(second.project?.descriptor.guid).toBe(first.project?.descriptor.guid);
+    expect(
+      second.project?.descriptor.targetPlatforms.filter((target) => target.id === 'android-arm64-vulkan'),
+    ).toHaveLength(1);
     expect(commands.filter((type) => type === 'project.open')).toHaveLength(2);
+    const disabled = JSON.parse(fs.readFileSync(second.project!.descriptorPath, 'utf8'));
+    disabled.targetPlatforms.find((target: { id: string }) => target.id === 'android-arm64-vulkan').enabled = false;
+    fs.writeFileSync(second.project!.descriptorPath, JSON.stringify(disabled));
+    await service.close();
+    const third = await service.openOrCreateQuickStartProject(destination);
+    expect(third.succeeded, third.error).toBe(true);
+    expect(third.project?.descriptor.targetPlatforms).toContainEqual({ id: 'android-arm64-vulkan', enabled: false });
   });
 
   it('requires explicit read-only mode for a newer project', async () => {

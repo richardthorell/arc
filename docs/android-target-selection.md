@@ -4,6 +4,15 @@ The Level Editor toolbar lists connected Android devices and installed Android
 Virtual Devices (AVDs) when Android is selected. Configure the SDK in Preferences;
 install platform-tools, the Emulator, and an AVD using Android Studio.
 
+Blank 3D / Quick Start includes an Android ARM64 Vulkan target and ASTC cook
+profile. Existing managed Quick Start projects gain missing Android entries on
+open; explicitly disabled targets are preserved. This is project configuration,
+not APK build support. The platform menu disables entries until their local
+toolchain validations in Settings pass (Android requires Java, SDK and NDK).
+Auto-detected valid installations count as configured. Hover a disabled entry
+for the missing setup details; availability refreshes after settings changes and
+when the editor regains focus. Local Play remains independent of this selection.
+
 Select a stopped AVD, then click **Start Emulator**. Selecting it alone does not
 start anything. The emulator opens in its own window; helper consoles stay hidden
 on Windows. ARC waits up to three minutes for the matching ADB serial to be online
