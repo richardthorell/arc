@@ -64,8 +64,15 @@ project_status verify_files(const distribution_finalize_request& request)
     for (const auto& entry : fs::recursive_directory_iterator(root, ec))
     {
         if (ec) return fail(project_error_code::io_failed, "stagingRoot", ec.message());
-        if (entry.is_directory(ec) && !ec) continue;
-        if (ec || !entry.is_regular_file(ec) || ec)
+        // Never follow links (including junctions) in a publishable stage.
+        // Otherwise an apparently harmless directory could conceal a
+        // dependency on files outside the distribution.
+        const auto status = entry.symlink_status(ec);
+        if (ec || fs::is_symlink(status))
+            return fail(project_error_code::unsafe_path, "stagingRoot",
+                        "Staged distribution cannot contain symbolic links or junctions");
+        if (fs::is_directory(status)) continue;
+        if (!fs::is_regular_file(status))
             return fail(project_error_code::unsafe_path, "stagingRoot",
                         "Staged directory contains a non-regular file");
         const auto relative = fs::relative(entry.path(), root, ec).generic_string();
