@@ -711,8 +711,8 @@ arc::io::file_buffer cooked_startup_scene()
     entity.components.push_back(std::move(component));
     scene.entities.push_back(std::move(entity));
 
-    auto cooked = arc::persistence::write_tagged_binary(scene, assets::canonical_cook_target(
-        assets::windows_vulkan_cook_target()));
+    auto cooked = arc::persistence::write_tagged_binary(
+        scene, assets::canonical_cook_target(assets::windows_vulkan_cook_target()));
     REQUIRE(cooked);
     return std::move(cooked).value();
 }
@@ -723,8 +723,8 @@ void relocate_distribution(packaged_world_fixture& fixture)
     std::error_code error;
     fs::remove_all(fixture.root / "cache", error);
     REQUIRE_FALSE(error);
-    const fs::path relocated = fs::temp_directory_path() /
-        ("arc-relocated-d1-8-" + assets::to_string(assets::generate_asset_guid()));
+    const fs::path relocated =
+        fs::temp_directory_path() / ("arc-relocated-d1-8-" + assets::to_string(assets::generate_asset_guid()));
     REQUIRE_FALSE(fs::exists(relocated));
     fs::rename(fixture.root, relocated, error);
     REQUIRE_FALSE(error);
@@ -809,10 +809,9 @@ TEST_CASE("D1.8 relocated dedicated server uses the same manifest and catalog st
     {
         CHECK(world.role() == framework::runtime_world_role::server);
         CHECK_FALSE(world.entities().live_count());
-        const bool added = world.systems().add({
-            .name = "d1.8.packaged.server",
-            .phase = arc::ecs::system_phase::movement,
-            .execute = [&](arc::ecs::system_context&) { ++ticks; }});
+        const bool added = world.systems().add({.name = "d1.8.packaged.server",
+                                                .phase = arc::ecs::system_phase::movement,
+                                                .execute = [&](arc::ecs::system_context&) { ++ticks; }});
         REQUIRE(added);
         return project::project_status::success();
     };
@@ -861,10 +860,9 @@ TEST_CASE("D1.8 relocated client can restart and release mounts repeatedly with 
         {
             auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes);
             if (!error.empty())
-                return project::project_status::failure({
-                    .code = project::project_error_code::invalid_scene,
-                    .field = "startupScenes",
-                    .message = std::move(error)});
+                return project::project_status::failure({.code = project::project_error_code::invalid_scene,
+                                                         .field = "startupScenes",
+                                                         .message = std::move(error)});
             return project::project_status::success();
         };
         auto started = project::start_packaged_runtime(std::move(request));
