@@ -53,6 +53,7 @@ import { useEditorDocuments } from '../editors/editorDocuments';
 import type { EditorDocument } from '../editors/editorTypes';
 import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
+import { useAndroidTargets } from './useAndroidTargets';
 import { flattenScene } from '../services/editorHostTypes';
 import { hostAssetReference } from '../services/assetReferences';
 import type { AssetItem, ConsoleEvent, ProjectSnapshot, SceneEntity } from '../services/editorHostTypes';
@@ -1531,6 +1532,11 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return 'windows';
   });
 
+  const androidTargets = useAndroidTargets(
+    targetPlatform === 'android' && activeDocument?.kind === 'level' && !settingsOpen,
+    project?.root ?? '',
+  );
+
   const renderTerrainViewportOverlay = () => {
     if (runtimeWorldActive || activeTool !== 'terrain' || !selectedSnapshot?.terrain || !project) return undefined;
     const selectedKey = hostEntityKey(selectedSnapshot.entity);
@@ -1587,6 +1593,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       ),
       renderToolbar: () => (
         <LevelEditorToolbar
+          androidTargets={androidTargets}
           activeTool={activeTool}
           coordinateSpace={coordinateSpace}
           snapping={snapping}

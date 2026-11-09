@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Box,
   Check,
@@ -333,6 +333,7 @@ export type MainToolbarProps = {
   targetDevices?: ReadonlyArray<EditorTargetDevice>;
   targetDevice?: string;
   onTargetDeviceChange?: (deviceId: string) => void;
+  targetDeviceActions?: ReactNode;
   onBuildAction?: (action: ToolbarBuildAction) => void;
 };
 
@@ -361,6 +362,7 @@ export function MainToolbar({
   targetDevices,
   targetDevice,
   onTargetDeviceChange,
+  targetDeviceActions,
   onBuildAction,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
@@ -592,6 +594,7 @@ export function MainToolbar({
           options={deviceOptions}
           value={effectiveTargetDevice}
         />
+        {targetDeviceActions}
         <UiSplitButton
           ariaLabel="Build"
           className="toolbar-build-split"

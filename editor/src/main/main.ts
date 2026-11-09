@@ -15,6 +15,8 @@ import { ProjectService } from './projectService';
 import { RecoveryService } from './recoveryService';
 import { ExtensionService } from './extensionService';
 import { SettingsService } from './settingsService';
+import { AndroidTargetService } from './androidTargetService';
+import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import type { ArcBuildRequest } from '../common/buildTypes';
@@ -45,6 +47,7 @@ let disposeBuiltInAgentIpc: (() => void) | null = null;
 let aiGateway: AiGatewayServer | null = null;
 let projectService: ProjectService | null = null;
 let settingsService: SettingsService | null = null;
+let androidTargetService: AndroidTargetService | null = null;
 let sourceControlService: SourceControlService | null = null;
 let recoveryService: RecoveryService | null = null;
 let extensionService: ExtensionService | null = null;
@@ -1135,6 +1138,7 @@ void app.whenReady().then(async () => {
     path.join(app.getPath('userData'), 'editor-settings.v1.json'),
     () => projectService?.active() ?? null,
   );
+  androidTargetService = new AndroidTargetService(() => settingsService?.snapshot() ?? null);
   sourceControlService = new SourceControlService(
     () => projectService?.active()?.projectRoot ?? null,
     () => settingsService?.snapshot().values['sourceControl.provider'] !== 'none',
@@ -1411,6 +1415,17 @@ void app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('settings:snapshot', () => settingsService?.snapshot() ?? null);
+  const androidTargets = () => {
+    if (!androidTargetService) throw new Error('Android target service is unavailable');
+    return androidTargetService;
+  };
+  ipcMain.handle('android:list-targets', () => androidTargets().listTargets());
+  ipcMain.handle('android:start-emulator', (_event, target: AndroidTargetReference) =>
+    androidTargets().startEmulator(target),
+  );
+  ipcMain.handle('android:resolve-target', (_event, target: AndroidTargetReference) =>
+    androidTargets().resolveTarget(target),
+  );
   ipcMain.handle(
     'settings:update',
     (_event, scope: 'user' | 'project', changes: Record<string, unknown>, expectedRevision: number) => {
@@ -1786,6 +1801,8 @@ app.on('before-quit', (event) => {
       agentHarness = null;
       projectService = null;
       settingsService = null;
+      androidTargetService?.dispose();
+      androidTargetService = null;
       sourceControlService = null;
       recoveryService?.stop(true);
       recoveryService = null;

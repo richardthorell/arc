@@ -23,6 +23,30 @@ export type AndroidDeviceSnapshot = {
 
 export type ArcAndroidBridge = {
   listDevices(): Promise<AndroidDeviceSnapshot>;
+  listTargets(): Promise<AndroidTargetSnapshot>;
+  startEmulator(target: AndroidTargetReference): Promise<void>;
+  resolveTarget(target: AndroidTargetReference): Promise<{ serial: string; sdkRoot: string }>;
+};
+
+export type AndroidTargetReference = { sdkRoot: string; id: string };
+export type AndroidTarget = {
+  id: string;
+  kind: 'device' | 'emulator';
+  name: string;
+  serial?: string;
+  avdName?: string;
+  apiLevel?: number;
+  state: AndroidDeviceConnectionState | 'stopped' | 'starting' | 'failed';
+  ready: boolean;
+  canStart: boolean;
+  diagnostic?: string;
+};
+
+export type AndroidTargetSnapshot = AndroidDeviceSnapshot & {
+  sdkRoot: string;
+  targets: AndroidTarget[];
+  emulatorAvailable: boolean;
+  diagnostics: string[];
 };
 
 declare global {

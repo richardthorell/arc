@@ -13,13 +13,14 @@ export type AdbCommandExecutor = (
   timeoutMs: number,
 ) => Promise<AdbCommandResult>;
 
-const executeAdbCommand: AdbCommandExecutor = (executable, arguments_, timeoutMs) =>
+export const executeAdbCommand: AdbCommandExecutor = (executable, arguments_, timeoutMs) =>
   new Promise((resolve, reject) => {
     execFile(
       executable,
       arguments_,
       {
         encoding: 'utf8',
+        shell: false,
         windowsHide: true,
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
@@ -107,21 +108,27 @@ export class AdbClient {
   async listDevices(): Promise<AndroidDevice[]> {
     const { stdout } = await this.execute(['devices', '-l']);
     const devices = parseAdbDevices(stdout);
-    return Promise.all(
-      devices.map(async (device): Promise<AndroidDevice> => {
-        if (device.state !== 'online') return device;
-        const [apiLevel, model] = await Promise.all([
-          this.readDeviceProperty(device.serial, 'ro.build.version.sdk'),
-          device.model ? Promise.resolve(device.model) : this.readDeviceProperty(device.serial, 'ro.product.model'),
-        ]);
-        const parsedApi = Number.parseInt(apiLevel, 10);
-        return {
-          ...device,
-          model: readableAdbValue(model) || device.serial,
-          ...(Number.isFinite(parsedApi) ? { apiLevel: parsedApi } : {}),
-        };
-      }),
-    );
+    const result: AndroidDevice[] = [];
+    for (let offset = 0; offset < devices.length; offset += 4) {
+      result.push(
+        ...(await Promise.all(
+          devices.slice(offset, offset + 4).map(async (device): Promise<AndroidDevice> => {
+            if (device.state !== 'online') return device;
+            const [apiLevel, model] = await Promise.all([
+              this.readDeviceProperty(device.serial, 'ro.build.version.sdk'),
+              device.model ? Promise.resolve(device.model) : this.readDeviceProperty(device.serial, 'ro.product.model'),
+            ]);
+            const parsedApi = Number.parseInt(apiLevel, 10);
+            return {
+              ...device,
+              model: readableAdbValue(model) || device.serial,
+              ...(Number.isFinite(parsedApi) ? { apiLevel: parsedApi } : {}),
+            };
+          }),
+        )),
+      );
+    }
+    return result;
   }
 
   execute(arguments_: string[], timeoutMs = 5000): Promise<AdbCommandResult> {
