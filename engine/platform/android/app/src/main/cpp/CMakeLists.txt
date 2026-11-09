@@ -36,7 +36,7 @@ include("${ARC_REPO_ROOT}/cmake/ArcBuildPolicy.cmake")
 include("${ARC_REPO_ROOT}/engine/cmake/arc_module.cmake")
 
 add_subdirectory("${ARC_REPO_ROOT}/third_party" "${CMAKE_CURRENT_BINARY_DIR}/arc-third-party")
-foreach(module IN ITEMS core simd math geometric diagnostics memory jobs io input ecs framework assets persistence project water render)
+foreach(module IN ITEMS core simd math geometric diagnostics memory jobs io input ecs framework assets persistence project water render scene)
     add_subdirectory("${ARC_REPO_ROOT}/engine/${module}" "${CMAKE_CURRENT_BINARY_DIR}/arc-${module}")
 endforeach()
 add_subdirectory("${ARC_REPO_ROOT}/engine/render-vulkan" "${CMAKE_CURRENT_BINARY_DIR}/arc-render-vulkan")
@@ -49,7 +49,7 @@ add_library(arc_android_host SHARED
 target_compile_features(arc_android_host PRIVATE cxx_std_20)
 target_compile_definitions(arc_android_host PRIVATE VK_USE_PLATFORM_ANDROID_KHR=1)
 target_link_libraries(arc_android_host PRIVATE
-    arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics arc-render-vulkan android log)
+    arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics arc-render-vulkan arc-scene android log)
 target_compile_definitions(arc_android_host PRIVATE
     ARC_ANDROID_ENGINE_VERSION="0.1.0"
     ARC_ANDROID_SDK_VERSION="0.1.0"
