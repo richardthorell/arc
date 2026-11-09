@@ -187,3 +187,42 @@ While presenting, the native event loop polls without blocking and calls ARC's
 ARC's existing Vulkan swapchain code recreates the swapchain on demand.
 There is no project scene submitted in this milestone: on-device WSI validation
 and representative scene rendering still need V3 and #403 packaging tests.
+
+## Vulkan V3.1 — Android GPU presentation smoke workload
+
+On each valid native surface generation the Android Vulkan presenter now
+compiles ARC's existing `make_clear_present_graph("viewport")` and submits
+an immutable `render_frame_packet` to `arc-render-vulkan`. Presentation then
+uses the existing backend's Vulkan swapchain path. Surface dimension changes
+recompile the graph with the new physical output extent; `APP_CMD_TERM_WINDOW`
+still destroys all Vulkan resources before the borrowed window is invalidated.
+The Android Logcat diagnostics report the selected adapter and Vulkan API
+version, and fail the generation if graphics/compute/presentation support
+is missing or if graph compilation/submission fails. This is a **renderer
+presentation smoke workload**, not a loaded ARC project game scene.
+
+### Manual device acceptance
+
+Use a Vulkan-capable arm64 Android device. Build the Android Gradle fixture
+from `engine/platform/android`, install and launch it:
+
+```sh
+gradle :app:assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n org.arcengine.host/android.app.NativeActivity
+adb logcat -s ARC:I '*:S'
+```
+
+Verify `Vulkan adapter:`, `ARC clear/present smoke graph submitted` and
+successful frame presentation with no Vulkan validation errors. Rotate the
+device repeatedly, switch apps and return, lock/unlock the screen, and finally
+close the Activity. Check that each new native-window generation initializes
+a fresh renderer, old surfaces are destroyed before window release, and no
+device-loss loop or stale-window access occurs. Repeat on both Adreno and
+Mali hardware when available and record GPU model, Vulkan API, Android/NDK
+versions and driver errors.
+
+**Remaining for full #402 acceptance:** submit an actual project scene
+(mesh, camera, lights), demonstrate content loading and scene activation
+from the cooked catalog, and collect measured Adreno/Mali validation.
+No device test was run as part of this change.
