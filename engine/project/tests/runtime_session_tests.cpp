@@ -793,7 +793,7 @@ TEST_CASE("D1.8 relocated packaged Windows client loads a real cooked scene thro
     session->request_stop();
     REQUIRE(session->shutdown());
     CHECK(fixture.files.telemetry().mounted_providers == 0);
-    CHECK(events.back() == "service:shutdown" || events.back() == "module:shutdown");
+    CHECK((events.back() == "service:shutdown" || events.back() == "module:shutdown"));
 }
 
 TEST_CASE("D1.8 relocated dedicated server uses the same manifest and catalog startup without a render surface")
