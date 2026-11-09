@@ -39,6 +39,7 @@ using distribution_assembly_result = core::result<distribution_manifest, project
  * into D0, dispatch to the selected finalizer, then remove the private stage.
  * Neither a failed attempt nor an exception may publish a partial distribution.
  */
-[[nodiscard]] distribution_assembly_result assemble_distribution(const distribution_assembly_request& request, distribution_finalizer& finalizer);
+[[nodiscard]] distribution_assembly_result assemble_distribution(const distribution_assembly_request& request,
+                                                                 distribution_finalizer& finalizer);
 
 } // namespace arc::project
