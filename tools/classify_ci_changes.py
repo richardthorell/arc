@@ -25,6 +25,7 @@ class CiSelection:
     clang: bool = False
     gcc: bool = False
     msvc: bool = False
+    android: bool = False
     coverage: bool = False
     quality_native: bool = False
     quality_editor: bool = False
@@ -36,6 +37,7 @@ class CiSelection:
         self.clang = True
         self.gcc = True
         self.msvc = True
+        self.android = True
         self.coverage = True
         self.quality_native = True
         self.quality_editor = True
@@ -134,6 +136,19 @@ def classify(paths: list[str]) -> CiSelection:
         if editor_web:
             result.quality_editor = True
             recognised = True
+
+        # Android reuses these modules in its standalone NDK build.
+        # Editor-only changes do not need an Android APK build.
+        if path.startswith((
+            "engine/platform/android/",
+            "engine/render/",
+            "engine/render-vulkan/",
+            "engine/scene/",
+            "engine/assets/",
+            "engine/project/",
+            "engine/ecs/",
+        )):
+            result.android = True
 
         if native:
             result.clang = True

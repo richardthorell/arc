@@ -249,3 +249,34 @@ Mesh/material GPU resource residency from cooked artifacts is not activated
 by the materializer, so nontrivial models may not render correctly until
 that resource hydration/streaming integration is completed. Android NDK
 compilation and actual Adreno/Mali scene presentation remain unverified.
+
+## V3.3 — Android compile gate and cooked GPU resource binding prerequisite
+
+Android builds are now selected by the PR classifier for Android platform,
+renderer, scene, asset, ECS and runtime-project changes. The required
+`Android arm64 NDK / APK` job invokes the real Android Gradle app
+(`gradle :app:assembleDebug`) with JDK 17, Gradle 8.9, API 35,
+CMake 3.22.1, and NDK 27.2.12479018. Successful runs upload an arm64 debug
+APK. This verifies NDK/CMake compilation and APK linking, **not** that a device
+can present a Vulkan frame or decode cooked assets.
+
+### GPU residency and identity boundary
+
+A cooked scene contains authored component state, but runtime
+`mesh_renderer_component::mesh` and `material` are renderer-owned
+generational handles. They **are not persistent asset identities** and cannot
+be assumed valid when the Vulkan renderer is created or recreated on rotation.
+Cooked content is addressed by asset GUID, schema and representation name.
+
+The next resource-hydration PR must:
+
+1. Preserve or resolve each authored mesh/material asset GUID from cooked
+   scene metadata, not reinterpret a serialized GPU handle as an asset GUID.
+2. Select a target-compatible cooked representation using the A4 catalog.
+3. Decode/upload meshes, materials and texture dependencies through ARC's
+   existing resource APIs; record the resulting runtime handles separately.
+4. Rebind render components when the renderer is recreated, retire stale
+   handles, and fail visibly when an asset cannot be resolved.
+5. Validate both the Android APK build and a real-device scene with camera,
+   light and visible geometry. Device validation and Adreno/Mali behavior
+   remain separate acceptance requirements for #402.
