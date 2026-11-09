@@ -64,7 +64,8 @@ project_status verify_files(const distribution_finalize_request& request)
     for (const auto& entry : fs::recursive_directory_iterator(root, ec))
     {
         if (ec) return fail(project_error_code::io_failed, "stagingRoot", ec.message());
-        if (!entry.is_regular_file(ec) || ec)
+        if (entry.is_directory(ec) && !ec) continue;
+        if (ec || !entry.is_regular_file(ec) || ec)
             return fail(project_error_code::unsafe_path, "stagingRoot",
                         "Staged directory contains a non-regular file");
         const auto relative = fs::relative(entry.path(), root, ec).generic_string();
