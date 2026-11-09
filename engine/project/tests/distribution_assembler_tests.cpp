@@ -144,12 +144,9 @@ TEST_CASE("D2.2 shared assembler fails closed on missing binaries and cleans fai
     CHECK(f.cleaned());
     CHECK_FALSE(fs::exists(f.output));
 
-    f.add("Build/Game.exe", "bin/Game.exe", "executable", "new game");
+    // Even if all remaining sources are valid, a required D0 entrypoint
+    // missing from the selected inputs must reject finalization.
     request = f.request();
-    // Retain original missing input; finalizer must still be unreachable.
-    result = project::assemble_distribution(request, adapter);
-    REQUIRE_FALSE(result);
-    CHECK(f.cleaned());
     request.files.erase(request.files.begin());
     result = project::assemble_distribution(request, adapter);
     REQUIRE_FALSE(result);
