@@ -168,3 +168,22 @@ renderer to the Android host and handles swapchain/device recreation, then
 V3 adds a representative scene, mobile capability fallbacks and device tests.
 Run the portable lifecycle contract tests through the Android `tests/` CMake
 harness; the WSI callback itself requires an Android NDK build and real device.
+
+## Vulkan V2 — ARC renderer on the Android native window
+
+The Android host now links the existing `arc-render-vulkan` backend and
+creates it with `VK_KHR_surface` and `VK_KHR_android_surface` using the V1
+callback. This is the **shared ARC renderer**, not a separate Android renderer.
+The host-owned presenter uses a borrowed ANativeWindow and the existing
+window-generation counter. `APP_CMD_TERM_WINDOW` destroys the backend,
+swapchain and surface before the Android glue releases the native window;
+`APP_CMD_INIT_WINDOW` creates a fresh backend for the new generation. Pause,
+stop and focus loss suppress presentation without discarding the unrelated
+runtime catalog. Nonrecoverable device/surface errors are logged and presentation
+is disabled until a new window generation, avoiding busy retry loops.
+
+While presenting, the native event loop polls without blocking and calls ARC's
+`present_surface_frame` with the current native pixel extent. On resize,
+ARC's existing Vulkan swapchain code recreates the swapchain on demand.
+There is no project scene submitted in this milestone: on-device WSI validation
+and representative scene rendering still need V3 and #403 packaging tests.

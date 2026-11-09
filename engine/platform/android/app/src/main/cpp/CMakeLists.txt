@@ -27,7 +27,7 @@ endif()
 
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(ARC_BUILD_ENGINE_TESTS OFF CACHE BOOL "" FORCE)
-set(ARC_BUILD_RENDER_VULKAN OFF CACHE BOOL "" FORCE)
+set(ARC_BUILD_RENDER_VULKAN ON CACHE BOOL "" FORCE)
 set(ARC_BUILD_ASSET_COOKER OFF CACHE BOOL "" FORCE)
 set(ARC_BUILD_EDITOR OFF CACHE BOOL "" FORCE)
 set(ARC_FETCH_STB OFF CACHE BOOL "" FORCE)
@@ -36,19 +36,20 @@ include("${ARC_REPO_ROOT}/cmake/ArcBuildPolicy.cmake")
 include("${ARC_REPO_ROOT}/engine/cmake/arc_module.cmake")
 
 add_subdirectory("${ARC_REPO_ROOT}/third_party" "${CMAKE_CURRENT_BINARY_DIR}/arc-third-party")
-foreach(module IN ITEMS core simd math geometric diagnostics memory jobs io input ecs framework assets persistence project)
+foreach(module IN ITEMS core simd math geometric diagnostics memory jobs io input ecs framework assets persistence project water render)
     add_subdirectory("${ARC_REPO_ROOT}/engine/${module}" "${CMAKE_CURRENT_BINARY_DIR}/arc-${module}")
 endforeach()
+add_subdirectory("${ARC_REPO_ROOT}/engine/render-vulkan" "${CMAKE_CURRENT_BINARY_DIR}/arc-render-vulkan")
 
 add_library(arc_android_host SHARED
     android_host.cpp android_lifecycle.cpp android_log_sink.cpp
     android_package_assets.cpp android_package_assets_ndk.cpp
     android_apk_provider.cpp android_runtime_bridge.cpp
-    android_vulkan_surface.cpp)
+    android_vulkan_surface.cpp android_vulkan_presenter.cpp)
 target_compile_features(arc_android_host PRIVATE cxx_std_20)
 target_compile_definitions(arc_android_host PRIVATE VK_USE_PLATFORM_ANDROID_KHR=1)
 target_link_libraries(arc_android_host PRIVATE
-    arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics android log)
+    arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics arc-render-vulkan android log)
 target_compile_definitions(arc_android_host PRIVATE
     ARC_ANDROID_ENGINE_VERSION="0.1.0"
     ARC_ANDROID_SDK_VERSION="0.1.0"

@@ -3,6 +3,7 @@
 #include "android_package_assets.h"
 #include "android_runtime_bridge.h"
 #include "android_vulkan_window.h"
+#include "android_vulkan_presenter.h"
 
 #include <arc/diagnostics/log.h>
 #include <android/native_window.h>
@@ -19,7 +20,7 @@ struct android_host_context
 {
     lifecycle_state lifecycle;
     ANativeWindow* attached_window{}; // Borrowed from native_app_glue; never release here.
-    std::uint64_t last_presentable_generation{};
+    arc::platform::android::android_vulkan_presenter presenter;
 };
 
 std::uint32_t dimension(int value) noexcept
@@ -95,17 +96,14 @@ void on_app_command(android_app* app, std::int32_t command)
             arc::diagnostics::warn("Android", "Android reported low memory");
             break;
         case APP_CMD_DESTROY:
+            host.presenter.shutdown();
             host.lifecycle.apply(lifecycle_event::destroy);
             break;
         default:
             break;
     }
-    const auto binding = arc::platform::android::active_vulkan_window(host.lifecycle, host.attached_window);
-    if (binding.window && binding.generation != host.last_presentable_generation)
-    {
-        host.last_presentable_generation = binding.generation;
-        arc::diagnostics::info("Android", "Vulkan-capable native window generation available");
-    }
+    // Reconcile surface ownership while the borrowed window is still valid.
+    host.presenter.synchronize(host.lifecycle, host.attached_window);
 }
 } // namespace
 
@@ -138,17 +136,20 @@ extern "C" void android_main(android_app* app)
     while (!app->destroyRequested && !host.lifecycle.snapshot().destroy_requested)
     {
         android_poll_source* source = nullptr;
-        // NativeActivity callbacks are delivered on this thread; block when
-        // inactive. Rendering (#402) will later use a bounded active wait.
-        const auto result = ALooper_pollOnce(-1, nullptr, nullptr, reinterpret_cast<void**>(&source));
+        // Block when inactive; poll without delay while presenting so every
+        // Android lifecycle command is processed on the render thread.
+        const int timeout = host.presenter.active() && host.lifecycle.can_present() ? 0 : -1;
+        const auto result = ALooper_pollOnce(timeout, nullptr, nullptr, reinterpret_cast<void**>(&source));
         if (result == ALOOPER_POLL_ERROR)
         {
             arc::diagnostics::error("Android", "Native host event loop failed");
             break;
         }
         if (source) source->process(app, source);
+        if (!app->destroyRequested) host.presenter.present(host.lifecycle);
     }
 
+    host.presenter.shutdown();
     host.lifecycle.apply(lifecycle_event::destroy);
     app->onAppCmd = nullptr;
     app->userData = nullptr;
