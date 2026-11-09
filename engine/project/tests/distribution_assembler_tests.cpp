@@ -124,9 +124,9 @@ TEST_CASE("D2.2 shared assembler rejects path traversal and case-insensitive col
     CHECK(result.error().field == "files.path");
     CHECK(f.cleaned());
 
-    request = f.request();
-    request.files.back().destination = "BIN/game.exe";
-    result = project::assemble_distribution(request, adapter);
+    auto collision_request = f.request();
+    collision_request.files.back().destination = "BIN/game.exe";
+    result = project::assemble_distribution(collision_request, adapter);
     REQUIRE_FALSE(result);
     CHECK(result.error().field == "files.path");
     CHECK(f.cleaned());
@@ -146,9 +146,9 @@ TEST_CASE("D2.2 shared assembler fails closed on missing binaries and cleans fai
 
     // Even if all remaining sources are valid, a required D0 entrypoint
     // missing from the selected inputs must reject finalization.
-    request = f.request();
-    request.files.erase(request.files.begin());
-    result = project::assemble_distribution(request, adapter);
+    auto missing_entry_request = f.request();
+    missing_entry_request.files.erase(missing_entry_request.files.begin());
+    result = project::assemble_distribution(missing_entry_request, adapter);
     REQUIRE_FALSE(result);
     CHECK(result.error().field == "entrypoint.value");
     CHECK(f.cleaned());
