@@ -97,6 +97,20 @@ target_compile_definitions(arc-platform-windows
         NOMINMAX
 )
 
+# A distinct Windows entry archive keeps the existing create_application()
+# diagnostics/samples unchanged. Packaged clients link this entry explicitly.
+add_library(arc-platform-windows-packaged-entry STATIC src/windows_entry.cpp)
+arc_configure_first_party_target(arc-platform-windows-packaged-entry)
+target_compile_features(arc-platform-windows-packaged-entry PUBLIC cxx_std_20)
+target_compile_definitions(arc-platform-windows-packaged-entry PRIVATE
+    ARC_WINDOWS_PACKAGED_BOOTSTRAP=1 WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(arc-platform-windows-packaged-entry PUBLIC
+    arc-platform-windows arc-project)
+set_target_properties(arc-platform-windows-packaged-entry PROPERTIES EXPORT_NAME PlatformWindowsPackagedEntry)
+install(TARGETS arc-platform-windows-packaged-entry EXPORT ARCTargets
+    ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+    COMPONENT sdk)
+
 if(NOT TARGET arc::platform-windows)
     add_library(arc::platform-windows ALIAS arc-platform-windows)
 endif()

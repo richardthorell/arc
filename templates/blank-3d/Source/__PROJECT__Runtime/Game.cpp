@@ -1,22 +1,29 @@
-#include <arc/framework/framework.h>
+#include <arc/platform/windows/packaged_client.h>
 
-#include <memory>
+#ifndef ARC_GAME_BUILD_CONFIGURATION
+#error "CMake must define ARC_GAME_BUILD_CONFIGURATION for packaged client validation"
+#endif
 
-namespace
+namespace {{PROJECT_TOKEN}}
 {
-class game_application final : public arc::framework::application
-{
-public:
-    arc::framework::application_config configure() const override
-    {
-        arc::framework::application_config config{};
-        config.title = "{{PROJECT_NAME}}";
-        return config;
-    }
-};
+void register_runtime(arc::project::packaged_game_registrations& registrations);
 }
 
-arc::framework::application_ptr arc::framework::create_application()
+namespace arc::platform::windows
 {
-    return std::make_unique<game_application>();
+
+packaged_client_definition configure_packaged_client()
+{
+    packaged_client_definition client;
+    client.expected = {.engine_version = "{{ENGINE_VERSION}}",
+                       .sdk_version = "{{ENGINE_VERSION}}",
+                       .architecture = "x86_64",
+                       .renderer = "vulkan",
+                       .configuration = ARC_GAME_BUILD_CONFIGURATION,
+                       .project_guid = "{{PROJECT_GUID}}"};
+    client.config.title = "{{PROJECT_NAME}}";
+    {{PROJECT_TOKEN}}::register_runtime(client.registrations);
+    return client;
 }
+
+} // namespace arc::platform::windows
