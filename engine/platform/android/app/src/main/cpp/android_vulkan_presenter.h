@@ -5,7 +5,10 @@
 
 #include <arc/render/renderer.h>
 
-namespace arc::ecs { class world; }
+namespace arc::ecs
+{
+class world;
+}
 
 #include <cstdint>
 #include <memory>

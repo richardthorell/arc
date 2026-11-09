@@ -131,8 +131,7 @@ bool android_runtime_bridge::boot()
         auto path = arc::io::virtual_path::parse(representation.locator_hint);
         if (!path) continue;
         const auto address = arc::assets::parse_cooked_artifact_virtual_path(path.value());
-        if (!address || address->asset != guid || address->schema != arc::assets::artifact_schemas::scene)
-            continue;
+        if (!address || address->asset != guid || address->schema != arc::assets::artifact_schemas::scene) continue;
         auto resolved = catalog_->catalog().resolve(*address);
         if (!resolved)
         {

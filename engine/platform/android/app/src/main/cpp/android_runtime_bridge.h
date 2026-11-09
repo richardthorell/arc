@@ -24,7 +24,10 @@ public:
     android_runtime_bridge& operator=(const android_runtime_bridge&) = delete;
 
     [[nodiscard]] bool boot();
-    [[nodiscard]] arc::ecs::world* startup_scene() noexcept { return scene_.get(); }
+    [[nodiscard]] arc::ecs::world* startup_scene() noexcept
+    {
+        return scene_.get();
+    }
 
 private:
     // Order is intentional: mount and boot context are destroyed before the
