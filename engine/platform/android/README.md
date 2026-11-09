@@ -226,3 +226,26 @@ versions and driver errors.
 (mesh, camera, lights), demonstrate content loading and scene activation
 from the cooked catalog, and collect measured Adreno/Mali validation.
 No device test was run as part of this change.
+
+## Vulkan V3.2 — Startup scene materialization and scene extraction
+
+The process-owned Android runtime bridge selects the active provider's scene
+artifact from the D1/A4 cooked catalog and reads it through the VFS, then
+materializes the archive into a runtime ECS world using ARC's existing
+`materialize_cooked_scene` contract. It does not use APK file paths or a
+hardcoded scene fixture. Missing/corrupt cooked scene bytes fail with an
+ARC diagnostic instead of silently reporting successful scene activation.
+
+The surface-owned renderer now uses `arc::render::renderer`, with a
+conservative forward-plus/low policy, and calls `arc::scene::render_scene`
+for each active camera frame. ARC's standard `make_scene_draw_graph` and
+`renderer::render_frame` submit that render-world event stream through the
+same Vulkan backend used on desktop. Without a loaded scene or active camera,
+the existing clear/present graph remains a diagnostic fallback. The ECS world
+survives pause, surface destruction and renderer re-creation.
+
+This establishes the **scene decode/extraction/render submission boundary**.
+Mesh/material GPU resource residency from cooked artifacts is not activated
+by the materializer, so nontrivial models may not render correctly until
+that resource hydration/streaming integration is completed. Android NDK
+compilation and actual Adreno/Mali scene presentation remain unverified.

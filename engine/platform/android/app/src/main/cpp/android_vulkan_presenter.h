@@ -3,7 +3,9 @@
 #include "android_lifecycle.h"
 #include "android_vulkan_window.h"
 
-#include <arc/render/render_backend.h>
+#include <arc/render/renderer.h>
+
+namespace arc::ecs { class world; }
 
 #include <cstdint>
 #include <memory>
@@ -16,15 +18,15 @@ class android_vulkan_presenter
 {
 public:
     void synchronize(const lifecycle_state& lifecycle, ANativeWindow* window);
-    void present(const lifecycle_state& lifecycle);
+    void present(const lifecycle_state& lifecycle, arc::ecs::world* scene);
     void shutdown() noexcept;
     [[nodiscard]] bool active() const noexcept
     {
-        return backend_ != nullptr;
+        return renderer_ != nullptr;
     }
 
 private:
-    std::unique_ptr<arc::render::render_backend> backend_;
+    std::unique_ptr<arc::render::renderer> renderer_;
     std::uint64_t generation_{};
     std::uint64_t failed_generation_{};
     std::uint32_t submitted_width_{};

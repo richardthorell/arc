@@ -3,6 +3,7 @@
 
 #include <arc/diagnostics/log.h>
 #include <arc/framework/capabilities.h>
+#include <arc/scene/runtime_scene.h>
 
 #include <filesystem>
 #include <string>
@@ -23,6 +24,7 @@ android_runtime_bridge::android_runtime_bridge(const package_asset_source& asset
 
 android_runtime_bridge::~android_runtime_bridge()
 {
+    scene_.reset();
     catalog_.reset();
     boot_.reset();
     if (mount_)
@@ -106,6 +108,60 @@ bool android_runtime_bridge::boot()
     }
     catalog_ = std::move(mounted_catalog).value();
     arc::diagnostics::info("Android", "ARC cooked startup catalog mounted");
+    if (catalog_->startup_scenes().empty())
+    {
+        arc::diagnostics::warn("Android", "Distribution has no startup scene");
+        return true;
+    }
+
+    const auto guid = catalog_->startup_scenes().front();
+    const auto record = catalog_->catalog().database().query(guid, arc::assets::asset_types::scene);
+    if (!record)
+    {
+        arc::diagnostics::error("Android", "Startup scene metadata disappeared after catalog validation");
+        return false;
+    }
+
+    // The logical record chooses the active package/provider. Never guess a
+    // physical APK path or assume all cooked scene artifacts are named alike.
+    bool loaded = false;
+    for (const auto& representation : record->representations)
+    {
+        if (representation.provider_id != record->active_provider) continue;
+        auto path = arc::io::virtual_path::parse(representation.locator_hint);
+        if (!path) continue;
+        const auto address = arc::assets::parse_cooked_artifact_virtual_path(path.value());
+        if (!address || address->asset != guid || address->schema != arc::assets::artifact_schemas::scene)
+            continue;
+        auto resolved = catalog_->catalog().resolve(*address);
+        if (!resolved)
+        {
+            arc::diagnostics::error("Android", resolved.error().message);
+            return false;
+        }
+        auto bytes = catalog_->files().read_all(resolved.value()).get();
+        if (!bytes)
+        {
+            arc::diagnostics::error("Android", bytes.error().message);
+            return false;
+        }
+        auto next = std::make_unique<arc::ecs::world>();
+        const auto failure = arc::scene::materialize_cooked_scene(*next, bytes.value());
+        if (!failure.empty())
+        {
+            arc::diagnostics::error("Android", failure);
+            return false;
+        }
+        scene_ = std::move(next);
+        loaded = true;
+        break;
+    }
+    if (!loaded)
+    {
+        arc::diagnostics::error("Android", "Startup scene has no active cooked scene representation");
+        return false;
+    }
+    arc::diagnostics::info("Android", "Cooked startup scene materialized into ECS world");
     return true;
 }
 } // namespace arc::platform::android

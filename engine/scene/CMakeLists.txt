@@ -1,12 +1,15 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+# This module may be built by the standalone Android NDK CMake host, whose
+# CMAKE_SOURCE_DIR is its app/src/main/cpp folder, not the ARC repository.
+get_filename_component(ARC_SCENE_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
 
 set(ARC_SCENE_SCHEMA "${CMAKE_CURRENT_SOURCE_DIR}/schema/components.arccomponents.json")
-set(ARC_ECS_CODEGEN "${CMAKE_SOURCE_DIR}/tools/ecs_codegen.py")
+set(ARC_ECS_CODEGEN "${ARC_SCENE_REPO_ROOT}/tools/ecs_codegen.py")
 set(ARC_SCENE_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(ARC_SCENE_GENERATED_METADATA
     "${ARC_SCENE_GENERATED_ROOT}/arc/scene/generated_component_metadata.h")
 set(ARC_SCENE_GENERATED_TYPESCRIPT
-    "${CMAKE_SOURCE_DIR}/editor/src/renderer/src/inspector/generatedEcsMetadata.ts")
+    "${ARC_SCENE_REPO_ROOT}/editor/src/renderer/src/inspector/generatedEcsMetadata.ts")
 
 add_custom_command(
     OUTPUT "${ARC_SCENE_GENERATED_METADATA}"

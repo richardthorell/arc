@@ -3,6 +3,7 @@
 #include "android_package_assets.h"
 
 #include <arc/io/virtual_file_system.h>
+#include <arc/ecs/world.h>
 #include <arc/jobs/jobs.h>
 #include <arc/project/runtime_boot.h>
 #include <arc/project/runtime_catalog.h>
@@ -23,6 +24,7 @@ public:
     android_runtime_bridge& operator=(const android_runtime_bridge&) = delete;
 
     [[nodiscard]] bool boot();
+    [[nodiscard]] arc::ecs::world* startup_scene() noexcept { return scene_.get(); }
 
 private:
     // Order is intentional: mount and boot context are destroyed before the
@@ -35,5 +37,6 @@ private:
     std::shared_ptr<arc::io::virtual_file_provider> provider_;
     std::unique_ptr<arc::project::runtime_boot_context> boot_;
     std::unique_ptr<arc::project::runtime_catalog_session> catalog_;
+    std::unique_ptr<arc::ecs::world> scene_;
 };
 } // namespace arc::platform::android

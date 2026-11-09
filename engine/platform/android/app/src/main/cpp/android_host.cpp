@@ -146,7 +146,7 @@ extern "C" void android_main(android_app* app)
             break;
         }
         if (source) source->process(app, source);
-        if (!app->destroyRequested) host.presenter.present(host.lifecycle);
+        if (!app->destroyRequested) host.presenter.present(host.lifecycle, runtime.startup_scene());
     }
 
     host.presenter.shutdown();
