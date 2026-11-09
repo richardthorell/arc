@@ -292,6 +292,110 @@ describe('native material discovery operations', () => {
     });
     await expect(harness.invoke('materials.setOverride', params, 'agent')).rejects.toThrow(/previous binding retained/);
   });
+
+  it('releases the session when native material failure already rolled back the transaction', async () => {
+    const { harness, command, params } = await approved();
+    command.mockResolvedValue({
+      kind: 'response',
+      requestId: 3,
+      succeeded: false,
+      error: 'Could not cancel edit transaction',
+      payload: {},
+      sceneRevision: 7,
+      worldEpoch: 1,
+      frameRevision: 9,
+    });
+    command.mockResolvedValueOnce({
+      kind: 'response',
+      requestId: 3,
+      succeeded: false,
+      error: 'Texture source is unavailable; previous material override retained',
+      payload: {},
+      sceneRevision: 7,
+      worldEpoch: 1,
+      frameRevision: 9,
+    });
+    await expect(harness.invoke('materials.setOverride', params, 'agent')).rejects.toThrow(
+      /Texture source is unavailable/,
+    );
+    expect(command.mock.calls.map(([name]) => name)).toEqual(['materials.edit', 'history.cancelTransaction']);
+    expect(harness.status().activeEditSession).toBeNull();
+    expect(harness.status().sceneRevision).toBe(7);
+    await expect(harness.invoke('materials.setOverride', params, 'agent')).rejects.toThrow(/not active/);
+    expect(command).toHaveBeenCalledTimes(2);
+    command.mockResolvedValue({
+      kind: 'response',
+      requestId: 4,
+      succeeded: true,
+      error: '',
+      payload: {},
+      sceneRevision: 7,
+      worldEpoch: 1,
+      frameRevision: 9,
+    });
+    await expect(
+      harness.invoke('edit.begin', { label: 'Fresh test', expectedSceneRevision: 7 }, 'agent'),
+    ).resolves.toBeDefined();
+  });
+
+  it('releases a failed cancellation and preserves uncertain mutation errors without retrying', async () => {
+    const { harness, command, params } = await approved();
+    command.mockRejectedValueOnce(new Error('Connection lost during material edit'));
+    command.mockRejectedValueOnce(new Error('Connection lost during cancellation'));
+    await expect(harness.invoke('materials.setOverride', params, 'agent')).rejects.toThrow(
+      /Connection lost during material edit/,
+    );
+    expect(harness.status().activeEditSession).toBeNull();
+    expect(command.mock.calls.map(([name]) => name)).toEqual(['materials.edit', 'history.cancelTransaction']);
+  });
+
+  it('clears stale local session state when explicit cancellation is rejected', async () => {
+    const { harness, command, params } = await approved();
+    command.mockResolvedValueOnce({
+      kind: 'response',
+      requestId: 3,
+      succeeded: false,
+      error: 'Could not cancel edit transaction',
+      payload: {},
+      sceneRevision: 1,
+      worldEpoch: 1,
+      frameRevision: 1,
+    });
+    await expect(harness.invoke('edit.cancel', { editSessionId: params.editSessionId }, 'agent')).rejects.toThrow(
+      /Could not cancel/,
+    );
+    expect(harness.status().activeEditSession).toBeNull();
+  });
+
+  it('does not cancel a newer session when an old material command completes late', async () => {
+    const { harness, command, params } = await approved();
+    let finish!: (response: AgentHostResponse) => void;
+    command.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = harness.invoke('materials.setOverride', params, 'agent');
+    const rejected = expect(pending).rejects.toThrow(/not active/);
+    await vi.waitFor(() => expect(command).toHaveBeenCalledTimes(1));
+    await harness.invoke('edit.cancel', { editSessionId: params.editSessionId }, 'agent');
+    await harness.invoke('edit.begin', { label: 'Replacement session', expectedSceneRevision: 1 }, 'agent');
+    const replacement = harness.status().activeEditSession?.id;
+    finish({
+      kind: 'response',
+      requestId: 3,
+      succeeded: false,
+      error: 'Late failure',
+      payload: {},
+      sceneRevision: 1,
+      worldEpoch: 1,
+      frameRevision: 1,
+    });
+    await rejected;
+    expect(harness.status().activeEditSession?.id).toBe(replacement);
+    expect(command.mock.calls.filter(([name]) => name === 'history.cancelTransaction')).toHaveLength(1);
+  });
   it('discovers exact schemas through the shared registry and transport projections', async () => {
     const { harness } = setup();
     const discovery = await harness.invoke(

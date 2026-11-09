@@ -566,7 +566,9 @@ std::filesystem::path resolve_asset_reference_path(const editor_scene_state& sce
             if (normalized == "builtin") return {};
             if (normalized.starts_with("builtin/"))
                 relative = std::filesystem::path{normalized}.lexically_relative("builtin");
-            for (const auto& root : scene.builtin_asset_roots)
+            // Resolve against the registry that supplied this GUID, not a scene's
+            // potentially older copy of the editor's built-in mount list.
+            for (const auto& root : scene.asset_registry->config().read_only_source_roots)
             {
                 const auto candidate = (root / relative).lexically_normal();
                 std::error_code ec;
@@ -574,7 +576,10 @@ std::filesystem::path resolve_asset_reference_path(const editor_scene_state& sce
             }
             return {};
         }
-        return resolve_texture_path(scene, material, source.generic_string());
+        // A registered source is project-relative (or absolute for an external
+        // root). Do not guess a different file relative to the material when it
+        // is missing: the GUID, not a similarly named path, owns the binding.
+        return (scene.asset_registry->config().project_root / source).lexically_normal();
     }
 
     return reference.path_hint.empty() ? std::filesystem::path{}
@@ -584,10 +589,19 @@ std::filesystem::path resolve_asset_reference_path(const editor_scene_state& sce
 render::texture_handle ensure_override_texture(editor_scene_state& scene, render::renderer& renderer,
                                                const editor_material_record& material,
                                                const assets::asset_reference& reference,
-                                               render::texture_semantic semantic)
+                                               render::texture_semantic semantic, std::string* error = nullptr)
 {
     auto resolved = resolve_asset_reference_path(scene, material, reference);
-    if (resolved.empty()) return {};
+    const auto asset = scene.asset_registry ? scene.asset_registry->find(reference) : std::nullopt;
+    const auto identity =
+        assets::to_string(reference.guid) + (asset ? " ('" + asset->source_path.generic_string() + "')" : "");
+    if (resolved.empty())
+    {
+        if (error)
+            *error = "Texture " + identity +
+                     " has no available source in its registered content roots; restore or reimport the asset";
+        return {};
+    }
     std::error_code ec;
     auto key = std::filesystem::absolute(resolved, ec).lexically_normal();
     if (ec) key = resolved.lexically_normal();
@@ -598,6 +612,7 @@ render::texture_handle ensure_override_texture(editor_scene_state& scene, render
     auto loaded = render::load_texture_asset(resolved);
     if (!loaded.succeeded())
     {
+        if (error) *error = "Texture " + identity + " could not be loaded: " + loaded.message;
         arc::diagnostics::warn("editor.materials", "Material instance texture could not be loaded: " +
                                                        resolved.generic_string() + " (" + loaded.message + ")");
         return {};
@@ -605,7 +620,10 @@ render::texture_handle ensure_override_texture(editor_scene_state& scene, render
     loaded.texture.semantic = semantic;
     loaded.texture.color_space = render::required_color_space(loaded.texture.semantic);
     const auto handle = renderer.create_texture(std::move(loaded.texture));
-    if (handle.valid()) scene.material_library.textures.push_back({std::move(key), handle});
+    if (handle.valid())
+        scene.material_library.textures.push_back({std::move(key), handle});
+    else if (error)
+        *error = "Texture " + identity + " could not be published to the renderer";
     return handle;
 }
 
@@ -1174,11 +1192,14 @@ bool set_entity_material_parameter(editor_scene_state& scene, render::renderer& 
                 return false;
             }
             const auto* base = base_material_record(scene, entity);
-            if (!base || !ensure_override_texture(scene, renderer, *base, reference,
-                                                  parameter_texture_semantic(record->asset.material, parameter))
-                              .valid())
+            std::string texture_error;
+            if (!base ||
+                !ensure_override_texture(scene, renderer, *base, reference,
+                                         parameter_texture_semantic(record->asset.material, parameter), &texture_error)
+                     .valid())
             {
-                error = "Texture realization failed; previous material override retained";
+                error =
+                    (base ? texture_error : "Material parent is unavailable") + "; previous material override retained";
                 return false;
             }
             edit.texture_reference = std::move(reference);

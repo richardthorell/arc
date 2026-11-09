@@ -6194,7 +6194,11 @@ host_response arc_host::execute(const host_command_envelope& command)
     if (authoring && !response.succeeded)
     {
         if (command.edit)
-            state_->history.cancel(command.edit->id, state_->scene);
+        {
+            // Rollback can remove earlier successful edits in the transaction.
+            // Clients must not reuse snapshots from that pre-rollback revision.
+            if (state_->history.cancel(command.edit->id, state_->scene)) ++state_->scene_revision;
+        }
         else if (before)
         {
             state_->terrain_rebuilds.clear();

@@ -9,6 +9,7 @@
 #include <arc/render_tools/material_graph.h>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
@@ -32,22 +33,35 @@ TEST_CASE("registered coat texture overrides preserve linear semantics and isola
             std::filesystem::remove_all(root, error);
         }
     } cleanup_root{root};
+    const bool builtin = GENERATE(false, true);
+    CAPTURE(builtin);
+    const auto texture_root = root / (builtin ? "Builtin" : "Content");
+    std::filesystem::create_directories(texture_root);
     // A real uncompressed 1x1 TGA, shared by a normal slot and a color slot.
     const std::array<unsigned char, 21> tga{0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 24, 32, 255, 128, 128};
     {
-        std::ofstream output(root / "Content" / "sample.tga", std::ios::binary);
+        std::ofstream output(texture_root / "sample.tga", std::ios::binary);
         output.write(reinterpret_cast<const char*>(tga.data()), tga.size());
         REQUIRE(output.good());
+    }
+    if (builtin)
+    {
+        const arc::assets::asset_source_metadata metadata{.guid = arc::assets::generate_asset_guid(),
+                                                          .type = arc::assets::asset_types::texture_2d,
+                                                          .importer = arc::assets::importer_ids::texture};
+        REQUIRE(arc::assets::save_asset_metadata(texture_root / "sample.tga.arcmeta", metadata));
     }
     arc::memory::memory_system memory;
     arc::jobs::job_system jobs(
         {.worker_count = 2, .io_worker_count = 1, .enable_render_thread = false, .memory = &memory});
     arc::io::async_file_service files(jobs);
-    arc::assets::asset_manager manager({.project_root = root,
-                                        .asset_root = root / "Content",
-                                        .cache_root = root / ".arc/cache",
-                                        .enable_source_monitor = false},
-                                       jobs, files, memory);
+    arc::assets::asset_manager manager(
+        {.project_root = root,
+         .asset_root = root / "Content",
+         .read_only_source_roots = builtin ? std::vector{texture_root} : std::vector<std::filesystem::path>{},
+         .cache_root = root / ".arc/cache",
+         .enable_source_monitor = false},
+        jobs, files, memory);
     arc::framework::runtime_service_registry services;
     arc::framework::runtime_service_context context(services);
     manager.on_start(context);
@@ -61,7 +75,7 @@ TEST_CASE("registered coat texture overrides preserve linear semantics and isola
         }
     } stop{manager, context};
     (void)manager.scan();
-    const auto texture_asset = manager.find(std::string_view{"Content/sample.tga"});
+    const auto texture_asset = manager.find(std::string_view{builtin ? "builtin/sample.tga" : "Content/sample.tga"});
     REQUIRE(texture_asset);
     const arc::assets::asset_reference texture{.guid = texture_asset->guid,
                                                .expected_type = arc::assets::asset_types::texture_2d};
@@ -140,7 +154,7 @@ TEST_CASE("registered coat texture overrides preserve linear semantics and isola
             for (auto& value : data["materialParameterOverrides"])
             {
                 value.erase("textureReference");
-                value["texture"] = "sample.tga";
+                value["texture"] = builtin ? (texture_root / "sample.tga").generic_string() : "sample.tga";
             }
             record.json = data.dump();
         }
@@ -152,6 +166,40 @@ TEST_CASE("registered coat texture overrides preserve linear semantics and isola
     CHECK(read()->runtime_textures[1] == color_handle);
     REQUIRE(arc::editor::set_entity_material_parameter(scene, renderer, entity, normal_id, {}, nullptr, true, error));
     CHECK(read()->render_path == material_render_path::deferred);
+
+    // A catalog GUID can outlive a source file. Failure must identify the missing
+    // asset and retain both the descriptor and persisted overrides.
+    scene.material_library.textures.clear();
+    const auto before = scene.scene.get<arc::scene::mesh_renderer_component>(entity).material;
+    const auto saved = arc::editor::entity_material_overrides_json(scene, entity);
+    {
+        std::ofstream corrupt(texture_root / "sample.tga", std::ios::binary | std::ios::trunc);
+        corrupt << "not a texture";
+        REQUIRE(corrupt.good());
+    }
+    for (const bool missing : {false, true})
+    {
+        CAPTURE(missing);
+        if (missing)
+        {
+            std::filesystem::remove(texture_root / "sample.tga");
+            if (!builtin)
+            {
+                // This unrelated file must never satisfy the registered GUID.
+                std::filesystem::create_directories(texture_root / "Content");
+                std::ofstream decoy(texture_root / "Content/sample.tga", std::ios::binary);
+                decoy.write(reinterpret_cast<const char*>(tga.data()), tga.size());
+                REQUIRE(decoy.good());
+            }
+        }
+        CHECK_FALSE(
+            arc::editor::set_entity_material_parameter(scene, renderer, entity, normal_id, {}, &texture, false, error));
+        CHECK(error.find(arc::assets::to_string(texture.guid)) != std::string::npos);
+        CHECK(error.find("sample.tga") != std::string::npos);
+        CHECK(error.find("previous material override retained") != std::string::npos);
+        CHECK(scene.scene.get<arc::scene::mesh_renderer_component>(entity).material == before);
+        CHECK(arc::editor::entity_material_overrides_json(scene, entity) == saved);
+    }
 }
 
 TEST_CASE("applied material readback reports attached routing without claiming GPU readiness")

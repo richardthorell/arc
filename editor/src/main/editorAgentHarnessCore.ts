@@ -1802,12 +1802,18 @@ export class EditorAgentHarness {
 
   private async cancelEdit(editSessionId: string, clientId: string): Promise<unknown> {
     const session = this.requireSession(editSessionId, clientId);
-    const response = await this.host.command('history.cancelTransaction', { id: session.transactionId });
-    const result = this.expect(response);
-    this.stagedAssets.delete(editSessionId);
-    this.activeEdit = null;
-    this.notify();
-    return result;
+    try {
+      const response = await this.host.command('history.cancelTransaction', { id: session.transactionId });
+      return this.expect(response);
+    } finally {
+      // A failed native edit can already have rolled back this transaction.
+      // Never leave an unusable gateway session blocking the next approved edit.
+      if (this.activeEdit?.id === session.id) {
+        this.stagedAssets.delete(editSessionId);
+        this.activeEdit = null;
+        this.notify();
+      }
+    }
   }
 
   private async createStagedAssets(
@@ -1865,20 +1871,40 @@ export class EditorAgentHarness {
     const session = this.requireSession(requireString(editSessionId, 'editSessionId'), clientId);
     const expected = requireRevision(expectedSceneRevision);
     this.validateBatchAuthority(session.id, clientId, expected);
-    const response = await this.host.command(
-      'materials.edit',
-      { ...payload, expectedSceneRevision: expected },
-      { id: session.transactionId, phase: 'update', label: session.label },
-      expected,
-    );
-    // Cancellation/disconnection cannot revive a session or extend its approval on late completion.
-    this.requireSession(session.id, clientId);
-    const result = this.expect(response);
-    session.expectedSceneRevision = response.sceneRevision;
-    session.lastActivityAt = now();
-    this.approvedClients.set(clientId, Date.now() + editIdleMilliseconds);
-    this.notify();
-    return result;
+    try {
+      const response = await this.host.command(
+        'materials.edit',
+        { ...payload, expectedSceneRevision: expected },
+        { id: session.transactionId, phase: 'update', label: session.label },
+        expected,
+      );
+      // Cancellation/disconnection cannot revive a session or extend its approval on late completion.
+      this.requireSession(session.id, clientId);
+      const result = this.expect(response);
+      session.expectedSceneRevision = response.sceneRevision;
+      session.lastActivityAt = now();
+      this.approvedClients.set(clientId, Date.now() + editIdleMilliseconds);
+      this.notify();
+      return result;
+    } catch (error) {
+      if (this.activeEdit?.id === session.id) {
+        try {
+          await this.cancelEdit(session.id, clientId);
+        } catch {
+          // Preserve the original error, including uncertain transport failures.
+          // cancelEdit releases local state even when native rollback already ran.
+        } finally {
+          // Approval may have expired before cancelEdit reached native dispatch.
+          // Do not clear a newer session created while awaiting cancellation.
+          if (this.activeEdit?.id === session.id) {
+            this.stagedAssets.delete(session.id);
+            this.activeEdit = null;
+            this.notify();
+          }
+        }
+      }
+      throw error;
+    }
   }
 
   private requireApproved(clientId: string): void {

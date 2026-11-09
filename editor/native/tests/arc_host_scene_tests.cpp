@@ -436,6 +436,37 @@ TEST_CASE("arc host hierarchy and history preserve subtrees and group edit trans
     REQUIRE(host->selected_entity_snapshot().transform->position.y == Catch::Approx(preview.position.y));
 }
 
+TEST_CASE("failed material transaction rolls back earlier edits and advances scene authority")
+{
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::make_unique<arc::render::renderer>());
+    arc::editor::editor_asset_state assets;
+    REQUIRE(host->open_project({.name = "Material rollback", .root = {}}, assets).succeeded);
+    const auto before = host->scene_snapshot().entities.size();
+    const auto created = host->execute(arc::editor::host_command_envelope{
+        .payload = arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty},
+        .edit = arc::editor::host_edit_transaction{
+            .id = 90, .phase = arc::editor::host_edit_phase::begin, .label = "Rejected material edit"}});
+    REQUIRE(created.succeeded);
+    REQUIRE(host->scene_snapshot().entities.size() == before + 1);
+    const auto failed = host->execute(arc::editor::host_command_envelope{
+        .payload = arc::editor::host_material_edit_command{.operation = "setOverride"},
+        .edit = arc::editor::host_edit_transaction{.id = 90, .phase = arc::editor::host_edit_phase::update}});
+    REQUIRE_FALSE(failed.succeeded);
+    CHECK(failed.scene_revision > created.scene_revision);
+    CHECK(host->scene_snapshot().entities.size() == before);
+    CHECK_FALSE(host->execute(arc::editor::host_history_cancel_transaction_command{90}).succeeded);
+    CHECK(
+        host
+            ->execute(arc::editor::host_command_envelope{
+                .payload = arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::empty},
+                .edit = arc::editor::host_edit_transaction{.id = 91,
+                                                           .phase = arc::editor::host_edit_phase::begin,
+                                                           .label = "Fresh transaction"}})
+            .succeeded);
+    CHECK(host->execute(arc::editor::host_history_cancel_transaction_command{91}).succeeded);
+}
+
 TEST_CASE("viewport navigation and repeated selection do not emit scene refresh events")
 {
     auto renderer = std::make_unique<arc::render::renderer>();
