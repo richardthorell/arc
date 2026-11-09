@@ -31,7 +31,7 @@ add_custom_command(
 target_sources(arc_project_tests PRIVATE "${ARC_PROJECT_TEST_REFLECTION_HEADER}" "${ARC_PROJECT_TEST_REFLECTION_SCHEMA}")
 target_include_directories(arc_project_tests PRIVATE "${ARC_PROJECT_TEST_GENERATED_DIR}")
 arc_configure_first_party_target(arc_project_tests)
-target_link_libraries(arc_project_tests PRIVATE arc-project Catch2::Catch2WithMain)
+target_link_libraries(arc_project_tests PRIVATE arc-project arc-scene Catch2::Catch2WithMain)
 target_compile_definitions(arc_project_tests PRIVATE ARC_TEST_TEMPLATE_ROOT="${CMAKE_SOURCE_DIR}/templates")
 
 include(Catch)
