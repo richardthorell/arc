@@ -43,8 +43,10 @@ endforeach()
 add_library(arc_android_host SHARED
     android_host.cpp android_lifecycle.cpp android_log_sink.cpp
     android_package_assets.cpp android_package_assets_ndk.cpp
-    android_apk_provider.cpp android_runtime_bridge.cpp)
+    android_apk_provider.cpp android_runtime_bridge.cpp
+    android_vulkan_surface.cpp)
 target_compile_features(arc_android_host PRIVATE cxx_std_20)
+target_compile_definitions(arc_android_host PRIVATE VK_USE_PLATFORM_ANDROID_KHR=1)
 target_link_libraries(arc_android_host PRIVATE
     arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics android log)
 target_compile_definitions(arc_android_host PRIVATE

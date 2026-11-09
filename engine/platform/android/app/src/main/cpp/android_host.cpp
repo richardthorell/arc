@@ -2,6 +2,7 @@
 #include "android_log_sink.h"
 #include "android_package_assets.h"
 #include "android_runtime_bridge.h"
+#include "android_vulkan_window.h"
 
 #include <arc/diagnostics/log.h>
 #include <android/native_window.h>
@@ -18,6 +19,7 @@ struct android_host_context
 {
     lifecycle_state lifecycle;
     ANativeWindow* attached_window{}; // Borrowed from native_app_glue; never release here.
+    std::uint64_t last_presentable_generation{};
 };
 
 std::uint32_t dimension(int value) noexcept
@@ -33,8 +35,8 @@ void update_window(android_app* app, android_host_context& host, lifecycle_event
     const auto& state = host.lifecycle.snapshot();
     arc::diagnostics::info("Android", event == lifecycle_event::window_created ? "Native surface attached"
                                                                                : "Native surface size changed");
-    // The renderer (#402) will consume window_generation and dimensions.
-    // Surface recreation must not restart the shared application runtime.
+    // The Vulkan backend must recreate its surface for each new generation.
+    // Surface loss does not tear down the packaged runtime.
     (void)state;
 }
 
@@ -97,6 +99,12 @@ void on_app_command(android_app* app, std::int32_t command)
             break;
         default:
             break;
+    }
+    const auto binding = arc::platform::android::active_vulkan_window(host.lifecycle, host.attached_window);
+    if (binding.window && binding.generation != host.last_presentable_generation)
+    {
+        host.last_presentable_generation = binding.generation;
+        arc::diagnostics::info("Android", "Vulkan-capable native window generation available");
     }
 }
 } // namespace
