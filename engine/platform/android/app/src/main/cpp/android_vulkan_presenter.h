@@ -18,7 +18,10 @@ public:
     void synchronize(const lifecycle_state& lifecycle, ANativeWindow* window);
     void present(const lifecycle_state& lifecycle);
     void shutdown() noexcept;
-    [[nodiscard]] bool active() const noexcept { return backend_ != nullptr; }
+    [[nodiscard]] bool active() const noexcept
+    {
+        return backend_ != nullptr;
+    }
 
 private:
     std::unique_ptr<arc::render::render_backend> backend_;
