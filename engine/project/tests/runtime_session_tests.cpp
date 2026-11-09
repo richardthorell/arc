@@ -783,7 +783,8 @@ TEST_CASE("D1.8 relocated packaged Windows client loads a real cooked scene thro
     const auto entities = world->entities().entities_snapshot();
     REQUIRE(entities.size() == 1);
     CHECK(world->entities().get<arc::scene::name_component>(entities.front()).value == "Relocated Player");
-    CHECK(events.front() == "scene:materialize");
+    CHECK(std::find(events.begin(), events.end(), "scene:materialize") != events.end());
+    CHECK(std::find(events.begin(), events.end(), "service:start") != events.end());
 
     REQUIRE(session->surface_ready(800, 600));
     REQUIRE(session->advance(1.0 / 60.0));
