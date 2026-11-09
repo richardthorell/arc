@@ -100,6 +100,13 @@ Descriptor availability and successful compilation are not GPU success. Missing
 captures, off-screen targets, fallback pipelines, or a skipped test leave this gate
 unverified. Cancel the test transaction to restore user content when verification is
 complete. Performance measurements remain a separate acceptance gate.
+
+A listed texture GUID is not proof that its source is installed. Read-only texture
+overrides resolve through the asset registry's configured content roots; missing or
+undecodable sources must report the GUID, source hint, and cause while retaining the
+previous material. A failed material command ends its gateway transaction and may
+roll back all earlier test edits in that transaction. Read the new scene revision
+and start a fresh transaction instead of retrying with old entity IDs or revisions.
  --output-on-failure
 ```
 
