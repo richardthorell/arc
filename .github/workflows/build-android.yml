@@ -37,9 +37,16 @@ jobs:
           # Ubuntu runners already ship Android SDK cmdline-tools. Avoid
           # setup-android@v3, which tries to install removed SDK package "tools".
           test -n "${ANDROID_HOME:-}"
-          command -v sdkmanager
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager --install \
+          # Runner SDK tools live under cmdline-tools/<version>/bin and are
+          # not guaranteed to be exported to PATH.
+          sdkmanager="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null)"
+          if [[ -z "$sdkmanager" || ! -x "$sdkmanager" ]]; then
+            echo "::error::Android SDK command-line tools not found beneath $ANDROID_HOME/cmdline-tools"
+            exit 1
+          fi
+          echo "Using $sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "cmake;3.22.1" \
