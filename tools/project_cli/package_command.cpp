@@ -68,8 +68,7 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
     const auto config_arg = option(args, "--runtime-config");
     const auto cook_arg = option(args, "--cook-manifest");
     if (!project_arg || !binary_arg || !config_arg || !cook_arg)
-        return fail(json_output, "arguments",
-                    "requires --project, --executable, --runtime-config and --cook-manifest");
+        return fail(json_output, "arguments", "requires --project, --executable, --runtime-config and --cook-manifest");
 
     const auto descriptor_path = fs::absolute(*project_arg).lexically_normal();
     auto descriptor = project::load_descriptor(descriptor_path);
@@ -91,15 +90,14 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
     const auto cooked = assets::load_cook_manifest(cook_path);
     if (!cooked) return fail(json_output, "cookManifest", cooked.error().message);
     const auto& target = cooked.value().target;
-    const bool matches = target.platform == assets::cook_platform::windows &&
-                         target.architecture ==
-                             (workflow.value().architecture == "arm64" ? assets::cook_architecture::arm64
-                                                                       : assets::cook_architecture::x86_64) &&
-                         target.configuration == assets::cook_configuration::shipping &&
-                         ((workflow.value().renderer == "none" && target.renderer == assets::cook_renderer::none) ||
-                          (workflow.value().renderer == "vulkan" && target.renderer == assets::cook_renderer::vulkan) ||
-                          (workflow.value().renderer == "direct3d12" &&
-                           target.renderer == assets::cook_renderer::direct3d12));
+    const bool matches =
+        target.platform == assets::cook_platform::windows &&
+        target.architecture == (workflow.value().architecture == "arm64" ? assets::cook_architecture::arm64
+                                                                         : assets::cook_architecture::x86_64) &&
+        target.configuration == assets::cook_configuration::shipping &&
+        ((workflow.value().renderer == "none" && target.renderer == assets::cook_renderer::none) ||
+         (workflow.value().renderer == "vulkan" && target.renderer == assets::cook_renderer::vulkan) ||
+         (workflow.value().renderer == "direct3d12" && target.renderer == assets::cook_renderer::direct3d12));
     if (!matches)
         return fail(json_output, "cookManifest.target", "Cooked target is incompatible with selected workflow");
 
@@ -153,9 +151,8 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
             !fs::path(chunk).extension().generic_string().ends_with(".arcpak"))
             return fail(json_output, "cookManifest.artifacts", "Cook manifest contains an unsafe chunk reference");
         if (chunks.insert(chunk).second)
-            files.push_back({.source = cook_path.parent_path() / chunk,
-                             .destination = "Content/" + chunk,
-                             .kind = "content"});
+            files.push_back(
+                {.source = cook_path.parent_path() / chunk, .destination = "Content/" + chunk, .kind = "content"});
     }
 
     std::vector<project::distribution_native_dependency> dependencies;
@@ -173,17 +170,15 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
         }
     }
 
-    const auto output = option(args, "--output")
-                            ? source_path(context.value().root, *option(args, "--output"))
-                            : workflow.value().package_output;
+    const auto output = option(args, "--output") ? source_path(context.value().root, *option(args, "--output"))
+                                                 : workflow.value().package_output;
     project::windows_directory_finalizer finalizer;
-    auto assembled = project::assemble_distribution(
-        {.workflow = workflow.value(),
-         .manifest = std::move(manifest),
-         .output_root = output,
-         .files = std::move(files),
-         .dependencies = std::move(dependencies)},
-        finalizer);
+    auto assembled = project::assemble_distribution({.workflow = workflow.value(),
+                                                     .manifest = std::move(manifest),
+                                                     .output_root = output,
+                                                     .files = std::move(files),
+                                                     .dependencies = std::move(dependencies)},
+                                                    finalizer);
     if (!assembled) return fail(json_output, assembled.error().field, assembled.error().message);
 
     if (json_output)

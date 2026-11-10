@@ -272,7 +272,8 @@ int main(int argc, char** argv)
         args.values.emplace_back(argv[index]);
     const bool json_output = args.has("--json");
     if (args.values.empty())
-        return fail(json_output, "expected create, validate, upgrade, engine, toolchains, configure, build, package, or ide", 2);
+        return fail(json_output,
+                    "expected create, validate, upgrade, engine, toolchains, configure, build, package, or ide", 2);
     const auto command = args.values.front();
     if (command == "create")
     {
