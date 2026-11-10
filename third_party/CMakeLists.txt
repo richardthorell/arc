@@ -144,12 +144,20 @@ if(ARC_USE_SYSTEM_SQLITE)
     target_link_libraries(arc-third-party-sqlite INTERFACE SQLite::SQLite3)
 elseif(ARC_FETCH_THIRD_PARTY)
     enable_language(C)
+    # DOWNLOAD_EXTRACT_TIMESTAMP was introduced in CMake 3.24. Android's
+    # pinned NDK/AGP toolchain uses CMake 3.22.1, which otherwise appends
+    # this keyword to URL_HASH and fails before dependency download.
+    set(_arc_sqlite_extract_timestamp)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.24)
+        list(APPEND _arc_sqlite_extract_timestamp DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    endif()
     FetchContent_Declare(
         sqlite_amalgamation
         URL https://www.sqlite.org/2026/sqlite-amalgamation-3530300.zip
         URL_HASH SHA256=646421e12aac110282ef8cc68f1a62d4bb15fc7b8f09da0b53e29ee690500431
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        ${_arc_sqlite_extract_timestamp}
     )
+    unset(_arc_sqlite_extract_timestamp)
     FetchContent_MakeAvailable(sqlite_amalgamation)
     add_library(arc-third-party-sqlite-static STATIC
         "${sqlite_amalgamation_SOURCE_DIR}/sqlite3.c"
