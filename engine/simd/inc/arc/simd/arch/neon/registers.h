@@ -1,6 +1,6 @@
 #pragma once
 
-#include "arc/simd/arch/x64/detect.h"
+#include "arc/simd/arch/neon/detect.h"
 
 #include <arm_neon.h>
 
