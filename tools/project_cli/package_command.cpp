@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <string>
@@ -28,8 +29,8 @@ using json = nlohmann::json;
 std::optional<std::string> option(const std::vector<std::string>& args, std::string_view name)
 {
     const auto found = std::find(args.begin(), args.end(), name);
-    if (found == args.end() || ++found == args.end()) return std::nullopt;
-    return *found;
+    if (found == args.end() || std::next(found) == args.end()) return std::nullopt;
+    return *std::next(found);
 }
 
 std::vector<std::string> options(const std::vector<std::string>& args, std::string_view name)
@@ -121,12 +122,7 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
     const auto cook_destination = "Content/" + cook_path.filename().generic_string();
     manifest.cook_manifests = {cook_destination};
 
-    if (server && !descriptor.value().startup_scenes.empty())
-    {
-        // Server worlds may initialize without authored scene assets; explicit
-        // startup scenes are used only when they exist in the cooked payload.
-    }
-    else if (!server && descriptor.value().startup_scenes.empty())
+    if (!server && descriptor.value().startup_scenes.empty())
         return fail(json_output, "startupScenes", "Client project must declare startup scenes");
 
     std::set<assets::asset_guid> cooked_scenes;
