@@ -48,9 +48,17 @@ describe('Android device bridge', () => {
     await bridge.listTargets();
     await bridge.startEmulator(target);
     await bridge.resolveTarget(target);
+    await bridge.openDeviceManager();
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('android:open-device-manager');
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('android:list-targets');
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('android:start-emulator', target);
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('android:resolve-target', target);
-    expect(Object.keys(bridge).sort()).toEqual(['listDevices', 'listTargets', 'resolveTarget', 'startEmulator']);
+    expect(Object.keys(bridge).sort()).toEqual([
+      'listDevices',
+      'listTargets',
+      'openDeviceManager',
+      'resolveTarget',
+      'startEmulator',
+    ]);
   });
 });

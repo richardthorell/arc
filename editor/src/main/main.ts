@@ -24,6 +24,7 @@ import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/
 import { PerformanceDiagnostics } from './performanceDiagnostics';
 import { androidToolchainSettingKeys } from './androidToolchain';
 import { resolveAndroidSdkManagerLauncher } from './androidSdkManager';
+import { openAndroidDeviceManager } from './androidDeviceManager';
 
 const isDevelopment = !app.isPackaged;
 const performanceDiagnostics = new PerformanceDiagnostics({
@@ -1420,6 +1421,7 @@ void app.whenReady().then(async () => {
     return androidTargetService;
   };
   ipcMain.handle('android:list-targets', () => androidTargets().listTargets());
+  ipcMain.handle('android:open-device-manager', () => openAndroidDeviceManager());
   ipcMain.handle('android:start-emulator', (_event, target: AndroidTargetReference) =>
     androidTargets().startEmulator(target),
   );

@@ -94,6 +94,33 @@
   color: var(--arc-color-text-muted);
 }
 
+.ui-dropdown-option.has-details {
+  height: auto;
+  padding-block: var(--arc-space-3);
+}
+
+.ui-dropdown-option.has-details .ui-dropdown-option-content {
+  align-items: center;
+}
+
+.ui-dropdown-option.has-details .ui-dropdown-icon {
+  margin-inline: 8px;
+}
+
+.ui-dropdown-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ui-dropdown-option-detail {
+  color: var(--arc-color-text-muted);
+  font-size: var(--arc-text-xs);
+  font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .ui-dropdown-separator {
   height: 1px;
   margin: var(--arc-space-2);

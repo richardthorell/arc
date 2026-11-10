@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { ArcAndroidBridge } from '../common/androidDeviceTypes';
 
 const bridge: ArcAndroidBridge = {
+  openDeviceManager: () => ipcRenderer.invoke('android:open-device-manager'),
   listDevices: () => ipcRenderer.invoke('android:list-targets'),
   listTargets: () => ipcRenderer.invoke('android:list-targets'),
   startEmulator: (target) => ipcRenderer.invoke('android:start-emulator', target),

@@ -234,11 +234,14 @@
   color: var(--arc-color-danger);
 }
 
-.toolbar-android-diagnostic {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--arc-text-xs);
-  color: var(--arc-color-text-muted);
+.toolbar-target-status.is-ready {
+  color: var(--arc-color-success);
+}
+
+.toolbar-target-status.is-pending {
+  color: #d4ad61;
+}
+
+.toolbar-target-status.is-error {
+  color: var(--arc-color-danger);
 }

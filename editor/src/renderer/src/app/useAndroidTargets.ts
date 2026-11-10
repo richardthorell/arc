@@ -14,6 +14,7 @@ export function useAndroidTargets(active: boolean, project: string) {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const generation = useRef(0);
   const selectionContext = useRef('');
+  const selectedId = useRef('');
   const refresh = useCallback(() => setRefreshVersion((value) => value + 1), []);
 
   useEffect(() => {
@@ -38,11 +39,19 @@ export function useAndroidTargets(active: boolean, project: string) {
           } catch {
             /* Selection still works without persistence. */
           }
-          const ready = result.targets.filter((target) => target.ready);
-          const id = saved ?? (ready.length === 1 ? ready[0].id : '');
+          const id = saved ?? '';
+          selectedId.current = id;
+          selectionContext.current = key;
           setSelected(id ? { sdkRoot: result.sdkRoot, id } : null);
-          if (result.available) {
-            selectionContext.current = key;
+        }
+        // Keep looking when discovery initially found no ready device. Never replace
+        // a remembered selection, even if it has temporarily disconnected.
+        if (!selectedId.current) {
+          const ready = result.targets.filter((target) => target.ready);
+          if (ready.length === 1) {
+            const id = ready[0].id;
+            selectedId.current = id;
+            setSelected({ sdkRoot: result.sdkRoot, id });
             try {
               window.localStorage.setItem(key, id);
             } catch {
@@ -73,6 +82,7 @@ export function useAndroidTargets(active: boolean, project: string) {
     const target = snapshot?.targets.find((entry) => entry.id === id);
     if (!snapshot || !target || (!target.ready && !target.canStart && target.state !== 'starting')) return;
     setSelected({ sdkRoot: snapshot.sdkRoot, id });
+    selectedId.current = id;
     const key = androidPreferenceKey(project, snapshot.sdkRoot);
     selectionContext.current = key;
     try {

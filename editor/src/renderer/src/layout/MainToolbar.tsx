@@ -50,6 +50,8 @@ export type ToolbarTransformOrigin = 'pivot' | 'center';
 export type EditorTargetDevice = {
   id: string;
   label: string;
+  menuLabel?: string;
+  details?: readonly ReactNode[];
   platform: EditorTargetPlatform;
   disabled?: boolean;
 };
@@ -334,8 +336,10 @@ export type MainToolbarProps = {
   onTargetPlatformChange?: (platform: EditorTargetPlatform) => void;
   targetDevices?: ReadonlyArray<EditorTargetDevice>;
   targetDevice?: string;
+  targetDeviceTitle?: string;
   onTargetDeviceChange?: (deviceId: string) => void;
   targetDeviceActions?: ReactNode;
+  targetDeviceMenuActions?: ReadonlyArray<UiDropdownOption<string>>;
   onBuildAction?: (action: ToolbarBuildAction) => void;
 };
 
@@ -363,8 +367,10 @@ export function MainToolbar({
   onTargetPlatformChange,
   targetDevices,
   targetDevice,
+  targetDeviceTitle,
   onTargetDeviceChange,
   targetDeviceActions,
+  targetDeviceMenuActions = [],
   onBuildAction,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
@@ -452,6 +458,8 @@ export function MainToolbar({
     ? availableTargetDevices.map((device) => ({
         value: device.id,
         label: device.label,
+        menuLabel: device.menuLabel,
+        details: device.details,
         icon: device.platform === hostPlatform ? <Monitor size={14} /> : <Smartphone size={14} />,
         disabled: device.disabled,
       }))
@@ -627,12 +635,13 @@ export function MainToolbar({
         />
         <UiDropdown
           ariaLabel="Target device"
+          title={targetDeviceTitle}
           className="toolbar-device-dropdown"
           onValueChange={(deviceId) => {
             setLocalTargetDevice(deviceId);
             onTargetDeviceChange?.(deviceId);
           }}
-          options={deviceOptions}
+          options={[...deviceOptions, ...targetDeviceMenuActions]}
           value={effectiveTargetDevice}
         />
         {targetDeviceActions}
