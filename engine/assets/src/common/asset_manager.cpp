@@ -143,8 +143,7 @@ bool asset_manager::register_virtual_asset(asset_guid guid, asset_type_id type, 
     value.slot->resolved_guid = guid;
     value.slot->type = type;
     value.slot->generation = 1;
-    std::atomic_store_explicit(&value.slot->payload, std::make_shared<const asset_payload>(std::move(payload)),
-                               std::memory_order_release);
+    value.slot->payload.store(std::make_shared<const asset_payload>(std::move(payload)), std::memory_order_release);
     if (pin_value) value.slot->pins = 1;
     implementation_->paths[path_key(value.snapshot.source_path)] = guid;
     implementation_->records.emplace(guid, std::move(value));
@@ -529,7 +528,7 @@ jobs::job_future<asset_manager::untyped_load_result> asset_manager::load_untyped
                                .guid = guid,
                                .message = "Asset type does not match the reference"};
         }
-        else if (std::atomic_load_explicit(&found->second.slot->payload, std::memory_order_acquire))
+        else if (found->second.slot->payload.load(std::memory_order_acquire))
         {
             immediate_slot = found->second.slot;
         }
@@ -564,7 +563,7 @@ jobs::job_future<asset_manager::untyped_load_result> asset_manager::load_untyped
                                                      .message = "Asset load was cancelled"}};
             std::shared_lock lock(implementation_->mutex);
             const auto found = implementation_->records.find(guid);
-            if (found != implementation_->records.end() && std::atomic_load_explicit(&found->second.slot->payload, std::memory_order_acquire))
+            if (found != implementation_->records.end() && found->second.slot->payload.load(std::memory_order_acquire))
             {
                 asset_error error;
                 if (found->second.snapshot.state == asset_state::failed)
@@ -617,7 +616,7 @@ std::size_t asset_manager::evict_unused(asset_residency maximum_residency)
     {
         if (value.virtual_asset || value.slot.use_count() != 1 ||
             value.slot->pins.load(std::memory_order_relaxed) != 0 || value.snapshot.residency > maximum_residency ||
-            !std::atomic_load_explicit(&value.slot->payload, std::memory_order_acquire))
+            !value.slot->payload.load(std::memory_order_acquire))
             continue;
         candidates.push_back(&value);
     }
@@ -630,8 +629,7 @@ std::size_t asset_manager::evict_unused(asset_residency maximum_residency)
               });
     for (auto* value : candidates)
     {
-        std::atomic_store_explicit(&value->slot->payload, std::shared_ptr<const asset_payload>{},
-                                   std::memory_order_release);
+        value->slot->payload.store(nullptr, std::memory_order_release);
         value->snapshot.residency = asset_residency::derived;
         value->snapshot.revision = ++implementation_->revision;
         implementation_->persist_record(*value);
