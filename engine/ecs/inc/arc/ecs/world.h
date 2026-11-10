@@ -541,7 +541,14 @@ public:
     }
     [[nodiscard]] change_revision revision() const noexcept
     {
+#if defined(__cpp_lib_atomic_ref) && __cpp_lib_atomic_ref >= 201806L
         return std::atomic_ref<const change_revision>(revision_).load(std::memory_order_acquire);
+#elif defined(__clang__) || defined(__GNUC__)
+        // Older Android libc++ lacks atomic_ref; retain acquire semantics.
+        return __atomic_load_n(&revision_, __ATOMIC_ACQUIRE);
+#else
+#error "ARC ECS revisions require std::atomic_ref or compiler atomic builtins"
+#endif
     }
     [[nodiscard]] memory::world_memory_context& memory() noexcept
     {
@@ -880,10 +887,18 @@ private:
 
     change_revision next_revision() noexcept
     {
+#if defined(__cpp_lib_atomic_ref) && __cpp_lib_atomic_ref >= 201806L
         auto atomic_revision = std::atomic_ref<change_revision>(revision_);
         change_revision result = atomic_revision.fetch_add(1, std::memory_order_acq_rel) + 1;
         if (result == 0) result = atomic_revision.fetch_add(1, std::memory_order_acq_rel) + 1;
         return result;
+#elif defined(__clang__) || defined(__GNUC__)
+        change_revision result = __atomic_add_fetch(&revision_, change_revision{1}, __ATOMIC_ACQ_REL);
+        if (result == 0) result = __atomic_add_fetch(&revision_, change_revision{1}, __ATOMIC_ACQ_REL);
+        return result;
+#else
+#error "ARC ECS revisions require std::atomic_ref or compiler atomic builtins"
+#endif
     }
 
     void record_structural(structural_change_kind kind, entity value, component_type_id component)

@@ -517,7 +517,8 @@ struct asset_slot
     asset_type_id type{};
     std::atomic<std::uint64_t> generation{};
     std::atomic<std::uint32_t> pins{};
-    std::atomic<std::shared_ptr<const asset_payload>> payload;
+    // Use the C++11 shared_ptr atomic free functions for Android libc++ compatibility.
+    std::shared_ptr<const asset_payload> payload;
 };
 } // namespace detail
 
@@ -528,7 +529,7 @@ public:
 
     [[nodiscard]] bool valid() const noexcept
     {
-        return slot_ && slot_->payload.load(std::memory_order_acquire) != nullptr;
+        return slot_ && std::atomic_load_explicit(&slot_->payload, std::memory_order_acquire) != nullptr;
     }
 
     [[nodiscard]] explicit operator bool() const noexcept
@@ -558,7 +559,7 @@ public:
 
     [[nodiscard]] const T* get() const noexcept
     {
-        snapshot_ = slot_ ? slot_->payload.load(std::memory_order_acquire) : nullptr;
+        snapshot_ = slot_ ? std::atomic_load_explicit(&slot_->payload, std::memory_order_acquire) : nullptr;
         return snapshot_ ? snapshot_->template get<T>() : nullptr;
     }
     [[nodiscard]] const T& operator*() const noexcept
@@ -792,7 +793,7 @@ public:
                 typed.error = result.error;
                 if (result.slot)
                 {
-                    const auto payload = result.slot->payload.load(std::memory_order_acquire);
+                    const auto payload = std::atomic_load_explicit(&result.slot->payload, std::memory_order_acquire);
                     if (payload && !payload->template get<T>())
                     {
                         typed.error = {.code = asset_error_code::type_mismatch,
