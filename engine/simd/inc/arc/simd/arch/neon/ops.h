@@ -741,7 +741,8 @@ template <> struct simd_op<float64x2_t>
 
     static inline float64x2_t bitwise_not(float64x2_t a) noexcept
     {
-        return vreinterpretq_f64_u64(vmvnq_u64(vreinterpretq_u64_f64(a)));
+        // AArch64 NEON has no vmvnq_u64 intrinsic; invert the 32-bit halves.
+        return vreinterpretq_f64_u32(vmvnq_u32(vreinterpretq_u32_f64(a)));
     }
 
     static inline uint32x4_t cmp_eq(float64x2_t a, float64x2_t b) noexcept
@@ -751,7 +752,7 @@ template <> struct simd_op<float64x2_t>
 
     static inline uint32x4_t cmp_ne(float64x2_t a, float64x2_t b) noexcept
     {
-        return vreinterpretq_u32_u64(vmvnq_u64(vceqq_f64(a, b)));
+        return vmvnq_u32(vreinterpretq_u32_u64(vceqq_f64(a, b)));
     }
 
     static inline uint32x4_t cmp_lt(float64x2_t a, float64x2_t b) noexcept
@@ -806,7 +807,7 @@ template <> struct simd_op<float64x2_t>
 
     static inline double sum(float64x2_t a) noexcept
     {
-        return vget_lane_f64(vpaddq_f64(a, a), 0);
+        return vaddvq_f64(a);
     }
 
     static inline double dot(float64x2_t a, float64x2_t b) noexcept
@@ -816,12 +817,12 @@ template <> struct simd_op<float64x2_t>
 
     static inline double min_element(float64x2_t a) noexcept
     {
-        return vget_lane_f64(vpminq_f64(a, a), 0);
+        return vminvq_f64(a);
     }
 
     static inline double max_element(float64x2_t a) noexcept
     {
-        return vget_lane_f64(vpmaxq_f64(a, a), 0);
+        return vmaxvq_f64(a);
     }
 
     static inline float64x2_t rsqrt(float64x2_t a) noexcept

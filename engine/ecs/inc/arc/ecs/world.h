@@ -541,7 +541,7 @@ public:
     }
     [[nodiscard]] change_revision revision() const noexcept
     {
-        return std::atomic_ref<const change_revision>(revision_).load(std::memory_order_acquire);
+        return std::atomic_ref<change_revision>(revision_).load(std::memory_order_acquire);
     }
     [[nodiscard]] memory::world_memory_context& memory() noexcept
     {
@@ -920,7 +920,8 @@ private:
     std::vector<std::unique_ptr<query_cache_entry>> query_cache_;
     std::vector<structural_change> structural_changes_;
     std::size_t live_count_{};
-    change_revision revision_{};
+    // Atomic references in const accessors require mutable storage.
+    mutable change_revision revision_{};
     std::uint32_t structural_lock_depth_{};
     bool flushing_commands_{};
     friend class query_entity_range::iterator;

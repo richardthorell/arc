@@ -19,6 +19,7 @@ jobs:
       clang: ${{ steps.classify.outputs.clang }}
       gcc: ${{ steps.classify.outputs.gcc }}
       msvc: ${{ steps.classify.outputs.msvc }}
+      android: ${{ steps.classify.outputs.android }}
       coverage: ${{ steps.classify.outputs.coverage }}
       quality_native: ${{ steps.classify.outputs.quality_native }}
       quality_editor: ${{ steps.classify.outputs.quality_editor }}
@@ -50,6 +51,7 @@ jobs:
             echo '| Clang | ${{ steps.classify.outputs.clang }} |'
             echo '| GCC | ${{ steps.classify.outputs.gcc }} |'
             echo '| MSVC | ${{ steps.classify.outputs.msvc }} |'
+            echo '| Android NDK/APK | ${{ steps.classify.outputs.android }} |'
             echo '| Coverage | ${{ steps.classify.outputs.coverage }} |'
             echo '| Native quality | ${{ steps.classify.outputs.quality_native }} |'
             echo '| Editor quality | ${{ steps.classify.outputs.quality_editor }} |'
@@ -92,6 +94,12 @@ jobs:
       run_shaders: ${{ needs.changes.outputs.shaders == 'true' }}
       run_cooker: ${{ needs.changes.outputs.cooker == 'true' }}
 
+  android:
+    name: Android
+    needs: changes
+    if: ${{ needs.changes.outputs.android == 'true' }}
+    uses: ./.github/workflows/build-android.yml
+
   coverage:
     name: Coverage
     needs: changes
@@ -101,7 +109,7 @@ jobs:
   pr-gate:
     name: PR Gate
     if: ${{ always() }}
-    needs: [changes, quality, clang, gcc, msvc, coverage]
+    needs: [changes, quality, clang, gcc, msvc, android, coverage]
     runs-on: ubuntu-24.04
     steps:
       - name: Verify Selected Checks
@@ -111,6 +119,7 @@ jobs:
           CLANG: ${{ needs.clang.result }}
           GCC: ${{ needs.gcc.result }}
           MSVC: ${{ needs.msvc.result }}
+          ANDROID: ${{ needs.android.result }}
           COVERAGE: ${{ needs.coverage.result }}
         shell: bash
         run: |
@@ -124,6 +133,7 @@ jobs:
             "Clang:$CLANG" \
             "GCC:$GCC" \
             "MSVC:$MSVC" \
+            "Android:$ANDROID" \
             "Coverage:$COVERAGE"; do
             name=${entry%%:*}
             result=${entry#*:}

@@ -143,7 +143,7 @@ bool asset_manager::register_virtual_asset(asset_guid guid, asset_type_id type, 
     value.slot->resolved_guid = guid;
     value.slot->type = type;
     value.slot->generation = 1;
-    value.slot->payload = std::make_shared<const asset_payload>(std::move(payload));
+    value.slot->payload.store(std::make_shared<const asset_payload>(std::move(payload)), std::memory_order_release);
     if (pin_value) value.slot->pins = 1;
     implementation_->paths[path_key(value.snapshot.source_path)] = guid;
     implementation_->records.emplace(guid, std::move(value));

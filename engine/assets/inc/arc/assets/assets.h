@@ -510,6 +510,43 @@ struct asset_load_request
 
 namespace detail
 {
+// std::atomic<shared_ptr> is available on desktop C++20 libraries, but
+// not in Android NDK r30's libc++. Keep the publication contract identical.
+class atomic_asset_payload
+{
+public:
+    using pointer = std::shared_ptr<const asset_payload>;
+
+    atomic_asset_payload() noexcept = default;
+    atomic_asset_payload(const atomic_asset_payload&) = delete;
+    atomic_asset_payload& operator=(const atomic_asset_payload&) = delete;
+
+    [[nodiscard]] pointer load(std::memory_order order = std::memory_order_seq_cst) const noexcept
+    {
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
+        return value_.load(order);
+#else
+        return std::atomic_load_explicit(&value_, order);
+#endif
+    }
+
+    void store(pointer value, std::memory_order order = std::memory_order_seq_cst) noexcept
+    {
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
+        value_.store(std::move(value), order);
+#else
+        std::atomic_store_explicit(&value_, std::move(value), order);
+#endif
+    }
+
+private:
+#if defined(__cpp_lib_atomic_shared_ptr) && __cpp_lib_atomic_shared_ptr >= 201711L
+    std::atomic<pointer> value_;
+#else
+    pointer value_;
+#endif
+};
+
 struct asset_slot
 {
     asset_guid requested_guid{};
@@ -517,7 +554,7 @@ struct asset_slot
     asset_type_id type{};
     std::atomic<std::uint64_t> generation{};
     std::atomic<std::uint32_t> pins{};
-    std::atomic<std::shared_ptr<const asset_payload>> payload;
+    atomic_asset_payload payload;
 };
 } // namespace detail
 
