@@ -382,8 +382,7 @@ TEST_CASE("V3.4 active artifact reader uses logical GUID, schema and provider be
     REQUIRE_FALSE(wrong_schema);
     CHECK(wrong_schema.error().code == project::project_error_code::not_found);
 
-    const auto invalid = session.value()->read_active_artifact({}, assets::asset_types::scene,
-                                                               assets::artifact_schemas::scene);
+    const auto invalid = session.value()->read_active_artifact({}, {}, {});
     REQUIRE_FALSE(invalid);
     CHECK(invalid.error().code == project::project_error_code::invalid_descriptor);
 }

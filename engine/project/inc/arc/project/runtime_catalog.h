@@ -64,10 +64,9 @@ public:
      * representations (for example, several mesh parts or texture variants).
      * No artifact bytes are loaded until this method is explicitly called.
      */
-    [[nodiscard]] runtime_artifact_read_result read_active_artifact(assets::asset_guid guid,
-                                                                   assets::asset_type_id type,
-                                                                   assets::artifact_schema_id schema,
-                                                                   std::string_view name = {});
+    [[nodiscard]] runtime_artifact_read_result read_active_artifact(assets::asset_guid guid, assets::asset_type_id type,
+                                                                    assets::artifact_schema_id schema,
+                                                                    std::string_view name = {});
 
 private:
     friend runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& request);

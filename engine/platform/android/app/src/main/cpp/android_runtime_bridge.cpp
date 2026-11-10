@@ -115,8 +115,9 @@ bool android_runtime_bridge::boot()
     }
 
     const auto guid = catalog_->startup_scenes().front();
-    auto bytes = catalog_->read_active_artifact(guid, arc::assets::asset_types::scene,
-                                                arc::assets::artifact_schemas::scene);
+    constexpr auto type = arc::assets::asset_types::scene;
+    constexpr auto schema = arc::assets::artifact_schemas::scene;
+    auto bytes = catalog_->read_active_artifact(guid, type, schema);
     if (!bytes)
     {
         arc::diagnostics::error("Android", "Cannot load active cooked startup scene: " + bytes.error().message);
