@@ -372,7 +372,7 @@ jobs::job_handle asset_manager::implementation::ensure_import(asset_guid guid, a
                 }
             }
 
-            std::atomic_store_explicit(&target.slot->payload, std::make_shared<const asset_payload>(std::move(imported.payload)),
+            target.slot->payload.store(std::make_shared<const asset_payload>(std::move(imported.payload)),
                                        std::memory_order_release);
             target.slot->generation.fetch_add(1, std::memory_order_acq_rel);
             target.snapshot.generation = target.slot->generation.load(std::memory_order_acquire);

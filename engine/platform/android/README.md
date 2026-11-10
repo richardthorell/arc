@@ -256,7 +256,7 @@ Android builds are now selected by the PR classifier for Android platform,
 renderer, scene, asset, ECS and runtime-project changes. The required
 `Android arm64 NDK / APK` job invokes the real Android Gradle app
 (`gradle :app:assembleDebug`) with JDK 17, Gradle 8.9, API 35,
-CMake 3.22.1, and NDK 27.2.12479018. Successful runs upload an arm64 debug
+CMake 3.22.1, and NDK 30.0.16248370. Successful runs upload an arm64 debug
 APK. This verifies NDK/CMake compilation and APK linking, **not** that a device
 can present a Vulkan frame or decode cooked assets.
 

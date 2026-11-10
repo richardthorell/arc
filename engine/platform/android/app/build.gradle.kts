@@ -5,7 +5,7 @@ plugins {
 android {
     namespace = "org.arcengine.host"
     compileSdk = 35
-    ndkVersion = "27.2.12479018"
+    ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = "org.arcengine.host"
