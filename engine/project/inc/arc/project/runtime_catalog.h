@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace arc::project
@@ -31,6 +32,7 @@ struct runtime_catalog_request
 class runtime_catalog_session;
 
 using runtime_catalog_result = core::result<std::unique_ptr<runtime_catalog_session>, project_error>;
+using runtime_artifact_read_result = core::result<io::file_buffer, project_error>;
 
 /**
  * Owns only mounts created during this bootstrap. Never unmounts an externally
@@ -55,6 +57,17 @@ public:
     [[nodiscard]] const std::vector<assets::asset_guid>& startup_scenes() const noexcept;
     /** Requested C3 bundle IDs verified in the mounted cook manifests. */
     [[nodiscard]] const std::vector<assets::content_bundle_id>& startup_bundles() const noexcept;
+
+    /**
+     * Read the active cooked representation of a logical GUID, not a guessed APK
+     * or file path. Named selection is required when a schema has multiple
+     * representations (for example, several mesh parts or texture variants).
+     * No artifact bytes are loaded until this method is explicitly called.
+     */
+    [[nodiscard]] runtime_artifact_read_result read_active_artifact(assets::asset_guid guid,
+                                                                   assets::asset_type_id type,
+                                                                   assets::artifact_schema_id schema,
+                                                                   std::string_view name = {});
 
 private:
     friend runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& request);
