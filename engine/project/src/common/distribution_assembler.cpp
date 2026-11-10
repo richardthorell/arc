@@ -41,8 +41,7 @@ bool portable_path(std::string_view value)
     {
         const auto end = value.find('/', offset);
         const auto part = value.substr(offset, end == value.npos ? end : end - offset);
-        if (part.empty() || part == "." || part == ".." || part.back() == '.' || part.back() == ' ')
-            return false;
+        if (part.empty() || part == "." || part == ".." || part.back() == '.' || part.back() == ' ') return false;
         for (const unsigned char ch : part)
             if (ch < 32 || ch == 127) return false;
         if (end == value.npos) return true;
@@ -132,10 +131,8 @@ distribution_assembly_result assemble_distribution(const distribution_assembly_r
         const auto size = fs::file_size(staged, ec);
         if (ec || !digest)
             return reject(project_error_code::io_failed, "files", "Cannot hash staged file: " + file.destination);
-        manifest.files.push_back({.path = file.destination,
-                                  .kind = file.kind,
-                                  .size = size,
-                                  .sha256 = assets::to_string(digest.value())});
+        manifest.files.push_back(
+            {.path = file.destination, .kind = file.kind, .size = size, .sha256 = assets::to_string(digest.value())});
     }
 
     distribution_finalize_request finalize{.workflow = request.workflow,
