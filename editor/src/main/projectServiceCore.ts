@@ -487,6 +487,30 @@ export class ProjectService {
       const legacyScenePath = 'Content/Scenes/Startup.arcscene';
       if (descriptorPath && fs.existsSync(descriptorPath)) {
         const rawDescriptor = JSON.parse(fs.readFileSync(descriptorPath, 'utf8')) as Record<string, unknown>;
+        // Upgrade the managed Quick Start project without overriding an explicit disabled target.
+        const targets = Array.isArray(rawDescriptor.targetPlatforms) ? rawDescriptor.targetPlatforms : [];
+        const profiles = Array.isArray(rawDescriptor.cookProfiles) ? rawDescriptor.cookProfiles : [];
+        let androidAdded = false;
+        if (!targets.some((entry) => objectValue(entry).id === 'android-arm64-vulkan')) {
+          rawDescriptor.targetPlatforms = [...targets, { id: 'android-arm64-vulkan', enabled: true }];
+          androidAdded = true;
+        }
+        if (!profiles.some((entry) => objectValue(entry).id === 'android-arm64-vulkan')) {
+          rawDescriptor.cookProfiles = [
+            ...profiles,
+            {
+              id: 'android-arm64-vulkan',
+              platform: 'android',
+              architecture: 'arm64',
+              renderer: 'vulkan',
+              api: '1.2',
+              textures: { outputs: ['astc'], quality: 'balanced' },
+              configuration: 'Shipping',
+            },
+          ];
+          androidAdded = true;
+        }
+        if (androidAdded) writeJsonAtomic(descriptorPath, rawDescriptor);
         const defaultScene = objectValue(rawDescriptor.defaultScene);
         const startupScenes = Array.isArray(rawDescriptor.startupScenes) ? rawDescriptor.startupScenes : [];
         const normalizedPath = (value: unknown): string =>

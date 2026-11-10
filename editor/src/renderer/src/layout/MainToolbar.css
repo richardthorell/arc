@@ -233,3 +233,15 @@
   border-color: var(--arc-color-danger);
   color: var(--arc-color-danger);
 }
+
+.toolbar-target-status.is-ready {
+  color: var(--arc-color-success);
+}
+
+.toolbar-target-status.is-pending {
+  color: #d4ad61;
+}
+
+.toolbar-target-status.is-error {
+  color: var(--arc-color-danger);
+}

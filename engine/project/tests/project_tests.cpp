@@ -236,6 +236,20 @@ TEST_CASE("project validation accepts ordered texture families and rejects inval
     CHECK(validation.error().field == "cookProfiles.textures.outputs");
 }
 
+TEST_CASE("project validation accepts Android Vulkan alongside the desktop default")
+{
+    temporary_directory temporary;
+    arc::project::project_descriptor descriptor;
+    descriptor.guid = "12345678-1234-4234-8234-123456789ac1";
+    descriptor.name = "Android Targets";
+    descriptor.engine_version = "0.1.0";
+    descriptor.target_platforms.push_back({.id = "windows-x64-vulkan"});
+    descriptor.target_platforms.push_back({.id = "android-arm64-vulkan"});
+    CHECK(arc::project::validate_descriptor(temporary.path() / "Android.arcproject", descriptor));
+    descriptor.target_platforms.back().id = "unknown-platform";
+    CHECK_FALSE(arc::project::validate_descriptor(temporary.path() / "Android.arcproject", descriptor));
+}
+
 TEST_CASE("project validation rejects a default scene whose asset identity does not match")
 {
     temporary_directory temporary;

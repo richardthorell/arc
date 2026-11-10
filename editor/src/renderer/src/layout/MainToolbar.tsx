@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Box,
   Check,
@@ -36,6 +36,8 @@ import {
   type UiSplitButtonOption,
 } from '../ui';
 import { PlatformBrandIcon } from './PlatformBrandIcon';
+import type { EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
+import { platformUnavailableReason } from './platformAvailability';
 
 import './MainToolbar.css';
 
@@ -48,6 +50,8 @@ export type ToolbarTransformOrigin = 'pivot' | 'center';
 export type EditorTargetDevice = {
   id: string;
   label: string;
+  menuLabel?: string;
+  details?: readonly ReactNode[];
   platform: EditorTargetPlatform;
   disabled?: boolean;
 };
@@ -332,7 +336,10 @@ export type MainToolbarProps = {
   onTargetPlatformChange?: (platform: EditorTargetPlatform) => void;
   targetDevices?: ReadonlyArray<EditorTargetDevice>;
   targetDevice?: string;
+  targetDeviceTitle?: string;
   onTargetDeviceChange?: (deviceId: string) => void;
+  targetDeviceActions?: ReactNode;
+  targetDeviceMenuActions?: ReadonlyArray<UiDropdownOption<string>>;
   onBuildAction?: (action: ToolbarBuildAction) => void;
 };
 
@@ -360,13 +367,44 @@ export function MainToolbar({
   onTargetPlatformChange,
   targetDevices,
   targetDevice,
+  targetDeviceTitle,
   onTargetDeviceChange,
+  targetDeviceActions,
+  targetDeviceMenuActions = [],
   onBuildAction,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
   const hostPlatform = detectHostTargetPlatform();
   const [projectTargetPlatforms, setProjectTargetPlatforms] = useState<EditorTargetPlatform[]>(() => [hostPlatform]);
   const [localTargetDevice, setLocalTargetDevice] = useState('local');
+  const [localSettings, setLocalSettings] = useState<EditorSettingsSnapshot | null>(null);
+  useEffect(() => {
+    let revision = 0;
+    let disposed = false;
+    const refresh = () => {
+      const request = ++revision;
+      void window.arc?.settings
+        ?.snapshot()
+        .then((snapshot) => {
+          if (!disposed && request === revision) setLocalSettings(snapshot);
+        })
+        .catch(() => {
+          if (!disposed && request === revision) setLocalSettings(null);
+        });
+    };
+    const changed = (event: Event) => {
+      ++revision;
+      setLocalSettings((event as CustomEvent<EditorSettingsSnapshot>).detail ?? null);
+    };
+    refresh();
+    window.addEventListener('arc-editor-settings-changed', changed);
+    window.addEventListener('focus', refresh);
+    return () => {
+      disposed = true;
+      window.removeEventListener('arc-editor-settings-changed', changed);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
   const playLabel = runtimeState === 'paused' ? 'Resume' : 'Play';
   const runtimeLabel =
     runtimeState === 'stopped'
@@ -420,6 +458,8 @@ export function MainToolbar({
     ? availableTargetDevices.map((device) => ({
         value: device.id,
         label: device.label,
+        menuLabel: device.menuLabel,
+        details: device.details,
         icon: device.platform === hostPlatform ? <Monitor size={14} /> : <Smartphone size={14} />,
         disabled: device.disabled,
       }))
@@ -428,7 +468,18 @@ export function MainToolbar({
   const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
     ...projectTargetPlatforms.flatMap((platform) => {
       const option = platformOptions.find((candidate) => candidate.value === platform);
-      return option ? [{ ...option, value: option.value as PlatformMenuValue }] : [];
+      const reason = platformUnavailableReason(platform, localSettings);
+      return option
+        ? [
+            {
+              ...option,
+              value: option.value as PlatformMenuValue,
+              disabled: !!reason,
+              title: reason || undefined,
+              label: reason ? `${option.label} — Setup required` : option.label,
+            },
+          ]
+        : [];
     }),
     {
       value: '__platform-settings__',
@@ -584,14 +635,16 @@ export function MainToolbar({
         />
         <UiDropdown
           ariaLabel="Target device"
+          title={targetDeviceTitle}
           className="toolbar-device-dropdown"
           onValueChange={(deviceId) => {
             setLocalTargetDevice(deviceId);
             onTargetDeviceChange?.(deviceId);
           }}
-          options={deviceOptions}
+          options={[...deviceOptions, ...targetDeviceMenuActions]}
           value={effectiveTargetDevice}
         />
+        {targetDeviceActions}
         <UiSplitButton
           ariaLabel="Build"
           className="toolbar-build-split"

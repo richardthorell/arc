@@ -673,7 +673,7 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
                                                      "at least one target platform must be enabled",
                                                      "targetPlatforms"));
     const std::set<std::string_view> supported_platforms{"windows-x64-vulkan", "windows-x64-headless",
-                                                         "linux-x64-headless"};
+                                                         "linux-x64-headless", "android-arm64-vulkan"};
     for (const auto& platform : descriptor.target_platforms)
         if (platform.enabled && !supported_platforms.contains(platform.id))
             return validation_result::failure(make_error(project_error_code::unsupported_platform, descriptor_path,

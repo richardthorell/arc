@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { requestedSettingsDialogKind, resetSettingsDialogRequest } from '../settings/settingsDialogRoute';
@@ -13,6 +13,37 @@ afterEach(() => {
 });
 
 describe('MainToolbar runtime controls', () => {
+  it('disables unconfigured platforms and refreshes availability when settings change', () => {
+    const onTargetPlatformChange = vi.fn();
+    render(
+      <MainToolbar
+        configuredTargetPlatforms={['windows', 'android']}
+        onCommand={vi.fn()}
+        onTargetPlatformChange={onTargetPlatformChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
+    expect(screen.getByRole('option', { name: /Android/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('option', { name: /Android/ }));
+    expect(onTargetPlatformChange).not.toHaveBeenCalled();
+    void act(() =>
+      window.dispatchEvent(
+        new CustomEvent('arc-editor-settings-changed', {
+          detail: {
+            pathValidation: {
+              'platform.android.javaHome': { valid: true },
+              'platform.android.sdkPath': { valid: true },
+              'platform.android.ndkPath': { valid: true },
+            },
+          },
+        }),
+      ),
+    );
+    expect(screen.getByRole('option', { name: /Android/ })).toBeEnabled();
+    expect(screen.getByRole('option', { name: /Windows/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('option', { name: /Android/ }));
+    expect(onTargetPlatformChange).toHaveBeenCalledWith('android');
+  });
   it('renders host-authoritative playback state and enables only valid controls', () => {
     const { rerender } = render(<MainToolbar onCommand={vi.fn()} runtimeState="stopped" timeScale={2} />);
 
@@ -167,6 +198,25 @@ describe('MainToolbar runtime controls', () => {
 
     expect(screen.getByRole('button', { name: 'Target platform' })).toHaveTextContent('Android');
     expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9');
+    void act(() =>
+      window.dispatchEvent(
+        new CustomEvent('arc-editor-settings-changed', {
+          detail: {
+            pathValidation: Object.fromEntries(
+              [
+                'platform.windows.msvcToolchainPath',
+                'platform.windows.sdkPath',
+                'platform.windows.cmakePath',
+                'platform.windows.ninjaPath',
+                'platform.android.javaHome',
+                'platform.android.sdkPath',
+                'platform.android.ndkPath',
+              ].map((key) => [key, { valid: true }]),
+            ),
+          },
+        }),
+      ),
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
     expect(screen.getByRole('option', { name: /Windows/ })).toBeInTheDocument();

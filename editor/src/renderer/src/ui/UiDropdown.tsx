@@ -19,8 +19,11 @@ import './UiDropdown.css';
 export type UiDropdownOption<Value extends string = string> = {
   value: Value;
   label: string;
+  menuLabel?: string;
+  details?: readonly ReactNode[];
   icon?: ReactNode;
   disabled?: boolean;
+  title?: string;
   separatorBefore?: boolean;
   onSelect?: () => void;
 };
@@ -30,6 +33,7 @@ type UiDropdownProps<Value extends string = string> = {
   options: ReadonlyArray<UiDropdownOption<Value>>;
   onValueChange: (value: Value) => void;
   ariaLabel?: string;
+  title?: string;
   className?: string;
   disabled?: boolean;
 };
@@ -50,6 +54,7 @@ export function UiDropdown<Value extends string = string>({
   options,
   onValueChange,
   ariaLabel,
+  title,
   className,
   disabled = false,
 }: UiDropdownProps<Value>) {
@@ -60,13 +65,17 @@ export function UiDropdown<Value extends string = string>({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuId = useId();
   const selected = options.find((option) => option.value === value && !option.onSelect) ?? options[0];
+  const hasDetails = options.some((option) => option.details?.length);
 
   const updateMenuPosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
 
     const bounds = trigger.getBoundingClientRect();
-    const width = Math.max(bounds.width, minimumMenuWidth);
+    const width = Math.min(
+      Math.max(bounds.width, hasDetails ? 320 : minimumMenuWidth),
+      window.innerWidth - menuMargin * 2,
+    );
     const left = Math.max(menuMargin, Math.min(bounds.right - width, window.innerWidth - width - menuMargin));
     const top = bounds.bottom + menuGap;
 
@@ -76,7 +85,7 @@ export function UiDropdown<Value extends string = string>({
       width,
       maxHeight: Math.max(80, window.innerHeight - top - menuMargin),
     });
-  }, []);
+  }, [hasDetails]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -127,6 +136,7 @@ export function UiDropdown<Value extends string = string>({
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-label={ariaLabel}
+        title={title}
         className="ui-dropdown-trigger"
         disabled={disabled}
         type="button"
@@ -161,8 +171,9 @@ export function UiDropdown<Value extends string = string>({
                   {option.separatorBefore && <div className="ui-dropdown-separator" role="separator" />}
                   <UiButton
                     aria-selected={option.onSelect ? undefined : isSelected}
-                    className={`ui-dropdown-option${option.onSelect ? ' is-action' : ''}`}
+                    className={`ui-dropdown-option${option.onSelect ? ' is-action' : ''}${option.details?.length ? ' has-details' : ''}`}
                     disabled={option.disabled}
+                    title={option.title}
                     role="option"
                     type="button"
                     variant="ghost"
@@ -170,7 +181,14 @@ export function UiDropdown<Value extends string = string>({
                   >
                     <span className="ui-dropdown-option-content">
                       {option.icon && <span className="ui-dropdown-icon">{option.icon}</span>}
-                      <span>{option.label}</span>
+                      <span className="ui-dropdown-option-text">
+                        <span>{option.menuLabel ?? option.label}</span>
+                        {option.details?.map((detail, index) => (
+                          <span className="ui-dropdown-option-detail" key={index}>
+                            {detail}
+                          </span>
+                        ))}
+                      </span>
                     </span>
                     <span className="ui-dropdown-check" aria-hidden="true">
                       {isSelected ? <Check size={13} /> : null}

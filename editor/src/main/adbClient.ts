@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
+import { isIP } from 'node:net';
 
-import type { AndroidDevice, AndroidDeviceConnectionState } from '../common/androidDeviceTypes';
+import type { AndroidConnectionType, AndroidDevice, AndroidDeviceConnectionState } from '../common/androidDeviceTypes';
 
 export type AdbCommandResult = {
   stdout: string;
@@ -13,13 +14,14 @@ export type AdbCommandExecutor = (
   timeoutMs: number,
 ) => Promise<AdbCommandResult>;
 
-const executeAdbCommand: AdbCommandExecutor = (executable, arguments_, timeoutMs) =>
+export const executeAdbCommand: AdbCommandExecutor = (executable, arguments_, timeoutMs) =>
   new Promise((resolve, reject) => {
     execFile(
       executable,
       arguments_,
       {
         encoding: 'utf8',
+        shell: false,
         windowsHide: true,
         timeout: timeoutMs,
         maxBuffer: 1024 * 1024,
@@ -44,6 +46,28 @@ const normalizeConnectionState = (value: string): AndroidDeviceConnectionState =
 };
 
 const readableAdbValue = (value: string): string => value.replaceAll('_', ' ').trim();
+export const adbNetworkAddress = (endpoint: string): string | undefined => {
+  const value = endpoint.replace(/^tcp:/, '');
+  const match = value.match(/^\[([^\]]+)\]:\d+$/) ?? value.match(/^(.+):\d+$/);
+  return match && isIP(match[1]) ? match[1] : undefined;
+};
+
+export const parseAdbMdnsAddresses = (output: string): Map<string, string> => {
+  const addresses = new Map<string, string>();
+  for (const line of output.split(/\r?\n/)) {
+    const [name, service, endpoint] = line.trim().split(/\s+/);
+    if (!name || !service || !endpoint || service.replace(/\.$/, '') !== '_adb-tls-connect._tcp') continue;
+    const address = adbNetworkAddress(endpoint);
+    if (address) addresses.set(`${name}.${service}`.replace(/\.$/, ''), address);
+  }
+  return addresses;
+};
+const connectionType = (serial: string, devicePath = ''): AndroidConnectionType => {
+  if (serial.startsWith('emulator-')) return 'emulator';
+  if (devicePath.startsWith('usb:')) return 'usb';
+  if (devicePath.startsWith('tcp:') || /:\d+$/.test(serial) || serial.includes('._tcp')) return 'network';
+  return 'unknown';
+};
 
 type ParsedDevice = Omit<AndroidDevice, 'apiLevel'>;
 
@@ -60,7 +84,7 @@ export const parseAdbDevices = (output: string): ParsedDevice[] => {
 
     let stateDetail = remainder.split(/\s+/, 1)[0] ?? '';
     if (remainder.startsWith('no permissions')) stateDetail = 'no permissions';
-    const metadataStart = remainder.search(/(?:^|\s)(?:product|model|device|transport_id):/);
+    const metadataStart = remainder.search(/(?:^|\s)(?:usb|product|model|device|transport_id):/);
     if (metadataStart >= 0) remainder = remainder.slice(metadataStart).trim();
     else remainder = '';
 
@@ -80,6 +104,8 @@ export const parseAdbDevices = (output: string): ParsedDevice[] => {
       device: readableAdbValue(metadata.get('device') ?? ''),
       transportId: metadata.get('transport_id') ?? '',
       emulator: serial.startsWith('emulator-'),
+      connectionType: connectionType(serial, metadata.has('usb') ? `usb:${metadata.get('usb')}` : ''),
+      networkAddress: adbNetworkAddress(serial),
     });
   }
   return devices;
@@ -107,21 +133,46 @@ export class AdbClient {
   async listDevices(): Promise<AndroidDevice[]> {
     const { stdout } = await this.execute(['devices', '-l']);
     const devices = parseAdbDevices(stdout);
-    return Promise.all(
-      devices.map(async (device): Promise<AndroidDevice> => {
-        if (device.state !== 'online') return device;
-        const [apiLevel, model] = await Promise.all([
-          this.readDeviceProperty(device.serial, 'ro.build.version.sdk'),
-          device.model ? Promise.resolve(device.model) : this.readDeviceProperty(device.serial, 'ro.product.model'),
-        ]);
-        const parsedApi = Number.parseInt(apiLevel, 10);
-        return {
-          ...device,
-          model: readableAdbValue(model) || device.serial,
-          ...(Number.isFinite(parsedApi) ? { apiLevel: parsedApi } : {}),
-        };
-      }),
-    );
+    // Wireless debugging may use an mDNS serial; resolve that exact connect service.
+    const networkAddresses = devices.some((device) => device.connectionType === 'network' && !device.networkAddress)
+      ? await this.execute(['mdns', 'services'], 3000)
+          .then((result) => parseAdbMdnsAddresses(result.stdout))
+          .catch(() => new Map<string, string>())
+      : new Map<string, string>();
+    const result: AndroidDevice[] = [];
+    for (let offset = 0; offset < devices.length; offset += 4) {
+      result.push(
+        ...(await Promise.all(
+          devices.slice(offset, offset + 4).map(async (device): Promise<AndroidDevice> => {
+            const networkAddress = device.networkAddress ?? networkAddresses.get(device.serial.replace(/\.$/, ''));
+            if (device.state !== 'online') return { ...device, networkAddress };
+            const [apiLevel, model, androidVersion, manufacturer, devicePath] = await Promise.all([
+              this.readDeviceProperty(device.serial, 'ro.build.version.sdk'),
+              device.model ? Promise.resolve(device.model) : this.readDeviceProperty(device.serial, 'ro.product.model'),
+              this.readDeviceProperty(device.serial, 'ro.build.version.release'),
+              this.readDeviceProperty(device.serial, 'ro.product.manufacturer'),
+              device.connectionType === 'unknown'
+                ? this.executeForDevice(device.serial, ['get-devpath'], 3000)
+                    .then((result) => result.stdout.trim())
+                    .catch(() => '')
+                : Promise.resolve(''),
+            ]);
+            const parsedApi = Number.parseInt(apiLevel, 10);
+            return {
+              ...device,
+              model: readableAdbValue(model) || device.serial,
+              androidVersion: androidVersion || undefined,
+              manufacturer: manufacturer || undefined,
+              networkAddress: networkAddress ?? adbNetworkAddress(devicePath),
+              connectionType:
+                device.connectionType === 'unknown' ? connectionType(device.serial, devicePath) : device.connectionType,
+              ...(Number.isFinite(parsedApi) ? { apiLevel: parsedApi } : {}),
+            };
+          }),
+        )),
+      );
+    }
+    return result;
   }
 
   execute(arguments_: string[], timeoutMs = 5000): Promise<AdbCommandResult> {

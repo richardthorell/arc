@@ -13,11 +13,11 @@
   "plugins": [],
   "defaultScene": null,
   "startupScenes": [],
-  "targetPlatforms": [{"id":"windows-x64-vulkan","enabled":true}],
+  "targetPlatforms": [{"id":"windows-x64-vulkan","enabled":true},{"id":"android-arm64-vulkan","enabled":true}],
   "toolchain": {"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
   "buildConfigurations": ["Debug","RelWithDebInfo","Shipping"],
   "renderer": {"backend":"vulkan","api":"1.2","quality":"standard"},
-  "cookProfiles": [{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textures":{"outputs":["bc"],"quality":"balanced"},"configuration":"Shipping"}],
+  "cookProfiles": [{"id":"windows-x64-vulkan","platform":"windows","architecture":"x86_64","renderer":"vulkan","api":"1.2","textures":{"outputs":["bc"],"quality":"balanced"},"configuration":"Shipping"},{"id":"android-arm64-vulkan","platform":"android","architecture":"arm64","renderer":"vulkan","api":"1.2","textures":{"outputs":["astc"],"quality":"balanced"},"configuration":"Shipping"}],
   "package": {"applicationName":"{{PROJECT_NAME}}","companyName":"","output":"Build/Packages","regionChunks":true},
   "settings": {"editor":"Config/Editor.json","renderer":"Config/Renderer.json","input":"Config/Input.json"}
 }

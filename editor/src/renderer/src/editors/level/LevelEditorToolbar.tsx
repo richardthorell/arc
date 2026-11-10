@@ -1,89 +1,96 @@
-import { useEffect, useState } from 'react';
-
-import type { AndroidDevice, AndroidDeviceSnapshot } from '../../../../common/androidDeviceTypes';
+import type { AndroidTargetController } from '../../app/useAndroidTargets';
+import type { AndroidTarget } from '../../../../common/androidDeviceTypes';
 import { MainToolbar, type EditorTargetDevice, type MainToolbarProps } from '../../layout/MainToolbar';
+import { UiButton } from '../../ui';
 
-export type LevelEditorToolbarProps = MainToolbarProps;
+export type LevelEditorToolbarProps = MainToolbarProps & { androidTargets?: AndroidTargetController };
 
-const connectionLabel = (device: AndroidDevice): string => {
-  if (device.state === 'online') return device.apiLevel ? `API ${device.apiLevel}` : '';
-  if (device.state === 'offline') return 'Offline';
-  if (device.state === 'unauthorized') return 'Unauthorized';
-  if (device.state === 'no-permissions') return 'No permissions';
-  return device.stateDetail || 'Unavailable';
-};
-
-const targetDeviceFromAndroid = (device: AndroidDevice): EditorTargetDevice => {
-  const name = device.model || device.serial;
-  const detail = connectionLabel(device);
-  return {
-    id: device.serial,
-    label: detail ? `${name} · ${detail}` : name,
-    platform: 'android',
-    disabled: device.state !== 'online',
+const statusLabel = (target: AndroidTarget): string => {
+  if (target.ready) return 'Ready';
+  const labels = {
+    online: 'Connecting',
+    offline: 'Offline',
+    unauthorized: 'Unauthorized',
+    'no-permissions': 'No permissions',
+    other: 'Unavailable',
+    stopped: 'Stopped',
+    starting: 'Starting',
+    failed: 'Failed',
   };
+  return labels[target.state];
 };
 
-export function LevelEditorToolbar(props: LevelEditorToolbarProps) {
-  const [androidDevices, setAndroidDevices] = useState<AndroidDeviceSnapshot | null>(null);
-  const discoverAndroidDevices = props.targetPlatform === 'android' && props.targetDevices === undefined;
-
-  useEffect(() => {
-    if (!discoverAndroidDevices) {
-      setAndroidDevices(null);
-      return;
-    }
-
-    let disposed = false;
-    let refreshing = false;
-    const refresh = async () => {
-      if (refreshing) return;
-      refreshing = true;
-      try {
-        const snapshot = await window.arcAndroid?.listDevices();
-        if (!disposed && snapshot) setAndroidDevices(snapshot);
-      } catch {
-        if (!disposed)
-          setAndroidDevices({
-            available: false,
-            adbPath: '',
-            adbVersion: '',
-            devices: [],
-            error: 'ADB device discovery failed',
-            refreshedAt: new Date().toISOString(),
-          });
-      } finally {
-        refreshing = false;
+export function LevelEditorToolbar({ androidTargets, ...props }: LevelEditorToolbarProps) {
+  if (props.targetPlatform !== 'android' || props.targetDevices || !androidTargets) return <MainToolbar {...props} />;
+  const { snapshot, selected, starting, error, select, start } = androidTargets;
+  const current =
+    selected?.sdkRoot === snapshot?.sdkRoot
+      ? snapshot?.targets.find((target) => target.id === selected?.id)
+      : undefined;
+  const devices: EditorTargetDevice[] = (snapshot?.targets ?? []).map((target) => ({
+    id: target.id,
+    label: target.name,
+    menuLabel: `${[target.manufacturer, target.name].filter(Boolean).join(' - ')}${target.androidVersion ? ` (Android ${target.androidVersion})` : target.apiLevel ? ` (API ${target.apiLevel})` : ''}`,
+    details: [
+      target.serial ?? (target.avdName ? `AVD: ${target.avdName}` : 'Serial unavailable'),
+      <span key="status">
+        <span
+          className={`toolbar-target-status is-${target.ready ? 'ready' : ['starting', 'stopped', 'unauthorized', 'online'].includes(target.state) ? 'pending' : 'error'}`}
+        >
+          {statusLabel(target)}
+        </span>
+        {target.kind !== 'emulator' && target.connectionType === 'network' && target.networkAddress
+          ? ` (${target.networkAddress})`
+          : null}
+      </span>,
+    ],
+    platform: 'android',
+    disabled: !target.ready && !target.canStart && target.state !== 'starting',
+  }));
+  const placeholder = !snapshot
+    ? error
+      ? 'Discovery unavailable'
+      : 'Looking for targets…'
+    : selected && !current
+      ? 'Selected target unavailable'
+      : !snapshot.available
+        ? 'ADB unavailable'
+        : 'Select Android target';
+  if (!current) devices.unshift({ id: '__choose__', label: placeholder, platform: 'android', disabled: true });
+  const diagnostics = [
+    error,
+    ...(snapshot?.diagnostics ?? []),
+    ...(snapshot?.targets
+      .filter((target) => target.diagnostic)
+      .map((target) => `${target.name}: ${target.diagnostic}`) ?? []),
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return (
+    <MainToolbar
+      {...props}
+      targetDevices={devices}
+      targetDevice={current?.id ?? '__choose__'}
+      targetDeviceTitle={diagnostics || undefined}
+      onTargetDeviceChange={select}
+      targetDeviceMenuActions={[
+        {
+          value: '__android_device_manager__',
+          label: 'Android Device Manager…',
+          title: 'Open Android Studio to create or manage virtual devices',
+          separatorBefore: true,
+          onSelect: () => void window.arcAndroid?.openDeviceManager(),
+        },
+      ]}
+      targetDeviceActions={
+        <>
+          {starting || current?.state === 'starting' ? (
+            <span role="status">Starting emulator…</span>
+          ) : current?.canStart ? (
+            <UiButton onClick={() => void start()}>Start Emulator</UiButton>
+          ) : null}
+        </>
       }
-    };
-
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 2000);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [discoverAndroidDevices]);
-
-  let discoveredTargetDevices: EditorTargetDevice[] | undefined;
-  if (discoverAndroidDevices) {
-    if (!androidDevices) {
-      discoveredTargetDevices = [
-        { id: '__discovering__', label: 'Looking for devices…', platform: 'android', disabled: true },
-      ];
-    } else if (!androidDevices.available) {
-      discoveredTargetDevices = [
-        { id: '__adb-unavailable__', label: 'ADB unavailable', platform: 'android', disabled: true },
-      ];
-    } else {
-      discoveredTargetDevices = androidDevices.devices
-        .map(targetDeviceFromAndroid)
-        .sort(
-          (left, right) =>
-            Number(Boolean(left.disabled)) - Number(Boolean(right.disabled)) || left.label.localeCompare(right.label),
-        );
-    }
-  }
-
-  return <MainToolbar {...props} targetDevices={props.targetDevices ?? discoveredTargetDevices} />;
+    />
+  );
 }
