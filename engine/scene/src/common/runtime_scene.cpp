@@ -243,7 +243,9 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
         }
         std::sort(staged_bindings.begin(), staged_bindings.end(),
                   [](const auto& lhs, const auto& rhs)
-                  { return std::tie(lhs.entity.high, lhs.entity.low) < std::tie(rhs.entity.high, rhs.entity.low); });
+                  {
+                      return std::tie(lhs.entity.high, lhs.entity.low) < std::tie(rhs.entity.high, rhs.entity.low);
+                  });
     }
     catch (const std::exception& error)
     {

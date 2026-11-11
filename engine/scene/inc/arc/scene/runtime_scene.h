@@ -27,6 +27,7 @@ struct cooked_scene_mesh_binding
 };
 
 using cooked_scene_mesh_bindings = std::vector<cooked_scene_mesh_binding>;
+using cooked_scene_bytes = std::span<const std::byte>;
 
 /**
  * Decode the same tagged-binary scene archive emitted by the ARC cooker.
@@ -36,7 +37,7 @@ using cooked_scene_mesh_bindings = std::vector<cooked_scene_mesh_binding>;
  * roll back created entities. Unsupported component types fail closed rather
  * than silently producing an incomplete packaged scene.
  */
-[[nodiscard]] std::string materialize_cooked_scene(ecs::world& destination, std::span<const std::byte> bytes,
-                                                  cooked_scene_mesh_bindings* bindings = nullptr);
+[[nodiscard]] std::string materialize_cooked_scene(ecs::world& destination, cooked_scene_bytes bytes,
+                                                   cooked_scene_mesh_bindings* bindings = nullptr);
 
 } // namespace arc::scene

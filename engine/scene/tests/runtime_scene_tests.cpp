@@ -9,6 +9,7 @@
 
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -109,8 +110,8 @@ arc::persistence::archive_document authored_mesh_scene()
 
     const arc::scene::mesh_renderer_component renderer{};
     arc::persistence::archive_component_record encoded;
-    REQUIRE(registry.encode(arc::ecs::component_metadata<arc::scene::mesh_renderer_component>().id, &renderer,
-                            encoded));
+    const auto component = arc::ecs::component_metadata<arc::scene::mesh_renderer_component>().id;
+    REQUIRE(registry.encode(component, &renderer, encoded));
     document.entities.front().components.push_back(std::move(encoded));
 
     arc::persistence::archive_value subresource;
@@ -122,21 +123,25 @@ arc::persistence::archive_document authored_mesh_scene()
     document.entities.front().extensions.kind = arc::persistence::archive_value_kind::object;
     document.entities.front().extensions.object.emplace_back("assetBinding", std::move(binding));
 
-    const auto component = arc::ecs::component_metadata<arc::scene::mesh_renderer_component>().id;
-    document.dependencies.push_back({.reference = {.guid = {20, 30},
-                                                    .expected_type = arc::assets::asset_types::imported_scene,
-                                                    .path_hint = "Content/vehicle.glb"},
-                                     .owner_entity = {3, 4},
-                                     .owner_component = component,
-                                     .owner_field = 1,
-                                     .required = true});
-    document.dependencies.push_back({.reference = {.guid = {40, 50},
-                                                    .expected_type = arc::assets::asset_types::material,
-                                                    .path_hint = "Content/paint.arcmat"},
-                                     .owner_entity = {3, 4},
-                                     .owner_component = component,
-                                     .owner_field = 2,
-                                     .required = false});
+    arc::persistence::dependency_manifest_entry source;
+    source.reference = {.guid = {20, 30},
+                        .expected_type = arc::assets::asset_types::imported_scene,
+                        .path_hint = "Content/vehicle.glb"};
+    source.owner_entity = {3, 4};
+    source.owner_component = component;
+    source.owner_field = 1;
+    source.required = true;
+    document.dependencies.push_back(std::move(source));
+
+    arc::persistence::dependency_manifest_entry material;
+    material.reference = {.guid = {40, 50},
+                          .expected_type = arc::assets::asset_types::material,
+                          .path_hint = "Content/paint.arcmat"};
+    material.owner_entity = {3, 4};
+    material.owner_component = component;
+    material.owner_field = 2;
+    material.required = false;
+    document.dependencies.push_back(std::move(material));
     return document;
 }
 } // namespace
