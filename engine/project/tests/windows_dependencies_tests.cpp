@@ -34,8 +34,8 @@ void put_string(std::vector<std::uint8_t>& data, std::size_t offset, std::string
 
 struct pe_fixture
 {
-    fs::path root = fs::temp_directory_path() / ("arc-d2-pe-" + std::to_string(
-                        std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::path root = fs::temp_directory_path() /
+                    ("arc-d2-pe-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
 
     ~pe_fixture()
     {

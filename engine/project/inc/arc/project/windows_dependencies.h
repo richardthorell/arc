@@ -23,8 +23,8 @@ using windows_dependency_result = core::result<windows_dependency_closure, proje
  * and are never serialized. Missing imports fail before distribution assembly.
  * Delay-loaded imports and non-imported dynamic loads are not inferred.
  */
-[[nodiscard]] windows_dependency_result resolve_windows_dependencies(
-    const std::filesystem::path& executable, const std::vector<std::filesystem::path>& plugins,
-    const std::vector<std::filesystem::path>& search_directories);
+[[nodiscard]] windows_dependency_result
+resolve_windows_dependencies(const std::filesystem::path& executable, const std::vector<std::filesystem::path>& plugins,
+                             const std::vector<std::filesystem::path>& search_directories);
 
 } // namespace arc::project

@@ -43,8 +43,7 @@ std::optional<std::uint32_t> u32(const bytes& data, std::size_t offset)
 {
     if (offset > data.size() || data.size() - offset < 4) return std::nullopt;
     return static_cast<std::uint32_t>(data[offset]) | (static_cast<std::uint32_t>(data[offset + 1]) << 8) |
-           (static_cast<std::uint32_t>(data[offset + 2]) << 16) |
-           (static_cast<std::uint32_t>(data[offset + 3]) << 24);
+           (static_cast<std::uint32_t>(data[offset + 2]) << 16) | (static_cast<std::uint32_t>(data[offset + 3]) << 24);
 }
 
 std::optional<std::string> cstring(const bytes& data, std::size_t offset)
@@ -65,8 +64,8 @@ struct section
     std::uint32_t rva{}, virtual_size{}, raw_size{}, raw_offset{};
 };
 
-std::optional<std::size_t> resolve_rva(const bytes& data, std::uint32_t rva,
-                                       const std::vector<section>& sections, std::size_t header_size)
+std::optional<std::size_t> resolve_rva(const bytes& data, std::uint32_t rva, const std::vector<section>& sections,
+                                       std::size_t header_size)
 {
     if (rva < header_size && rva < data.size()) return rva;
     for (const auto& item : sections)
@@ -150,8 +149,7 @@ core::result<std::vector<std::string>, project_error> imports(const fs::path& fi
         }
         const auto name_offset = resolve_rva(data, *name, sections, *image_headers);
         const auto value = name_offset ? cstring(data, *name_offset) : std::nullopt;
-        if (!value || lower(fs::path(*value).filename().string()) != lower(*value) ||
-            !lower(*value).ends_with(".dll"))
+        if (!value || lower(fs::path(*value).filename().string()) != lower(*value) || !lower(*value).ends_with(".dll"))
             return result::failure(error("dependencies", "Unsafe PE import name: " + file.string()));
         found.push_back(*value);
     }
@@ -163,20 +161,19 @@ bool system_dll(std::string_view name)
 {
     if (name.starts_with("api-ms-win-") || name.starts_with("ext-ms-")) return true;
     constexpr std::array names = {
-        "kernel32.dll", "kernelbase.dll", "ntdll.dll", "user32.dll", "gdi32.dll", "advapi32.dll",
-        "shell32.dll", "ole32.dll", "oleaut32.dll", "combase.dll", "comdlg32.dll", "shlwapi.dll",
-        "ws2_32.dll", "winmm.dll", "imm32.dll", "version.dll", "setupapi.dll", "bcrypt.dll",
-        "crypt32.dll", "secur32.dll", "rpcrt4.dll", "iphlpapi.dll", "dwmapi.dll", "uxtheme.dll",
-        "dxgi.dll", "d3d12.dll", "d3d11.dll", "d3dcompiler_47.dll", "opengl32.dll", "vulkan-1.dll",
-        "msvcrt.dll", "ucrtbase.dll", "msvcp_win.dll", "userenv.dll", "psapi.dll", "cfgmgr32.dll",
-        "winhttp.dll", "wininet.dll", "dbghelp.dll", "normaliz.dll", "wldap32.dll", "winspool.drv"};
+        "kernel32.dll", "kernelbase.dll", "ntdll.dll",     "user32.dll",         "gdi32.dll",    "advapi32.dll",
+        "shell32.dll",  "ole32.dll",      "oleaut32.dll",  "combase.dll",        "comdlg32.dll", "shlwapi.dll",
+        "ws2_32.dll",   "winmm.dll",      "imm32.dll",     "version.dll",        "setupapi.dll", "bcrypt.dll",
+        "crypt32.dll",  "secur32.dll",    "rpcrt4.dll",    "iphlpapi.dll",       "dwmapi.dll",   "uxtheme.dll",
+        "dxgi.dll",     "d3d12.dll",      "d3d11.dll",     "d3dcompiler_47.dll", "opengl32.dll", "vulkan-1.dll",
+        "msvcrt.dll",   "ucrtbase.dll",   "msvcp_win.dll", "userenv.dll",        "psapi.dll",    "cfgmgr32.dll",
+        "winhttp.dll",  "wininet.dll",    "dbghelp.dll",   "normaliz.dll",       "wldap32.dll",  "winspool.drv"};
     return std::find(names.begin(), names.end(), name) != names.end();
 }
 
 } // namespace
 
-windows_dependency_result resolve_windows_dependencies(const fs::path& executable,
-                                                       const std::vector<fs::path>& plugins,
+windows_dependency_result resolve_windows_dependencies(const fs::path& executable, const std::vector<fs::path>& plugins,
                                                        const std::vector<fs::path>& search_directories)
 {
     const auto reject = [](std::string message)
@@ -206,8 +203,8 @@ windows_dependency_result resolve_windows_dependencies(const fs::path& executabl
     {
         const auto name = lower(plugin.filename().string());
         if (!destinations.insert(name).second) return reject("Duplicate plugin/DLL filename: " + name);
-        closure.files.push_back({.source = plugin, .destination = "plugins/" + plugin.filename().string(),
-                                 .kind = "plugin"});
+        closure.files.push_back(
+            {.source = plugin, .destination = "plugins/" + plugin.filename().string(), .kind = "plugin"});
         closure.dependencies.push_back({.destination = closure.files.back().destination, .kind = "plugin"});
     }
 
@@ -225,10 +222,11 @@ windows_dependency_result resolve_windows_dependencies(const fs::path& executabl
             const auto name = lower(import);
             if (system_dll(name) || destinations.contains(name)) continue;
             const auto found = discovered.find(name);
-            if (found == discovered.end()) return reject("Missing required imported DLL " + import + " from " +
-                                                          physical.filename().string());
+            if (found == discovered.end())
+                return reject("Missing required imported DLL " + import + " from " + physical.filename().string());
             destinations.insert(name);
-            closure.files.push_back({.source = found->second, .destination = "bin/" + found->second.filename().string(),
+            closure.files.push_back({.source = found->second,
+                                     .destination = "bin/" + found->second.filename().string(),
                                      .kind = "library"});
             closure.dependencies.push_back({.destination = closure.files.back().destination, .kind = "library"});
             pending.push_back(found->second);
