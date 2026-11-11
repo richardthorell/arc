@@ -98,3 +98,115 @@ TEST_CASE("D1.7 cooked scene rolls back partially materialized worlds")
     CHECK(error.find("Unregistered Gameplay Component") != std::string::npos);
     CHECK(world.live_count() == 0);
 }
+
+namespace
+{
+arc::persistence::archive_document authored_mesh_scene()
+{
+    auto document = authored_scene(false);
+    arc::persistence::component_persistence_registry registry;
+    REQUIRE(arc::scene::register_persistence_components(registry));
+
+    const arc::scene::mesh_renderer_component renderer{};
+    arc::persistence::archive_component_record encoded;
+    REQUIRE(registry.encode(arc::ecs::component_metadata<arc::scene::mesh_renderer_component>().id, &renderer,
+                            encoded));
+    document.entities.front().components.push_back(std::move(encoded));
+
+    arc::persistence::archive_value subresource;
+    subresource.kind = arc::persistence::archive_value_kind::string;
+    subresource.string = "Body_LOD0";
+    arc::persistence::archive_value binding;
+    binding.kind = arc::persistence::archive_value_kind::object;
+    binding.object.emplace_back("subresource", std::move(subresource));
+    document.entities.front().extensions.kind = arc::persistence::archive_value_kind::object;
+    document.entities.front().extensions.object.emplace_back("assetBinding", std::move(binding));
+
+    const auto component = arc::ecs::component_metadata<arc::scene::mesh_renderer_component>().id;
+    document.dependencies.push_back({.reference = {.guid = {20, 30},
+                                                    .expected_type = arc::assets::asset_types::imported_scene,
+                                                    .path_hint = "Content/vehicle.glb"},
+                                     .owner_entity = {3, 4},
+                                     .owner_component = component,
+                                     .owner_field = 1,
+                                     .required = true});
+    document.dependencies.push_back({.reference = {.guid = {40, 50},
+                                                    .expected_type = arc::assets::asset_types::material,
+                                                    .path_hint = "Content/paint.arcmat"},
+                                     .owner_entity = {3, 4},
+                                     .owner_component = component,
+                                     .owner_field = 2,
+                                     .required = false});
+    return document;
+}
+} // namespace
+
+TEST_CASE("V3.4b cooked scene preserves mesh and material GUIDs and model subresource")
+{
+    auto document = authored_mesh_scene();
+    arc::ecs::world world;
+    arc::scene::cooked_scene_mesh_bindings bindings;
+    CHECK(arc::scene::materialize_cooked_scene(world, cooked_bytes(document), &bindings).empty());
+    REQUIRE(world.live_count() == 1);
+    REQUIRE(bindings.size() == 1);
+
+    CHECK((bindings[0].entity == arc::ecs::entity_guid{3, 4}));
+    CHECK((bindings[0].source.guid == arc::assets::asset_guid{20, 30}));
+    CHECK(bindings[0].source.expected_type == arc::assets::asset_types::imported_scene);
+    CHECK(bindings[0].source.path_hint == "Content/vehicle.glb");
+    CHECK((bindings[0].material.guid == arc::assets::asset_guid{40, 50}));
+    CHECK(bindings[0].material.expected_type == arc::assets::asset_types::material);
+    CHECK(bindings[0].subresource == "Body_LOD0");
+
+    const auto entity = world.entities().front();
+    const auto& mesh = world.get<arc::scene::mesh_renderer_component>(entity);
+    CHECK_FALSE(mesh.mesh.valid());
+    CHECK_FALSE(mesh.material.valid());
+}
+
+TEST_CASE("V3.4b cooked scene rejects duplicate mesh bindings and rolls back")
+{
+    auto document = authored_mesh_scene();
+    document.dependencies.push_back(document.dependencies.front());
+    arc::ecs::world world;
+    arc::scene::cooked_scene_mesh_bindings bindings{{.entity = {10, 11}}};
+    const auto error = arc::scene::materialize_cooked_scene(world, cooked_bytes(document), &bindings);
+    CHECK(error.find("duplicate") != std::string::npos);
+    CHECK(world.live_count() == 0);
+    CHECK(bindings.empty());
+}
+
+TEST_CASE("V3.4b cooked scene rejects missing mesh binding owners")
+{
+    auto document = authored_mesh_scene();
+    document.dependencies.front().owner_entity = {99, 99};
+    arc::ecs::world world;
+    arc::scene::cooked_scene_mesh_bindings bindings;
+    const auto error = arc::scene::materialize_cooked_scene(world, cooked_bytes(document), &bindings);
+    CHECK(error.find("owning") != std::string::npos);
+    CHECK(world.live_count() == 0);
+    CHECK(bindings.empty());
+}
+
+TEST_CASE("V3.4b cooked scene rejects incompatible mesh asset types")
+{
+    auto document = authored_mesh_scene();
+    document.dependencies.front().reference.expected_type = arc::assets::asset_types::texture_2d;
+    arc::ecs::world world;
+    arc::scene::cooked_scene_mesh_bindings bindings;
+    const auto error = arc::scene::materialize_cooked_scene(world, cooked_bytes(document), &bindings);
+    CHECK(error.find("incompatible") != std::string::npos);
+    CHECK(world.live_count() == 0);
+    CHECK(bindings.empty());
+}
+
+TEST_CASE("V3.4b legacy scenes without mesh dependencies remain loadable")
+{
+    auto document = authored_mesh_scene();
+    document.dependencies.clear();
+    arc::ecs::world world;
+    arc::scene::cooked_scene_mesh_bindings bindings;
+    CHECK(arc::scene::materialize_cooked_scene(world, cooked_bytes(document), &bindings).empty());
+    CHECK(world.live_count() == 1);
+    CHECK(bindings.empty());
+}

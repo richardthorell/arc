@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <exception>
+#include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -25,6 +27,19 @@ bool decode_component(ecs::world& destination, ecs::entity entity, const persist
     {
         error = "Cannot decode component '" + record.name + "': " + status.error().message;
         return false;
+    }
+    // Asset identity is carried by the cooked dependency manifest. Any
+    // serialized renderer handles are process-local and must not survive boot.
+    if constexpr (std::is_same_v<Component, mesh_renderer_component>)
+    {
+        value.mesh = {};
+        value.material = {};
+    }
+    else if constexpr (std::is_same_v<Component, virtual_mesh_renderer_component> ||
+                       std::is_same_v<Component, skinned_mesh_renderer_component>)
+    {
+        value.mesh = {};
+        value.material = {};
     }
     destination.emplace<Component>(entity, std::move(value));
     return true;
@@ -90,10 +105,26 @@ bool populate_component(ecs::world& destination, ecs::entity entity,
     return false;
 }
 
+std::string authored_mesh_subresource(const persistence::archive_entity_record& record)
+{
+    if (record.extensions.kind != persistence::archive_value_kind::object) return {};
+    for (const auto& extension : record.extensions.object)
+    {
+        if (extension.name != "assetBinding" || extension.value.kind != persistence::archive_value_kind::object)
+            continue;
+        for (const auto& field : extension.value.object)
+            if (field.name == "subresource" && field.value.kind == persistence::archive_value_kind::string)
+                return field.value.string;
+    }
+    return {};
+}
+
 } // namespace
 
-std::string materialize_cooked_scene(ecs::world& destination, std::span<const std::byte> bytes)
+std::string materialize_cooked_scene(ecs::world& destination, std::span<const std::byte> bytes,
+                                     cooked_scene_mesh_bindings* bindings)
 {
+    if (bindings) bindings->clear();
     if (destination.live_count() != 0) return "Cooked scene requires an initially empty ECS world";
 
     persistence::component_persistence_registry components;
@@ -112,6 +143,7 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
     handles.reserve(archive.document.entities.size());
     std::vector<ecs::entity> created;
     created.reserve(archive.document.entities.size());
+    cooked_scene_mesh_bindings staged_bindings;
     const auto rollback = [&](std::string message)
     {
         for (auto it = created.rbegin(); it != created.rend(); ++it)
@@ -166,6 +198,52 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
             if (parent == handles.end() || !ecs::reparent(destination, handles.at(record->id), parent->second))
                 return rollback("Cooked scene has missing or cyclic parent for " + ecs::to_string(record->id));
         }
+
+        // GPU handles belong to the renderer generation. Read authored GUIDs
+        // from the archive's manifest instead, keyed by the stable entity ID.
+        const auto mesh_component_id = ecs::component_metadata<mesh_renderer_component>().id;
+        std::unordered_map<ecs::entity_guid, std::size_t, ecs::entity_guid_hash> binding_indices;
+        for (const auto& dependency : archive.document.dependencies)
+        {
+            if (dependency.owner_component != mesh_component_id ||
+                (dependency.owner_field != 1u && dependency.owner_field != 2u))
+                continue;
+
+            const auto owner = handles.find(dependency.owner_entity);
+            if (owner == handles.end() || !destination.has<mesh_renderer_component>(owner->second))
+                return rollback("Cooked mesh binding has no owning MeshRenderer entity");
+            if (!dependency.reference.guid.valid())
+            {
+                if (dependency.required) return rollback("Required cooked mesh binding has no asset GUID");
+                continue;
+            }
+
+            const auto type = dependency.reference.expected_type;
+            if (dependency.owner_field == 1u && type.valid() && type != assets::asset_types::unknown &&
+                type != assets::asset_types::imported_scene && type != assets::asset_types::static_mesh)
+                return rollback("Cooked mesh binding has an incompatible asset type");
+            if (dependency.owner_field == 2u && type.valid() && type != assets::asset_types::unknown &&
+                type != assets::asset_types::material && type != assets::asset_types::material_instance)
+                return rollback("Cooked material binding has an incompatible asset type");
+
+            const auto [it, inserted] = binding_indices.try_emplace(dependency.owner_entity, staged_bindings.size());
+            if (inserted) staged_bindings.push_back({.entity = dependency.owner_entity});
+            auto& binding = staged_bindings[it->second];
+            auto& slot = dependency.owner_field == 1u ? binding.source : binding.material;
+            if (slot.guid.valid()) return rollback("Cooked scene contains duplicate mesh/material binding");
+            slot = dependency.reference;
+        }
+
+        // Preserve the authored model subresource/part from the entity extension.
+        for (const auto& record : archive.document.entities)
+        {
+            const auto found = binding_indices.find(record.id);
+            if (found != binding_indices.end())
+                staged_bindings[found->second].subresource = authored_mesh_subresource(record);
+        }
+        std::sort(staged_bindings.begin(), staged_bindings.end(),
+                  [](const auto& lhs, const auto& rhs)
+                  { return std::tie(lhs.entity.high, lhs.entity.low) < std::tie(rhs.entity.high, rhs.entity.low); });
     }
     catch (const std::exception& error)
     {
@@ -176,6 +254,7 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
         return rollback("Cooked scene ECS materialization failed with an unknown exception");
     }
 
+    if (bindings) *bindings = std::move(staged_bindings);
     return {};
 }
 
