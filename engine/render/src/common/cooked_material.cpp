@@ -7,6 +7,7 @@
 #include <limits>
 #include <set>
 #include <utility>
+#include <type_traits>
 
 namespace arc::render
 {
