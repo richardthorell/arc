@@ -666,7 +666,8 @@ export function MainToolbar({
           variant="primary"
         />
         {onOpenBuildDashboard && (
-          <button
+          <UiButton
+            variant="toolbar"
             className={`toolbar-build-monitor is-${buildState}`}
             type="button"
             aria-label="Open build dashboard"
@@ -689,7 +690,7 @@ export function MainToolbar({
               )}
             </span>
             <Maximize2 size={12} aria-hidden="true" />
-          </button>
+          </UiButton>
         )}
       </div>
     </section>
