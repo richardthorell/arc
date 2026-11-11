@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <iterator>
 #include <string>
 #include <type_traits>
 #include <unordered_set>
@@ -151,6 +152,6 @@ decode_conventional_mesh_artifact(std::span<const std::byte> bytes, std::string_
     if (!found)
         return core::result<decoded_conventional_mesh, std::string>::failure(
             "Requested .arcmesh subresource not found");
-    return selected;
+    return core::result<decoded_conventional_mesh, std::string>::success(std::move(selected));
 }
 } // namespace arc::render
