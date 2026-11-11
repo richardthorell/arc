@@ -1,4 +1,5 @@
 #include <arc/project/project.h>
+#include "package_command.h"
 
 #include <nlohmann/json.hpp>
 
@@ -271,7 +272,8 @@ int main(int argc, char** argv)
         args.values.emplace_back(argv[index]);
     const bool json_output = args.has("--json");
     if (args.values.empty())
-        return fail(json_output, "expected create, validate, upgrade, engine, toolchains, configure, build, or ide", 2);
+        return fail(json_output,
+                    "expected create, validate, upgrade, engine, toolchains, configure, build, package, or ide", 2);
     const auto command = args.values.front();
     if (command == "create")
     {
@@ -341,6 +343,7 @@ int main(int argc, char** argv)
     }
     if (command == "configure") return configure_or_build(args, false, json_output);
     if (command == "build") return configure_or_build(args, true, json_output);
+    if (command == "package") return handle_package_command(args.values, json_output);
     if (command == "ide")
     {
         if (args.values.size() < 2) return fail(json_output, "ide requires generate or launch", 2);
