@@ -1,8 +1,10 @@
-import { Ban, ExternalLink, Hammer, Play, RefreshCw, Trash2 } from 'lucide-react';
+import { Ban, ExternalLink, Hammer, Maximize2, Play, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import type { ArcBuildDiagnostic, ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { UiSelect, type UiSelectOption } from '../ui/UiSelect';
+
+import { BuildDashboard } from './BuildDashboard';
 
 import './buildOutput.css';
 
@@ -17,13 +19,23 @@ export function BuildOutputPanel({
   onExecute,
   onOpenDiagnostic,
   configurations = DEFAULT_BUILD_CONFIGURATIONS,
+  expanded,
+  onExpandedChange,
 }: {
   snapshot: ArcBuildSnapshot | null;
   onExecute: (request: ArcBuildRequest) => void;
   onOpenDiagnostic: (diagnostic: ArcBuildDiagnostic) => void;
   configurations?: ReadonlyArray<UiSelectOption>;
+  expanded?: boolean;
+  onExpandedChange?: (value: boolean) => void;
 }) {
   const busy = snapshot ? ['configuring', 'building', 'cleaning'].includes(snapshot.state) : false;
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const dashboardOpen = expanded ?? localExpanded;
+  const setDashboardOpen = (value: boolean) => {
+    if (onExpandedChange) onExpandedChange(value);
+    else setLocalExpanded(value);
+  };
   const fallbackConfiguration = configurations[0]?.value ?? 'Debug';
   const [configuration, setConfiguration] = useState(snapshot?.configuration ?? fallbackConfiguration);
 
@@ -80,6 +92,15 @@ export function BuildOutputPanel({
         {snapshot?.buildRequired && <span className="build-notice">Build required</span>}
         {snapshot?.reloadRequired && <span className="build-notice">Reload required</span>}
         {snapshot?.restartRequired && <span className="build-notice error">Editor host restart required</span>}
+        <button
+          className="build-dashboard-expand"
+          type="button"
+          aria-label="Expand build dashboard"
+          title="Expand build dashboard"
+          onClick={() => setDashboardOpen(true)}
+        >
+          <Maximize2 size={14} />
+        </button>
       </header>
       <div className="build-output-lines">
         {snapshot?.diagnostics.map((diagnostic) => (
@@ -102,6 +123,13 @@ export function BuildOutputPanel({
         ))}
         {!snapshot?.diagnostics.length && <div className="build-output-empty">Build output will appear here.</div>}
       </div>
+      {dashboardOpen && (
+        <BuildDashboard
+          snapshot={snapshot}
+          onClose={() => setDashboardOpen(false)}
+          onOpenDiagnostic={onOpenDiagnostic}
+        />
+      )}
     </section>
   );
 }
