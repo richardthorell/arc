@@ -245,3 +245,83 @@
 .toolbar-target-status.is-error {
   color: var(--arc-color-danger);
 }
+
+/* Compact build telemetry, adjacent to the Build split button. */
+.toolbar-build-monitor {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-width: 116px;
+  height: var(--arc-control-height);
+  padding: 0 9px;
+  border: 1px solid var(--arc-color-border, #34485a);
+  border-radius: var(--arc-radius-2, 4px);
+  background: var(--arc-color-bg-panel-raised, #1b2a36);
+  color: var(--arc-color-text-secondary, #b8c8d8);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.toolbar-build-monitor:hover,
+.toolbar-build-monitor:focus-visible {
+  border-color: var(--arc-color-accent, #438cd8);
+  color: var(--arc-color-text-primary, #fff);
+}
+
+.toolbar-build-monitor-label {
+  min-width: 38px;
+  text-align: left;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.toolbar-build-monitor-light {
+  display: inline-block;
+  flex: 0 0 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #738394;
+}
+
+.toolbar-build-monitor.is-succeeded .toolbar-build-monitor-light { background: #69c98c; }
+.toolbar-build-monitor.is-failed .toolbar-build-monitor-light { background: #ff7979; }
+.toolbar-build-monitor.is-cancelled .toolbar-build-monitor-light { background: #e8ba62; }
+.toolbar-build-monitor.is-building .toolbar-build-monitor-light,
+.toolbar-build-monitor.is-configuring .toolbar-build-monitor-light,
+.toolbar-build-monitor.is-cleaning .toolbar-build-monitor-light {
+  background: #76aee8;
+  animation: arc-build-pulse 1.3s ease-in-out infinite;
+}
+
+.toolbar-build-mini-chart {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex: 0 0 25px;
+  height: 16px;
+}
+
+.toolbar-build-mini-chart span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 1px;
+  background: #71889d;
+}
+
+.toolbar-build-mini-chart span.is-succeeded { background: #4fae7b; }
+.toolbar-build-mini-chart span.is-failed { background: #e66d76; }
+.toolbar-build-mini-chart span.is-cancelled { background: #e8ba62; }
+
+@keyframes arc-build-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-build-monitor .toolbar-build-monitor-light { animation: none; }
+}
