@@ -24,8 +24,8 @@ const activeProject = {
 } as ArcProjectCandidate;
 
 const setup = () => {
-  const process = new FakeBuildProcess();
-  vi.mocked(spawn).mockReturnValue(process as unknown as ChildProcessWithoutNullStreams);
+  const child = new FakeBuildProcess();
+  vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcessWithoutNullStreams);
   const publish = vi.fn();
   const service = new BuildService(
     () => activeProject,
@@ -33,7 +33,7 @@ const setup = () => {
     { command: vi.fn() },
     publish,
   );
-  return { service, process, publish };
+  return { service, process: child, publish };
 };
 
 beforeEach(() => {
