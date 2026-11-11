@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { ArcBuildDiagnostic, ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
+import type { ArcBuildDiagnostic, ArcBuildRequest, ArcBuildRun, ArcBuildSnapshot } from '../common/buildTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
 
 type HostBridge = {
@@ -24,11 +24,14 @@ export class BuildService {
     reloadRequired: false,
     restartRequired: false,
     diagnostics: [],
+    history: [],
   };
   private process: ChildProcessWithoutNullStreams | null = null;
   private sourceWatcher: fs.FSWatcher | null = null;
   private buildWatcher: fs.FSWatcher | null = null;
   private sequence = 0;
+  private nextRunId = 0;
+  private cancelledProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
 
   constructor(
     private readonly activeProject: () => ArcProjectCandidate | null,
@@ -46,6 +49,7 @@ export class BuildService {
     this.buildWatcher?.close();
     this.sourceWatcher = this.buildWatcher = null;
     const project = this.activeProject();
+    this.update({ history: [], state: 'idle', diagnostics: [], buildRequired: false, reloadRequired: false, restartRequired: false });
     if (!project) return;
     const sourceRoot = path.join(project.projectRoot, project.descriptor.paths.source);
     if (fs.existsSync(sourceRoot)) {
@@ -67,7 +71,10 @@ export class BuildService {
 
   async execute(request: ArcBuildRequest): Promise<ArcBuildSnapshot> {
     if (request.action === 'cancel') {
-      this.process?.kill();
+      if (this.process) {
+        this.cancelledProcesses.add(this.process);
+        this.process.kill();
+      }
       this.process = null;
       this.update({ state: 'cancelled', completedAt: new Date().toISOString() });
       return this.snapshot();
@@ -77,6 +84,7 @@ export class BuildService {
     if (!project) throw new Error('No project is open');
     if (!project.writable) throw new Error('Project build is disabled in read-only mode');
     const configuration = request.configuration ?? this.snapshotValue.configuration;
+    if (configuration !== this.snapshotValue.configuration) this.update({ configuration });
     if (request.action === 'reload') {
       await this.reloadModule(project);
       return this.snapshot();
@@ -99,7 +107,7 @@ export class BuildService {
       );
       await this.runTool(['configure', '--project', project.descriptorPath], 'configuring');
       await this.runTool(['build', '--project', project.descriptorPath, '--config', configuration], 'building');
-      await this.reloadModule(project);
+      await this.reloadAfterBuild(project);
       return this.snapshot();
     }
     const arguments_ =
@@ -112,7 +120,7 @@ export class BuildService {
       arguments_,
       request.action === 'clean' ? 'cleaning' : request.action === 'configure' ? 'configuring' : 'building',
     );
-    if (request.action === 'build') await this.reloadModule(project);
+    if (request.action === 'build') await this.reloadAfterBuild(project);
     return this.snapshot();
   }
 
@@ -128,6 +136,15 @@ export class BuildService {
     const project = this.activeProject();
     if (!project) throw new Error('No project is open');
     const effective = arguments_;
+    const startedMs = Date.now();
+    const kind: ArcBuildRun['kind'] = effective[0] === 'ide'
+      ? 'ide'
+      : state === 'cleaning'
+        ? 'clean'
+        : state === 'configuring'
+          ? 'configure'
+          : 'build';
+    const configuration = this.snapshotValue.configuration;
     this.snapshotValue.diagnostics = [];
     this.update({
       state,
@@ -152,6 +169,7 @@ export class BuildService {
         failedToStart = true;
         this.process = null;
         this.append('error', error.message, 'compiler');
+        this.recordRun(kind, configuration, startedMs, 'failed');
         this.update({ state: 'failed', buildRequired: true, completedAt: new Date().toISOString() });
         reject(error);
       });
@@ -159,6 +177,13 @@ export class BuildService {
         if (failedToStart) return;
         if (pending.trim()) this.parseLine(pending, code === 0 ? 'info' : 'error');
         this.process = null;
+        if (this.cancelledProcesses.delete(child)) {
+          this.recordRun(kind, configuration, startedMs, 'cancelled');
+          this.update({ state: 'cancelled', completedAt: new Date().toISOString() });
+          reject(new Error('Project build cancelled'));
+          return;
+        }
+        this.recordRun(kind, configuration, startedMs, code === 0 ? 'succeeded' : 'failed');
         if (code === 0) {
           this.update({ state: 'succeeded', buildRequired: false, completedAt: new Date().toISOString() });
           resolve();
@@ -168,6 +193,35 @@ export class BuildService {
         }
       });
     });
+  }
+
+  private recordRun(
+    kind: ArcBuildRun['kind'],
+    configuration: string,
+    startedMs: number,
+    result: ArcBuildRun['result'],
+  ): void {
+    const diagnostics = this.snapshotValue.diagnostics;
+    const run: ArcBuildRun = {
+      id: ++this.nextRunId,
+      kind,
+      configuration,
+      startedAt: new Date(startedMs).toISOString(),
+      durationMs: Math.max(0, Date.now() - startedMs),
+      result,
+      warningCount: diagnostics.filter((item) => item.severity === 'warning').length,
+      errorCount: diagnostics.filter((item) => item.severity === 'error').length,
+    };
+    this.update({ history: [...(this.snapshotValue.history ?? []).slice(-11), run] });
+  }
+
+  private async reloadAfterBuild(project: ArcProjectCandidate): Promise<void> {
+    try {
+      await this.reloadModule(project);
+    } catch (error) {
+      this.update({ state: 'failed', reloadRequired: true, completedAt: new Date().toISOString() });
+      throw error;
+    }
   }
 
   private async reloadModule(project: ArcProjectCandidate): Promise<void> {
