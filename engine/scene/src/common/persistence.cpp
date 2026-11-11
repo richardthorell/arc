@@ -108,8 +108,8 @@ template <class Enum> bool read_mesh_enum(const persistence::archive_value& valu
     return true;
 }
 
-void put_mesh_field(persistence::archive_component_record& record, ecs::component_field_id id,
-                    std::string_view name, persistence::archive_value value)
+void put_mesh_field(persistence::archive_component_record& record, ecs::component_field_id id, std::string_view name,
+                    persistence::archive_value value)
 {
     record.fields.push_back({id, std::string(name), std::move(value), true});
 }
@@ -287,23 +287,23 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
         // Editor v4 scene documents use camelCase, while schema v5 uses the
         // reflected snake_case names. Rebind IDs before cooking/binary output.
         constexpr std::pair<std::string_view, std::string_view> aliases[]{
-        {"castsShadows", "casts_shadows"},
-        {"receivesShadows", "receives_shadows"},
-        {"shadowLodBias", "shadow_lod_bias"},
-        {"maximumShadowDistance", "maximum_shadow_distance"},
-        {"representationPolicy", "representation"},
-        {"affectsIndirectLighting", "affects_indirect_lighting"},
-        {"surfaceCardDensityBias", "surface_card_density_bias"},
-        {"distanceFieldResolutionBias", "distance_field_resolution_bias"},
-        {"visibleInHardwareTracing", "visible_in_hardware_tracing"},
-        {"motionVectors", "motion_vectors"},
-        {"receiveDecals", "receive_decals"},
-        {"occlusionCulling", "occlusion_culling"},
-        {"boundsScale", "bounds_scale"},
-        {"minimumDrawDistance", "minimum_draw_distance"},
-        {"maximumDrawDistance", "maximum_draw_distance"},
-        {"forcedLod", "forced_lod"},
-        {"lodBias", "lod_bias"},
+            {"castsShadows", "casts_shadows"},
+            {"receivesShadows", "receives_shadows"},
+            {"shadowLodBias", "shadow_lod_bias"},
+            {"maximumShadowDistance", "maximum_shadow_distance"},
+            {"representationPolicy", "representation"},
+            {"affectsIndirectLighting", "affects_indirect_lighting"},
+            {"surfaceCardDensityBias", "surface_card_density_bias"},
+            {"distanceFieldResolutionBias", "distance_field_resolution_bias"},
+            {"visibleInHardwareTracing", "visible_in_hardware_tracing"},
+            {"motionVectors", "motion_vectors"},
+            {"receiveDecals", "receive_decals"},
+            {"occlusionCulling", "occlusion_culling"},
+            {"boundsScale", "bounds_scale"},
+            {"minimumDrawDistance", "minimum_draw_distance"},
+            {"maximumDrawDistance", "maximum_draw_distance"},
+            {"forcedLod", "forced_lod"},
+            {"lodBias", "lod_bias"},
         };
         const auto fields = ecs::component_metadata<mesh_renderer_component>().fields;
         for (auto& field : component.fields)
