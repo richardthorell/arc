@@ -49,7 +49,14 @@ export class BuildService {
     this.buildWatcher?.close();
     this.sourceWatcher = this.buildWatcher = null;
     const project = this.activeProject();
-    this.update({ history: [], state: 'idle', diagnostics: [], buildRequired: false, reloadRequired: false, restartRequired: false });
+    this.update({
+      history: [],
+      state: 'idle',
+      diagnostics: [],
+      buildRequired: false,
+      reloadRequired: false,
+      restartRequired: false,
+    });
     if (!project) return;
     const sourceRoot = path.join(project.projectRoot, project.descriptor.paths.source);
     if (fs.existsSync(sourceRoot)) {
@@ -137,13 +144,8 @@ export class BuildService {
     if (!project) throw new Error('No project is open');
     const effective = arguments_;
     const startedMs = Date.now();
-    const kind: ArcBuildRun['kind'] = effective[0] === 'ide'
-      ? 'ide'
-      : state === 'cleaning'
-        ? 'clean'
-        : state === 'configuring'
-          ? 'configure'
-          : 'build';
+    const kind: ArcBuildRun['kind'] =
+      effective[0] === 'ide' ? 'ide' : state === 'cleaning' ? 'clean' : state === 'configuring' ? 'configure' : 'build';
     const configuration = this.snapshotValue.configuration;
     this.snapshotValue.diagnostics = [];
     this.update({

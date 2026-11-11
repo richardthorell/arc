@@ -287,9 +287,15 @@
   background: #738394;
 }
 
-.toolbar-build-monitor.is-succeeded .toolbar-build-monitor-light { background: #69c98c; }
-.toolbar-build-monitor.is-failed .toolbar-build-monitor-light { background: #ff7979; }
-.toolbar-build-monitor.is-cancelled .toolbar-build-monitor-light { background: #e8ba62; }
+.toolbar-build-monitor.is-succeeded .toolbar-build-monitor-light {
+  background: #69c98c;
+}
+.toolbar-build-monitor.is-failed .toolbar-build-monitor-light {
+  background: #ff7979;
+}
+.toolbar-build-monitor.is-cancelled .toolbar-build-monitor-light {
+  background: #e8ba62;
+}
 .toolbar-build-monitor.is-building .toolbar-build-monitor-light,
 .toolbar-build-monitor.is-configuring .toolbar-build-monitor-light,
 .toolbar-build-monitor.is-cleaning .toolbar-build-monitor-light {
@@ -313,15 +319,28 @@
   background: #71889d;
 }
 
-.toolbar-build-mini-chart span.is-succeeded { background: #4fae7b; }
-.toolbar-build-mini-chart span.is-failed { background: #e66d76; }
-.toolbar-build-mini-chart span.is-cancelled { background: #e8ba62; }
+.toolbar-build-mini-chart span.is-succeeded {
+  background: #4fae7b;
+}
+.toolbar-build-mini-chart span.is-failed {
+  background: #e66d76;
+}
+.toolbar-build-mini-chart span.is-cancelled {
+  background: #e8ba62;
+}
 
 @keyframes arc-build-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .toolbar-build-monitor .toolbar-build-monitor-light { animation: none; }
+  .toolbar-build-monitor .toolbar-build-monitor-light {
+    animation: none;
+  }
 }

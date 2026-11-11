@@ -676,13 +676,17 @@ export function MainToolbar({
             <span className="toolbar-build-monitor-light" aria-hidden="true" />
             <span className="toolbar-build-monitor-label">{buildState === 'idle' ? 'Idle' : buildState}</span>
             <span className="toolbar-build-mini-chart" aria-hidden="true">
-              {recentBuildCommands.length ? recentBuildCommands.map((run) => (
-                <span
-                  key={run.id}
-                  className={`is-${run.result}`}
-                  style={{ height: `${Math.max(3, Math.round((run.durationMs / longestBuildCommand) * 16))}px` }}
-                />
-              )) : <span className="is-empty" />}
+              {recentBuildCommands.length ? (
+                recentBuildCommands.map((run) => (
+                  <span
+                    key={run.id}
+                    className={`is-${run.result}`}
+                    style={{ height: `${Math.max(3, Math.round((run.durationMs / longestBuildCommand) * 16))}px` }}
+                  />
+                ))
+              ) : (
+                <span className="is-empty" />
+              )}
             </span>
             <Maximize2 size={12} aria-hidden="true" />
           </button>

@@ -45,14 +45,7 @@ function BuildDurationChart({ history }: { history: readonly ArcBuildRun[] }) {
         const y = plot.top + plot.height - barHeight;
         return (
           <g key={run.id}>
-            <rect
-              x={x}
-              y={y}
-              width={barWidth}
-              height={barHeight}
-              rx={3}
-              className={`build-chart-bar is-${run.result}`}
-            >
+            <rect x={x} y={y} width={barWidth} height={barHeight} rx={3} className={`build-chart-bar is-${run.result}`}>
               <title>{`${run.kind} · ${formatDuration(run.durationMs)} · ${run.result} · ${new Date(run.startedAt).toLocaleTimeString()}`}</title>
             </rect>
             <text x={x + barWidth / 2} y={plot.top + plot.height + 18} textAnchor="middle" className="build-chart-axis">
@@ -119,11 +112,28 @@ export function BuildDashboard({
 
         <div className="build-dashboard-body">
           <div className="build-dashboard-stats">
-            <div><small>Commands recorded</small><strong>{history.length}</strong></div>
-            <div><small>Latest command</small><strong>{last ? formatDuration(last.durationMs) : '—'}</strong></div>
-            <div><small>Avg. successful build</small><strong>{averageMs === null ? '—' : formatDuration(averageMs)}</strong></div>
-            <div><small>Failed commands</small><strong>{failures}</strong></div>
-            <div><small>Current diagnostics</small><strong>{errors} errors · {warnings} warnings</strong></div>
+            <div>
+              <small>Commands recorded</small>
+              <strong>{history.length}</strong>
+            </div>
+            <div>
+              <small>Latest command</small>
+              <strong>{last ? formatDuration(last.durationMs) : '—'}</strong>
+            </div>
+            <div>
+              <small>Avg. successful build</small>
+              <strong>{averageMs === null ? '—' : formatDuration(averageMs)}</strong>
+            </div>
+            <div>
+              <small>Failed commands</small>
+              <strong>{failures}</strong>
+            </div>
+            <div>
+              <small>Current diagnostics</small>
+              <strong>
+                {errors} errors · {warnings} warnings
+              </strong>
+            </div>
           </div>
 
           <section className="build-dashboard-section" aria-label="Build history graph">
@@ -147,7 +157,14 @@ export function BuildDashboard({
               {history.length ? (
                 <div className="build-dashboard-table-wrap">
                   <table className="build-dashboard-table">
-                    <thead><tr><th>Command</th><th>Configuration</th><th>Duration</th><th>Result</th></tr></thead>
+                    <thead>
+                      <tr>
+                        <th>Command</th>
+                        <th>Configuration</th>
+                        <th>Duration</th>
+                        <th>Result</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {[...history].reverse().map((run) => (
                         <tr key={run.id}>
@@ -160,28 +177,36 @@ export function BuildDashboard({
                     </tbody>
                   </table>
                 </div>
-              ) : <p className="build-dashboard-empty">No build history in this session.</p>}
+              ) : (
+                <p className="build-dashboard-empty">No build history in this session.</p>
+              )}
             </section>
 
             <section className="build-dashboard-section">
               <div className="build-dashboard-section-heading">
                 <h3>Latest output</h3>
-                <span className="build-dashboard-output-count"><Clock3 size={13} /> {diagnostics.length} lines</span>
+                <span className="build-dashboard-output-count">
+                  <Clock3 size={13} /> {diagnostics.length} lines
+                </span>
               </div>
               <div className="build-dashboard-diagnostics">
-                {diagnostics.length ? diagnostics.slice(-100).map((diagnostic) => (
-                  <button
-                    key={diagnostic.sequence}
-                    type="button"
-                    disabled={!diagnostic.file}
-                    className={`build-dashboard-diagnostic is-${diagnostic.severity}`}
-                    title={diagnostic.file ? `${diagnostic.file}:${diagnostic.line ?? 1}` : diagnostic.message}
-                    onClick={() => onOpenDiagnostic(diagnostic)}
-                  >
-                    <span>{diagnostic.severity}</span>
-                    <span>{diagnostic.message}</span>
-                  </button>
-                )) : <p className="build-dashboard-empty">Build output will appear here.</p>}
+                {diagnostics.length ? (
+                  diagnostics.slice(-100).map((diagnostic) => (
+                    <button
+                      key={diagnostic.sequence}
+                      type="button"
+                      disabled={!diagnostic.file}
+                      className={`build-dashboard-diagnostic is-${diagnostic.severity}`}
+                      title={diagnostic.file ? `${diagnostic.file}:${diagnostic.line ?? 1}` : diagnostic.message}
+                      onClick={() => onOpenDiagnostic(diagnostic)}
+                    >
+                      <span>{diagnostic.severity}</span>
+                      <span>{diagnostic.message}</span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="build-dashboard-empty">Build output will appear here.</p>
+                )}
               </div>
             </section>
           </div>
