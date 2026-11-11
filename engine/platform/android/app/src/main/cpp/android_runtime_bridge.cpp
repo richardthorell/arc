@@ -210,6 +210,8 @@ bool android_runtime_bridge::boot()
     if (!bytes)
     {
         arc::diagnostics::error("Android", "Cannot load active cooked startup scene: " + bytes.error().message);
+        catalog_.reset();
+        boot_.reset();
         return false;
     }
     auto next = std::make_unique<arc::ecs::world>();
@@ -218,6 +220,8 @@ bool android_runtime_bridge::boot()
     if (!failure.empty())
     {
         arc::diagnostics::error("Android", failure);
+        catalog_.reset();
+        boot_.reset();
         return false;
     }
     auto next_resources = decode_scene_resources(*catalog_, next_bindings);
