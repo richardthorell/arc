@@ -5,6 +5,7 @@
  */
 
 #include <arc/assets/assets.h>
+#include <arc/ecs/identity.h>
 #include <arc/ecs/world.h>
 
 #include <cstddef>
