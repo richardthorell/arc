@@ -7,6 +7,7 @@
 #include <arc/jobs/jobs.h>
 #include <arc/project/runtime_boot.h>
 #include <arc/project/runtime_catalog.h>
+#include <arc/scene/runtime_scene.h>
 
 #include <memory>
 
@@ -28,6 +29,10 @@ public:
     {
         return scene_.get();
     }
+    [[nodiscard]] const arc::scene::cooked_scene_mesh_bindings& startup_mesh_bindings() const noexcept
+    {
+        return mesh_bindings_;
+    }
 
 private:
     // Order is intentional: mount and boot context are destroyed before the
@@ -41,5 +46,6 @@ private:
     std::unique_ptr<arc::project::runtime_boot_context> boot_;
     std::unique_ptr<arc::project::runtime_catalog_session> catalog_;
     std::unique_ptr<arc::ecs::world> scene_;
+    arc::scene::cooked_scene_mesh_bindings mesh_bindings_;
 };
 } // namespace arc::platform::android

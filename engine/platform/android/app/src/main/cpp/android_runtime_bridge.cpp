@@ -25,6 +25,7 @@ android_runtime_bridge::android_runtime_bridge(const package_asset_source& asset
 android_runtime_bridge::~android_runtime_bridge()
 {
     scene_.reset();
+    mesh_bindings_.clear();
     catalog_.reset();
     boot_.reset();
     if (mount_)
@@ -124,13 +125,15 @@ bool android_runtime_bridge::boot()
         return false;
     }
     auto next = std::make_unique<arc::ecs::world>();
-    const auto failure = arc::scene::materialize_cooked_scene(*next, bytes.value());
+    arc::scene::cooked_scene_mesh_bindings next_bindings;
+    const auto failure = arc::scene::materialize_cooked_scene(*next, bytes.value(), &next_bindings);
     if (!failure.empty())
     {
         arc::diagnostics::error("Android", failure);
         return false;
     }
     scene_ = std::move(next);
+    mesh_bindings_ = std::move(next_bindings);
     arc::diagnostics::info("Android", "Cooked startup scene materialized into ECS world");
     return true;
 }
