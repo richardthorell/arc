@@ -7,6 +7,8 @@
 #include <arc/scene/terrain.h>
 
 #include <array>
+#include <algorithm>
+#include <iterator>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -280,6 +282,45 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
     { return persistence::persistence_status::success(); };
     const auto component_upgrade = [](persistence::archive_component_record&)
     { return persistence::persistence_status::success(); };
+    const auto mesh_v4_to_v5 = [](persistence::archive_component_record& component)
+    {
+        // Editor v4 scene documents use camelCase, while schema v5 uses the
+        // reflected snake_case names. Rebind IDs before cooking/binary output.
+        constexpr std::pair<std::string_view, std::string_view> aliases[]{
+        {"castsShadows", "casts_shadows"},
+        {"receivesShadows", "receives_shadows"},
+        {"shadowLodBias", "shadow_lod_bias"},
+        {"maximumShadowDistance", "maximum_shadow_distance"},
+        {"representationPolicy", "representation"},
+        {"affectsIndirectLighting", "affects_indirect_lighting"},
+        {"surfaceCardDensityBias", "surface_card_density_bias"},
+        {"distanceFieldResolutionBias", "distance_field_resolution_bias"},
+        {"visibleInHardwareTracing", "visible_in_hardware_tracing"},
+        {"motionVectors", "motion_vectors"},
+        {"receiveDecals", "receive_decals"},
+        {"occlusionCulling", "occlusion_culling"},
+        {"boundsScale", "bounds_scale"},
+        {"minimumDrawDistance", "minimum_draw_distance"},
+        {"maximumDrawDistance", "maximum_draw_distance"},
+        {"forcedLod", "forced_lod"},
+        {"lodBias", "lod_bias"},
+        };
+        const auto fields = ecs::component_metadata<mesh_renderer_component>().fields;
+        for (auto& field : component.fields)
+        {
+            if (field.known) continue;
+            const auto alias = std::find_if(std::begin(aliases), std::end(aliases),
+                                            [&](const auto& entry) { return field.name == entry.first; });
+            if (alias == std::end(aliases)) continue;
+            const auto metadata = std::find_if(fields.begin(), fields.end(),
+                                               [&](const auto& entry) { return entry.name == alias->second; });
+            if (metadata == fields.end()) continue;
+            field.id = metadata->id;
+            field.name = std::string(metadata->name);
+            field.known = true;
+        }
+        return persistence::persistence_status::success();
+    };
     if (!registry.register_document(persistence::document_kind::scene, 1, 2, document_upgrade) ||
         !registry.register_document(persistence::document_kind::scene, 2, 3, document_upgrade) ||
         !registry.register_document(persistence::document_kind::prefab, 1, 2, document_upgrade) ||
@@ -291,7 +332,7 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 1, 2, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 2, 3, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 3, 4, component_upgrade) ||
-        !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 4, 5, component_upgrade) ||
+        !registry.register_component(ecs::component_metadata<mesh_renderer_component>().id, 4, 5, mesh_v4_to_v5) ||
         !registry.register_component(ecs::component_metadata<water_component>().id, 1, 2, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<water_component>().id, 2, 3, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<water_component>().id, 3, 4, component_upgrade) ||

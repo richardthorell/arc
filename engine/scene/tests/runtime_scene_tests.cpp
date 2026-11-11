@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <span>
 #include <string>
 #include <utility>
@@ -220,4 +221,26 @@ TEST_CASE("V3.4b legacy scenes without mesh dependencies remain loadable")
     CHECK(arc::scene::materialize_cooked_scene(world, cooked_bytes(document), &bindings).empty());
     CHECK(world.live_count() == 1);
     CHECK(bindings.empty());
+}
+
+TEST_CASE("V3.4b editor v4 MeshRenderer field names migrate to the runtime schema")
+{
+    auto document = authored_mesh_scene();
+    auto& component = document.entities.front().components.back();
+    component.schema_version = 4;
+    auto field = std::find_if(component.fields.begin(), component.fields.end(),
+                              [](const auto& value) { return value.name == "casts_shadows"; });
+    REQUIRE(field != component.fields.end());
+    field->name = "castsShadows";
+    field->id = 0;
+    field->known = false;
+
+    arc::persistence::schema_migration_registry migrations;
+    REQUIRE(arc::scene::register_persistence_migrations(migrations));
+    const auto result = migrations.migrate(component, 5);
+    REQUIRE(result);
+    CHECK(component.schema_version == 5);
+    CHECK(field->name == "casts_shadows");
+    CHECK(field->id == 5u);
+    CHECK(field->known);
 }
