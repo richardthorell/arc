@@ -5,6 +5,7 @@
 #include <arc/project/package_workflow.h>
 #include <arc/project/project.h>
 #include <arc/project/windows_distribution_finalizer.h>
+#include <arc/project/windows_dependencies.h>
 
 #include <nlohmann/json.hpp>
 
@@ -155,19 +156,38 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
                 {.source = cook_path.parent_path() / chunk, .destination = "Content/" + chunk, .kind = "content"});
     }
 
-    std::vector<project::distribution_native_dependency> dependencies;
-    for (const auto kind : {"library", "plugin"})
+    // Discover recursive PE imports. --dll-dir supplies deterministic search
+    // roots; --library remains available for explicitly loaded runtime DLLs
+    // that do not appear in an import table.
+    std::vector<fs::path> search_directories;
+    std::vector<fs::path> explicit_libraries;
+    std::vector<fs::path> plugins;
+    for (const auto& value : options(args, "--dll-dir"))
+        search_directories.push_back(source_path(context.value().root, value));
+    for (const auto& value : options(args, "--library"))
     {
-        const auto flag = std::string("--") + kind;
-        for (const auto& value : options(args, flag))
-        {
-            const auto path = source_path(context.value().root, value);
-            if (path.filename().empty()) return fail(json_output, flag, "Dependency filename is empty");
-            const auto destination = std::string(kind == std::string_view("plugin") ? "plugins/" : "bin/") +
-                                     path.filename().generic_string();
-            files.push_back({.source = path, .destination = destination, .kind = kind});
-            dependencies.push_back({.destination = destination, .kind = kind});
-        }
+        auto path = source_path(context.value().root, value);
+        search_directories.push_back(path.parent_path());
+        explicit_libraries.push_back(std::move(path));
+    }
+    for (const auto& value : options(args, "--plugin"))
+        plugins.push_back(source_path(context.value().root, value));
+    auto closure = project::resolve_windows_dependencies(binary, plugins, search_directories);
+    if (!closure) return fail(json_output, closure.error().field, closure.error().message);
+
+    std::vector<project::distribution_native_dependency> dependencies = std::move(closure.value().dependencies);
+    std::set<std::string> selected_names;
+    for (const auto& item : closure.value().files)
+    {
+        selected_names.insert(item.destination);
+        files.push_back(item);
+    }
+    for (const auto& path : explicit_libraries)
+    {
+        const auto destination = "bin/" + path.filename().generic_string();
+        if (!selected_names.insert(destination).second) continue;
+        files.push_back({.source = path, .destination = destination, .kind = "library"});
+        dependencies.push_back({.destination = destination, .kind = "library"});
     }
 
     const auto output = option(args, "--output") ? source_path(context.value().root, *option(args, "--output"))
