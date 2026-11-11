@@ -108,7 +108,11 @@ arc::persistence::archive_document authored_mesh_scene()
     arc::persistence::component_persistence_registry registry;
     REQUIRE(arc::scene::register_persistence_components(registry));
 
-    const arc::scene::mesh_renderer_component renderer{};
+    arc::scene::mesh_renderer_component renderer{};
+    renderer.visible = false;
+    renderer.forced_lod = 2;
+    renderer.mesh = arc::render::mesh_handle{3, 7};
+    renderer.material = arc::render::material_handle{8, 9};
     arc::persistence::archive_component_record encoded;
     const auto component = arc::ecs::component_metadata<arc::scene::mesh_renderer_component>().id;
     REQUIRE(registry.encode(component, &renderer, encoded));
@@ -167,6 +171,8 @@ TEST_CASE("V3.4b cooked scene preserves mesh and material GUIDs and model subres
     const auto& mesh = world.get<arc::scene::mesh_renderer_component>(entity);
     CHECK_FALSE(mesh.mesh.valid());
     CHECK_FALSE(mesh.material.valid());
+    CHECK_FALSE(mesh.visible);
+    CHECK(mesh.forced_lod == 2);
 }
 
 TEST_CASE("V3.4b cooked scene rejects duplicate mesh bindings and rolls back")

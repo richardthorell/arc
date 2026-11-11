@@ -7,6 +7,9 @@
 #include <arc/scene/terrain.h>
 
 #include <array>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 
 namespace arc::scene
 {
@@ -18,6 +21,198 @@ bool register_component(persistence::component_persistence_registry& registry,
                         std::initializer_list<std::string> names = {})
 {
     return registry.register_component({&ecs::component_metadata<Component>(), std::vector<std::string>(names)});
+}
+
+
+persistence::archive_value mesh_bool(bool value)
+{
+    persistence::archive_value result;
+    result.kind = persistence::archive_value_kind::boolean;
+    result.boolean = value;
+    return result;
+}
+
+persistence::archive_value mesh_float(float value)
+{
+    persistence::archive_value result;
+    result.kind = persistence::archive_value_kind::floating_point;
+    result.floating_point = value;
+    return result;
+}
+
+persistence::archive_value mesh_int(std::int32_t value)
+{
+    persistence::archive_value result;
+    result.kind = persistence::archive_value_kind::signed_integer;
+    result.signed_integer = value;
+    return result;
+}
+
+bool read_mesh_bool(const persistence::archive_value& value, bool& result)
+{
+    if (value.kind != persistence::archive_value_kind::boolean) return false;
+    result = value.boolean;
+    return true;
+}
+
+bool read_mesh_float(const persistence::archive_value& value, float& result)
+{
+    double number{};
+    switch (value.kind)
+    {
+        case persistence::archive_value_kind::floating_point:
+            number = value.floating_point;
+            break;
+        case persistence::archive_value_kind::signed_integer:
+            number = static_cast<double>(value.signed_integer);
+            break;
+        case persistence::archive_value_kind::unsigned_integer:
+            number = static_cast<double>(value.unsigned_integer);
+            break;
+        default: return false;
+    }
+    if (!std::isfinite(number) || number < -std::numeric_limits<float>::max() ||
+        number > std::numeric_limits<float>::max())
+        return false;
+    result = static_cast<float>(number);
+    return true;
+}
+
+bool read_mesh_int(const persistence::archive_value& value, std::int32_t& result)
+{
+    if (value.kind == persistence::archive_value_kind::signed_integer &&
+        value.signed_integer >= std::numeric_limits<std::int32_t>::min() &&
+        value.signed_integer <= std::numeric_limits<std::int32_t>::max())
+    {
+        result = static_cast<std::int32_t>(value.signed_integer);
+        return true;
+    }
+    if (value.kind == persistence::archive_value_kind::unsigned_integer &&
+        value.unsigned_integer <= static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max()))
+    {
+        result = static_cast<std::int32_t>(value.unsigned_integer);
+        return true;
+    }
+    return false;
+}
+
+template <class Enum> bool read_mesh_enum(const persistence::archive_value& value, Enum& result)
+{
+    std::int32_t number{};
+    if (!read_mesh_int(value, number) || number < 0 || number > 2) return false;
+    result = static_cast<Enum>(number);
+    return true;
+}
+
+persistence::persistence_status encode_mesh_renderer(const void* component,
+                                                     persistence::archive_component_record& record)
+{
+    const auto& input = *static_cast<const mesh_renderer_component*>(component);
+    record.fields.clear();
+    // Mesh and material asset GUIDs live in document.dependencies. Their
+    // renderer-local handles must never be written to a portable archive.
+    record.fields.push_back({0x0000000000000003ull, "visible", mesh_bool(input.visible), true});
+    record.fields.push_back({0x0000000000000005ull, "casts_shadows", mesh_bool(input.casts_shadows), true});
+    record.fields.push_back({0x0000000000000006ull, "receives_shadows", mesh_bool(input.receives_shadows), true});
+    record.fields.push_back({0x0000000000000007ull, "shadow_lod_bias", mesh_float(input.shadow_lod_bias), true});
+    record.fields.push_back({0x0000000000000008ull, "maximum_shadow_distance", mesh_float(input.maximum_shadow_distance), true});
+    record.fields.push_back({0x0000000000000009ull, "representation", mesh_int(static_cast<std::int32_t>(input.representation)), true});
+    record.fields.push_back({0x000000000000000aull, "affects_indirect_lighting", mesh_bool(input.affects_indirect_lighting), true});
+    record.fields.push_back({0x000000000000000bull, "surface_card_density_bias", mesh_float(input.surface_card_density_bias), true});
+    record.fields.push_back({0x000000000000000cull, "distance_field_resolution_bias", mesh_float(input.distance_field_resolution_bias), true});
+    record.fields.push_back({0x000000000000000dull, "visible_in_hardware_tracing", mesh_bool(input.visible_in_hardware_tracing), true});
+    record.fields.push_back({0x000000000000000eull, "motion_vectors", mesh_int(static_cast<std::int32_t>(input.motion_vectors)), true});
+    record.fields.push_back({0x000000000000000full, "receive_decals", mesh_bool(input.receive_decals), true});
+    record.fields.push_back({0x0000000000000010ull, "occlusion_culling", mesh_bool(input.occlusion_culling), true});
+    record.fields.push_back({0x0000000000000011ull, "bounds_scale", mesh_float(input.bounds_scale), true});
+    record.fields.push_back({0x0000000000000012ull, "minimum_draw_distance", mesh_float(input.minimum_draw_distance), true});
+    record.fields.push_back({0x0000000000000013ull, "maximum_draw_distance", mesh_float(input.maximum_draw_distance), true});
+    record.fields.push_back({0x0000000000000014ull, "forced_lod", mesh_int(input.forced_lod), true});
+    record.fields.push_back({0x0000000000000015ull, "lod_bias", mesh_float(input.lod_bias), true});
+    return persistence::persistence_status::success();
+}
+
+persistence::persistence_status decode_mesh_renderer(void* component,
+                                                     const persistence::archive_component_record& record)
+{
+    auto& output = *static_cast<mesh_renderer_component*>(component);
+    output.mesh = {};
+    output.material = {};
+    for (const auto& field : record.fields)
+    {
+        bool valid = true;
+        switch (field.id)
+        {
+            // Legacy asset slots are resolved from the dependency manifest.
+            case 0x0000000000000001ull:
+            case 0x0000000000000002ull:
+                break;
+            case 0x0000000000000003ull:
+                valid = read_mesh_bool(field.value, output.visible);
+                break;
+            case 0x0000000000000005ull:
+                valid = read_mesh_bool(field.value, output.casts_shadows);
+                break;
+            case 0x0000000000000006ull:
+                valid = read_mesh_bool(field.value, output.receives_shadows);
+                break;
+            case 0x0000000000000007ull:
+                valid = read_mesh_float(field.value, output.shadow_lod_bias);
+                break;
+            case 0x0000000000000008ull:
+                valid = read_mesh_float(field.value, output.maximum_shadow_distance);
+                break;
+            case 0x0000000000000009ull:
+                valid = read_mesh_enum(field.value, output.representation);
+                break;
+            case 0x000000000000000aull:
+                valid = read_mesh_bool(field.value, output.affects_indirect_lighting);
+                break;
+            case 0x000000000000000bull:
+                valid = read_mesh_float(field.value, output.surface_card_density_bias);
+                break;
+            case 0x000000000000000cull:
+                valid = read_mesh_float(field.value, output.distance_field_resolution_bias);
+                break;
+            case 0x000000000000000dull:
+                valid = read_mesh_bool(field.value, output.visible_in_hardware_tracing);
+                break;
+            case 0x000000000000000eull:
+                valid = read_mesh_enum(field.value, output.motion_vectors);
+                break;
+            case 0x000000000000000full:
+                valid = read_mesh_bool(field.value, output.receive_decals);
+                break;
+            case 0x0000000000000010ull:
+                valid = read_mesh_bool(field.value, output.occlusion_culling);
+                break;
+            case 0x0000000000000011ull:
+                valid = read_mesh_float(field.value, output.bounds_scale);
+                break;
+            case 0x0000000000000012ull:
+                valid = read_mesh_float(field.value, output.minimum_draw_distance);
+                break;
+            case 0x0000000000000013ull:
+                valid = read_mesh_float(field.value, output.maximum_draw_distance);
+                break;
+            case 0x0000000000000014ull:
+                valid = read_mesh_int(field.value, output.forced_lod);
+                break;
+            case 0x0000000000000015ull:
+                valid = read_mesh_float(field.value, output.lod_bias);
+                break;
+            default:
+                valid = false;
+                break;
+        }
+        if (!valid)
+            return persistence::persistence_status::failure({
+                .code = persistence::persistence_error_code::decode_failed,
+                .component = record.type,
+                .field = field.id,
+                .message = "Invalid cooked MeshRenderer field: " + field.name});
+    }
+    return persistence::persistence_status::success();
 }
 
 } // namespace
@@ -32,7 +227,8 @@ bool register_persistence_components(persistence::component_persistence_registry
     result &= register_component<selection_component>(registry, {"Selection"});
     result &= register_component<bounds_component>(registry, {"Bounds"});
     result &= register_component<camera_component>(registry, {"Camera"});
-    result &= register_component<mesh_renderer_component>(registry, {"MeshRenderer"});
+    result &= registry.register_component({&ecs::component_metadata<mesh_renderer_component>(), {"MeshRenderer"},
+                                           encode_mesh_renderer, decode_mesh_renderer});
     result &= register_component<virtual_mesh_renderer_component>(registry, {"VirtualMeshRenderer"});
     result &= register_component<skinned_mesh_renderer_component>(registry, {"SkinnedMeshRenderer"});
     result &= register_component<lod_component>(registry, {"LOD"});
