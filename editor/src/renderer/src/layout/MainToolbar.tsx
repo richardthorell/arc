@@ -8,6 +8,7 @@ import {
   Globe,
   Grid3X3,
   Hammer,
+  Maximize2,
   Monitor,
   Mountain,
   MousePointer2,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 
 import type { ArcProjectDescriptor } from '../../../common/projectTypes';
+import type { ArcBuildSnapshot } from '../../../common/buildTypes';
 import type { CommandId, EditorRuntimeState } from '../app/workbenchTypes';
 import { requestSettingsDialog } from '../settings/settingsDialogRoute';
 import {
@@ -341,6 +343,8 @@ export type MainToolbarProps = {
   targetDeviceActions?: ReactNode;
   targetDeviceMenuActions?: ReadonlyArray<UiDropdownOption<string>>;
   onBuildAction?: (action: ToolbarBuildAction) => void;
+  buildSnapshot?: ArcBuildSnapshot | null;
+  onOpenBuildDashboard?: () => void;
 };
 
 export function MainToolbar({
@@ -372,11 +376,16 @@ export function MainToolbar({
   targetDeviceActions,
   targetDeviceMenuActions = [],
   onBuildAction,
+  buildSnapshot,
+  onOpenBuildDashboard,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
   const hostPlatform = detectHostTargetPlatform();
   const [projectTargetPlatforms, setProjectTargetPlatforms] = useState<EditorTargetPlatform[]>(() => [hostPlatform]);
   const [localTargetDevice, setLocalTargetDevice] = useState('local');
+  const buildState = buildSnapshot?.state ?? 'idle';
+  const recentBuildCommands = buildSnapshot?.history?.slice(-6) ?? [];
+  const longestBuildCommand = Math.max(1, ...recentBuildCommands.map((run) => run.durationMs));
   const [localSettings, setLocalSettings] = useState<EditorSettingsSnapshot | null>(null);
   useEffect(() => {
     let revision = 0;
@@ -656,6 +665,33 @@ export function MainToolbar({
           options={buildOptions}
           variant="primary"
         />
+        {onOpenBuildDashboard && (
+          <UiButton
+            variant="toolbar"
+            className={`toolbar-build-monitor is-${buildState}`}
+            type="button"
+            aria-label="Open build dashboard"
+            title={`Build: ${buildState} · ${recentBuildCommands.length} recorded commands`}
+            onClick={onOpenBuildDashboard}
+          >
+            <span className="toolbar-build-monitor-light" aria-hidden="true" />
+            <span className="toolbar-build-monitor-label">{buildState === 'idle' ? 'Idle' : buildState}</span>
+            <span className="toolbar-build-mini-chart" aria-hidden="true">
+              {recentBuildCommands.length ? (
+                recentBuildCommands.map((run) => (
+                  <span
+                    key={run.id}
+                    className={`is-${run.result}`}
+                    style={{ height: `${Math.max(3, Math.round((run.durationMs / longestBuildCommand) * 16))}px` }}
+                  />
+                ))
+              ) : (
+                <span className="is-empty" />
+              )}
+            </span>
+            <Maximize2 size={12} aria-hidden="true" />
+          </UiButton>
+        )}
       </div>
     </section>
   );

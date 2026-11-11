@@ -31,7 +31,9 @@ elseif(ARC_FETCH_TIFF AND ARC_FETCH_THIRD_PARTY)
 
     FetchContent_Declare(
         libtiff
-        URL https://download.osgeo.org/libtiff/tiff-4.7.2.tar.gz
+        URL
+            https://download-cache.osgeo.org/libtiff/tiff-4.7.2.tar.gz
+            https://download.osgeo.org/libtiff/tiff-4.7.2.tar.gz
         URL_HASH SHA256=672bd7d10aee4606171afb864f3570b83340f6a33e2c186dc0512f7145ffdf6a
     )
     FetchContent_MakeAvailable(libtiff)
