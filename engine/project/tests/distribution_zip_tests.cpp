@@ -17,8 +17,8 @@ namespace project = arc::project;
 
 struct zip_fixture
 {
-    fs::path root = fs::temp_directory_path() /
-                    ("arc-d2-zip-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
+    fs::path root =
+        fs::temp_directory_path() / ("arc-d2-zip-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
     fs::path distribution = root / "Shipping";
     project::distribution_manifest manifest;
 
@@ -58,10 +58,8 @@ struct zip_fixture
         }
         const auto hash = arc::assets::hash_file(path);
         REQUIRE(hash);
-        manifest.files.push_back({.path = name,
-                                  .kind = kind,
-                                  .size = fs::file_size(path),
-                                  .sha256 = arc::assets::to_string(hash.value())});
+        manifest.files.push_back(
+            {.path = name, .kind = kind, .size = fs::file_size(path), .sha256 = arc::assets::to_string(hash.value())});
     }
 
     ~zip_fixture()

@@ -26,12 +26,14 @@ project_status fail(project_error_code code, std::string field, std::string mess
 
 void put16(std::ostream& out, std::uint16_t value)
 {
-    for (unsigned i = 0; i < 2; ++i) out.put(static_cast<char>(value >> (8 * i)));
+    for (unsigned i = 0; i < 2; ++i)
+        out.put(static_cast<char>(value >> (8 * i)));
 }
 
 void put32(std::ostream& out, std::uint32_t value)
 {
-    for (unsigned i = 0; i < 4; ++i) out.put(static_cast<char>(value >> (8 * i)));
+    for (unsigned i = 0; i < 4; ++i)
+        out.put(static_cast<char>(value >> (8 * i)));
 }
 
 std::uint32_t crc32(const std::vector<char>& bytes)
@@ -68,8 +70,8 @@ bool write_zip(std::ostream& stream, std::vector<zip_entry>& entries)
     for (auto& entry : entries)
     {
         const auto offset = stream.tellp();
-        if (offset < 0 || static_cast<std::uint64_t>(offset) > UINT32_MAX ||
-            entry.bytes.size() > UINT32_MAX || entry.name.size() > UINT16_MAX)
+        if (offset < 0 || static_cast<std::uint64_t>(offset) > UINT32_MAX || entry.bytes.size() > UINT32_MAX ||
+            entry.name.size() > UINT16_MAX)
             return false;
         entry.offset = static_cast<std::uint32_t>(offset);
         const auto size = static_cast<std::uint32_t>(entry.bytes.size());
@@ -115,8 +117,7 @@ bool write_zip(std::ostream& stream, std::vector<zip_entry>& entries)
         if (!stream) return false;
     }
     const auto end = stream.tellp();
-    if (end < directory_start || static_cast<std::uint64_t>(end) > UINT32_MAX ||
-        entries.size() > UINT16_MAX)
+    if (end < directory_start || static_cast<std::uint64_t>(end) > UINT32_MAX || entries.size() > UINT16_MAX)
         return false;
     put32(stream, 0x06054b50u);
     put16(stream, 0);
@@ -190,11 +191,11 @@ project_status write_distribution_zip(const fs::path& distribution_root, const f
         if (std::none_of(entries.begin(), entries.end(), [&](const zip_entry& e) { return e.name == relative; }))
             return fail(project_error_code::invalid_descriptor, "files", "Unlisted distribution file: " + relative);
     }
-    entries.push_back({.name = "arc-distribution.json",
-                       .bytes = std::vector<char>(manifest_text.begin(), manifest_text.end())});
-    std::sort(entries.begin(), entries.end(),
-              [](const zip_entry& a, const zip_entry& b) { return a.name < b.name; });
-    for (auto& entry : entries) entry.checksum = crc32(entry.bytes);
+    entries.push_back(
+        {.name = "arc-distribution.json", .bytes = std::vector<char>(manifest_text.begin(), manifest_text.end())});
+    std::sort(entries.begin(), entries.end(), [](const zip_entry& a, const zip_entry& b) { return a.name < b.name; });
+    for (auto& entry : entries)
+        entry.checksum = crc32(entry.bytes);
 
     const auto pending = fs::path(target.string() + ".pending");
     if (fs::exists(pending, ec) || ec)
