@@ -10,6 +10,18 @@ export type ArcBuildDiagnostic = {
   category?: 'compiler' | 'codegen' | 'linker' | 'module';
 };
 
+/** Completed CLI/CMake commands in the current editor session (not estimated compile progress). */
+export type ArcBuildRun = {
+  id: number;
+  kind: 'build' | 'configure' | 'clean' | 'ide';
+  configuration: string;
+  startedAt: string;
+  durationMs: number;
+  result: 'succeeded' | 'failed' | 'cancelled';
+  warningCount: number;
+  errorCount: number;
+};
+
 export type ArcBuildSnapshot = {
   revision: number;
   state: ArcBuildState;
@@ -18,6 +30,7 @@ export type ArcBuildSnapshot = {
   reloadRequired: boolean;
   restartRequired: boolean;
   diagnostics: ArcBuildDiagnostic[];
+  history?: ArcBuildRun[];
   startedAt?: string;
   completedAt?: string;
   command?: string;
