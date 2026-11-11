@@ -76,6 +76,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DARC_BUILD_EDITOR=OFF
           -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_FETCH_TIFF=OFF
           -DBUILD_TESTING=OFF
       - name: Generate Static Analysis Sources
         if: ${{ github.event_name != 'pull_request' || inputs.run_native }}

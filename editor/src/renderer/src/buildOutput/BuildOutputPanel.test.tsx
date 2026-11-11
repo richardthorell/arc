@@ -75,4 +75,43 @@ describe('BuildOutputPanel', () => {
 
     expect(screen.getByRole('combobox', { name: 'Build configuration' })).toBeDisabled();
   });
+
+  it('opens an expanded dashboard with a graph backed by measured build history', () => {
+    render(
+      <BuildOutputPanel
+        snapshot={{
+          revision: 5,
+          state: 'succeeded',
+          configuration: 'Debug',
+          buildRequired: false,
+          reloadRequired: false,
+          restartRequired: false,
+          diagnostics: [],
+          history: [
+            {
+              id: 1,
+              kind: 'build',
+              configuration: 'Debug',
+              startedAt: '2026-11-10T10:00:00.000Z',
+              durationMs: 2400,
+              result: 'succeeded',
+              warningCount: 0,
+              errorCount: 0,
+            },
+          ],
+        }}
+        onExecute={vi.fn()}
+        onOpenDiagnostic={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand build dashboard' }));
+    expect(screen.getByRole('dialog', { name: 'Build dashboard' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('img', { name: 'Recent build command durations, color-coded by result' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('2.4 s').length).toBeGreaterThan(0);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Build dashboard' })).not.toBeInTheDocument();
+  });
 });

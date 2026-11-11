@@ -422,6 +422,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const runtimeInspectionRevision = useRef(0);
   const [projectComponentSchemas, setProjectComponentSchemas] = useState<HostProjectComponentSchema[]>([]);
   const [buildSnapshot, setBuildSnapshot] = useState<ArcBuildSnapshot | null>(null);
+  const [buildDashboardOpen, setBuildDashboardOpen] = useState(false);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
   const selectedSnapshotRevision = useRef(0);
   const hostEventRefreshTimer = useRef<number | null>(null);
@@ -1609,6 +1610,11 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             setTargetPlatform(platform);
             window.localStorage.setItem('arc.editor.target-platform.v1', platform);
           }}
+          buildSnapshot={buildSnapshot}
+          onOpenBuildDashboard={() => {
+            setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
+            setBuildDashboardOpen(true);
+          }}
           onBuildAction={(action) => {
             setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
             void window.arc.build
@@ -1798,6 +1804,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return (
         <BuildOutputPanel
           snapshot={buildSnapshot}
+          expanded={buildDashboardOpen}
+          onExpandedChange={setBuildDashboardOpen}
           onOpenDiagnostic={(diagnostic) => {
             if (diagnostic.file)
               void window.arc.build.openDiagnostic(diagnostic.file, diagnostic.line, diagnostic.column);

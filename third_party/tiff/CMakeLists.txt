@@ -31,9 +31,6 @@ elseif(ARC_FETCH_TIFF AND ARC_FETCH_THIRD_PARTY)
 
     FetchContent_Declare(
         libtiff
-        # The primary OSGeo origin has been timing out across Linux, Windows
-        # and Android CI. Try OSGeo's official cache first, then the origin.
-        # Keep the same pinned upstream release hash for both mirrors.
         URL
             https://download-cache.osgeo.org/libtiff/tiff-4.7.2.tar.gz
             https://download.osgeo.org/libtiff/tiff-4.7.2.tar.gz
