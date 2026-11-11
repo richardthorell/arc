@@ -1,4 +1,4 @@
-add_executable(arc-project-cli main.cpp package_command.cpp)
+add_executable(arc-project-cli main.cpp package_command.cpp workflow_command.cpp)
 arc_configure_first_party_target(arc-project-cli)
 target_compile_features(arc-project-cli PRIVATE cxx_std_20)
 target_link_libraries(arc-project-cli PRIVATE arc-project arc-third-party-json)
@@ -9,6 +9,11 @@ install(TARGETS arc-project-cli
     COMPONENT project-tools)
 
 if(BUILD_TESTING)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    add_test(NAME arc-project-workflow-plan
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/workflow_plan_tests.py"
+            $<TARGET_FILE:arc-project-cli> "${CMAKE_SOURCE_DIR}/templates" "${PROJECT_VERSION}")
+    set_tests_properties(arc-project-workflow-plan PROPERTIES TIMEOUT 30)
     add_test(NAME arc-project-template-smoke
         COMMAND "${CMAKE_COMMAND}"
             -DARC_PROJECT_TOOL=$<TARGET_FILE:arc-project-cli>

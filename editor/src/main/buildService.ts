@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import type { ArcBuildDiagnostic, ArcBuildRequest, ArcBuildRun, ArcBuildSnapshot } from '../common/buildTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
+import type { WorkflowRequest, WorkflowPlan } from '../common/projectWorkflowTypes';
+import { queryProjectWorkflowPlan } from './projectWorkflowPlanner';
 
 type HostBridge = {
   command(
@@ -31,6 +33,7 @@ export class BuildService {
   private buildWatcher: fs.FSWatcher | null = null;
   private sequence = 0;
   private nextRunId = 0;
+  private projectEpoch = 0;
   private cancelledProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
 
   constructor(
@@ -45,6 +48,7 @@ export class BuildService {
   }
 
   watchProject(): void {
+    ++this.projectEpoch;
     this.sourceWatcher?.close();
     this.buildWatcher?.close();
     this.sourceWatcher = this.buildWatcher = null;
@@ -74,6 +78,26 @@ export class BuildService {
         this.append('info', 'External C++ build detected; module reload required', 'module');
       }
     });
+  }
+
+  async plan(request: WorkflowRequest): Promise<WorkflowPlan> {
+    const project = this.activeProject();
+    if (!project) throw new Error('No project is open');
+    const epoch = this.projectEpoch;
+    const descriptor = JSON.stringify(project.descriptor);
+    const descriptorPath = project.descriptorPath;
+    const tool = this.projectTool();
+    const plan = await queryProjectWorkflowPlan(tool, descriptorPath, request);
+    const current = this.activeProject();
+    if (
+      epoch !== this.projectEpoch ||
+      current?.descriptorPath !== descriptorPath ||
+      JSON.stringify(current?.descriptor) !== descriptor ||
+      this.projectTool() !== tool ||
+      plan.projectGuid !== current.descriptor.guid
+    )
+      throw new Error('Project or SDK changed while planning; request a new plan');
+    return plan;
   }
 
   async execute(request: ArcBuildRequest): Promise<ArcBuildSnapshot> {

@@ -20,6 +20,7 @@ import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import type { ArcBuildRequest } from '../common/buildTypes';
+import type { WorkflowRequest } from '../common/projectWorkflowTypes';
 import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';
 import { PerformanceDiagnostics } from './performanceDiagnostics';
 import { androidToolchainSettingKeys } from './androidToolchain';
@@ -1365,6 +1366,10 @@ void app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('build:snapshot', () => buildService?.snapshot() ?? null);
+  ipcMain.handle('build:plan', (_event, request: WorkflowRequest) => {
+    if (!buildService) throw new Error('Project build service is unavailable');
+    return buildService.plan(request);
+  });
   ipcMain.handle('build:execute', (_event, request: ArcBuildRequest) => buildService?.execute(request));
   ipcMain.handle('build:openDiagnostic', async (_event, file: string) => {
     const project = projectService?.active();

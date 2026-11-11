@@ -15,6 +15,7 @@ import type {
 } from '../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
+import type { WorkflowRequest, WorkflowPlan } from '../common/projectWorkflowTypes';
 import { createAssetSourceBridge } from './assetSourceBridge';
 import { readBuiltinTextFile } from './builtinTextReader';
 import {
@@ -450,6 +451,7 @@ const arcApi = {
       ipcRenderer.invoke('extensions:executeCommand', id, arguments_),
   },
   build: {
+    plan: (request: WorkflowRequest): Promise<WorkflowPlan> => ipcRenderer.invoke('build:plan', request),
     snapshot: (): Promise<ArcBuildSnapshot | null> => ipcRenderer.invoke('build:snapshot'),
     execute: (request: ArcBuildRequest): Promise<ArcBuildSnapshot | null> =>
       ipcRenderer.invoke('build:execute', request),

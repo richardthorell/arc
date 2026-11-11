@@ -27,6 +27,131 @@ arc::project::project_context context()
 }
 } // namespace
 
+TEST_CASE("unified workflows use explicit target and profile identity")
+{
+    using namespace arc::project;
+    const auto missing = plan_project_workflow(descriptor(), context(), {});
+    REQUIRE_FALSE(missing);
+    const auto mismatch = plan_project_workflow(descriptor(), context(),
+                                                {.profile = "windows-client", .target_id = "android-arm64-vulkan"});
+    REQUIRE_FALSE(mismatch);
+    CHECK(mismatch.error().field == "target");
+    const auto valid = plan_project_workflow(descriptor(), context(),
+                                             {.profile = "windows-client", .target_id = "windows-x64-vulkan"});
+    REQUIRE(valid);
+    CHECK(valid.value().output.profile == "windows-client");
+    CHECK(valid.value().output.configuration == "Shipping");
+}
+
+TEST_CASE("unified workflows keep standalone actions separate")
+{
+    using namespace arc::project;
+    using stage = project_workflow_stage;
+    const auto check = [](project_workflow_action action, const std::vector<stage>& expected)
+    {
+        const auto plan =
+            plan_project_workflow(descriptor(), context(),
+                                  {.action = action, .profile = "windows-client", .target_id = "windows-x64-vulkan"});
+        REQUIRE(plan);
+        CHECK(plan.value().stages == expected);
+    };
+    check(project_workflow_action::configure, {stage::validate, stage::configure});
+    check(project_workflow_action::build_code, {stage::validate, stage::configure, stage::compile});
+    check(project_workflow_action::cook, {stage::validate, stage::cook});
+    check(project_workflow_action::build,
+          {stage::validate, stage::configure, stage::compile, stage::cook, stage::package});
+
+    auto content_only = descriptor();
+    content_only.modules.clear();
+    REQUIRE(plan_project_workflow(
+        content_only, context(),
+        {.action = project_workflow_action::cook, .profile = "windows-client", .target_id = "windows-x64-vulkan"}));
+}
+
+TEST_CASE("unified Play snapshots before preparing output and requires development configuration")
+{
+    using namespace arc::project;
+    using stage = project_workflow_stage;
+    const project_workflow_request request{.action = project_workflow_action::play,
+                                           .profile = "windows-client",
+                                           .target_id = "windows-x64-vulkan",
+                                           .destination = project_workflow_destination::local,
+                                           .session_id = "test-1"};
+    REQUIRE_FALSE(plan_project_workflow(descriptor(), context(), request));
+    auto project = descriptor();
+    project.cook_profiles.front().configuration = "Debug";
+    const auto plan = plan_project_workflow(project, context(), request);
+    REQUIRE(plan);
+    CHECK(plan.value().output.package_output == context().build_root / "PlaySessions/session-test-1/Package");
+    CHECK(plan.value().stages == std::vector<stage>{stage::validate, stage::snapshot, stage::configure, stage::compile,
+                                                    stage::cook, stage::package, stage::launch, stage::connect});
+    const auto run = plan_project_workflow(descriptor(), context(),
+                                           {.action = project_workflow_action::run_built,
+                                            .profile = "windows-client",
+                                            .target_id = "windows-x64-vulkan",
+                                            .destination = project_workflow_destination::local});
+    REQUIRE(run);
+    CHECK(run.value().stages == std::vector<stage>{stage::validate, stage::launch});
+}
+
+TEST_CASE("unified workflows reject implicit destinations and build deployment")
+{
+    using namespace arc::project;
+    REQUIRE_FALSE(plan_project_workflow(
+        descriptor(), context(),
+        {.action = project_workflow_action::play, .profile = "windows-client", .target_id = "windows-x64-vulkan"}));
+    REQUIRE_FALSE(plan_project_workflow(descriptor(), context(),
+                                        {.profile = "windows-client",
+                                         .target_id = "windows-x64-vulkan",
+                                         .destination = project_workflow_destination::local}));
+    REQUIRE_FALSE(plan_project_workflow(descriptor(), context(),
+                                        {.action = project_workflow_action::run_built,
+                                         .profile = "windows-client",
+                                         .target_id = "windows-x64-vulkan",
+                                         .destination = project_workflow_destination::device}));
+}
+
+TEST_CASE("unified Android Play deploys only after packaging")
+{
+    using namespace arc::project;
+    auto project = descriptor();
+    project.target_platforms = {{.id = "android-arm64-vulkan"}};
+    project.cook_profiles = {{.id = "android-dev",
+                              .platform = "android",
+                              .architecture = "arm64",
+                              .renderer = "vulkan",
+                              .configuration = "Debug"}};
+    const auto plan = plan_project_workflow(project, context(),
+                                            {.action = project_workflow_action::play,
+                                             .profile = "android-dev",
+                                             .target_id = "android-arm64-vulkan",
+                                             .destination = project_workflow_destination::device,
+                                             .session_id = "test-android"});
+    REQUIRE(plan);
+    using stage = project_workflow_stage;
+    CHECK(plan.value().stages == std::vector<stage>{stage::validate, stage::snapshot, stage::configure, stage::compile,
+                                                    stage::cook, stage::package, stage::deploy, stage::launch,
+                                                    stage::connect});
+}
+
+TEST_CASE("unified Play session paths reject unsafe identifiers")
+{
+    using namespace arc::project;
+    auto project = descriptor();
+    project.cook_profiles.front().configuration = "Debug";
+    for (const auto* id : {"", "../escape", "a/b", "a\\b", "C:drive", "trailing."})
+    {
+        const auto plan = plan_project_workflow(project, context(),
+                                                {.action = project_workflow_action::play,
+                                                 .profile = "windows-client",
+                                                 .target_id = "windows-x64-vulkan",
+                                                 .destination = project_workflow_destination::local,
+                                                 .session_id = id});
+        REQUIRE_FALSE(plan);
+        CHECK(plan.error().field == "sessionId");
+    }
+}
+
 TEST_CASE("package workflow resolves deterministic runtime destinations")
 {
     const auto plan = arc::project::plan_package_workflow(
