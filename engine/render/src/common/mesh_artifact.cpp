@@ -67,8 +67,8 @@ bool valid_vertex(const mesh_vertex& vertex) noexcept
 }
 } // namespace
 
-core::result<decoded_conventional_mesh, std::string>
-decode_conventional_mesh_artifact(std::span<const std::byte> bytes, std::string_view subresource)
+core::result<decoded_conventional_mesh, std::string> decode_conventional_mesh_artifact(std::span<const std::byte> bytes,
+                                                                                       std::string_view subresource)
 {
     reader input{bytes};
     std::string signature;
@@ -90,8 +90,8 @@ decode_conventional_mesh_artifact(std::span<const std::byte> bytes, std::string_
         std::string name;
         std::uint64_t material_index{};
         std::uint32_t lod_count{};
-        if (!input.read_string(name) || name.empty() || !names.insert(name).second ||
-            !input.read(material_index) || !input.read(lod_count) || lod_count == 0 || lod_count > max_lods)
+        if (!input.read_string(name) || name.empty() || !names.insert(name).second || !input.read(material_index) ||
+            !input.read(lod_count) || lod_count == 0 || lod_count > max_lods)
             return core::result<decoded_conventional_mesh, std::string>::failure("Invalid .arcmesh mesh record");
 
         const bool wanted = subresource.empty() || name == subresource;
@@ -99,13 +99,10 @@ decode_conventional_mesh_artifact(std::span<const std::byte> bytes, std::string_
         {
             float ratio{}, geometric_error{};
             std::span<const std::byte> vertices, indices;
-            if (!input.read(ratio) || !input.read(geometric_error) ||
-                !std::isfinite(ratio) || ratio <= 0.0f || ratio > 1.0f ||
-                !std::isfinite(geometric_error) || geometric_error < 0.0f ||
-                !input.read_blob(vertices, sizeof(mesh_vertex)) ||
-                !input.read_blob(indices, sizeof(std::uint32_t)) ||
-                vertices.empty() || indices.empty() ||
-                indices.size() / sizeof(std::uint32_t) % 3 != 0 ||
+            if (!input.read(ratio) || !input.read(geometric_error) || !std::isfinite(ratio) || ratio <= 0.0f ||
+                ratio > 1.0f || !std::isfinite(geometric_error) || geometric_error < 0.0f ||
+                !input.read_blob(vertices, sizeof(mesh_vertex)) || !input.read_blob(indices, sizeof(std::uint32_t)) ||
+                vertices.empty() || indices.empty() || indices.size() / sizeof(std::uint32_t) % 3 != 0 ||
                 vertices.size() / sizeof(mesh_vertex) > std::numeric_limits<std::uint32_t>::max())
                 return core::result<decoded_conventional_mesh, std::string>::failure("Invalid .arcmesh LOD payload");
 
