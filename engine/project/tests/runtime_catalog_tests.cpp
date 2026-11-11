@@ -75,7 +75,8 @@ struct cooked_distribution_fixture
         fs::remove_all(root, ignored);
     }
 
-    void stage(bool server = false, bool missing_scene = false, bool wrong_type = false, bool wrong_renderer = false)
+    void stage(bool server = false, bool missing_scene = false, bool wrong_type = false, bool wrong_renderer = false,
+               bool multiple_scenes = false)
     {
         assets::derived_data_cache cache({.root = root / "cache"});
         assets::cache_error error;
@@ -98,6 +99,15 @@ struct cooked_distribution_fixture
                                     .hash = hash,
                                     .size = payload.size(),
                                     .chunk = "startup"});
+        if (multiple_scenes)
+            cooked.artifacts.push_back({.asset = scene,
+                                        .type = assets::asset_types::scene,
+                                        .name = "startup/alternate",
+                                        .schema = assets::artifact_schemas::scene,
+                                        .schema_version = 1,
+                                        .hash = hash,
+                                        .size = payload.size(),
+                                        .chunk = "startup"});
         const auto package = assets::build_asset_packages(std::move(cooked), cache, root / "Content");
         REQUIRE(package.succeeded());
         REQUIRE_FALSE(package.chunks.empty());
@@ -344,4 +354,62 @@ TEST_CASE("D1.3 rejects an artifact namespace overlapping the distribution provi
                     .artifact_mount = virtual_path("package://runtime")},
                    project::project_error_code::invalid_descriptor, "host.distribution");
     CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
+TEST_CASE("V3.4 active artifact reader uses logical GUID, schema and provider before reading bytes")
+{
+    cooked_distribution_fixture fixture;
+    fixture.stage();
+    auto boot = fixture.boot();
+    auto session = project::bootstrap_runtime_catalog(
+        {.boot = boot, .files = fixture.files, .native_files = &fixture.native_files});
+    REQUIRE(session);
+
+    const auto before = fixture.files.telemetry().read_bytes;
+    auto artifact = session.value()->read_active_artifact(fixture.scene, assets::asset_types::scene,
+                                                          assets::artifact_schemas::scene);
+    REQUIRE(artifact);
+    CHECK(artifact.value() == fixture.payload);
+    CHECK(fixture.files.telemetry().read_bytes > before);
+
+    const auto wrong_type = session.value()->read_active_artifact(fixture.scene, assets::asset_types::texture_2d,
+                                                                  assets::artifact_schemas::scene);
+    REQUIRE_FALSE(wrong_type);
+    CHECK(wrong_type.error().code == project::project_error_code::not_found);
+
+    const auto wrong_schema = session.value()->read_active_artifact(fixture.scene, assets::asset_types::scene,
+                                                                    assets::artifact_schemas::mesh);
+    REQUIRE_FALSE(wrong_schema);
+    CHECK(wrong_schema.error().code == project::project_error_code::not_found);
+
+    const auto invalid = session.value()->read_active_artifact({}, {}, {});
+    REQUIRE_FALSE(invalid);
+    CHECK(invalid.error().code == project::project_error_code::invalid_descriptor);
+}
+
+TEST_CASE("V3.4 active artifact reader requires a name for multiple representations of the same schema")
+{
+    cooked_distribution_fixture fixture;
+    fixture.stage(false, false, false, false, true);
+    auto boot = fixture.boot();
+    auto session = project::bootstrap_runtime_catalog(
+        {.boot = boot, .files = fixture.files, .native_files = &fixture.native_files});
+    REQUIRE(session);
+
+    const auto before = fixture.files.telemetry().read_bytes;
+    const auto ambiguous = session.value()->read_active_artifact(fixture.scene, assets::asset_types::scene,
+                                                                 assets::artifact_schemas::scene);
+    REQUIRE_FALSE(ambiguous);
+    CHECK(ambiguous.error().code == project::project_error_code::invalid_descriptor);
+    CHECK(fixture.files.telemetry().read_bytes == before);
+
+    const auto selected = session.value()->read_active_artifact(fixture.scene, assets::asset_types::scene,
+                                                                assets::artifact_schemas::scene, "startup/alternate");
+    REQUIRE(selected);
+    CHECK(selected.value() == fixture.payload);
+
+    const auto missing = session.value()->read_active_artifact(fixture.scene, assets::asset_types::scene,
+                                                               assets::artifact_schemas::scene, "unknown");
+    REQUIRE_FALSE(missing);
+    CHECK(missing.error().code == project::project_error_code::not_found);
 }

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -20,6 +21,11 @@ namespace
 project_error failure(project_error_code code, std::string field, std::string message)
 {
     return {.code = code, .field = std::move(field), .message = std::move(message)};
+}
+
+runtime_artifact_read_result artifact_failure(project_error_code code, std::string message)
+{
+    return runtime_artifact_read_result::failure(failure(code, "content.artifacts", std::move(message)));
 }
 
 using path_result = core::result<io::virtual_path, project_error>;
@@ -143,6 +149,46 @@ const std::vector<assets::asset_guid>& runtime_catalog_session::startup_scenes()
 const std::vector<assets::content_bundle_id>& runtime_catalog_session::startup_bundles() const noexcept
 {
     return startup_bundles_;
+}
+
+runtime_artifact_read_result runtime_catalog_session::read_active_artifact(assets::asset_guid guid,
+                                                                           assets::asset_type_id type,
+                                                                           assets::artifact_schema_id schema,
+                                                                           std::string_view name)
+{
+    if (!guid.valid() || !type.valid() || !schema.valid())
+        return artifact_failure(project_error_code::invalid_descriptor, "Invalid cooked artifact identity");
+
+    const auto record = catalog_->database().query(guid, type);
+    if (!record) return artifact_failure(project_error_code::not_found, "Cooked GUID/type missing from active catalog");
+
+    // Only the active provider is authoritative, even if an older one still
+    // contains a representation with the requested schema.
+    std::optional<assets::cooked_artifact_address> selected;
+    for (const auto& representation : record->representations)
+    {
+        if (representation.provider_id != record->active_provider) continue;
+        if (!name.empty() && representation.name != name) continue;
+
+        auto path = io::virtual_path::parse(representation.locator_hint);
+        if (!path) continue;
+        auto address = assets::parse_cooked_artifact_virtual_path(path.value());
+        if (!address || address->asset != guid || address->schema != schema || address->name != representation.name)
+            continue;
+
+        if (selected) return artifact_failure(project_error_code::invalid_descriptor, "Ambiguous artifact name");
+        selected = std::move(address);
+    }
+
+    if (!selected) return artifact_failure(project_error_code::not_found, "No matching active cooked representation");
+
+    auto resolved = catalog_->resolve(*selected);
+    if (!resolved)
+        return artifact_failure(project_error_code::not_found, "Cannot resolve artifact: " + resolved.error().message);
+
+    auto bytes = files_->read_all(resolved.value()).get();
+    if (!bytes) return artifact_failure(project_error_code::io_failed, "Read: " + bytes.error().message);
+    return runtime_artifact_read_result::success(std::move(bytes).value());
 }
 
 runtime_catalog_result bootstrap_runtime_catalog(const runtime_catalog_request& request)
