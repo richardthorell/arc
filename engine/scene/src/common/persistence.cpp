@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string_view>
+#include <utility>
 
 namespace arc::scene
 {
@@ -22,7 +24,6 @@ bool register_component(persistence::component_persistence_registry& registry,
 {
     return registry.register_component({&ecs::component_metadata<Component>(), std::vector<std::string>(names)});
 }
-
 
 persistence::archive_value mesh_bool(bool value)
 {
@@ -69,7 +70,8 @@ bool read_mesh_float(const persistence::archive_value& value, float& result)
         case persistence::archive_value_kind::unsigned_integer:
             number = static_cast<double>(value.unsigned_integer);
             break;
-        default: return false;
+        default:
+            return false;
     }
     if (!std::isfinite(number) || number < -std::numeric_limits<float>::max() ||
         number > std::numeric_limits<float>::max())
@@ -104,6 +106,12 @@ template <class Enum> bool read_mesh_enum(const persistence::archive_value& valu
     return true;
 }
 
+void put_mesh_field(persistence::archive_component_record& record, ecs::component_field_id id,
+                    std::string_view name, persistence::archive_value value)
+{
+    record.fields.push_back({id, std::string(name), std::move(value), true});
+}
+
 persistence::persistence_status encode_mesh_renderer(const void* component,
                                                      persistence::archive_component_record& record)
 {
@@ -111,24 +119,24 @@ persistence::persistence_status encode_mesh_renderer(const void* component,
     record.fields.clear();
     // Mesh and material asset GUIDs live in document.dependencies. Their
     // renderer-local handles must never be written to a portable archive.
-    record.fields.push_back({0x0000000000000003ull, "visible", mesh_bool(input.visible), true});
-    record.fields.push_back({0x0000000000000005ull, "casts_shadows", mesh_bool(input.casts_shadows), true});
-    record.fields.push_back({0x0000000000000006ull, "receives_shadows", mesh_bool(input.receives_shadows), true});
-    record.fields.push_back({0x0000000000000007ull, "shadow_lod_bias", mesh_float(input.shadow_lod_bias), true});
-    record.fields.push_back({0x0000000000000008ull, "maximum_shadow_distance", mesh_float(input.maximum_shadow_distance), true});
-    record.fields.push_back({0x0000000000000009ull, "representation", mesh_int(static_cast<std::int32_t>(input.representation)), true});
-    record.fields.push_back({0x000000000000000aull, "affects_indirect_lighting", mesh_bool(input.affects_indirect_lighting), true});
-    record.fields.push_back({0x000000000000000bull, "surface_card_density_bias", mesh_float(input.surface_card_density_bias), true});
-    record.fields.push_back({0x000000000000000cull, "distance_field_resolution_bias", mesh_float(input.distance_field_resolution_bias), true});
-    record.fields.push_back({0x000000000000000dull, "visible_in_hardware_tracing", mesh_bool(input.visible_in_hardware_tracing), true});
-    record.fields.push_back({0x000000000000000eull, "motion_vectors", mesh_int(static_cast<std::int32_t>(input.motion_vectors)), true});
-    record.fields.push_back({0x000000000000000full, "receive_decals", mesh_bool(input.receive_decals), true});
-    record.fields.push_back({0x0000000000000010ull, "occlusion_culling", mesh_bool(input.occlusion_culling), true});
-    record.fields.push_back({0x0000000000000011ull, "bounds_scale", mesh_float(input.bounds_scale), true});
-    record.fields.push_back({0x0000000000000012ull, "minimum_draw_distance", mesh_float(input.minimum_draw_distance), true});
-    record.fields.push_back({0x0000000000000013ull, "maximum_draw_distance", mesh_float(input.maximum_draw_distance), true});
-    record.fields.push_back({0x0000000000000014ull, "forced_lod", mesh_int(input.forced_lod), true});
-    record.fields.push_back({0x0000000000000015ull, "lod_bias", mesh_float(input.lod_bias), true});
+    put_mesh_field(record, 3u, "visible", mesh_bool(input.visible));
+    put_mesh_field(record, 5u, "casts_shadows", mesh_bool(input.casts_shadows));
+    put_mesh_field(record, 6u, "receives_shadows", mesh_bool(input.receives_shadows));
+    put_mesh_field(record, 7u, "shadow_lod_bias", mesh_float(input.shadow_lod_bias));
+    put_mesh_field(record, 8u, "maximum_shadow_distance", mesh_float(input.maximum_shadow_distance));
+    put_mesh_field(record, 9u, "representation", mesh_int(static_cast<std::int32_t>(input.representation)));
+    put_mesh_field(record, 10u, "affects_indirect_lighting", mesh_bool(input.affects_indirect_lighting));
+    put_mesh_field(record, 11u, "surface_card_density_bias", mesh_float(input.surface_card_density_bias));
+    put_mesh_field(record, 12u, "distance_field_resolution_bias", mesh_float(input.distance_field_resolution_bias));
+    put_mesh_field(record, 13u, "visible_in_hardware_tracing", mesh_bool(input.visible_in_hardware_tracing));
+    put_mesh_field(record, 14u, "motion_vectors", mesh_int(static_cast<std::int32_t>(input.motion_vectors)));
+    put_mesh_field(record, 15u, "receive_decals", mesh_bool(input.receive_decals));
+    put_mesh_field(record, 16u, "occlusion_culling", mesh_bool(input.occlusion_culling));
+    put_mesh_field(record, 17u, "bounds_scale", mesh_float(input.bounds_scale));
+    put_mesh_field(record, 18u, "minimum_draw_distance", mesh_float(input.minimum_draw_distance));
+    put_mesh_field(record, 19u, "maximum_draw_distance", mesh_float(input.maximum_draw_distance));
+    put_mesh_field(record, 20u, "forced_lod", mesh_int(input.forced_lod));
+    put_mesh_field(record, 21u, "lod_bias", mesh_float(input.lod_bias));
     return persistence::persistence_status::success();
 }
 
@@ -206,11 +214,14 @@ persistence::persistence_status decode_mesh_renderer(void* component,
                 break;
         }
         if (!valid)
-            return persistence::persistence_status::failure({
-                .code = persistence::persistence_error_code::decode_failed,
-                .component = record.type,
-                .field = field.id,
-                .message = "Invalid cooked MeshRenderer field: " + field.name});
+        {
+            persistence::persistence_error error;
+            error.code = persistence::persistence_error_code::decode_failed;
+            error.component = record.type;
+            error.field = field.id;
+            error.message = "Invalid cooked MeshRenderer field: " + field.name;
+            return persistence::persistence_status::failure(std::move(error));
+        }
     }
     return persistence::persistence_status::success();
 }
@@ -227,8 +238,12 @@ bool register_persistence_components(persistence::component_persistence_registry
     result &= register_component<selection_component>(registry, {"Selection"});
     result &= register_component<bounds_component>(registry, {"Bounds"});
     result &= register_component<camera_component>(registry, {"Camera"});
-    result &= registry.register_component({&ecs::component_metadata<mesh_renderer_component>(), {"MeshRenderer"},
-                                           encode_mesh_renderer, decode_mesh_renderer});
+    persistence::component_persistence_descriptor mesh_codec;
+    mesh_codec.component = &ecs::component_metadata<mesh_renderer_component>();
+    mesh_codec.legacy_names = {"MeshRenderer"};
+    mesh_codec.encode = encode_mesh_renderer;
+    mesh_codec.decode = decode_mesh_renderer;
+    result &= registry.register_component(std::move(mesh_codec));
     result &= register_component<virtual_mesh_renderer_component>(registry, {"VirtualMeshRenderer"});
     result &= register_component<skinned_mesh_renderer_component>(registry, {"SkinnedMeshRenderer"});
     result &= register_component<lod_component>(registry, {"LOD"});
