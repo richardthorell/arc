@@ -69,7 +69,8 @@ TEST_CASE("V3.4c.1 decodes cooked conventional LOD0 into renderer-neutral mesh d
     CHECK(decoded.value().mesh.name == "Body");
     CHECK(decoded.value().mesh.material_index == 7);
     CHECK(decoded.value().mesh.vertices.size() == 3);
-    CHECK(decoded.value().mesh.indices == std::vector<std::uint32_t>{0, 1, 2});
+    const std::vector<std::uint32_t> expected{0, 1, 2};
+    CHECK(decoded.value().mesh.indices == expected);
     CHECK(decoded.value().mesh.vertices[0].position[0] == 1.0f);
     CHECK(decoded.value().lod_ratio == 1.0f);
     CHECK(decoded.value().geometric_error == 0.0f);
