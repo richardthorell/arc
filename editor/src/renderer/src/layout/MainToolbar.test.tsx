@@ -244,4 +244,43 @@ describe('MainToolbar runtime controls', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /Rebuild/ }));
     expect(onBuildAction).toHaveBeenCalledWith('rebuild');
   });
+
+  it('shows a compact build monitor and opens the dashboard on demand', () => {
+    const onOpenBuildDashboard = vi.fn();
+    const { rerender } = render(
+      <MainToolbar onCommand={vi.fn()} onOpenBuildDashboard={onOpenBuildDashboard} />,
+    );
+    const monitor = screen.getByRole('button', { name: 'Open build dashboard' });
+    expect(monitor).toHaveTextContent('Idle');
+    fireEvent.click(monitor);
+    expect(onOpenBuildDashboard).toHaveBeenCalledOnce();
+
+    rerender(
+      <MainToolbar
+        onCommand={vi.fn()}
+        onOpenBuildDashboard={onOpenBuildDashboard}
+        buildSnapshot={{
+          revision: 2,
+          state: 'failed',
+          configuration: 'Debug',
+          buildRequired: true,
+          reloadRequired: false,
+          restartRequired: false,
+          diagnostics: [],
+          history: [{
+            id: 1,
+            kind: 'build',
+            configuration: 'Debug',
+            startedAt: '2026-11-10T10:00:00.000Z',
+            durationMs: 1000,
+            result: 'failed',
+            warningCount: 0,
+            errorCount: 1,
+          }],
+        }}
+      />,
+    );
+    expect(monitor).toHaveTextContent('failed');
+    expect(monitor.querySelector('.toolbar-build-mini-chart .is-failed')).toBeInTheDocument();
+  });
 });
