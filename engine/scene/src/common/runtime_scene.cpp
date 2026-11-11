@@ -31,7 +31,7 @@ bool decode_component(ecs::world& destination, ecs::entity entity, const persist
     // serialized renderer handles are process-local and must not survive boot.
     if constexpr (std::is_same_v<Component, mesh_renderer_component>)
     {
-        value.mesh = {};
+        value.mesh = render::geometry_resource_handle{};
         value.material = {};
     }
     else if constexpr (std::is_same_v<Component, virtual_mesh_renderer_component> ||

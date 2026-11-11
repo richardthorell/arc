@@ -146,7 +146,7 @@ persistence::persistence_status decode_mesh_renderer(void* component,
                                                      const persistence::archive_component_record& record)
 {
     auto& output = *static_cast<mesh_renderer_component*>(component);
-    output.mesh = {};
+    output.mesh = render::geometry_resource_handle{};
     output.material = {};
     for (const auto& field : record.fields)
     {
