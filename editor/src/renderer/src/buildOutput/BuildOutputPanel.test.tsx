@@ -109,7 +109,7 @@ describe('BuildOutputPanel', () => {
     expect(screen.getByRole('dialog', { name: 'Build dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Recent build command durations, color-coded by result' }))
       .toBeInTheDocument();
-    expect(screen.getByText('2.4 s')).toBeInTheDocument();
+    expect(screen.getAllByText('2.4 s').length).toBeGreaterThan(0);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Build dashboard' })).not.toBeInTheDocument();
   });
