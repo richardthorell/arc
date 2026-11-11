@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <exception>
-#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -241,11 +240,6 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
             if (found != binding_indices.end())
                 staged_bindings[found->second].subresource = authored_mesh_subresource(record);
         }
-        std::sort(staged_bindings.begin(), staged_bindings.end(),
-                  [](const auto& lhs, const auto& rhs)
-                  {
-                      return std::tie(lhs.entity.high, lhs.entity.low) < std::tie(rhs.entity.high, rhs.entity.low);
-                  });
     }
     catch (const std::exception& error)
     {

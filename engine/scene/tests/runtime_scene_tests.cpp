@@ -134,9 +134,9 @@ arc::persistence::archive_document authored_mesh_scene()
     document.dependencies.push_back(std::move(source));
 
     arc::persistence::dependency_manifest_entry material;
-    material.reference = {.guid = {40, 50},
-                          .expected_type = arc::assets::asset_types::material,
-                          .path_hint = "Content/paint.arcmat"};
+    material.reference.guid = {40, 50};
+    material.reference.expected_type = arc::assets::asset_types::material;
+    material.reference.path_hint = "Content/paint.arcmat";
     material.owner_entity = {3, 4};
     material.owner_component = component;
     material.owner_field = 2;
