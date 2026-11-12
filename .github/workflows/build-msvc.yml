@@ -147,6 +147,48 @@ jobs:
             Write-Host "sccache not installed; compilation was uncached."
           }
 
+  d3-shipping-acceptance:
+    name: D3 External Shipping Package
+    if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Configure Shipping SDK and Cooker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S . -B out/build/d3-sdk -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=OFF
+          if ($LASTEXITCODE -ne 0) { throw "Shipping SDK configuration failed" }
+          cmake --build out/build/d3-sdk --target arc-project-cli arc-cook --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Shipping tool build failed" }
+          cmake --build out/build/d3-sdk --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Shipping SDK build failed" }
+          cmake --install out/build/d3-sdk --prefix out/d3-sdk-installed
+          if ($LASTEXITCODE -ne 0) { throw "Shipping SDK install failed" }
+
+      - name: Package and Boot External Shipping Game
+        shell: pwsh
+        run: |
+          python tools/d3_shipping_acceptance.py --sdk out/d3-sdk-installed --cooker out/build/d3-sdk/tools/asset_cooker/arc-cook.exe --workspace out/d3-acceptance --artifacts out/d3-results --timeout 30
+          if ($LASTEXITCODE -ne 0) { throw "D3.2 Shipping package acceptance failed" }
+
+      - name: Upload D3 Package and Diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-d3-shipping-acceptance
+          path: |
+            out/d3-results
+            out/d3-acceptance/dist/GameShipping/arc-distribution.json
+            out/d3-acceptance/dist/GameShipping.zip
+          if-no-files-found: warn
+          retention-days: 7
+
   sdk-validation:
     name: SDK Validation
     if: github.event_name != 'pull_request'
