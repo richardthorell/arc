@@ -82,7 +82,8 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
             auto manifest = render::decode_cooked_material_texture_manifest(manifest_bytes.value());
             if (!manifest)
             {
-                const auto error = "Material texture manifest " + assets::to_string(material_guid) + ": " + manifest.error();
+                const auto error =
+                    "Material texture manifest " + assets::to_string(material_guid) + ": " + manifest.error();
                 return decoded_result::failure(error);
             }
             if (manifest.value().material != resources.material->compiled.package)
