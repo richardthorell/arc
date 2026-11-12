@@ -9,6 +9,7 @@
 #include <arc/project/runtime_catalog.h>
 #include <arc/scene/runtime_scene.h>
 #include <arc/render/cooked_material.h>
+#include <arc/render/cooked_material_texture_bindings.h>
 #include <arc/render/mesh.h>
 #include <arc/render/material.h>
 
@@ -28,6 +29,7 @@ struct decoded_scene_mesh_resources
     arc::render::mesh_data mesh;
     arc::assets::asset_guid material_guid{};
     std::optional<arc::render::cooked_material_metadata> material;
+    std::optional<arc::render::cooked_material_texture_manifest> material_textures;
     std::vector<arc::render::cooked_material_shader> material_shaders;
     std::vector<std::pair<arc::assets::asset_guid, arc::render::texture_data>> textures;
 };
