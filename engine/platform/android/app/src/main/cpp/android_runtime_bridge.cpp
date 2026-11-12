@@ -73,7 +73,8 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
 
             // Material pass shader artifacts are additional representations of
             // the same authored material GUID, not separate shader asset GUIDs.
-            const auto material_record = catalog.catalog().database().query(material_guid, assets::asset_types::material);
+            const auto material_record =
+                catalog.catalog().database().query(material_guid, assets::asset_types::material);
             if (!material_record) return decoded_result::failure("Cooked material is missing from the active catalog");
             for (const auto& representation : material_record->representations)
             {
@@ -81,8 +82,8 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
                 const auto locator = arc::io::virtual_path::parse(representation.locator_hint);
                 if (!locator) continue;
                 const auto address = assets::parse_cooked_artifact_virtual_path(locator.value());
-                const bool shader_schema = address && address->asset == material_guid &&
-                                           address->schema == assets::artifact_schemas::shader;
+                const bool shader_schema =
+                    address && address->asset == material_guid && address->schema == assets::artifact_schemas::shader;
                 if (!shader_schema || address->name != representation.name ||
                     representation.name.ends_with(".coat-neutral"))
                     continue;
