@@ -3,6 +3,7 @@
 #include <arc/assets/cook.h>
 #include <arc/project/distribution_assembler.h>
 #include <arc/project/distribution_zip.h>
+#include <arc/project/distribution_symbols.h>
 #include <arc/project/package_workflow.h>
 #include <arc/project/project.h>
 #include <arc/project/windows_distribution_finalizer.h>
@@ -210,6 +211,23 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
     {
         zip_output = source_path(context.value().root, *zip_arg);
         const auto status = project::write_distribution_zip(output, *zip_output);
+        if (!status) return fail(json_output, status.error().field, status.error().message);
+    }
+
+    // Symbols are always an independent sidecar, never part of the Shipping
+    // runtime directory or its ZIP. --symbol can be repeated for each PDB.
+    const auto symbol_args = options(args, "--symbol");
+    const auto symbols_root_arg = option(args, "--symbols-output");
+    if (!symbol_args.empty() || symbols_root_arg)
+    {
+        if (symbol_args.empty() || !symbols_root_arg)
+            return fail(json_output, "symbols", "requires --symbols-output and at least one --symbol PDB");
+        std::vector<fs::path> symbols;
+        symbols.reserve(symbol_args.size());
+        for (const auto& value : symbol_args)
+            symbols.push_back(source_path(context.value().root, value));
+        const auto status = project::write_distribution_symbols(
+            output, source_path(context.value().root, *symbols_root_arg), symbols);
         if (!status) return fail(json_output, status.error().field, status.error().message);
     }
 
