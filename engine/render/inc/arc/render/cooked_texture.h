@@ -12,6 +12,5 @@ namespace arc::render
  * are a separate streaming path. Verifies each mip's integrity before publish.
  * The texture's compression family is preserved for backend capability checks.
  */
-[[nodiscard]] core::result<texture_data, std::string>
-decode_cooked_texture_data(std::span<const std::byte> bytes);
+[[nodiscard]] core::result<texture_data, std::string> decode_cooked_texture_data(std::span<const std::byte> bytes);
 } // namespace arc::render
