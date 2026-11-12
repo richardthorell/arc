@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""D3.2 installed-SDK -> external Shipping client -> cook -> package -> relocated boot.
+
+Runs normal ARC commands. No synthetic binary, test-only cooker or editor host is
+used. All diagnostics and the final manifests are retained under --artifacts.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import traceback
+
+from verify_relocated_package import SmokeFailure, smoke, verify_distribution
+
+
+def command(label: str, argv: list[str], cwd: Path, artifacts: Path) -> None:
+    print(f"[D3.2] {label}: {' '.join(argv)}", flush=True)
+    result = subprocess.run(argv, cwd=cwd, capture_output=True, text=True,
+                            errors="replace", check=False)
+    (artifacts / f"{label}.stdout.txt").write_text(result.stdout, encoding="utf-8")
+    (artifacts / f"{label}.stderr.txt").write_text(result.stderr, encoding="utf-8")
+    if result.returncode:
+        raise SmokeFailure(f"{label} exited {result.returncode}: {result.stderr[-3000:]}")
+
+
+def run(args: argparse.Namespace) -> None:
+    root = args.workspace.resolve()
+    artifacts = args.artifacts.resolve()
+    artifacts.mkdir(parents=True, exist_ok=True)
+    sdk = args.sdk.resolve()
+    project_tool = sdk / "bin" / "arc-project.exe"
+    cooker = args.cooker.resolve()
+    templates = sdk / "share" / "arc" / "templates"
+    if not project_tool.is_file() or not cooker.is_file() or not templates.is_dir():
+        raise SmokeFailure("installed SDK/project tool, cooker, or installed templates missing")
+
+    project = root / "external-game"
+    build = project / "Build" / "ci-shipping"
+    cooked = project / "Build" / "Cooked" / "windows-x64-vulkan"
+    release = root / "dist" / "GameShipping"
+    archive = root / "dist" / "GameShipping.zip"
+    root.mkdir(parents=True, exist_ok=True)
+
+    command("create", [str(project_tool), "create", "--name", "ExternalGame",
+                      "--destination", str(project), "--template", "rendering-sample",
+                      "--templates", str(templates), "--engine", args.engine], root, artifacts)
+    descriptor = project / "ExternalGame.arcproject"
+    command("configure", ["cmake", "-S", str(project), "-B", str(build), "-G", "Ninja",
+                           "-DCMAKE_BUILD_TYPE=Shipping",
+                           f"-DCMAKE_PREFIX_PATH={sdk}"], root, artifacts)
+    command("compile", ["cmake", "--build", str(build), "--parallel"], root, artifacts)
+    command("cook", [str(cooker), "package", "--project", str(project),
+                     "--profile", "windows-x64-vulkan", "--output", str(cooked)], root, artifacts)
+    command("cook-verify", [str(cooker), "verify", "--project", str(project),
+                            "--profile", "windows-x64-vulkan", "--output", str(cooked)], root, artifacts)
+
+    binary = build / "ExternalGameGame.exe"
+    if not binary.is_file():
+        raise SmokeFailure(f"external project did not produce Shipping game: {binary}")
+    manifest = cooked / "windows-x64-vulkan.arccookmanifest"
+    if not manifest.is_file():
+        raise SmokeFailure(f"cooker did not publish expected manifest: {manifest}")
+
+    # Only the project binary, its import closure and explicitly selected
+    # native backends enter the package; never copy the whole build directory.
+    package_args = [str(project_tool), "package", "--project", str(descriptor),
+                    "--profile", "windows-x64-vulkan", "--executable", str(binary),
+                    "--runtime-config", str(project / "Config" / "Renderer.json"),
+                    "--cook-manifest", str(manifest), "--output", str(release),
+                    "--zip", str(archive), "--dll-dir", str(build),
+                    "--dll-dir", str(sdk / "bin")]
+    command("package", package_args, root, artifacts)
+    staged = verify_distribution(release)
+    if staged["target"]["platform"] != "windows" or staged["role"] != "client":
+        raise SmokeFailure("incorrect client/Windows identity in production package")
+
+    # Check both relocated directory and the independently extracted ZIP.
+    smoke(release, None, args.timeout, ["--ci-smoke"], artifacts / "directory",
+          expected_output="ARC packaged client bootstrap smoke passed")
+    smoke(None, archive, args.timeout, ["--ci-smoke"], artifacts / "archive",
+          expected_output="ARC packaged client bootstrap smoke passed")
+    shutil.copyfile(release / "arc-distribution.json", artifacts / "arc-distribution.json")
+    (artifacts / "result.json").write_text(json.dumps({
+        "status": "passed", "role": "client", "target": staged["target"],
+        "relocation": ["directory", "zip"], "package": str(release), "archive": str(archive),
+    }, indent=2) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sdk", type=Path, required=True)
+    parser.add_argument("--cooker", type=Path, required=True)
+    parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--artifacts", type=Path, required=True)
+    parser.add_argument("--engine", default="0.1.0")
+    parser.add_argument("--timeout", type=float, default=30.0)
+    args = parser.parse_args()
+    try:
+        run(args)
+    except (OSError, ValueError, SmokeFailure, subprocess.SubprocessError) as exc:
+        args.artifacts.mkdir(parents=True, exist_ok=True)
+        (args.artifacts / "failure.txt").write_text(str(exc) + "\n", encoding="utf-8")
+        print(f"D3.2 Shipping failure: {exc}", file=sys.stderr)
+        return 1
+    except Exception:
+        args.artifacts.mkdir(parents=True, exist_ok=True)
+        (args.artifacts / "failure.txt").write_text(traceback.format_exc(), encoding="utf-8")
+        raise
+    print("D3.2 installed-SDK Shipping package and relocation smoke passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
