@@ -6,6 +6,7 @@
 #include <cstring>
 #include <limits>
 #include <set>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -138,5 +139,73 @@ core::result<cooked_material_metadata, std::string> decode_cooked_material_metad
     // Terrain materials can legitimately omit executable passes.
     // The existing cooker/authoring contract validates the canonical JSON.
     return result::success(std::move(material));
+}
+
+core::result<material_runtime_program, std::string>
+realize_cooked_material_program(const cooked_material_metadata& material,
+                                std::span<const cooked_material_shader> shaders)
+{
+    using result = core::result<material_runtime_program, std::string>;
+    if (material.compiled.contract_version != material_pass_contract_version ||
+        material.compiled.material_abi != material_abi_version || !material.compiled.package.valid())
+        return result::failure("Cooked material has an incompatible runtime pass contract");
+
+    material_runtime_program program;
+    program.parameters = material.parameters;
+    if (material.compiled.passes.empty()) return result::failure("Cooked material has no executable shader passes");
+
+    for (const auto& binding : material.compiled.passes)
+    {
+        const cooked_material_shader* matched{};
+        for (const auto& shader : shaders)
+        {
+            if (shader.package.id != material.compiled.package || shader.package.permutation != binding.permutation ||
+                shader.package.compiled.build_hash != binding.build_hash)
+                continue;
+            if (matched) return result::failure("Ambiguous cooked shader package for material pass");
+            matched = &shader;
+        }
+        if (!matched) return result::failure("Missing cooked shader package for material pass");
+
+        const auto& package = matched->package;
+        if (package.target != shader_target::spirv || !package.generation.valid() || package.compiled.bytecode.empty())
+            return result::failure("Cooked shader package has no executable SPIR-V payload");
+        const auto& reflection = package.compiled.reflection;
+        const auto entry = std::find_if(reflection.entry_points.begin(), reflection.entry_points.end(),
+                                        [&](const auto& value) { return value.id == binding.entry_point; });
+        if (entry == reflection.entry_points.end() || entry->stage != shader_stage::fragment)
+            return result::failure("Cooked material pass has no matching fragment entry point");
+        bool reflected_pass = false;
+        for (const auto& value : reflection.passes)
+            if (value.pass == binding.pass && value.entry_point == binding.entry_point) reflected_pass = true;
+        if (!reflected_pass)
+            return result::failure("Cooked shader reflection does not implement the declared material pass");
+        if (reflection.parameters.size() != material.parameters.size())
+            return result::failure("Cooked shader parameter count differs from material contract");
+        for (std::size_t index = 0; index < material.parameters.size(); ++index)
+        {
+            const auto& expected = material.parameters[index];
+            const auto& actual = reflection.parameters[index];
+            if (expected.id != actual.id || expected.type != actual.type || expected.offset != actual.offset ||
+                expected.size != actual.size)
+                return result::failure("Cooked shader parameter layout differs from material contract");
+        }
+        program.parameter_block_size = std::max(program.parameter_block_size, reflection.parameter_block_size);
+        program.passes.push_back({.pass = binding.pass,
+                                  .permutation = binding.permutation,
+                                  .compiled = package.compiled,
+                                  .virtual_shadow_sampling = matched->artifact_name.ends_with(".forward.vsm")});
+    }
+    program.parameter_defaults.resize(program.parameter_block_size);
+    for (const auto& parameter : program.passes.front().compiled.reflection.parameters)
+    {
+        if (parameter.default_value.empty()) continue;
+        if (parameter.offset > program.parameter_defaults.size() ||
+            parameter.default_value.size() > program.parameter_defaults.size() - parameter.offset)
+            return result::failure("Cooked shader parameter defaults exceed the reflected block");
+        std::copy(parameter.default_value.begin(), parameter.default_value.end(),
+                  program.parameter_defaults.begin() + parameter.offset);
+    }
+    return result::success(std::move(program));
 }
 } // namespace arc::render

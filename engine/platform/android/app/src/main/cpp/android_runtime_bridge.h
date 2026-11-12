@@ -26,7 +26,9 @@ struct decoded_scene_mesh_resources
 {
     arc::ecs::entity_guid entity{};
     arc::render::mesh_data mesh;
+    arc::assets::asset_guid material_guid{};
     std::optional<arc::render::cooked_material_metadata> material;
+    std::vector<arc::render::cooked_material_shader> material_shaders;
     std::vector<std::pair<arc::assets::asset_guid, arc::render::texture_data>> textures;
 };
 
