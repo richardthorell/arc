@@ -34,9 +34,9 @@ using cooked_mesh_residencies = std::vector<cooked_mesh_residency>;
  * caller has already cleared any older renderer generation's bindings.
  * Empty uploads succeed and leave existing ECS state untouched.
  */
-[[nodiscard]] std::string hydrate_cooked_scene_meshes(
-    ecs::world& scene, render::renderer& renderer, std::span<const cooked_mesh_upload> uploads,
-    cooked_mesh_residencies& residency);
+[[nodiscard]] std::string hydrate_cooked_scene_meshes(ecs::world& scene, render::renderer& renderer,
+                                                       std::span<const cooked_mesh_upload> uploads,
+                                                       cooked_mesh_residencies& residency);
 
 /** Unbind handles before destroying the corresponding renderer generation.
  * Never clears handles which no longer match the recorded residency.
