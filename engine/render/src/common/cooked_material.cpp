@@ -276,8 +276,7 @@ make_cooked_material_descriptor(const cooked_material_metadata& material,
     descriptor.render_path = material_render_path::clustered_forward;
 
     const auto* forward = find_material_runtime_pass(*descriptor.runtime_program, material_pass::forward, false);
-    if (!forward)
-        return result::failure("Cooked material lacks the conventional forward pass required on Android");
+    if (!forward) return result::failure("Cooked material lacks the conventional forward pass required on Android");
     descriptor.shader_permutation = forward->permutation;
     return result::success(std::move(descriptor));
 }
