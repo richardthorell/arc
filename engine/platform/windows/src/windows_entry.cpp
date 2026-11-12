@@ -25,6 +25,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -316,6 +317,10 @@ int boot_failure(const std::string& message)
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_command)
 {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+#if !defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+    (void)command_line;
+#endif
 
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     namespace fs = std::filesystem;
