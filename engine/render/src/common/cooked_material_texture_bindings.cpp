@@ -11,8 +11,9 @@ namespace arc::render
 {
 namespace
 {
-constexpr std::array<std::byte, 8> signature{std::byte{'A'}, std::byte{'R'}, std::byte{'C'}, std::byte{'M'},
-                                              std::byte{'T'}, std::byte{'E'}, std::byte{'X'}, std::byte{'1'}};
+constexpr std::array<std::byte, 8> signature{
+    std::byte{'A'}, std::byte{'R'}, std::byte{'C'}, std::byte{'M'},
+    std::byte{'T'}, std::byte{'E'}, std::byte{'X'}, std::byte{'1'}};
 constexpr std::uint32_t max_slots = 1024;
 
 void write_u32(std::vector<std::byte>& out, std::uint32_t value)
@@ -95,8 +96,7 @@ core::result<cooked_material_texture_manifest, std::string>
 decode_cooked_material_texture_manifest(std::span<const std::byte> bytes)
 {
     using result = core::result<cooked_material_texture_manifest, std::string>;
-    if (bytes.size() < signature.size() ||
-        !std::equal(signature.begin(), signature.end(), bytes.begin()))
+    if (bytes.size() < signature.size() || !std::equal(signature.begin(), signature.end(), bytes.begin()))
         return result::failure("Invalid material texture manifest signature");
     std::size_t offset = signature.size();
     cooked_material_texture_manifest manifest;
@@ -120,8 +120,7 @@ decode_cooked_material_texture_manifest(std::span<const std::byte> bytes)
         binding.type = static_cast<shader_parameter_type>(type);
         binding.semantic = static_cast<texture_semantic>(semantic);
     }
-    if (offset != bytes.size() || !validate(manifest))
-        return result::failure("Invalid material texture binding slots");
+    if (offset != bytes.size() || !validate(manifest)) return result::failure("Invalid material texture binding slots");
     return result::success(std::move(manifest));
 }
 
@@ -141,16 +140,18 @@ bind_cooked_material_textures(material_descriptor material, const cooked_materia
         {
             const auto& parameters = material.runtime_program->parameters;
             const auto match = std::find_if(parameters.begin(), parameters.end(), [&](const auto& parameter)
-                                            { return parameter.id == entry.binding.parameter_id &&
-                                                     parameter.type == entry.binding.type; });
+                                            {
+                                                return parameter.id == entry.binding.parameter_id &&
+                                                       parameter.type == entry.binding.type;
+                                            });
             if (match == parameters.end())
                 return result::failure("Material texture binding has incompatible reflected parameter");
         }
         texture_handle handle{};
         if (entry.asset.valid())
         {
-            const auto found = std::find_if(resident.begin(), resident.end(), [&](const auto& item)
-                                            { return item.first == entry.asset; });
+            const auto found = std::find_if(resident.begin(), resident.end(),
+                                            [&](const auto& item) { return item.first == entry.asset; });
             if (found == resident.end() || !found->second.valid())
                 return result::failure("Cooked material references a nonresident texture GUID");
             handle = found->second;
