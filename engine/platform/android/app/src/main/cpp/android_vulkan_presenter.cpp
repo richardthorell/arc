@@ -128,7 +128,8 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
     }
     bound_scene_ = scene;
     hydrated_generation_ = generation_;
-    arc::diagnostics::info("Android", "Cooked conventional meshes and shared textures uploaded for renderer generation");
+    arc::diagnostics::info("Android",
+                           "Cooked conventional meshes and shared textures uploaded for renderer generation");
     return true;
 }
 
