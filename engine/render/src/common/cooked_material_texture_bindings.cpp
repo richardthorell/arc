@@ -5,15 +5,14 @@
 #include <cstring>
 #include <limits>
 #include <set>
+#include <string_view>
 #include <utility>
 
 namespace arc::render
 {
 namespace
 {
-constexpr std::array<std::byte, 8> signature{
-    std::byte{'A'}, std::byte{'R'}, std::byte{'C'}, std::byte{'M'},
-    std::byte{'T'}, std::byte{'E'}, std::byte{'X'}, std::byte{'1'}};
+constexpr std::string_view signature = "ARCMTEX1";
 constexpr std::uint32_t max_slots = 1024;
 
 void write_u32(std::vector<std::byte>& out, std::uint32_t value)
@@ -74,7 +73,9 @@ encode_cooked_material_texture_manifest(const cooked_material_texture_manifest& 
 {
     using result = core::result<std::vector<std::byte>, std::string>;
     if (!validate(manifest)) return result::failure("Invalid cooked material texture bindings");
-    std::vector<std::byte> out(signature.begin(), signature.end());
+    std::vector<std::byte> out;
+    for (const auto letter : signature)
+        out.push_back(static_cast<std::byte>(letter));
     write_u64(out, manifest.material.high);
     write_u64(out, manifest.material.low);
     write_u32(out, static_cast<std::uint32_t>(manifest.textures.size()));
@@ -96,8 +97,10 @@ core::result<cooked_material_texture_manifest, std::string>
 decode_cooked_material_texture_manifest(std::span<const std::byte> bytes)
 {
     using result = core::result<cooked_material_texture_manifest, std::string>;
-    if (bytes.size() < signature.size() || !std::equal(signature.begin(), signature.end(), bytes.begin()))
-        return result::failure("Invalid material texture manifest signature");
+    if (bytes.size() < signature.size()) return result::failure("Invalid material texture manifest signature");
+    for (std::size_t i = 0; i < signature.size(); ++i)
+        if (bytes[i] != static_cast<std::byte>(signature[i]))
+            return result::failure("Invalid material texture manifest signature");
     std::size_t offset = signature.size();
     cooked_material_texture_manifest manifest;
     std::uint32_t count{};
@@ -139,13 +142,11 @@ bind_cooked_material_textures(material_descriptor material, const cooked_materia
         if (entry.binding.parameter_id.valid())
         {
             const auto& parameters = material.runtime_program->parameters;
-            const auto match = std::find_if(parameters.begin(), parameters.end(), [&](const auto& parameter)
-                                            {
-                                                return parameter.id == entry.binding.parameter_id &&
-                                                       parameter.type == entry.binding.type;
-                                            });
-            if (match == parameters.end())
-                return result::failure("Material texture binding has incompatible reflected parameter");
+            bool compatible = false;
+            for (const auto& parameter : parameters)
+                if (parameter.id == entry.binding.parameter_id && parameter.type == entry.binding.type)
+                    compatible = true;
+            if (!compatible) return result::failure("Material texture binding has incompatible reflected parameter");
         }
         texture_handle handle{};
         if (entry.asset.valid())
