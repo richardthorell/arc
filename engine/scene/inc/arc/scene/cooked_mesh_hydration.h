@@ -6,6 +6,7 @@
  * renderer-local handles and those handles are cleared before renderer teardown.
  */
 
+#include <arc/ecs/identity.h>
 #include <arc/ecs/world.h>
 #include <arc/render/renderer.h>
 
