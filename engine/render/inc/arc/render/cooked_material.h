@@ -42,5 +42,5 @@ struct cooked_material_shader
  */
 [[nodiscard]] core::result<material_runtime_program, std::string>
 realize_cooked_material_program(const cooked_material_metadata& material,
-                               std::span<const cooked_material_shader> shaders);
+                                std::span<const cooked_material_shader> shaders);
 } // namespace arc::render
