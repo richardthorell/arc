@@ -44,15 +44,56 @@ it cannot race a new run. Notifications are detached copies.
 Adapters prepare private outputs, observe the AbortSignal, terminate only owned
 process trees, and supply idempotent rollback. Final publication is synchronous,
 authority-checked and must retain the previous output on failure. Missing adapters
-fail closed. Execution is not yet exposed through renderer IPC or the toolbar;
-only planning is exposed, with project/SDK revalidation after the CLI response.
+fail closed. Saved-content cooking is now executable through narrow renderer IPC;
+the toolbar remains unchanged until profile selection and the saved-content prompt
+are implemented.
+
+## Executable cooking
+
+`arc.build.executeWorkflow(request)` currently accepts only `action: 'cook'`,
+`destination: 'none'`, and an empty session ID. It replans natively from the active
+project rather than accepting paths or an executable plan from the renderer.
+`workflowSnapshot()`, `onWorkflowState(callback)`, and `cancelWorkflow(requestId)`
+expose bounded diagnostics, progress and identity-scoped cancellation. Cancellation
+during read-only planning takes effect before any cook process can start.
+
+The service holds the same exclusion boundary as legacy code builds, including
+multi-command builds. Read-only projects are rejected. Project replacement,
+descriptor edits, SDK changes and cancellation prevent publication. It does not
+save scenes/documents or invoke module reload, packaging, deployment or launch.
+
+The cooker is resolved only beside the selected project tool or in its matching
+development build/configuration. Missing SDK tools fail explicitly; another
+configuration is never substituted. The command uses the saved startup roots and
+existing cooker/DDC behavior, including incremental cache reuse and texture-family
+variants. A project with no saved cook roots receives the native cooker diagnostic.
+
+Output is written to a new `generation-*` directory under the planned cook root.
+Every returned manifest must remain inside that generation and match the requested
+profile/platform/architecture/renderer/configuration. Each is verified by the
+native cooker before a synchronous rename publishes `current-workflow.json`.
+This local build record points to exact manifest paths and native build IDs; it is
+not a new asset format. Existing successful generations remain available, and
+consumers must use the publication record rather than scan for the newest folder.
+Failed private generations are retained for diagnostics (never advertised as
+current); explicit generation/cache cleanup remains follow-up work.
+
+Commands have a 30-minute deadline, 1 MiB stdout cap and bounded stderr/diagnostics.
+Cancellation targets the owned process tree using Windows taskkill or a POSIX
+process group; it never targets the emulator or unrelated applications. No new run
+is accepted until the previous process and termination helper have drained.
+
+An opt-in real-tool smoke test is available in `cookWorkflow.smoke.test.ts`:
+set `ARC_WORKFLOW_TEST_PROJECT_TOOL` and `ARC_WORKFLOW_TEST_COOKER` to matching
+binaries, then run that test from `editor`. It generates an isolated saved-scene
+project, cooks and verifies it twice, and checks publication plus source preservation.
 
 ## Remaining implementation and delivery
 
 1. Complete executable adapters and exact build artifact/dependency manifests.
    Integrate existing native packaging and the parallel Android APK work; do not
-   scan directories for likely executables. Add process-tree cancellation,
-   adapter integration tests, incremental reuse and active-session input leases.
+   scan directories for likely executables. Extend the process runner and tests to
+   compilation/packaging, incremental build reuse and active-session input leases.
 2. Wire narrow workflow IPC, capabilities, profile selection and build dashboard.
    Primary Build produces runnable output; retain separately named Build Editor
    Code for module reload. Offer cook-only and code-only, confirmed scoped clean

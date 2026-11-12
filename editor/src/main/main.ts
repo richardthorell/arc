@@ -1135,6 +1135,7 @@ void app.whenReady().then(async () => {
     () => projectService?.projectTool() ?? '',
     hostClient,
     (snapshot) => sendToActiveRenderer('build:state', snapshot),
+    (snapshot) => sendToActiveRenderer('workflow:state', snapshot),
   );
   settingsService = new SettingsService(
     path.join(app.getPath('userData'), 'editor-settings.v1.json'),
@@ -1366,6 +1367,15 @@ void app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('build:snapshot', () => buildService?.snapshot() ?? null);
+  ipcMain.handle('workflow:execute', (_event, request: WorkflowRequest) => {
+    if (!buildService) throw new Error('Build service unavailable');
+    return buildService.workflows.execute(request);
+  });
+  ipcMain.handle('workflow:snapshot', () => buildService?.workflows.snapshot() ?? null);
+  ipcMain.handle('workflow:cancel', (_event, requestId: string) => {
+    if (typeof requestId !== 'string') throw new Error('Invalid workflow request ID');
+    buildService?.workflows.cancel(requestId);
+  });
   ipcMain.handle('build:plan', (_event, request: WorkflowRequest) => {
     if (!buildService) throw new Error('Project build service is unavailable');
     return buildService.plan(request);
