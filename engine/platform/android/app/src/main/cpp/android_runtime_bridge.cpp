@@ -42,11 +42,9 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
 
         auto mesh_bytes = catalog.read_active_artifact(binding.source.guid, binding.source.expected_type,
                                                        assets::artifact_schemas::mesh);
-        if (!mesh_bytes)
-            return decoded_result::failure("Mesh " + owner + ": " + mesh_bytes.error().message);
+        if (!mesh_bytes) return decoded_result::failure("Mesh " + owner + ": " + mesh_bytes.error().message);
         auto mesh = render::decode_conventional_mesh_artifact(mesh_bytes.value(), binding.subresource);
-        if (!mesh)
-            return decoded_result::failure("Mesh " + owner + ": " + mesh.error());
+        if (!mesh) return decoded_result::failure("Mesh " + owner + ": " + mesh.error());
 
         decoded_scene_mesh_resources resources;
         resources.entity = binding.entity;
@@ -62,37 +60,33 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
             auto material_bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
                                                                assets::artifact_schemas::material);
             if (!material_bytes)
-                return decoded_result::failure("Material " + assets::to_string(material_guid) +
-                                               ": " + material_bytes.error().message);
+                return decoded_result::failure("Material " + assets::to_string(material_guid) + ": " +
+                                               material_bytes.error().message);
             auto material = render::decode_cooked_material_metadata(material_bytes.value());
             if (!material)
-                return decoded_result::failure("Material " + assets::to_string(material_guid) +
-                                               ": " + material.error());
+                return decoded_result::failure("Material " + assets::to_string(material_guid) + ": " + material.error());
             resources.material = std::move(material).value();
 
             // The existing cooker tracks material dependencies by stable GUID.
             // Only texture dependencies are decoded here; shaders remain metadata
             // until V3.4d creates a renderer-owned shader/material program.
             const auto record = catalog.catalog().database().query(material_guid, assets::asset_types::material);
-            if (!record)
-                return decoded_result::failure("Material disappeared from the active cooked catalog");
+            if (!record) return decoded_result::failure("Material disappeared from the active cooked catalog");
 
             std::set<assets::asset_guid> visited_textures;
             for (const auto& dependency : record->dependencies)
             {
-                if (!catalog.catalog().database().query(dependency, assets::asset_types::texture_2d))
-                    continue;
+                if (!catalog.catalog().database().query(dependency, assets::asset_types::texture_2d)) continue;
                 if (!visited_textures.insert(dependency).second) continue;
 
                 auto texture_bytes = catalog.read_active_artifact(dependency, assets::asset_types::texture_2d,
                                                                   assets::artifact_schemas::texture);
                 if (!texture_bytes)
-                    return decoded_result::failure("Texture " + assets::to_string(dependency) +
-                                                   ": " + texture_bytes.error().message);
+                    return decoded_result::failure("Texture " + assets::to_string(dependency) + ": " +
+                                                   texture_bytes.error().message);
                 auto texture = render::decode_cooked_texture_data(texture_bytes.value());
                 if (!texture)
-                    return decoded_result::failure("Texture " + assets::to_string(dependency) +
-                                                   ": " + texture.error());
+                    return decoded_result::failure("Texture " + assets::to_string(dependency) + ": " + texture.error());
                 resources.textures.emplace_back(dependency, std::move(texture).value());
             }
         }
@@ -100,8 +94,7 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
     }
     return decoded_result::success(std::move(decoded));
 }
-
-}
+} // namespace
 
 android_runtime_bridge::android_runtime_bridge(const package_asset_source& assets, const char* storage_path)
     : assets_(assets), jobs_(arc::jobs::job_system_config{.worker_count = 1, .io_worker_count = 1}), vfs_(jobs_),
