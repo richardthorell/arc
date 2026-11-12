@@ -13,6 +13,7 @@
 #include <arc/platform/windows/packaged_client.h>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <system_error>
 #include <utility>
@@ -303,11 +304,29 @@ std::filesystem::path writable_data_root(const std::string& project_guid)
     return std::filesystem::path(value) / L"ARC" / widen(project_guid);
 }
 
+// GUI-subsystem applications do not necessarily have stdout/stderr. Write a
+// deterministic CI-only diagnostic file rather than displaying modal UI.
+bool write_ci_smoke_diagnostic(std::string_view text)
+{
+    const DWORD length = GetEnvironmentVariableW(L"ARC_CI_SMOKE_LOG", nullptr, 0);
+    if (length <= 1 || length > 32768) return false;
+    std::wstring path(length, L'\\0');
+    const DWORD actual = GetEnvironmentVariableW(L"ARC_CI_SMOKE_LOG", path.data(), length);
+    if (actual == 0 || actual >= length) return false;
+    path.resize(actual);
+    std::ofstream out(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << text << '\\n';
+    out.flush();
+    return out.good();
+}
+
 int boot_failure(const std::string& message)
 {
     const auto wide = widen(message);
     OutputDebugStringW(wide.c_str());
-    MessageBoxW(nullptr, wide.c_str(), L"ARC packaged client failure", MB_OK | MB_ICONERROR);
+    if (!write_ci_smoke_diagnostic("failure: " + message))
+        MessageBoxW(nullptr, wide.c_str(), L"ARC packaged client failure", MB_OK | MB_ICONERROR);
     return -5;
 }
 #endif
@@ -360,7 +379,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     {
         auto stopped = session->shutdown();
         if (!stopped) return boot_failure(stopped.error().field + ": " + stopped.error().message);
-        std::cout << "ARC packaged client bootstrap smoke passed" << std::endl;
+        if (!write_ci_smoke_diagnostic("ARC packaged client bootstrap smoke passed"))
+            return boot_failure("Cannot publish CI smoke success diagnostic");
         return 0;
     }
     arc::framework::runtime& runtime = *session->runtime();
