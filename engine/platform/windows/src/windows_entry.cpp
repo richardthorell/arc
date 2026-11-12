@@ -370,6 +370,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                                               .native_files = &native_files,
                                               .registrations = std::move(definition.registrations),
                                               .config = std::move(definition.config)};
+    static_cast<void>(write_ci_smoke_diagnostic("starting packaged runtime bootstrap"));
     auto started = project::start_packaged_runtime(std::move(request));
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
