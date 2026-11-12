@@ -51,6 +51,20 @@ class ClassifyCiChangesTests(unittest.TestCase):
         self.assertFalse(result.gcc)
         self.assertFalse(result.coverage)
 
+    def test_distribution_pipeline_changes_trigger_shipping_acceptance(self):
+        for path in (
+            "tools/project_cli/package_command.cpp",
+            "engine/project/src/common/distribution_assembler.cpp",
+            "engine/project/inc/arc/project/distribution_zip.h",
+            "engine/project/src/common/windows_distribution_finalizer.cpp",
+            "engine/platform/windows/src/windows_entry.cpp",
+            "tools/d3_shipping_acceptance.py",
+        ):
+            with self.subTest(path=path):
+                selection = classify([path])
+                self.assertTrue(selection.msvc)
+                self.assertTrue(selection.cooker)
+
     def test_workflow_change_uses_full_safety_matrix(self):
         result = classify([".github/workflows/pr-gate.yml"])
         self.assertTrue(result.clang)
