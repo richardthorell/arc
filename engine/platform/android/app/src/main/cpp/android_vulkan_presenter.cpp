@@ -1,4 +1,5 @@
 #include "android_vulkan_presenter.h"
+#include "android_runtime_bridge.h"
 #include "android_vulkan_surface.h"
 
 #include <arc/diagnostics/log.h>
@@ -17,6 +18,10 @@ void android_vulkan_presenter::shutdown() noexcept
 {
     // Renderer owns the backend, swapchain and surface; release them while the
     // Activity's borrowed ANativeWindow is still valid.
+    if (renderer_ && bound_scene_) arc::scene::release_cooked_scene_meshes(*bound_scene_, *renderer_, mesh_residency_);
+    bound_scene_ = nullptr;
+    mesh_residency_.clear();
+    hydrated_generation_ = 0;
     renderer_.reset();
     generation_ = 0;
     submitted_width_ = 0;
@@ -84,7 +89,33 @@ void android_vulkan_presenter::synchronize(const lifecycle_state& lifecycle, ANa
     arc::diagnostics::info("Android", "ARC Vulkan renderer attached to native window");
 }
 
-void android_vulkan_presenter::present(const lifecycle_state& lifecycle, arc::ecs::world* scene)
+bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
+{
+    if (hydrated_generation_ == generation_) return true;
+    auto* scene = runtime.startup_scene();
+    if (!scene) return true;
+
+    // A scene is process-owned, while GPU handles belong to a single window
+    // generation. Keep CPU assets in the runtime; create fresh mesh handles
+    // once and clear them when the renderer is retired.
+    std::vector<arc::scene::cooked_mesh_upload> uploads;
+    uploads.reserve(runtime.decoded_mesh_resources().size());
+    for (const auto& resource : runtime.decoded_mesh_resources())
+        uploads.push_back({.entity = resource.entity, .mesh = resource.mesh});
+
+    const auto error = arc::scene::hydrate_cooked_scene_meshes(*scene, *renderer_, uploads, mesh_residency_);
+    if (!error.empty())
+    {
+        arc::diagnostics::error("Android", "Cooked conventional mesh GPU hydration failed: " + error);
+        return false;
+    }
+    bound_scene_ = scene;
+    hydrated_generation_ = generation_;
+    arc::diagnostics::info("Android", "Cooked conventional meshes uploaded and ECS handles rebound");
+    return true;
+}
+
+void android_vulkan_presenter::present(const lifecycle_state& lifecycle, android_runtime_bridge& runtime)
 {
     if (!renderer_ || !lifecycle.can_present()) return;
     const auto& state = lifecycle.snapshot();
@@ -94,6 +125,14 @@ void android_vulkan_presenter::present(const lifecycle_state& lifecycle, arc::ec
         return;
     }
 
+    if (!hydrate_scene(runtime))
+    {
+        failed_generation_ = generation_;
+        shutdown();
+        return;
+    }
+
+    auto* scene = runtime.startup_scene();
     bool submitted_scene = false;
     if (scene)
     {
