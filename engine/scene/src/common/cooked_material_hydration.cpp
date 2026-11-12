@@ -1,6 +1,7 @@
 #include <arc/scene/cooked_material_hydration.h>
 
 #include <arc/ecs/hierarchy.h>
+#include <arc/render/material_pass.h>
 #include <arc/scene/components.h>
 
 #include <unordered_map>
