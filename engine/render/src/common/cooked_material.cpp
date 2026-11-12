@@ -117,11 +117,14 @@ core::result<cooked_material_metadata, std::string> decode_cooked_material_metad
         std::uint64_t id{};
         if (!input.value(id) || !input.string(parameter.name) || !input.value(parameter.type) ||
             !input.value(parameter.offset) || !input.value(parameter.size) || !input.value(parameter.has_range) ||
-            !input.value(parameter.minimum) || !input.value(parameter.maximum) || id == 0 ||
-            !unique_parameters.insert(id).second || !std::isfinite(parameter.minimum) || !std::isfinite(parameter.maximum) ||
+            !input.value(parameter.minimum) || !input.value(parameter.maximum))
+            return result::failure("Truncated cooked material parameter");
+        if (id == 0 || !unique_parameters.insert(id).second)
+            return result::failure("Invalid or duplicate cooked material parameter ID");
+        if (!std::isfinite(parameter.minimum) || !std::isfinite(parameter.maximum) ||
             (parameter.has_range && parameter.minimum > parameter.maximum) ||
             parameter.size > std::numeric_limits<std::uint32_t>::max() - parameter.offset)
-            return result::failure("Invalid or duplicate cooked material parameter");
+            return result::failure("Invalid cooked material parameter range");
         const auto parameter_type_id = static_cast<std::uint32_t>(parameter.type);
         if (parameter_type_id > static_cast<std::uint32_t>(shader_parameter_type::texture_3d))
             return result::failure("Invalid cooked material parameter type");
