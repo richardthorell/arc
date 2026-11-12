@@ -74,6 +74,14 @@ def run(args: argparse.Namespace) -> None:
                     "--cook-manifest", str(manifest), "--output", str(release),
                     "--zip", str(archive), "--dll-dir", str(build),
                     "--dll-dir", str(sdk / "bin")]
+    # The Vulkan renderer is loaded dynamically, so PE import-table discovery
+    # cannot prove its presence. The external project's CMake target copies it
+    # beside the executable; explicitly include that selected backend DLL.
+    renderers = sorted(path for path in build.glob("*.dll")
+                       if "vulkan" in path.name.casefold())
+    if len(renderers) != 1:
+        raise SmokeFailure(f"expected one copied Vulkan backend DLL, found: {renderers}")
+    package_args += ["--library", str(renderers[0])]
     command("package", package_args, root, artifacts)
     staged = verify_distribution(release)
     if staged["target"]["platform"] != "windows" or staged["role"] != "client":
