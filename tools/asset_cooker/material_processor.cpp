@@ -1,5 +1,6 @@
 #include "material_processor.h"
 #include "material_shader_dependency.h"
+#include "material_texture_manifest.h"
 
 #include <arc/render_tools/render_tools.h>
 
@@ -693,6 +694,8 @@ public:
         render::material_compiled_program program;
         std::vector<render::shader_parameter_descriptor> parameters;
         render::tools::material_evaluator_source evaluator;
+        render::cooked_material_texture_manifest texture_manifest;
+        texture_manifest.material = {.high = context.asset.guid.high, .low = context.asset.guid.low};
         auto pass_material = authored_pass_material(authored.value());
         bool handwritten{};
         std::filesystem::path custom_shader_path;
@@ -714,6 +717,14 @@ public:
                                   .message = compiled_graph.error().message}};
 
             apply_graph_render_features(pass_material, compiled_graph.value().descriptor);
+            auto texture_bindings = detail::make_material_texture_manifest(
+                context.asset.guid, compiled_graph.value().descriptor, context.dependencies);
+            if (!texture_bindings)
+                return {.error = {.code = assets::asset_error_code::import_failed,
+                                  .guid = context.asset.guid,
+                                  .path = context.source.source_path,
+                                  .message = texture_bindings.error()}};
+            texture_manifest = std::move(texture_bindings).value();
             auto generated_evaluator = render::tools::make_graph_material_evaluator(compiled_graph.value());
             if (!generated_evaluator)
                 return {.error = {.code = assets::asset_error_code::import_failed,
@@ -979,6 +990,18 @@ public:
         render::tools::material_package_v4 material_package{.compiled = std::move(program),
                                                             .parameters = std::move(parameters),
                                                             .canonical_document_json = authored.value().canonical_json};
+        auto texture_bytes = render::encode_cooked_material_texture_manifest(texture_manifest);
+        if (!texture_bytes)
+            return {.error = {.code = assets::asset_error_code::import_failed,
+                              .guid = context.asset.guid,
+                              .path = context.source.source_path,
+                              .message = texture_bytes.error()}};
+        artifacts.push_back({.name = context.source.source_path.stem().string(),
+                             .extension = ".arcmattex",
+                             .schema = assets::artifact_schemas::material_textures,
+                             .schema_version = 1,
+                             .bytes = std::move(texture_bytes).value()});
+
         auto material_bytes = render::tools::serialize_material_package_v4(material_package);
         artifacts.push_back({.name = context.source.source_path.stem().string(),
                              .extension = ".arcmatc",
