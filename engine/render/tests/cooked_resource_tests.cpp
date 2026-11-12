@@ -133,7 +133,6 @@ TEST_CASE("V3.4c.2 rejects invalid cooked texture data")
     CHECK_FALSE(decode_cooked_texture_data(bytes));
 }
 
-
 TEST_CASE("V3.4d.4 restores authored shading, blend mode, sidedness and shadow policy")
 {
     using namespace arc::render;
@@ -161,17 +160,17 @@ TEST_CASE("V3.4d.4 refuses unknown authored material state and missing executabl
     auto program = std::make_shared<material_runtime_program>();
     program->passes.push_back({.pass = material_pass::forward, .permutation = shader_permutation_id{7}});
 
-    for (const std::string_view document : {
-             R"({"version":4,"domain":"terrain","shadingModel":"standard"})",
-             R"({"version":4,"domain":"surface","shadingModel":"unknown"})",
-             R"({"version":4,"domain":"surface","blendMode":"invalid"})",
-             R"({"version":4,"domain":"surface","doubleSided":"yes"})",
-             R"({"version":3,"domain":"surface"})",
-             R"({"version":4,"domain":"surface","castShadows":2})"})
+    const auto reject = [&](std::string_view document)
     {
         metadata.canonical_document_json = document;
         CHECK_FALSE(make_cooked_material_descriptor(metadata, program));
-    }
+    };
+    reject(R"({"version":4,"domain":"terrain","shadingModel":"standard"})");
+    reject(R"({"version":4,"domain":"surface","shadingModel":"unknown"})");
+    reject(R"({"version":4,"domain":"surface","blendMode":"invalid"})");
+    reject(R"({"version":4,"domain":"surface","doubleSided":"yes"})");
+    reject(R"({"version":3,"domain":"surface"})");
+    reject(R"({"version":4,"domain":"surface","castShadows":2})");
 
     metadata.canonical_document_json = R"({"version":4,"domain":"surface","blendMode":"masked"})";
     auto no_forward = std::make_shared<material_runtime_program>();
