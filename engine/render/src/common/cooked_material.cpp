@@ -6,8 +6,8 @@
 #include <cstring>
 #include <limits>
 #include <set>
-#include <utility>
 #include <type_traits>
+#include <utility>
 
 namespace arc::render
 {
@@ -44,7 +44,10 @@ public:
         return true;
     }
 
-    [[nodiscard]] bool complete() const noexcept { return cursor_ == bytes_.size(); }
+    [[nodiscard]] bool complete() const noexcept
+    {
+        return cursor_ == bytes_.size();
+    }
 
 private:
     static constexpr std::uint64_t max_string_bytes = 8u * 1024u * 1024u;
@@ -63,14 +66,14 @@ bool valid_pass(material_pass pass) noexcept
         case material_pass::motion:
         case material_pass::object_id:
         case material_pass::selection:
-        case material_pass::ray_hit: return true;
+        case material_pass::ray_hit:
+            return true;
     }
     return false;
 }
 } // namespace
 
-core::result<cooked_material_metadata, std::string>
-decode_cooked_material_metadata(std::span<const std::byte> bytes)
+core::result<cooked_material_metadata, std::string> decode_cooked_material_metadata(std::span<const std::byte> bytes)
 {
     using result = core::result<cooked_material_metadata, std::string>;
     reader input(bytes);
@@ -93,15 +96,15 @@ decode_cooked_material_metadata(std::span<const std::byte> bytes)
         material_pass_binding binding;
         std::uint64_t permutation{}, entry_point{};
         if (!input.value(binding.pass) || !input.value(permutation) || !input.value(entry_point) ||
-            !input.bytes(binding.build_hash.bytes) || !valid_pass(binding.pass) ||
-            permutation == 0 || entry_point == 0 || !unique_passes.emplace(binding.pass, permutation).second)
+            !input.bytes(binding.build_hash.bytes) || !valid_pass(binding.pass) || permutation == 0 || entry_point == 0 ||
+            !unique_passes.emplace(binding.pass, permutation).second)
             return result::failure("Invalid or duplicate cooked material pass");
         binding.permutation = shader_permutation_id{permutation};
         binding.entry_point = shader_entry_point_id{entry_point};
         material.compiled.passes.push_back(std::move(binding));
     }
 
-    if (!input.value(count) || count > 65536)
+    if (!input.value(count) || count > 65536u)
         return result::failure("Invalid cooked material parameter count");
     std::set<std::uint64_t> unique_parameters;
     for (std::uint32_t i = 0; i < count; ++i)
@@ -109,9 +112,9 @@ decode_cooked_material_metadata(std::span<const std::byte> bytes)
         shader_parameter_descriptor parameter;
         std::uint64_t id{};
         if (!input.value(id) || !input.string(parameter.name) || !input.value(parameter.type) ||
-            !input.value(parameter.offset) || !input.value(parameter.size) ||
-            !input.value(parameter.has_range) || !input.value(parameter.minimum) ||
-            !input.value(parameter.maximum) || id == 0 || !unique_parameters.insert(id).second ||
+            !input.value(parameter.offset) || !input.value(parameter.size) || !input.value(parameter.has_range) ||
+            !input.value(parameter.minimum) || !input.value(parameter.maximum) || id == 0 ||
+            !unique_parameters.insert(id).second ||
             static_cast<std::uint32_t>(parameter.type) > static_cast<std::uint32_t>(shader_parameter_type::texture_3d) ||
             !std::isfinite(parameter.minimum) || !std::isfinite(parameter.maximum) ||
             (parameter.has_range && parameter.minimum > parameter.maximum) ||
