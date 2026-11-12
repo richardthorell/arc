@@ -57,6 +57,9 @@ jobs:
       - name: Run Native Tests
         run: ctest --test-dir out/build/ci-windows --output-on-failure
 
+      - name: Validate Relocated Shipping Smoke Harness
+        run: python -m unittest discover -s tools/tests -p test_relocated_package.py -v
+
       - name: Stage Product Symbols
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
