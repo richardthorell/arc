@@ -226,8 +226,8 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
         symbols.reserve(symbol_args.size());
         for (const auto& value : symbol_args)
             symbols.push_back(source_path(context.value().root, value));
-        const auto status = project::write_distribution_symbols(
-            output, source_path(context.value().root, *symbols_root_arg), symbols);
+        const auto status =
+            project::write_distribution_symbols(output, source_path(context.value().root, *symbols_root_arg), symbols);
         if (!status) return fail(json_output, status.error().field, status.error().message);
     }
 

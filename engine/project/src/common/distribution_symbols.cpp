@@ -57,7 +57,7 @@ struct symbol_entry
 } // namespace
 
 project_status write_distribution_symbols(const fs::path& distribution_root, const fs::path& symbols_root,
-                                           const std::vector<fs::path>& symbol_files)
+                                          const std::vector<fs::path>& symbol_files)
 {
     std::error_code ec;
     const auto distribution = fs::canonical(distribution_root, ec);
@@ -87,8 +87,7 @@ project_status write_distribution_symbols(const fs::path& distribution_root, con
     if (parsed.value().target.platform != "windows" || parsed.value().target.configuration != "Shipping")
         return fail(project_error_code::unsupported_platform, "target", "PDB sidecar requires Windows Shipping");
     const auto manifest_hash = assets::hash_file(manifest_path);
-    if (!manifest_hash)
-        return fail(project_error_code::io_failed, "manifest", "Cannot hash distribution manifest");
+    if (!manifest_hash) return fail(project_error_code::io_failed, "manifest", "Cannot hash distribution manifest");
 
     // Verify the runtime inventory as well as PDB selection: don't produce
     // a symbol artifact for an already damaged or symbol-contaminated package.
