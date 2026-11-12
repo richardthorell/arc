@@ -33,8 +33,8 @@ using cooked_texture_residencies = std::vector<cooked_texture_residency>;
  * Existing residencies are not replaced in place: release the old generation first.
  */
 [[nodiscard]] std::string hydrate_cooked_scene_textures(render::renderer& renderer,
-                                                       std::span<const cooked_texture_upload> uploads,
-                                                       cooked_texture_residencies& residency);
+                                                        std::span<const cooked_texture_upload> uploads,
+                                                        cooked_texture_residencies& residency);
 
 /** Retire every renderer-owned texture before discarding this renderer generation. */
 void release_cooked_scene_textures(render::renderer& renderer, cooked_texture_residencies& residency) noexcept;
