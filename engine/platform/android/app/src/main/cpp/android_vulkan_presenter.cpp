@@ -18,8 +18,7 @@ void android_vulkan_presenter::shutdown() noexcept
 {
     // Renderer owns the backend, swapchain and surface; release them while the
     // Activity's borrowed ANativeWindow is still valid.
-    if (renderer_ && bound_scene_)
-        arc::scene::release_cooked_scene_meshes(*bound_scene_, *renderer_, mesh_residency_);
+    if (renderer_ && bound_scene_) arc::scene::release_cooked_scene_meshes(*bound_scene_, *renderer_, mesh_residency_);
     bound_scene_ = nullptr;
     mesh_residency_.clear();
     hydrated_generation_ = 0;
