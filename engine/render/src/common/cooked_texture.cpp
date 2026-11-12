@@ -31,14 +31,16 @@ core::result<texture_data, std::string> decode_cooked_texture_data(std::span<con
     for (std::uint32_t mip = 0; mip < index.mip_count; ++mip)
     {
         auto decoded = read_texture_artifact_mip(bytes, index, mip);
-        if (!decoded) return result::failure("Corrupted .arctex mip " + std::to_string(mip) +
-                                              ": " + decoded.error().message);
+        if (!decoded)
+            return result::failure("Corrupted .arctex mip " + std::to_string(mip) + ": " + decoded.error().message);
         if (payload.size() > std::numeric_limits<std::size_t>::max() - decoded.value().size())
             return result::failure("Cooked texture mip size overflow");
         const auto offset = payload.size();
         payload.insert(payload.end(), decoded.value().begin(), decoded.value().end());
-        texture.mips.push_back({.width = index.mips[mip].width, .height = index.mips[mip].height,
-                                .offset = offset, .size = decoded.value().size()});
+        texture.mips.push_back({.width = index.mips[mip].width,
+                                .height = index.mips[mip].height,
+                                .offset = offset,
+                                .size = decoded.value().size()});
     }
     return result::success(std::move(texture));
 }
