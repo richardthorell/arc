@@ -18,10 +18,12 @@ void android_vulkan_presenter::shutdown() noexcept
 {
     // Renderer owns the backend, swapchain and surface; release them while the
     // Activity's borrowed ANativeWindow is still valid.
+    if (bound_scene_) arc::scene::unbind_cooked_scene_materials(*bound_scene_, material_residency_);
     if (renderer_ && bound_scene_) arc::scene::release_cooked_scene_meshes(*bound_scene_, *renderer_, mesh_residency_);
     if (renderer_) arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
     bound_scene_ = nullptr;
     mesh_residency_.clear();
+    material_residency_.clear();
     texture_residency_.clear();
     hydrated_generation_ = 0;
     renderer_.reset();
@@ -119,17 +121,52 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
         return false;
     }
 
+    std::vector<arc::scene::cooked_material_upload> materials;
+    for (const auto& resource : runtime.decoded_mesh_resources())
+    {
+        if (!resource.material) continue;
+        auto program = arc::render::realize_cooked_material_program(*resource.material, resource.material_shaders);
+        if (!program)
+        {
+            arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
+            arc::diagnostics::error("Android", "Cooked material shader realization failed: " + program.error());
+            return false;
+        }
+
+        arc::render::material_descriptor descriptor;
+        descriptor.name = arc::assets::to_string(resource.material_guid);
+        descriptor.shader_package = resource.material->compiled.package;
+        descriptor.render_path = arc::render::material_render_path::clustered_forward;
+        descriptor.runtime_program =
+            std::make_shared<arc::render::material_runtime_program>(std::move(program).value());
+        const auto pass = arc::render::find_material_runtime_pass(*descriptor.runtime_program,
+                                                                  arc::render::material_pass::forward, false);
+        if (pass) descriptor.shader_permutation = pass->permutation;
+        materials.push_back({.entity = resource.entity,
+                             .material = resource.material_guid,
+                             .descriptor = std::move(descriptor)});
+    }
+
+    const auto material_error =
+        arc::scene::hydrate_cooked_scene_materials(*scene, *renderer_, materials, material_residency_);
+    if (!material_error.empty())
+    {
+        arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
+        arc::diagnostics::error("Android", "Cooked material ECS binding failed: " + material_error);
+        return false;
+    }
+
     const auto mesh_error = arc::scene::hydrate_cooked_scene_meshes(*scene, *renderer_, uploads, mesh_residency_);
     if (!mesh_error.empty())
     {
+        arc::scene::unbind_cooked_scene_materials(*scene, material_residency_);
         arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
         arc::diagnostics::error("Android", "Cooked conventional mesh GPU hydration failed: " + mesh_error);
         return false;
     }
     bound_scene_ = scene;
     hydrated_generation_ = generation_;
-    arc::diagnostics::info("Android",
-                           "Cooked conventional meshes and shared textures uploaded for renderer generation");
+    arc::diagnostics::info("Android", "Cooked mesh, material and texture handles rebound for renderer generation");
     return true;
 }
 
