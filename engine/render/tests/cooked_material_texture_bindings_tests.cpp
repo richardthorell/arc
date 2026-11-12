@@ -14,17 +14,22 @@ arc::render::cooked_material_texture_manifest sample_manifest()
     using namespace arc::render;
     cooked_material_texture_manifest result;
     result.material = {.high = 9, .low = 10};
-    result.textures.push_back({.binding = {.slot = 0,
-                                          .parameter_id = shader_parameter_id{31},
-                                          .type = shader_parameter_type::texture_2d,
-                                          .dimension_slot = 0,
-                                          .semantic = texture_semantic::base_color},
-                               .asset = {.high = 1, .low = 2}});
-    result.textures.push_back({.binding = {.slot = 1,
-                                          .type = shader_parameter_type::texture_2d,
-                                          .dimension_slot = 1,
-                                          .semantic = texture_semantic::normal},
-                               .asset = {.high = 3, .low = 4}});
+    cooked_material_texture_binding albedo;
+    albedo.binding.slot = 0;
+    albedo.binding.parameter_id = shader_parameter_id{31};
+    albedo.binding.type = shader_parameter_type::texture_2d;
+    albedo.binding.dimension_slot = 0;
+    albedo.binding.semantic = texture_semantic::base_color;
+    albedo.asset = {.high = 1, .low = 2};
+    result.textures.push_back(albedo);
+
+    cooked_material_texture_binding normal;
+    normal.binding.slot = 1;
+    normal.binding.type = shader_parameter_type::texture_2d;
+    normal.binding.dimension_slot = 1;
+    normal.binding.semantic = texture_semantic::normal;
+    normal.asset = {.high = 3, .low = 4};
+    result.textures.push_back(normal);
     return result;
 }
 
@@ -90,9 +95,8 @@ TEST_CASE("V3.4d.5 binds exact resident texture handles without modifying source
     auto original = sample_material();
     const auto original_program = original.runtime_program;
     const auto manifest = sample_manifest();
-    const std::array residents{
-        std::pair{arc::assets::asset_guid{3, 4}, texture_handle{4, 1}},
-        std::pair{arc::assets::asset_guid{1, 2}, texture_handle{7, 1}}};
+    const std::array residents{std::pair{arc::assets::asset_guid{3, 4}, texture_handle{4, 1}},
+                               std::pair{arc::assets::asset_guid{1, 2}, texture_handle{7, 1}}};
     const auto bound = bind_cooked_material_textures(original, manifest, residents);
     REQUIRE(bound);
     REQUIRE(bound.value().runtime_textures.size() == 2);
