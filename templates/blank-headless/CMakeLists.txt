@@ -15,3 +15,8 @@ target_compile_features({{PROJECT_TOKEN}}ServerApp PRIVATE cxx_std_20)
 target_compile_definitions({{PROJECT_TOKEN}}ServerApp PRIVATE
     ARC_SERVER_BUILD_CONFIGURATION="$<CONFIG>")
 target_link_libraries({{PROJECT_TOKEN}}ServerApp PRIVATE {{PROJECT_TOKEN}}Server)
+if(ARC_WORKFLOW_PROFILE)
+  arc_register_runtime_output(TARGET {{PROJECT_TOKEN}}ServerApp
+    PROJECT_GUID "{{PROJECT_GUID}}" ENGINE_VERSION "{{ENGINE_VERSION}}"
+    PROFILE "${ARC_WORKFLOW_PROFILE}" RENDERER none ROLE server)
+endif()

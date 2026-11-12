@@ -120,6 +120,55 @@ the host and must not imply cross-platform runnable-output support.
 
 ## Remaining implementation and delivery
 
+### Runtime build inputs (implemented)
+
+The installed CMake SDK provides `arc_register_runtime_output`. It registers one
+runtime executable with explicit dynamically loaded library/plugin targets and
+creates the `arc-runtime-output` build target. New blank-3d and blank-headless
+projects opt in when configured with `-DARC_WORKFLOW_PROFILE=<authored-profile>`.
+Existing projects can register their own executable without renaming their targets:
+
+```cmake
+arc_register_runtime_output(TARGET MyGame
+  PROJECT_GUID "<project-guid>" ENGINE_VERSION "0.1.0"
+  PROFILE "${ARC_WORKFLOW_PROFILE}" RENDERER vulkan ROLE client
+  LIBRARIES ARC::RenderVulkan)
+```
+
+Build `arc-runtime-output` with the exact profile configuration. This builds the
+registered runtime target and its dependencies, not the editor module. It writes
+`<binary-directory>/arc-runtime-<configuration>.json` only after those targets
+succeed. The record contains project/engine/profile/actual compiled target and
+configuration identity, CMake target, exact absolute executable/library/plugin
+paths, sizes and SHA-256 hashes. Platform/architecture come from CMake's configured
+toolchain, not the cook profile label. Repeated builds refresh the record even if
+the linker has no work; failure preserves the previous record. Configure alone
+does not emit a successful-build record. This is machine-local derived metadata,
+not a portable game asset or distribution format.
+
+The native CLI verifies that metadata against its existing workflow planner:
+
+```text
+arc-project package --json --verify-build-only --project Game.arcproject \
+  --profile windows-shipping --build-manifest Build/Code/arc-runtime-Shipping.json
+```
+
+Verification checks bounded format/version, matching project/engine/profile/
+target/configuration/role, absolute existing files, duplicate inputs, sizes and
+hashes. It does not launch the executable or prove rendering correctness.
+Packaging can replace manual `--executable`, `--library`, `--plugin`, and
+`--dll-dir` inputs with `--build-manifest`; mixing the two selection modes is
+rejected. `--runtime-config` and `--cook-manifest` remain explicit. Existing native
+PE import resolution completes the dependency closure from the selected inputs;
+no newest-file or SDK-directory guessing is introduced.
+
+This contract does **not** yet drive CMake from the editor workflow runner or
+produce runtime configuration. Windows Shipping remains the only executable
+package finalizer. Android packaging/boot remains independently owned; the new
+manifest does not advertise Android runnable-output support.
+
+### Next slices
+
 1. Complete executable adapters and exact build artifact/dependency manifests.
    Integrate existing native packaging and the parallel Android APK work; do not
    scan directories for likely executables. Extend the process runner and tests to
