@@ -134,8 +134,7 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
         }
 
         auto descriptor = arc::render::make_cooked_material_descriptor(
-            *resource.material,
-            std::make_shared<arc::render::material_runtime_program>(std::move(program).value()));
+            *resource.material, std::make_shared<arc::render::material_runtime_program>(std::move(program).value()));
         if (!descriptor)
         {
             arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
