@@ -13,6 +13,7 @@
 #include <arc/platform/windows/packaged_client.h>
 #include <chrono>
 #include <filesystem>
+#include <iostream>
 #include <system_error>
 #include <utility>
 #endif
@@ -312,7 +313,7 @@ int boot_failure(const std::string& message)
 
 } // namespace
 
-int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
+int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_command)
 {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
@@ -348,6 +349,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
     auto started = project::start_packaged_runtime(std::move(request));
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
+    // This exercises the real Shipping bootstrap and startup scene on CI
+    // without requiring a GPU or opening a window. Normal launches are unchanged.
+    if (command_line && std::string_view(command_line) == "--ci-smoke")
+    {
+        auto stopped = session->shutdown();
+        if (!stopped) return boot_failure(stopped.error().field + ": " + stopped.error().message);
+        std::cout << "ARC packaged client bootstrap smoke passed" << std::endl;
+        return 0;
+    }
     arc::framework::runtime& runtime = *session->runtime();
 #else
     std::unique_ptr<arc::framework::application> app = arc::framework::create_application();
