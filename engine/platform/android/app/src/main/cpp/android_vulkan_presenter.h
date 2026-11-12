@@ -5,6 +5,7 @@
 
 #include <arc/render/renderer.h>
 #include <arc/scene/cooked_mesh_hydration.h>
+#include <arc/scene/cooked_texture_hydration.h>
 
 namespace arc::ecs
 {
@@ -36,6 +37,7 @@ private:
     std::unique_ptr<arc::render::renderer> renderer_;
     arc::ecs::world* bound_scene_{};
     arc::scene::cooked_mesh_residencies mesh_residency_;
+    arc::scene::cooked_texture_residencies texture_residency_;
     std::uint64_t hydrated_generation_{};
     std::uint64_t generation_{};
     std::uint64_t failed_generation_{};

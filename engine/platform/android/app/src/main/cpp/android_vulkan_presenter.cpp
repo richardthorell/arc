@@ -19,8 +19,10 @@ void android_vulkan_presenter::shutdown() noexcept
     // Renderer owns the backend, swapchain and surface; release them while the
     // Activity's borrowed ANativeWindow is still valid.
     if (renderer_ && bound_scene_) arc::scene::release_cooked_scene_meshes(*bound_scene_, *renderer_, mesh_residency_);
+    if (renderer_) arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
     bound_scene_ = nullptr;
     mesh_residency_.clear();
+    texture_residency_.clear();
     hydrated_generation_ = 0;
     renderer_.reset();
     generation_ = 0;
@@ -103,15 +105,31 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
     for (const auto& resource : runtime.decoded_mesh_resources())
         uploads.push_back({.entity = resource.entity, .mesh = resource.mesh});
 
-    const auto error = arc::scene::hydrate_cooked_scene_meshes(*scene, *renderer_, uploads, mesh_residency_);
-    if (!error.empty())
+    // Allocate shared texture resources first. Material shader/program binding
+    // happens in V3.4d.3; these handles are not yet assigned to ECS materials.
+    std::vector<arc::scene::cooked_texture_upload> textures;
+    for (const auto& resource : runtime.decoded_mesh_resources())
+        for (const auto& [guid, texture] : resource.textures)
+            textures.push_back({.asset = guid, .texture = texture});
+
+    const auto texture_error = arc::scene::hydrate_cooked_scene_textures(*renderer_, textures, texture_residency_);
+    if (!texture_error.empty())
     {
-        arc::diagnostics::error("Android", "Cooked conventional mesh GPU hydration failed: " + error);
+        arc::diagnostics::error("Android", "Cooked texture GPU hydration failed: " + texture_error);
+        return false;
+    }
+
+    const auto mesh_error = arc::scene::hydrate_cooked_scene_meshes(*scene, *renderer_, uploads, mesh_residency_);
+    if (!mesh_error.empty())
+    {
+        arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
+        arc::diagnostics::error("Android", "Cooked conventional mesh GPU hydration failed: " + mesh_error);
         return false;
     }
     bound_scene_ = scene;
     hydrated_generation_ = generation_;
-    arc::diagnostics::info("Android", "Cooked conventional meshes uploaded and ECS handles rebound");
+    arc::diagnostics::info("Android",
+                           "Cooked conventional meshes and shared textures uploaded for renderer generation");
     return true;
 }
 
