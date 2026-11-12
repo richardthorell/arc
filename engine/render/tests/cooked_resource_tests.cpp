@@ -120,6 +120,11 @@ TEST_CASE("V3.4c.2 rejects invalid cooked texture data")
     bytes.back() ^= std::byte{1};
     CHECK_FALSE(decode_cooked_texture_data(bytes));
     bytes = encoded.value();
-    bytes.resize(bytes.size() / 2);
+    const auto index = inspect_texture_artifact(bytes);
+    REQUIRE(index);
+    REQUIRE_FALSE(index.value().mips.empty());
+    const auto& mip = index.value().mips.front();
+    // Truncate inside the required mip data, not in alignment padding.
+    bytes.resize(static_cast<std::size_t>(mip.offset) + mip.stored_size - 1u);
     CHECK_FALSE(decode_cooked_texture_data(bytes));
 }
