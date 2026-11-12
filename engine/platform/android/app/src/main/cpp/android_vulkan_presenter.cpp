@@ -142,9 +142,11 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
         const auto pass = arc::render::find_material_runtime_pass(*descriptor.runtime_program,
                                                                   arc::render::material_pass::forward, false);
         if (pass) descriptor.shader_permutation = pass->permutation;
-        materials.push_back({.entity = resource.entity,
-                             .material = resource.material_guid,
-                             .descriptor = std::move(descriptor)});
+        arc::scene::cooked_material_upload upload;
+        upload.entity = resource.entity;
+        upload.material = resource.material_guid;
+        upload.descriptor = std::move(descriptor);
+        materials.push_back(std::move(upload));
     }
 
     const auto material_error =
