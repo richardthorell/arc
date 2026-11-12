@@ -71,6 +71,19 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
             resources.material_guid = material_guid;
             resources.material = std::move(material).value();
 
+            auto manifest_bytes = catalog.read_active_artifact(
+                material_guid, assets::asset_types::material, assets::artifact_schemas::material_textures);
+            if (!manifest_bytes)
+                return decoded_result::failure("Material texture manifest " + assets::to_string(material_guid) +
+                                               ": " + manifest_bytes.error().message);
+            auto manifest = render::decode_cooked_material_texture_manifest(manifest_bytes.value());
+            if (!manifest)
+                return decoded_result::failure("Material texture manifest " + assets::to_string(material_guid) +
+                                               ": " + manifest.error());
+            if (manifest.value().material != resources.material->compiled.package)
+                return decoded_result::failure("Cooked material texture manifest has a different material identity");
+            resources.material_textures = std::move(manifest).value();
+
             // Material pass shader artifacts are additional representations of
             // the same authored material GUID, not separate shader asset GUIDs.
             const auto material_record =
@@ -102,18 +115,16 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
                 resources.material_shaders.push_back(std::move(cooked_shader));
             }
 
-            // The existing cooker tracks material dependencies by stable GUID.
-            // Texture dependencies are separate GUIDs; compiled material shaders
-            // are additional representations of this material GUID.
-            const auto record = catalog.catalog().database().query(material_guid, assets::asset_types::material);
-            if (!record) return decoded_result::failure("Material disappeared from the active cooked catalog");
-
+            // Load exactly the GUIDs referenced by the stable, compiled slot
+            // manifest; the dependency enumeration order is not a texture ABI.
             std::set<assets::asset_guid> visited_textures;
-            for (const auto& dependency : record->dependencies)
+            for (const auto& texture_binding : resources.material_textures->textures)
             {
-                if (!catalog.catalog().database().query(dependency, assets::asset_types::texture_2d)) continue;
-                if (!visited_textures.insert(dependency).second) continue;
-
+                const auto dependency = texture_binding.asset;
+                if (!dependency.valid() || !visited_textures.insert(dependency).second) continue;
+                const auto record = catalog.catalog().database().query(dependency, assets::asset_types::texture_2d);
+                if (!record)
+                    return decoded_result::failure("Cooked material texture GUID is absent from active catalog");
                 auto texture_bytes = catalog.read_active_artifact(dependency, assets::asset_types::texture_2d,
                                                                   assets::artifact_schemas::texture);
                 if (!texture_bytes)
