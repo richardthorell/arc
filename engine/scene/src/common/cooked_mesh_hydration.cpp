@@ -10,8 +10,7 @@
 namespace arc::scene
 {
 std::string hydrate_cooked_scene_meshes(ecs::world& scene, render::renderer& renderer,
-                                        std::span<const cooked_mesh_upload> uploads,
-                                        cooked_mesh_residencies& residency)
+                                        std::span<const cooked_mesh_upload> uploads, cooked_mesh_residencies& residency)
 {
     if (!residency.empty()) return "Cooked mesh residency still belongs to an existing renderer generation";
     if (uploads.empty()) return {};
@@ -36,8 +35,7 @@ std::string hydrate_cooked_scene_meshes(ecs::world& scene, render::renderer& ren
         if (found == owners.end() || !scene.has<mesh_renderer_component>(found->second))
             return "Cooked mesh upload cannot locate its MeshRenderer entity";
         const auto* component = scene.try_get<mesh_renderer_component>(found->second);
-        if (component->mesh.valid())
-            return "Cooked MeshRenderer still references an older renderer generation";
+        if (component->mesh.valid()) return "Cooked MeshRenderer still references an older renderer generation";
         if (upload.mesh.vertices.empty() || upload.mesh.indices.empty())
             return "Cooked mesh upload contains no conventional geometry";
         destinations.push_back(found->second);
