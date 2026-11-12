@@ -43,10 +43,9 @@ make_material_texture_manifest(assets::asset_guid material, const render::tools:
             {
                 if (dependency.type != assets::asset_types::texture_2d) continue;
                 const auto candidate = material_texture_path(dependency.source_path);
-                if (candidate != path &&
-                    !(candidate.size() > path.size() && candidate.ends_with(path) &&
-                      candidate[candidate.size() - path.size() - 1] == '/'))
-                    continue;
+                const bool suffix = candidate.size() > path.size() && candidate.ends_with(path) &&
+                                    candidate[candidate.size() - path.size() - 1] == '/';
+                if (candidate != path && !suffix) continue;
                 if (selected)
                     return result::failure("Ambiguous material texture dependency: " + binding.default_source);
                 selected = &dependency;
@@ -55,12 +54,14 @@ make_material_texture_manifest(assets::asset_guid material, const render::tools:
                 return result::failure("Missing registered material texture dependency: " + binding.default_source);
             guid = selected->guid;
         }
-        manifest.textures.push_back({.binding = {.slot = binding.slot,
-                                                .parameter_id = binding.parameter_id,
-                                                .type = binding.type,
-                                                .dimension_slot = binding.dimension_slot,
-                                                .semantic = binding.semantic},
-                                     .asset = guid});
+        render::cooked_material_texture_binding entry;
+        entry.binding.slot = binding.slot;
+        entry.binding.parameter_id = binding.parameter_id;
+        entry.binding.type = binding.type;
+        entry.binding.dimension_slot = binding.dimension_slot;
+        entry.binding.semantic = binding.semantic;
+        entry.asset = guid;
+        manifest.textures.push_back(entry);
     }
     return result::success(std::move(manifest));
 }
