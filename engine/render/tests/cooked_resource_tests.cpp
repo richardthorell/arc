@@ -117,13 +117,15 @@ TEST_CASE("V3.4c.2 rejects invalid cooked texture data")
     const auto encoded = encode_texture_artifact(make_texture(), texture_streaming_mode::resident);
     REQUIRE(encoded);
     auto bytes = encoded.value();
-    bytes.back() ^= std::byte{1};
-    CHECK_FALSE(decode_cooked_texture_data(bytes));
-    bytes = encoded.value();
     const auto index = inspect_texture_artifact(bytes);
     REQUIRE(index);
     REQUIRE_FALSE(index.value().mips.empty());
     const auto& mip = index.value().mips.front();
+    REQUIRE(mip.stored_size > 0);
+    // Corrupt the hashed mip payload, not trailing alignment padding.
+    bytes[static_cast<std::size_t>(mip.offset)] ^= std::byte{1};
+    CHECK_FALSE(decode_cooked_texture_data(bytes));
+    bytes = encoded.value();
     // Truncate inside the required mip data, not in alignment padding.
     bytes.resize(static_cast<std::size_t>(mip.offset) + mip.stored_size - 1u);
     CHECK_FALSE(decode_cooked_texture_data(bytes));
