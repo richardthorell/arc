@@ -133,19 +133,19 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
             return false;
         }
 
-        arc::render::material_descriptor descriptor;
-        descriptor.name = arc::assets::to_string(resource.material_guid);
-        descriptor.shader_package = resource.material->compiled.package;
-        descriptor.render_path = arc::render::material_render_path::clustered_forward;
-        descriptor.runtime_program =
-            std::make_shared<arc::render::material_runtime_program>(std::move(program).value());
-        const auto pass = arc::render::find_material_runtime_pass(*descriptor.runtime_program,
-                                                                  arc::render::material_pass::forward, false);
-        if (pass) descriptor.shader_permutation = pass->permutation;
+        auto descriptor = arc::render::make_cooked_material_descriptor(
+            *resource.material, std::make_shared<arc::render::material_runtime_program>(std::move(program).value()));
+        if (!descriptor)
+        {
+            arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
+            arc::diagnostics::error("Android", "Cooked authored material state failed: " + descriptor.error());
+            return false;
+        }
+        descriptor.value().name = arc::assets::to_string(resource.material_guid);
         arc::scene::cooked_material_upload upload;
         upload.entity = resource.entity;
         upload.material = resource.material_guid;
-        upload.descriptor = std::move(descriptor);
+        upload.descriptor = std::move(descriptor).value();
         materials.push_back(std::move(upload));
     }
 

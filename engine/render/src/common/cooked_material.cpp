@@ -1,5 +1,7 @@
 #include <arc/render/cooked_material.h>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -207,5 +209,75 @@ realize_cooked_material_program(const cooked_material_metadata& material,
                   program.parameter_defaults.begin() + parameter.offset);
     }
     return result::success(std::move(program));
+}
+
+core::result<material_descriptor, std::string>
+make_cooked_material_descriptor(const cooked_material_metadata& material,
+                                std::shared_ptr<const material_runtime_program> program)
+{
+    using result = core::result<material_descriptor, std::string>;
+    if (!program || !material_runtime_program_compatible(*program) || program->passes.empty() ||
+        !material.compiled.package.valid())
+        return result::failure("Cooked material has no compatible executable runtime program");
+
+    const auto authored = nlohmann::json::parse(material.canonical_document_json, nullptr, false);
+    if (authored.is_discarded() || !authored.is_object() || !authored.contains("version") ||
+        !authored["version"].is_number_integer() || authored["version"] != 4)
+        return result::failure("Cooked material has an invalid authored document version");
+
+    // These are the exact v4 authoring enum spellings. Do not silently
+    // reinterpret an unknown value as the standard/opaque default.
+    const auto parse_string = [&](std::string_view key, std::string_view fallback) -> std::optional<std::string>
+    {
+        const auto it = authored.find(std::string(key));
+        if (it == authored.end()) return std::string(fallback);
+        if (!it->is_string()) return std::nullopt;
+        return it->get<std::string>();
+    };
+    const auto domain = parse_string("domain", "surface");
+    const auto shading = parse_string("shadingModel", "standard");
+    const auto blending = parse_string("blendMode", "opaque");
+    if (!domain || *domain != "surface" || !shading || !blending)
+        return result::failure("Cooked material has unsupported surface state");
+
+    material_descriptor descriptor;
+    if (*shading == "standard")
+        descriptor.shading_model = material_shading_model::standard;
+    else if (*shading == "skin")
+        descriptor.shading_model = material_shading_model::skin;
+    else if (*shading == "transmission")
+        descriptor.shading_model = material_shading_model::transmission;
+    else if (*shading == "unlit")
+        descriptor.shading_model = material_shading_model::unlit;
+    else if (*shading == "customLit" || *shading == "custom_lit")
+        descriptor.shading_model = material_shading_model::custom_lit;
+    else
+        return result::failure("Cooked material has an unknown authored shading model");
+
+    if (*blending == "opaque")
+        descriptor.alpha_mode = material_alpha_mode::opaque;
+    else if (*blending == "masked")
+        descriptor.alpha_mode = material_alpha_mode::masked;
+    else if (*blending == "blend")
+        descriptor.alpha_mode = material_alpha_mode::blend;
+    else
+        return result::failure("Cooked material has an unknown authored blend mode");
+
+    for (const auto key : {"doubleSided", "castShadows"})
+    {
+        const auto it = authored.find(key);
+        if (it != authored.end() && !it->is_boolean())
+            return result::failure(std::string("Cooked material has invalid ") + key + " state");
+    }
+    descriptor.double_sided = authored.value("doubleSided", false);
+    descriptor.cast_shadows = authored.value("castShadows", true);
+    descriptor.shader_package = material.compiled.package;
+    descriptor.runtime_program = std::move(program);
+    descriptor.render_path = material_render_path::clustered_forward;
+
+    const auto* forward = find_material_runtime_pass(*descriptor.runtime_program, material_pass::forward, false);
+    if (!forward) return result::failure("Cooked material lacks the conventional forward pass required on Android");
+    descriptor.shader_permutation = forward->permutation;
+    return result::success(std::move(descriptor));
 }
 } // namespace arc::render

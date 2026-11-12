@@ -9,6 +9,7 @@
 #include <arc/render/shader.h>
 
 #include <cstddef>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -43,4 +44,12 @@ struct cooked_material_shader
 [[nodiscard]] core::result<material_runtime_program, std::string>
 realize_cooked_material_program(const cooked_material_metadata& material,
                                 std::span<const cooked_material_shader> shaders);
+/** Restore validated authored surface state from the canonical cooked document.
+ * Shader compilation stays offline; no renderer handles are mutated on failure.
+ * This is intentionally separate from material texture-slot and parameter binding.
+ */
+[[nodiscard]] core::result<material_descriptor, std::string>
+make_cooked_material_descriptor(const cooked_material_metadata& material,
+                                std::shared_ptr<const material_runtime_program> program);
+
 } // namespace arc::render
