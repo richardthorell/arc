@@ -153,7 +153,7 @@ def smoke(distribution: Path | None, archive: Path | None, timeout: float,
         diagnostic_text = diagnostic.read_text(encoding="utf-8", errors="replace") if diagnostic.is_file() else ""
         if artifacts is not None:
             artifacts.mkdir(parents=True, exist_ok=True)
-            (artifacts / "ci-smoke-diagnostic.txt").write_text(diagnostic_text, encoding="utf-8)
+            (artifacts / "ci-smoke-diagnostic.txt").write_text(diagnostic_text, encoding="utf-8")
             (artifacts / "stdout.txt").write_text(stdout, encoding="utf-8")
             (artifacts / "stderr.txt").write_text(stderr, encoding="utf-8")
             (artifacts / "launch.json").write_text(
