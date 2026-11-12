@@ -68,7 +68,36 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
                 const auto message = "Material " + assets::to_string(material_guid) + ": " + material.error();
                 return decoded_result::failure(message);
             }
+            resources.material_guid = material_guid;
             resources.material = std::move(material).value();
+
+            // Material pass shader artifacts are additional representations of
+            // the same authored material GUID, not separate shader asset GUIDs.
+            const auto material_record =
+                catalog.catalog().database().query(material_guid, assets::asset_types::material);
+            if (!material_record)
+                return decoded_result::failure("Cooked material is missing from the active catalog");
+            for (const auto& representation : material_record->representations)
+            {
+                if (representation.provider_id != material_record->active_provider) continue;
+                const auto locator = arc::io::virtual_path::parse(representation.locator_hint);
+                if (!locator) continue;
+                const auto address = assets::parse_cooked_artifact_virtual_path(locator.value());
+                if (!address || address->asset != material_guid || address->schema != assets::artifact_schemas::shader ||
+                    address->name != representation.name || representation.name.ends_with(".coat-neutral"))
+                    continue;
+                auto bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
+                                                          assets::artifact_schemas::shader, representation.name);
+                if (!bytes)
+                    return decoded_result::failure("Material shader " + representation.name + ": " +
+                                                   bytes.error().message);
+                auto shader = render::deserialize_shader_package(bytes.value());
+                if (!shader)
+                    return decoded_result::failure("Material shader " + representation.name + ": " +
+                                                   shader.error().message);
+                resources.material_shaders.push_back({.artifact_name = representation.name,
+                                                      .package = std::move(shader).value()});
+            }
 
             // The existing cooker tracks material dependencies by stable GUID.
             // Only texture dependencies are decoded here; shaders remain metadata
