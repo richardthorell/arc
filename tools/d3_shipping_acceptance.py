@@ -82,6 +82,18 @@ def run(args: argparse.Namespace) -> None:
     if len(renderers) != 1:
         raise SmokeFailure(f"expected one copied Vulkan backend DLL, found: {renderers}")
     package_args += ["--library", str(renderers[0])]
+    # MSVC /MD Shipping binaries depend on the redistributable CRT. This
+    # directory is supplied by the initialized VS toolchain on Windows CI.
+    # Include only the Microsoft.VC*.CRT folder, never the entire VS tree.
+    redist = os.environ.get("VCToolsRedistDir")
+    if not redist:
+        raise SmokeFailure("VCToolsRedistDir missing; cannot stage MSVC runtime dependencies")
+    redist_root = Path(redist).resolve()
+    crt_dirs = sorted(path for path in redist_root.glob("x64/Microsoft.VC*.CRT")
+                      if path.is_dir() and (path / "msvcp140.dll").is_file())
+    if len(crt_dirs) != 1:
+        raise SmokeFailure(f"expected one x64 VC++ CRT redistributable directory, found: {crt_dirs}")
+    package_args += ["--dll-dir", str(crt_dirs[0])]
     command("package", package_args, root, artifacts)
     staged = verify_distribution(release)
     if staged["target"]["platform"] != "windows" or staged["role"] != "client":
