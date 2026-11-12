@@ -310,13 +310,13 @@ bool write_ci_smoke_diagnostic(std::string_view text)
 {
     const DWORD length = GetEnvironmentVariableW(L"ARC_CI_SMOKE_LOG", nullptr, 0);
     if (length <= 1 || length > 32768) return false;
-    std::wstring path(length, L'\\0');
+    std::wstring path(length, L'\0');
     const DWORD actual = GetEnvironmentVariableW(L"ARC_CI_SMOKE_LOG", path.data(), length);
     if (actual == 0 || actual >= length) return false;
     path.resize(actual);
     std::ofstream out(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
     if (!out) return false;
-    out << text << '\\n';
+    out << text << '\n';
     out.flush();
     return out.good();
 }
