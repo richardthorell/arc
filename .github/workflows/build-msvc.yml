@@ -164,17 +164,21 @@ jobs:
           $ErrorActionPreference = 'Stop'
           cmake -S . -B out/build/d3-sdk -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=OFF
           if ($LASTEXITCODE -ne 0) { throw "Shipping SDK configuration failed" }
-          cmake --build out/build/d3-sdk --target arc-project-cli arc-cook --parallel
-          if ($LASTEXITCODE -ne 0) { throw "Shipping tool build failed" }
           cmake --build out/build/d3-sdk --parallel
           if ($LASTEXITCODE -ne 0) { throw "Shipping SDK build failed" }
           cmake --install out/build/d3-sdk --prefix out/d3-sdk-installed
           if ($LASTEXITCODE -ne 0) { throw "Shipping SDK install failed" }
+          # ARC intentionally disables the asset cooker in Shipping builds.
+          # Build the production cooker tool separately in RelWithDebInfo.
+          cmake -S . -B out/build/d3-cooker -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DBUILD_TESTING=OFF
+          if ($LASTEXITCODE -ne 0) { throw "Cooker configuration failed" }
+          cmake --build out/build/d3-cooker --target arc-cook --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Cooker build failed" }
 
       - name: Package and Boot External Shipping Game
         shell: pwsh
         run: |
-          python tools/d3_shipping_acceptance.py --sdk out/d3-sdk-installed --cooker out/build/d3-sdk/tools/asset_cooker/arc-cook.exe --workspace out/d3-acceptance --artifacts out/d3-results --timeout 30
+          python tools/d3_shipping_acceptance.py --sdk out/d3-sdk-installed --cooker out/build/d3-cooker/tools/asset_cooker/arc-cook.exe --workspace out/d3-acceptance --artifacts out/d3-results --timeout 30
           if ($LASTEXITCODE -ne 0) { throw "D3.2 Shipping package acceptance failed" }
 
       - name: Upload D3 Package and Diagnostics
