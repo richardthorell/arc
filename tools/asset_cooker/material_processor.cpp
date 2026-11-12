@@ -653,7 +653,7 @@ public:
         descriptor_.id = assets::cook_processor_ids::material;
         descriptor_.name = "ARC Material";
         descriptor_.schema = assets::artifact_schemas::material;
-        descriptor_.version = 13;
+        descriptor_.version = 14;
         descriptor_.schema_version = render::tools::material_package_version;
         descriptor_.input_types = {assets::asset_types::material};
     }
