@@ -66,7 +66,7 @@ std::string hydrate_cooked_scene_meshes(ecs::world& scene, render::renderer& ren
 }
 
 void release_cooked_scene_meshes(ecs::world& scene, render::renderer& renderer,
-                                cooked_mesh_residencies& residency) noexcept
+                                 cooked_mesh_residencies& residency) noexcept
 {
     for (const auto& item : residency)
     {
