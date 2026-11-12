@@ -152,16 +152,14 @@ realize_cooked_material_program(const cooked_material_metadata& material,
 
     material_runtime_program program;
     program.parameters = material.parameters;
-    if (material.compiled.passes.empty())
-        return result::failure("Cooked material has no executable shader passes");
+    if (material.compiled.passes.empty()) return result::failure("Cooked material has no executable shader passes");
 
     for (const auto& binding : material.compiled.passes)
     {
         const cooked_material_shader* matched{};
         for (const auto& shader : shaders)
         {
-            if (shader.package.id != material.compiled.package ||
-                shader.package.permutation != binding.permutation ||
+            if (shader.package.id != material.compiled.package || shader.package.permutation != binding.permutation ||
                 shader.package.compiled.build_hash != binding.build_hash)
                 continue;
             if (matched) return result::failure("Ambiguous cooked shader package for material pass");
@@ -170,19 +168,17 @@ realize_cooked_material_program(const cooked_material_metadata& material,
         if (!matched) return result::failure("Missing cooked shader package for material pass");
 
         const auto& package = matched->package;
-        if (package.target != shader_target::spirv || !package.generation.valid() ||
-            package.compiled.bytecode.empty())
+        if (package.target != shader_target::spirv || !package.generation.valid() || package.compiled.bytecode.empty())
             return result::failure("Cooked shader package has no executable SPIR-V payload");
         const auto& reflection = package.compiled.reflection;
         const auto entry = std::find_if(reflection.entry_points.begin(), reflection.entry_points.end(),
                                         [&](const auto& value) { return value.id == binding.entry_point; });
         if (entry == reflection.entry_points.end() || entry->stage != shader_stage::fragment)
             return result::failure("Cooked material pass has no matching fragment entry point");
-        const auto reflected_pass = std::find_if(reflection.passes.begin(), reflection.passes.end(),
-                                                [&](const auto& value)
-                                                { return value.pass == binding.pass &&
-                                                         value.entry_point == binding.entry_point; });
-        if (reflected_pass == reflection.passes.end())
+        bool reflected_pass = false;
+        for (const auto& value : reflection.passes)
+            if (value.pass == binding.pass && value.entry_point == binding.entry_point) reflected_pass = true;
+        if (!reflected_pass)
             return result::failure("Cooked shader reflection does not implement the declared material pass");
         if (reflection.parameters.size() != material.parameters.size())
             return result::failure("Cooked shader parameter count differs from material contract");
