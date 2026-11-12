@@ -106,7 +106,7 @@ core::result<cooked_material_metadata, std::string> decode_cooked_material_metad
             return result::failure("Duplicate cooked material pass");
         binding.permutation = shader_permutation_id{permutation};
         binding.entry_point = shader_entry_point_id{entry_point};
-        material.compiled.passes.push_back(std::move(binding));
+        material.compiled.passes.push_back(binding);
     }
 
     if (!input.value(count) || count > 65536u) return result::failure("Invalid cooked material parameter count");
