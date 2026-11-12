@@ -71,15 +71,21 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
             resources.material_guid = material_guid;
             resources.material = std::move(material).value();
 
-            auto manifest_bytes = catalog.read_active_artifact(
-                material_guid, assets::asset_types::material, assets::artifact_schemas::material_textures);
+            auto manifest_bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
+                                                               assets::artifact_schemas::material_textures);
             if (!manifest_bytes)
-                return decoded_result::failure("Material texture manifest " + assets::to_string(material_guid) +
-                                               ": " + manifest_bytes.error().message);
+            {
+                const auto error = "Material texture manifest " + assets::to_string(material_guid) + ": " +
+                                   manifest_bytes.error().message;
+                return decoded_result::failure(error);
+            }
             auto manifest = render::decode_cooked_material_texture_manifest(manifest_bytes.value());
             if (!manifest)
-                return decoded_result::failure("Material texture manifest " + assets::to_string(material_guid) +
-                                               ": " + manifest.error());
+            {
+                const auto error = "Material texture manifest " + assets::to_string(material_guid) + ": " +
+                                   manifest.error();
+                return decoded_result::failure(error);
+            }
             if (manifest.value().material != resources.material->compiled.package)
                 return decoded_result::failure("Cooked material texture manifest has a different material identity");
             resources.material_textures = std::move(manifest).value();
