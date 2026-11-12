@@ -64,7 +64,10 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
                                                material_bytes.error().message);
             auto material = render::decode_cooked_material_metadata(material_bytes.value());
             if (!material)
-                return decoded_result::failure("Material " + assets::to_string(material_guid) + ": " + material.error());
+            {
+                const auto message = "Material " + assets::to_string(material_guid) + ": " + material.error();
+                return decoded_result::failure(message);
+            }
             resources.material = std::move(material).value();
 
             // The existing cooker tracks material dependencies by stable GUID.
