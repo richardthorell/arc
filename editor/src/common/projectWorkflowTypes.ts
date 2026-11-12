@@ -84,3 +84,9 @@ export type WorkflowExecutionSnapshot = {
   output: string[];
   error: string | null;
 };
+
+export type CookWorkflowOptions = {
+  authority: string;
+  profiles: Array<{ id: string; targetId: string; platform: string; label: string }>;
+  unavailableReason?: string;
+};

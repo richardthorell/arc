@@ -44,9 +44,9 @@ it cannot race a new run. Notifications are detached copies.
 Adapters prepare private outputs, observe the AbortSignal, terminate only owned
 process trees, and supply idempotent rollback. Final publication is synchronous,
 authority-checked and must retain the previous output on failure. Missing adapters
-fail closed. Saved-content cooking is now executable through narrow renderer IPC;
-the toolbar remains unchanged until profile selection and the saved-content prompt
-are implemented.
+fail closed. Saved-content cooking is executable through narrow renderer IPC and
+the toolbar's Cook Content Only action. Runnable-output Build and external Play
+remain unavailable until their adapters are implemented.
 
 ## Executable cooking
 
@@ -88,6 +88,36 @@ set `ARC_WORKFLOW_TEST_PROJECT_TOOL` and `ARC_WORKFLOW_TEST_COOKER` to matching
 binaries, then run that test from `editor`. It generates an isolated saved-scene
 project, cooks and verifies it twice, and checks publication plus source preservation.
 
+## Cook controls
+
+The toolbar now explicitly calls the existing module build **Build Editor Code**.
+Its menu includes **Cook Content Only**, which opens a profile/progress dialog.
+Profiles come from the active project and enabled authored targets, with explicit
+configuration, architecture, renderer, and texture outputs. The current platform's
+sole profile is initially selected; multiple matches require a choice. Other
+authored platform profiles remain selectable: cooking does not require ADB, a
+connected device, or a deployment toolchain. Native planning still validates every
+requested profile/target pair.
+
+When documents are dirty, choose **Save All and Cook**, **Cook Saved Content**, or
+**Cancel**. Save uses existing registered document services (and the active scene's
+normal save dialog); a cancelled/unsupported/failed save prevents cooking. Saves
+are explicit sequential authoring operations, not a cross-document transaction;
+earlier successful saves are not undone if a later save fails. Cooking uses saved
+project startup roots, not the active scene merely because it was saved. Setting
+the project's startup scene remains a separate authoring action.
+
+The main process checks the captured project/descriptor/SDK authority again before
+starting a request. Closing the dialog during preparation prevents a subsequent
+cook from starting. Once cooking starts, closing only hides progress; reopen via
+the cooking status or Cook Content Only menu. **Cancel Cook** cancels the exact
+request. Progress includes stages, bounded output, errors and verified manifest
+locations. Old initial snapshots cannot overwrite newer progress events.
+
+This slice deliberately keeps profile selection in the cook dialog, not a shared
+Build profile selector: the existing code build still builds editor modules for
+the host and must not imply cross-platform runnable-output support.
+
 ## Remaining implementation and delivery
 
 1. Complete executable adapters and exact build artifact/dependency manifests.
@@ -110,5 +140,5 @@ the last compatible successful package and its startup scene; it never recooks
 or substitutes current unsaved content. Remote desktop, multiplayer and continuous
 asset hot reload remain follow-ups.
 
-This foundation does **not** enable standalone/device Play, change the current
-toolbar's Build semantics, or advertise unfinished packaging as executable.
+This foundation does **not** enable standalone/device Play, change the existing
+editor-module build semantics, or advertise unfinished packaging as executable.

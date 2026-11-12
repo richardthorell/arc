@@ -237,12 +237,25 @@ describe('MainToolbar runtime controls', () => {
     fireEvent.click(screen.getByRole('option', { name: /Pixel 9/ }));
     expect(onTargetDeviceChange).toHaveBeenCalledWith('pixel-9');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Build Editor Code' }));
     expect(onBuildAction).toHaveBeenCalledWith('build');
 
     fireEvent.click(screen.getByRole('button', { name: 'Build actions' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Rebuild/ }));
     expect(onBuildAction).toHaveBeenCalledWith('rebuild');
+    fireEvent.click(screen.getByRole('button', { name: 'Build actions' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cook Content Only' }));
+    expect(onBuildAction).toHaveBeenCalledWith('cook');
+  });
+
+  it('shows running cook progress without routing it to an editor build', () => {
+    const onBuildAction = vi.fn();
+    render(<MainToolbar onCommand={vi.fn()} cooking onBuildAction={onBuildAction} onOpenBuildDashboard={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Open build dashboard' })).toHaveTextContent('cooking');
+    fireEvent.click(screen.getByRole('button', { name: 'Cook progress' }));
+    expect(onBuildAction).toHaveBeenCalledWith('cook');
+    fireEvent.click(screen.getByRole('button', { name: 'Build actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Build Editor Code' })).toBeDisabled();
   });
 
   it('shows a compact build monitor and opens the dashboard on demand', () => {

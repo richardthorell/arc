@@ -297,6 +297,7 @@
   background: #e8ba62;
 }
 .toolbar-build-monitor.is-building .toolbar-build-monitor-light,
+.toolbar-build-monitor.is-cooking .toolbar-build-monitor-light,
 .toolbar-build-monitor.is-configuring .toolbar-build-monitor-light,
 .toolbar-build-monitor.is-cleaning .toolbar-build-monitor-light {
   background: #76aee8;

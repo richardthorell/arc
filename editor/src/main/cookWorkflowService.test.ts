@@ -29,8 +29,8 @@ function setup() {
     descriptorPath,
     projectRoot: root,
     writable: true,
-    descriptor: { guid: 'project' },
-  } as ArcProjectCandidate;
+    descriptor: { guid: 'project', cookProfiles: [], targetPlatforms: [] },
+  } as unknown as ArcProjectCandidate;
   const legacy = vi.fn(() => false);
   const service = new CookWorkflowService(
     () => project,
@@ -55,6 +55,38 @@ function setup() {
   };
 }
 describe('cook workflow service authority', () => {
+  it('exposes authored profiles only for enabled matching targets without requiring a device', () => {
+    const { project, service } = setup();
+    project.descriptor.targetPlatforms = [{ id: 'android-arm64-vulkan', enabled: true }];
+    project.descriptor.cookProfiles = [
+      {
+        id: 'custom-mobile',
+        platform: 'android',
+        architecture: 'arm64',
+        renderer: 'vulkan',
+        api: '1.1',
+        configuration: 'development',
+        textures: { outputs: ['astc'], quality: 'high' },
+      },
+    ];
+    expect(service.options()).toMatchObject({ profiles: [{ id: 'custom-mobile', targetId: 'android-arm64-vulkan' }] });
+    expect(service.options().unavailableReason).toBeUndefined();
+    project.descriptor.targetPlatforms[0].enabled = false;
+    expect(service.options().profiles).toEqual([]);
+    expect(queryProjectWorkflowPlan).not.toHaveBeenCalled();
+  });
+  it.each(['descriptor', 'project', 'reopen'])(
+    'rejects a dialog captured before %s changed, before any planning',
+    async (change) => {
+      const { project, service } = setup();
+      const authority = service.options().authority;
+      if (change === 'descriptor') fs.writeFileSync(project.descriptorPath, '{"updated":true}');
+      else if (change === 'project') project.descriptor.guid = 'replacement';
+      else service.invalidate();
+      await expect(service.execute(request, authority)).rejects.toThrow('reopen Cook Content Only');
+      expect(queryProjectWorkflowPlan).not.toHaveBeenCalled();
+    },
+  );
   it('blocks unsupported actions and read-only projects before planning', async () => {
     const { project, service } = setup();
     await expect(service.execute({ ...request, action: 'build' })).rejects.toThrow('not ready');

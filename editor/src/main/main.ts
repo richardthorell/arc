@@ -1367,9 +1367,10 @@ void app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('build:snapshot', () => buildService?.snapshot() ?? null);
-  ipcMain.handle('workflow:execute', (_event, request: WorkflowRequest) => {
+  ipcMain.handle('workflow:cookOptions', () => buildService?.workflows.options() ?? null);
+  ipcMain.handle('workflow:execute', (_event, request: WorkflowRequest, authority?: string) => {
     if (!buildService) throw new Error('Build service unavailable');
-    return buildService.workflows.execute(request);
+    return buildService.workflows.execute(request, authority);
   });
   ipcMain.handle('workflow:snapshot', () => buildService?.workflows.snapshot() ?? null);
   ipcMain.handle('workflow:cancel', (_event, requestId: string) => {

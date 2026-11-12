@@ -281,7 +281,7 @@ describe('Android target picker', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Refresh Android targets' })).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Build Editor Code' })).toBeEnabled();
     expect(localStorage.getItem(androidPreferenceKey('/project', '/sdk'))).toBeNull();
     view.rerender(<Harness project="/other" />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9'));
