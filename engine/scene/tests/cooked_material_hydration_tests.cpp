@@ -88,12 +88,9 @@ TEST_CASE("V3.4d.3 binds shared material assets and unbinds stale ECS handles")
     const auto compiled = arc::render::realize_cooked_material_program(metadata(), shaders);
     REQUIRE(compiled);
     const auto upload = descriptor(compiled.value());
-    const std::array uploads{arc::scene::cooked_material_upload{.entity = {1, 2},
-                                                               .material = {9, 10},
-                                                               .descriptor = upload},
-                             arc::scene::cooked_material_upload{.entity = {3, 4},
-                                                               .material = {9, 10},
-                                                               .descriptor = upload}};
+    std::vector<arc::scene::cooked_material_upload> uploads;
+    uploads.push_back({.entity = {1, 2}, .material = {9, 10}, .descriptor = upload});
+    uploads.push_back({.entity = {3, 4}, .material = {9, 10}, .descriptor = upload});
     arc::scene::cooked_material_residencies residency;
     CHECK(arc::scene::hydrate_cooked_scene_materials(scene, renderer, uploads, residency).empty());
     REQUIRE(residency.size() == 2);
