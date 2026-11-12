@@ -2,6 +2,7 @@
 
 #include <arc/assets/cook.h>
 #include <arc/project/distribution_assembler.h>
+#include <arc/project/distribution_zip.h>
 #include <arc/project/package_workflow.h>
 #include <arc/project/project.h>
 #include <arc/project/windows_distribution_finalizer.h>
@@ -201,14 +202,27 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
                                                     finalizer);
     if (!assembled) return fail(json_output, assembled.error().field, assembled.error().message);
 
+    // ZIP is an optional secondary export of the verified directory. The
+    // directory remains available if the ZIP operation encounters an error.
+    const auto zip_arg = option(args, "--zip");
+    std::optional<fs::path> zip_output;
+    if (zip_arg)
+    {
+        zip_output = source_path(context.value().root, *zip_arg);
+        const auto status = project::write_distribution_zip(output, *zip_output);
+        if (!status) return fail(json_output, status.error().field, status.error().message);
+    }
+
     if (json_output)
         std::cout << json{{"succeeded", true},
                           {"output", output.generic_string()},
                           {"files", assembled.value().files.size()},
-                          {"manifest", (output / "arc-distribution.json").generic_string()}}
+                          {"manifest", (output / "arc-distribution.json").generic_string()},
+                          {"zip", zip_output ? zip_output->generic_string() : ""}}
                          .dump()
                   << '\n';
     else
         std::cout << "Packaged ARC Windows distribution: " << output << '\n';
+    if (!json_output && zip_output) std::cout << "ZIP archive: " << *zip_output << '\n';
     return 0;
 }
