@@ -158,6 +158,14 @@ jobs:
       - name: Set Up Windows Toolchain
         uses: ./.github/actions/setup-windows-toolchain
 
+      - name: Validate D3 Python Syntax and Harness
+        shell: pwsh
+        run: |
+          python -m py_compile tools/d3_shipping_acceptance.py tools/verify_relocated_package.py tools/tests/test_relocated_package.py
+          if ($LASTEXITCODE -ne 0) { throw "D3 Python syntax validation failed" }
+          python -m unittest discover -s tools/tests -p test_relocated_package.py -v
+          if ($LASTEXITCODE -ne 0) { throw "D3 smoke harness tests failed" }
+
       - name: Configure Shipping SDK and Cooker
         shell: pwsh
         run: |
