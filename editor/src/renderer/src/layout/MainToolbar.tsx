@@ -45,7 +45,7 @@ import './MainToolbar.css';
 
 export type EditorTargetPlatform =
   'windows' | 'linux' | 'macos' | 'ios' | 'android' | 'xbox' | 'playstation' | 'switch';
-export type ToolbarBuildAction = 'build' | 'rebuild' | 'configure' | 'clean';
+export type ToolbarBuildAction = 'build' | 'rebuild' | 'configure' | 'clean' | 'cook';
 export type ToolbarCoordinateSpace = 'world' | 'local';
 export type ToolbarTransformOrigin = 'pivot' | 'center';
 
@@ -202,10 +202,11 @@ function ToolbarPlaybackOptions({ timeScale, onTimeScaleChange }: ToolbarPlaybac
 }
 
 const buildOptions: ReadonlyArray<UiSplitButtonOption<ToolbarBuildAction>> = [
-  { value: 'build', label: 'Build', icon: <Hammer size={14} /> },
-  { value: 'rebuild', label: 'Rebuild', icon: <RefreshCw size={14} /> },
-  { value: 'configure', label: 'Configure', icon: <Settings2 size={14} /> },
-  { value: 'clean', label: 'Clean', icon: <Trash2 size={14} /> },
+  { value: 'build', label: 'Build Editor Code', icon: <Hammer size={14} /> },
+  { value: 'cook', label: 'Cook Content Only', icon: <Hammer size={14} /> },
+  { value: 'rebuild', label: 'Rebuild Editor Code', icon: <RefreshCw size={14} /> },
+  { value: 'configure', label: 'Configure Editor Code', icon: <Settings2 size={14} /> },
+  { value: 'clean', label: 'Clean Editor Code', icon: <Trash2 size={14} /> },
 ];
 
 type ToolbarSnapMenuProps = {
@@ -344,6 +345,7 @@ export type MainToolbarProps = {
   targetDeviceMenuActions?: ReadonlyArray<UiDropdownOption<string>>;
   onBuildAction?: (action: ToolbarBuildAction) => void;
   buildSnapshot?: ArcBuildSnapshot | null;
+  cooking?: boolean;
   onOpenBuildDashboard?: () => void;
 };
 
@@ -377,13 +379,14 @@ export function MainToolbar({
   targetDeviceMenuActions = [],
   onBuildAction,
   buildSnapshot,
+  cooking = false,
   onOpenBuildDashboard,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
   const hostPlatform = detectHostTargetPlatform();
   const [projectTargetPlatforms, setProjectTargetPlatforms] = useState<EditorTargetPlatform[]>(() => [hostPlatform]);
   const [localTargetDevice, setLocalTargetDevice] = useState('local');
-  const buildState = buildSnapshot?.state ?? 'idle';
+  const buildState = cooking ? 'cooking' : (buildSnapshot?.state ?? 'idle');
   const recentBuildCommands = buildSnapshot?.history?.slice(-6) ?? [];
   const longestBuildCommand = Math.max(1, ...recentBuildCommands.map((run) => run.durationMs));
   const [localSettings, setLocalSettings] = useState<EditorSettingsSnapshot | null>(null);
@@ -655,14 +658,14 @@ export function MainToolbar({
         />
         {targetDeviceActions}
         <UiSplitButton
-          ariaLabel="Build"
+          ariaLabel={cooking ? 'Cook progress' : 'Build Editor Code'}
           className="toolbar-build-split"
           icon={<Hammer size={14} />}
-          label="Build"
+          label={cooking ? 'Cook progress' : 'Build Editor Code'}
           menuAriaLabel="Build actions"
-          onClick={() => onBuildAction?.('build')}
+          onClick={() => onBuildAction?.(cooking ? 'cook' : 'build')}
           onOptionSelect={(action) => onBuildAction?.(action)}
-          options={buildOptions}
+          options={buildOptions.map((option) => ({ ...option, disabled: cooking && option.value !== 'cook' }))}
           variant="primary"
         />
         {onOpenBuildDashboard && (

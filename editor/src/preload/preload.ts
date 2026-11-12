@@ -20,6 +20,7 @@ import type {
   WorkflowPlan,
   WorkflowRun,
   WorkflowExecutionSnapshot,
+  CookWorkflowOptions,
 } from '../common/projectWorkflowTypes';
 import { createAssetSourceBridge } from './assetSourceBridge';
 import { readBuiltinTextFile } from './builtinTextReader';
@@ -456,8 +457,9 @@ const arcApi = {
       ipcRenderer.invoke('extensions:executeCommand', id, arguments_),
   },
   build: {
-    executeWorkflow: (request: WorkflowRequest): Promise<WorkflowRun> =>
-      ipcRenderer.invoke('workflow:execute', request),
+    cookOptions: (): Promise<CookWorkflowOptions | null> => ipcRenderer.invoke('workflow:cookOptions'),
+    executeWorkflow: (request: WorkflowRequest, authority?: string): Promise<WorkflowRun> =>
+      ipcRenderer.invoke('workflow:execute', request, authority),
     workflowSnapshot: (): Promise<WorkflowExecutionSnapshot | null> => ipcRenderer.invoke('workflow:snapshot'),
     cancelWorkflow: (requestId: string): Promise<void> => ipcRenderer.invoke('workflow:cancel', requestId),
     onWorkflowState: (callback: (snapshot: WorkflowExecutionSnapshot) => void): (() => void) => {

@@ -53,6 +53,8 @@ import { useEditorDocuments } from '../editors/editorDocuments';
 import type { EditorDocument } from '../editors/editorTypes';
 import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
+import { CookWorkflowDialog } from '../buildOutput/CookWorkflowDialog';
+import type { WorkflowExecutionSnapshot } from '../../../common/projectWorkflowTypes';
 import { useAndroidTargets } from './useAndroidTargets';
 import { flattenScene } from '../services/editorHostTypes';
 import { hostAssetReference } from '../services/assetReferences';
@@ -423,6 +425,29 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [projectComponentSchemas, setProjectComponentSchemas] = useState<HostProjectComponentSchema[]>([]);
   const [buildSnapshot, setBuildSnapshot] = useState<ArcBuildSnapshot | null>(null);
   const [buildDashboardOpen, setBuildDashboardOpen] = useState(false);
+  const [cookPlatform, setCookPlatform] = useState<string | null>(null);
+  const [cookSnapshot, setCookSnapshot] = useState<WorkflowExecutionSnapshot | null>(null);
+  useEffect(() => {
+    let active = true;
+    let eventReceived = false;
+    const unsubscribe = window.arc?.build?.onWorkflowState?.((value) => {
+      eventReceived = true;
+      setCookSnapshot(value);
+    });
+    void window.arc?.build
+      ?.workflowSnapshot?.()
+      .then((value) => {
+        if (active && !eventReceived) setCookSnapshot(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, []);
+  useEffect(() => {
+    setCookPlatform(null);
+  }, [project?.root]);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
   const selectedSnapshotRevision = useRef(0);
   const hostEventRefreshTimer = useRef<number | null>(null);
@@ -695,7 +720,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     editorFocused: true,
     viewportFocused,
     textInputFocused: false,
-    modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen,
+    modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen || cookPlatform !== null,
     playing: runtimeWorldActive,
     hasSelection: Boolean(selectedEntityId && selectedEntityId !== worldSelectionId),
     canUndo: !runtimeWorldActive && documentState.canUndo,
@@ -1611,11 +1636,28 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             window.localStorage.setItem('arc.editor.target-platform.v1', platform);
           }}
           buildSnapshot={buildSnapshot}
+          cooking={Boolean(
+            cookSnapshot?.planning ||
+            cookSnapshot?.run?.state === 'running' ||
+            cookSnapshot?.run?.state === 'cancelling',
+          )}
           onOpenBuildDashboard={() => {
+            if (
+              cookSnapshot?.planning ||
+              cookSnapshot?.run?.state === 'running' ||
+              cookSnapshot?.run?.state === 'cancelling'
+            ) {
+              setCookPlatform(cookSnapshot.run?.plan.platform ?? targetPlatform);
+              return;
+            }
             setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
             setBuildDashboardOpen(true);
           }}
           onBuildAction={(action) => {
+            if (action === 'cook') {
+              setCookPlatform(targetPlatform);
+              return;
+            }
             setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
             void window.arc.build
               .execute({ action })
@@ -1888,6 +1930,25 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   return (
     <main className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}`}>
+      {cookPlatform && (
+        <CookWorkflowDialog
+          key={`${project?.root}:${cookPlatform}`}
+          platform={cookPlatform}
+          documents={editorDocuments}
+          onClose={() => setCookPlatform(null)}
+          saveDocument={async (document) => {
+            if (document.readOnly) return false;
+            if (document.kind !== 'level') return (await editorRegistry[document.kind].save?.(document)) ?? false;
+            if (runtimeWorldActive || (document.path ?? '') !== documentState.activeScenePath) return false;
+            if (!document.path) {
+              const result = await window.arc.dialog.saveScene();
+              return !result.canceled && Boolean((result.response as HostResponse | undefined)?.succeeded);
+            }
+            const response = (await window.arc.host.command('scene.save')) as HostResponse;
+            return response.succeeded;
+          }}
+        />
+      )}
       <MenuBar
         projectTitle={`${documentState.sceneName || 'Untitled'}${documentState.dirty ? '*' : ''}`}
         canUndo={documentState.canUndo}

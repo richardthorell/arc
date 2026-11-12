@@ -7,6 +7,7 @@ import { workflowRequestSchema } from '../common/projectWorkflowTypes';
 import { queryProjectWorkflowPlan } from './projectWorkflowPlanner';
 import { createCookWorkflowAdapter } from './cookWorkflowAdapter';
 import { ProjectWorkflowRunner } from './projectWorkflowRunner';
+import type { CookWorkflowOptions } from '../common/projectWorkflowTypes';
 
 /** Resolve only known locations belonging to the selected project-tool installation/build. */
 export function resolveWorkflowCooker(projectTool: string): string {
@@ -33,6 +34,7 @@ export class CookWorkflowService {
   private runner?: ProjectWorkflowRunner;
   private busy = false;
   private cancelled = false;
+  private authorityEpoch = 0;
   private value: WorkflowExecutionSnapshot = { requestId: null, planning: false, run: null, output: [], error: null };
 
   constructor(
@@ -63,10 +65,71 @@ export class CookWorkflowService {
     if (run) this.runner?.cancel(run.id);
   }
   invalidate(): void {
+    ++this.authorityEpoch;
     if (this.value.requestId) this.cancel(this.value.requestId);
   }
 
-  async execute(raw: WorkflowRequest): Promise<WorkflowRun> {
+  private selectionAuthority(): string {
+    const project = this.project();
+    if (!project) throw new Error('No project is open');
+    const executableIdentity = (executable: string) => {
+      try {
+        const stat = fs.statSync(executable);
+        return { path: fs.realpathSync(executable), size: stat.size, modified: stat.mtimeMs };
+      } catch {
+        return { path: executable, unavailable: true };
+      }
+    };
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          path: project.descriptorPath,
+          root: project.projectRoot,
+          descriptor: project.descriptor,
+          saved: fs.readFileSync(project.descriptorPath, 'utf8'),
+          epoch: this.authorityEpoch,
+          tool: executableIdentity(this.tool()),
+          cooker: executableIdentity(this.cooker(this.tool())),
+        }),
+      )
+      .digest('hex');
+  }
+
+  options(): CookWorkflowOptions {
+    const project = this.project();
+    if (!project) return { authority: '', profiles: [], unavailableReason: 'Open a project to cook content' };
+    const authority = this.selectionAuthority();
+    const profiles = project.descriptor.cookProfiles.flatMap((profile) => {
+      // This is a locator for an authored target, not an executable stage plan.
+      // The native planner remains authoritative and validates the pair before execution.
+      const targetId = `${profile.platform}-${profile.architecture === 'x86_64' ? 'x64' : profile.architecture}-${profile.renderer === 'none' ? 'headless' : profile.renderer}`;
+      if (!project.descriptor.targetPlatforms.some((target) => target.enabled && target.id === targetId)) return [];
+      return [
+        {
+          id: profile.id,
+          targetId,
+          platform: profile.platform,
+          label: `${profile.id} — ${profile.configuration} / ${profile.architecture} / ${profile.renderer} / ${profile.textures.outputs.join(', ')}`,
+        },
+      ];
+    });
+    return {
+      authority,
+      profiles,
+      unavailableReason: !project.writable
+        ? 'Project is read-only'
+        : !this.cooker(this.tool())
+          ? 'ARC cooker is unavailable in the selected SDK'
+          : undefined,
+    };
+  }
+
+  async execute(raw: WorkflowRequest, expectedAuthority?: string): Promise<WorkflowRun> {
+    if (
+      expectedAuthority !== undefined &&
+      (typeof expectedAuthority !== 'string' || expectedAuthority !== this.selectionAuthority())
+    )
+      throw new Error('Project or SDK changed; reopen Cook Content Only before continuing');
     const request = workflowRequestSchema.parse(raw);
     if (request.action !== 'cook' || request.destination !== 'none' || request.sessionId)
       throw new Error('Only Cook Content Only is executable; other workflow adapters are not ready');
