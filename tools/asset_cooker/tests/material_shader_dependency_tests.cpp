@@ -73,24 +73,31 @@ TEST_CASE("Material Shader duplicate exact paths are ambiguous")
     REQUIRE(result.dependency == nullptr);
 }
 
-
 TEST_CASE("Material texture bindings map compiler-assigned slots to exact registered asset GUIDs")
 {
     arc::render::tools::material_graph_descriptor graph;
-    graph.textures.push_back({.node_id = "albedo",
-                              .slot = 0,
-                              .type = arc::render::shader_parameter_type::texture_2d,
-                              .dimension_slot = 0,
-                              .default_source = "Textures/albedo.png"});
-    graph.textures.push_back({.node_id = "normal",
-                              .slot = 1,
-                              .type = arc::render::shader_parameter_type::texture_2d,
-                              .dimension_slot = 1,
-                              .default_source = "Textures/normal.png"});
-    graph.textures.push_back({.node_id = "unbound",
-                              .slot = 2,
-                              .type = arc::render::shader_parameter_type::texture_2d,
-                              .dimension_slot = 2});
+    arc::render::tools::material_texture_binding albedo_binding;
+    albedo_binding.node_id = "albedo";
+    albedo_binding.slot = 0;
+    albedo_binding.type = arc::render::shader_parameter_type::texture_2d;
+    albedo_binding.dimension_slot = 0;
+    albedo_binding.default_source = "Textures/albedo.png";
+    graph.textures.push_back(albedo_binding);
+
+    arc::render::tools::material_texture_binding normal_binding;
+    normal_binding.node_id = "normal";
+    normal_binding.slot = 1;
+    normal_binding.type = arc::render::shader_parameter_type::texture_2d;
+    normal_binding.dimension_slot = 1;
+    normal_binding.default_source = "Textures/normal.png";
+    graph.textures.push_back(normal_binding);
+
+    arc::render::tools::material_texture_binding unbound;
+    unbound.node_id = "unbound";
+    unbound.slot = 2;
+    unbound.type = arc::render::shader_parameter_type::texture_2d;
+    unbound.dimension_slot = 2;
+    graph.textures.push_back(unbound);
     auto albedo = shader("project/assets/Textures/albedo.png");
     albedo.type = arc::assets::asset_types::texture_2d;
     albedo.guid = {1, 2};
