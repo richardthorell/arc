@@ -53,7 +53,11 @@ arc_register_runtime_output(TARGET Game PROJECT_GUID "{project['guid']}"
     original = manifest.read_bytes()
     data = json.loads(original)
     assert data["targetId"] == "windows-x64-vulkan"
-    assert data["executable"]["path"] == executable.as_posix()
+    # The producer canonicalizes paths. Windows CI can supply an 8.3 TEMP
+    # alias or different casing, so compare file identity, not path spelling.
+    recorded_executable = Path(data["executable"]["path"])
+    assert recorded_executable.is_absolute()
+    assert recorded_executable.samefile(executable), (recorded_executable, executable)
     assert len(data["libraries"]) == 1
 
     def verify(expected=True):
