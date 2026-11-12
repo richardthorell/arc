@@ -15,7 +15,12 @@ import type {
 } from '../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
-import type { WorkflowRequest, WorkflowPlan } from '../common/projectWorkflowTypes';
+import type {
+  WorkflowRequest,
+  WorkflowPlan,
+  WorkflowRun,
+  WorkflowExecutionSnapshot,
+} from '../common/projectWorkflowTypes';
 import { createAssetSourceBridge } from './assetSourceBridge';
 import { readBuiltinTextFile } from './builtinTextReader';
 import {
@@ -451,6 +456,15 @@ const arcApi = {
       ipcRenderer.invoke('extensions:executeCommand', id, arguments_),
   },
   build: {
+    executeWorkflow: (request: WorkflowRequest): Promise<WorkflowRun> =>
+      ipcRenderer.invoke('workflow:execute', request),
+    workflowSnapshot: (): Promise<WorkflowExecutionSnapshot | null> => ipcRenderer.invoke('workflow:snapshot'),
+    cancelWorkflow: (requestId: string): Promise<void> => ipcRenderer.invoke('workflow:cancel', requestId),
+    onWorkflowState: (callback: (snapshot: WorkflowExecutionSnapshot) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, snapshot: WorkflowExecutionSnapshot) => callback(snapshot);
+      ipcRenderer.on('workflow:state', listener);
+      return () => ipcRenderer.removeListener('workflow:state', listener);
+    },
     plan: (request: WorkflowRequest): Promise<WorkflowPlan> => ipcRenderer.invoke('build:plan', request),
     snapshot: (): Promise<ArcBuildSnapshot | null> => ipcRenderer.invoke('build:snapshot'),
     execute: (request: ArcBuildRequest): Promise<ArcBuildSnapshot | null> =>

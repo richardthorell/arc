@@ -76,3 +76,11 @@ export type WorkflowRun = {
   artifacts: WorkflowArtifact[];
   error?: string;
 };
+
+export type WorkflowExecutionSnapshot = {
+  requestId: string | null;
+  planning: boolean;
+  run: WorkflowRun | null;
+  output: string[];
+  error: string | null;
+};

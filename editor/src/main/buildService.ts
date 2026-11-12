@@ -6,6 +6,8 @@ import type { ArcBuildDiagnostic, ArcBuildRequest, ArcBuildRun, ArcBuildSnapshot
 import type { ArcProjectCandidate } from '../common/projectTypes';
 import type { WorkflowRequest, WorkflowPlan } from '../common/projectWorkflowTypes';
 import { queryProjectWorkflowPlan } from './projectWorkflowPlanner';
+import { CookWorkflowService } from './cookWorkflowService';
+import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
 
 type HostBridge = {
   command(
@@ -18,6 +20,7 @@ const diagnosticPattern =
   /^(.*?)(?:\((\d+)(?:,(\d+))?\)|:(\d+)(?::(\d+))?):\s*(?:(fatal error|error|warning)\s*(?:[A-Z]+\d+)?:?\s*)?(.*)$/i;
 
 export class BuildService {
+  readonly workflows: CookWorkflowService;
   private snapshotValue: ArcBuildSnapshot = {
     revision: 1,
     state: 'idle',
@@ -34,6 +37,7 @@ export class BuildService {
   private sequence = 0;
   private nextRunId = 0;
   private projectEpoch = 0;
+  private legacyOperation = false;
   private cancelledProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
 
   constructor(
@@ -41,13 +45,17 @@ export class BuildService {
     private readonly projectTool: () => string,
     private readonly host: HostBridge,
     private readonly publish: (snapshot: ArcBuildSnapshot) => void,
-  ) {}
+    publishWorkflow: (snapshot: WorkflowExecutionSnapshot) => void = () => {},
+  ) {
+    this.workflows = new CookWorkflowService(activeProject, projectTool, () => this.legacyOperation, publishWorkflow);
+  }
 
   snapshot(): ArcBuildSnapshot {
     return structuredClone(this.snapshotValue);
   }
 
   watchProject(): void {
+    this.workflows.invalidate();
     ++this.projectEpoch;
     this.sourceWatcher?.close();
     this.buildWatcher?.close();
@@ -101,6 +109,18 @@ export class BuildService {
   }
 
   async execute(request: ArcBuildRequest): Promise<ArcBuildSnapshot> {
+    if (this.workflows.isBusy()) throw new Error('A content workflow is running; cancel it before building code');
+    if (request.action === 'cancel') return this.executeLegacy(request);
+    if (this.legacyOperation) throw new Error('A project build is already running');
+    this.legacyOperation = true;
+    try {
+      return await this.executeLegacy(request);
+    } finally {
+      this.legacyOperation = false;
+    }
+  }
+
+  private async executeLegacy(request: ArcBuildRequest): Promise<ArcBuildSnapshot> {
     if (request.action === 'cancel') {
       if (this.process) {
         this.cancelledProcesses.add(this.process);
@@ -156,6 +176,7 @@ export class BuildService {
   }
 
   dispose(): void {
+    this.workflows.invalidate();
     this.process?.kill();
     this.sourceWatcher?.close();
     this.buildWatcher?.close();
