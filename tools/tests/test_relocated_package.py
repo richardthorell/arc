@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from contextlib import redirect_stdout
 import hashlib
 import importlib.util
 import json
 from pathlib import Path
 from unittest import TestCase, main, mock
-import io
 import tempfile
 import zipfile
 
