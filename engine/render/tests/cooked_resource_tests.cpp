@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <string>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -129,4 +131,53 @@ TEST_CASE("V3.4c.2 rejects invalid cooked texture data")
     // Truncate inside the required mip data, not in alignment padding.
     bytes.resize(static_cast<std::size_t>(mip.offset) + mip.stored_size - 1u);
     CHECK_FALSE(decode_cooked_texture_data(bytes));
+}
+
+
+TEST_CASE("V3.4d.4 restores authored shading, blend mode, sidedness and shadow policy")
+{
+    using namespace arc::render;
+    cooked_material_metadata metadata;
+    metadata.compiled.package = {.high = 1, .low = 2};
+    metadata.canonical_document_json =
+        R"({"version":4,"domain":"surface","shadingModel":"unlit","blendMode":"blend","doubleSided":true,"castShadows":false})";
+    auto program = std::make_shared<material_runtime_program>();
+    program->passes.push_back({.pass = material_pass::forward, .permutation = shader_permutation_id{7}});
+    const auto material = make_cooked_material_descriptor(metadata, program);
+    REQUIRE(material);
+    CHECK(material.value().shading_model == material_shading_model::unlit);
+    CHECK(material.value().alpha_mode == material_alpha_mode::blend);
+    CHECK(material.value().double_sided);
+    CHECK_FALSE(material.value().cast_shadows);
+    CHECK(material.value().shader_permutation == shader_permutation_id{7});
+    CHECK(material.value().runtime_program == program);
+}
+
+TEST_CASE("V3.4d.4 refuses unknown authored material state and missing executable forward pass")
+{
+    using namespace arc::render;
+    cooked_material_metadata metadata;
+    metadata.compiled.package = {.high = 1, .low = 2};
+    auto program = std::make_shared<material_runtime_program>();
+    program->passes.push_back({.pass = material_pass::forward, .permutation = shader_permutation_id{7}});
+
+    for (const std::string_view document : {
+             R"({"version":4,"domain":"terrain","shadingModel":"standard"})",
+             R"({"version":4,"domain":"surface","shadingModel":"unknown"})",
+             R"({"version":4,"domain":"surface","blendMode":"invalid"})",
+             R"({"version":4,"domain":"surface","doubleSided":"yes"})",
+             R"({"version":3,"domain":"surface"})",
+             R"({"version":4,"domain":"surface","castShadows":2})"})
+    {
+        metadata.canonical_document_json = document;
+        CHECK_FALSE(make_cooked_material_descriptor(metadata, program));
+    }
+
+    metadata.canonical_document_json = R"({"version":4,"domain":"surface","blendMode":"masked"})";
+    auto no_forward = std::make_shared<material_runtime_program>();
+    no_forward->passes.push_back({.pass = material_pass::depth, .permutation = shader_permutation_id{8}});
+    CHECK_FALSE(make_cooked_material_descriptor(metadata, no_forward));
+    const auto accepted = make_cooked_material_descriptor(metadata, program);
+    REQUIRE(accepted);
+    CHECK(accepted.value().alpha_mode == material_alpha_mode::masked);
 }
