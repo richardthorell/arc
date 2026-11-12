@@ -151,8 +151,8 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
         resident.reserve(texture_residency_.size());
         for (const auto& texture : texture_residency_)
             resident.emplace_back(texture.asset, texture.handle);
-        auto bound = arc::render::bind_cooked_material_textures(
-            std::move(descriptor).value(), *resource.material_textures, resident);
+        auto bound = arc::render::bind_cooked_material_textures(std::move(descriptor).value(),
+                                                                *resource.material_textures, resident);
         if (!bound)
         {
             arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
