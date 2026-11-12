@@ -35,13 +35,13 @@ using cooked_mesh_residencies = std::vector<cooked_mesh_residency>;
  * Empty uploads succeed and leave existing ECS state untouched.
  */
 [[nodiscard]] std::string hydrate_cooked_scene_meshes(ecs::world& scene, render::renderer& renderer,
-                                                       std::span<const cooked_mesh_upload> uploads,
-                                                       cooked_mesh_residencies& residency);
+                                                      std::span<const cooked_mesh_upload> uploads,
+                                                      cooked_mesh_residencies& residency);
 
 /** Unbind handles before destroying the corresponding renderer generation.
  * Never clears handles which no longer match the recorded residency.
  */
 void release_cooked_scene_meshes(ecs::world& scene, render::renderer& renderer,
-                                cooked_mesh_residencies& residency) noexcept;
+                                 cooked_mesh_residencies& residency) noexcept;
 
 } // namespace arc::scene
