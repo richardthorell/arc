@@ -120,7 +120,6 @@ TEST_CASE("V3.4d.3 refuses invalid bindings without changing ECS")
     CHECK_FALSE(scene.get<arc::scene::mesh_renderer_component>(entity).material.valid());
 }
 
-
 TEST_CASE("V3.4d.6 retains authored scalar defaults from cooked shader reflection")
 {
     auto material = metadata();
