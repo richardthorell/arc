@@ -33,6 +33,28 @@ if(BUILD_TESTING)
     add_test(NAME arc-cook-material-shader-dependency COMMAND arc_cook_material_shader_dependency_tests)
     set_tests_properties(arc-cook-material-shader-dependency PROPERTIES LABELS "unit;assets;materials")
 
+    add_executable(arc-android-device-smoke-verify
+        tests/android_device_smoke_verify.cpp)
+    arc_configure_first_party_target(arc-android-device-smoke-verify)
+    target_compile_features(arc-android-device-smoke-verify PRIVATE cxx_std_20)
+    target_link_libraries(arc-android-device-smoke-verify PRIVATE
+        arc-assets arc-render arc-scene)
+    set_target_properties(arc-android-device-smoke-verify PROPERTIES FOLDER "Tools")
+
+    add_test(
+        NAME arc-android-device-smoke
+        COMMAND "${CMAKE_COMMAND}"
+            -DARC_COOK=$<TARGET_FILE:arc-cook>
+            -DARC_DEVICE_SMOKE_VERIFY=$<TARGET_FILE:arc-android-device-smoke-verify>
+            -DARC_SOURCE_ROOT=${CMAKE_SOURCE_DIR}
+            -DARC_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/android-device-smoke
+            -DARC_DEVICE_SMOKE_TIMEOUT=360
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/android_device_smoke.cmake")
+    set_tests_properties(arc-android-device-smoke PROPERTIES
+        LABELS "integration;assets;android;packaging"
+        TIMEOUT 1200
+        RESOURCE_LOCK arc_android_device_smoke)
+
     if(ARC_ENABLE_COVERAGE)
         set(ARC_COOK_COLD_TIMEOUT 360)
         set(ARC_COOK_WARM_TIMEOUT 180)
