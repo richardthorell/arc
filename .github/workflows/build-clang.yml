@@ -1,4 +1,4 @@
-name: Linux Clang
+name: 02 · Linux x64 — Clang 18
 
 on:
   push:
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   clang:
-    name: Linux Clang 18
+    name: Clang 18 · RelWithDebInfo — Native Build & Test
     runs-on: ubuntu-24.04
     env:
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-clang
@@ -122,7 +122,7 @@ jobs:
             out/build/clang-vulkan/packages/*.tar.gz
 
   address-undefined:
-    name: Address + Undefined Sanitizers
+    name: Clang 18 · Debug — ASan & UBSan
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
@@ -154,7 +154,7 @@ jobs:
         run: ctest --test-dir out/build/asan --output-on-failure
 
   thread:
-    name: Thread Sanitizer
+    name: Clang 18 · RelWithDebInfo — ThreadSanitizer
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:
@@ -184,7 +184,7 @@ jobs:
         run: ctest --test-dir out/build/tsan --output-on-failure
 
   no-coroutines:
-    name: No-Coroutines Build
+    name: Clang 18 · RelWithDebInfo — No-Coroutines Build & Test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     steps:

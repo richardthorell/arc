@@ -1,4 +1,4 @@
-name: Doxygen Docs Data
+name: 06 · Documentation — Doxygen & Pages
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build-docs-data:
-    name: Build Doxygen XML and JSON
+    name: Linux x64 · Doxygen — Generate API XML & JSON
     runs-on: ubuntu-24.04
 
     steps:
@@ -97,7 +97,7 @@ jobs:
           path: docs-site
 
   deploy-pages:
-    name: Deploy to GitHub Pages
+    name: GitHub Pages — Publish API Documentation
     needs: build-docs-data
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04

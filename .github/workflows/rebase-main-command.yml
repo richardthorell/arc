@@ -1,4 +1,4 @@
-name: PR Rebase Main
+name: 07 · Maintenance — PR Rebase
 
 on:
   issue_comment:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   rebase-main:
-    name: Rebase Main
+    name: Linux x64 · Git — Rebase PR onto Main
     if: >-
       github.event.issue.pull_request &&
       github.event.comment.body == '/rebase main' &&

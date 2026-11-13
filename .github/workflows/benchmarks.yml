@@ -1,4 +1,4 @@
-name: Benchmark Regression
+name: 05 · Performance — CPU Regression
 
 on:
   push:
@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   cpu-benchmarks:
+    name: Linux x64 · Clang 18 · RelWithDebInfo — CPU Benchmarks
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
