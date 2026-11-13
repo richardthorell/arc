@@ -162,6 +162,8 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/ARCConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/ARCConfigVersion.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ARCProjectReflection.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ARCRuntimeOutput.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ARCWriteRuntimeOutput.cmake"
     DESTINATION "lib/cmake/ARC"
     COMPONENT sdk)
 install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/tools/project_reflection.py"

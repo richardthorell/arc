@@ -24,6 +24,12 @@ if(WIN32)
     ARC_GAME_BUILD_CONFIGURATION="$<CONFIG>")
   target_link_libraries({{PROJECT_TOKEN}}Game PRIVATE
     ARC::PlatformWindowsPackagedEntry {{PROJECT_TOKEN}}Runtime ARC::Project ARC::RenderVulkan)
+  if(ARC_WORKFLOW_PROFILE)
+    arc_register_runtime_output(TARGET {{PROJECT_TOKEN}}Game
+      PROJECT_GUID "{{PROJECT_GUID}}" ENGINE_VERSION "{{ENGINE_VERSION}}"
+      PROFILE "${ARC_WORKFLOW_PROFILE}" RENDERER vulkan ROLE client
+      LIBRARIES ARC::RenderVulkan)
+  endif()
   add_custom_command(TARGET {{PROJECT_TOKEN}}Game POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "$<TARGET_FILE:ARC::RenderVulkan>"

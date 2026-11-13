@@ -1,4 +1,5 @@
 #include "package_command.h"
+#include "runtime_build_manifest.h"
 
 #include <arc/assets/cook.h>
 #include <arc/project/distribution_assembler.h>
@@ -63,15 +64,23 @@ fs::path source_path(const fs::path& root, std::string_view value)
 
 int handle_package_command(const std::vector<std::string>& args, bool json_output)
 {
-    // The source-selection arguments are intentionally explicit until build/link
-    // metadata can produce a complete native dependency closure. There is no
-    // implicit directory scan of the SDK or editor in this command.
+    // Build-produced metadata supplies exact native inputs. Manual selection
+    // remains supported, but cannot be mixed into a verified build inventory.
     const auto project_arg = option(args, "--project");
     const auto binary_arg = option(args, "--executable");
+    const auto build_manifest_arg = option(args, "--build-manifest");
+    const bool verify_build = std::find(args.begin(), args.end(), "--verify-build-only") != args.end();
     const auto config_arg = option(args, "--runtime-config");
     const auto cook_arg = option(args, "--cook-manifest");
-    if (!project_arg || !binary_arg || !config_arg || !cook_arg)
-        return fail(json_output, "arguments", "requires --project, --executable, --runtime-config and --cook-manifest");
+    if (!project_arg || (!build_manifest_arg && !binary_arg) || (!verify_build && (!config_arg || !cook_arg)))
+        return fail(json_output, "arguments",
+                    "requires --project, --build-manifest (or --executable), --runtime-config and --cook-manifest");
+    if (verify_build && !build_manifest_arg)
+        return fail(json_output, "arguments", "--verify-build-only requires --build-manifest");
+    if (build_manifest_arg &&
+        (binary_arg || option(args, "--library") || option(args, "--plugin") || option(args, "--dll-dir")))
+        return fail(json_output, "arguments",
+                    "Build manifest cannot be mixed with manual executable/dependency selection");
 
     const auto descriptor_path = fs::absolute(*project_arg).lexically_normal();
     auto descriptor = project::load_descriptor(descriptor_path);
@@ -86,6 +95,23 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
          .action = project::package_workflow_action::package,
          .role = server ? project::package_workflow_role::server : project::package_workflow_role::runtime});
     if (!workflow) return fail(json_output, workflow.error().field, workflow.error().message);
+    std::optional<runtime_build_inputs> build_inputs;
+    if (build_manifest_arg)
+    {
+        if (!option(args, "--profile"))
+            return fail(json_output, "profile", "Build manifest requires explicit --profile");
+        std::string error;
+        build_inputs =
+            load_runtime_build_inputs(source_path(context.value().root, *build_manifest_arg), workflow.value(), error);
+        if (!build_inputs) return fail(json_output, "buildManifest", error);
+    }
+    if (verify_build)
+    {
+        if (json_output)
+            std::cout << json{{"succeeded", true}, {"executable", build_inputs->executable.generic_string()}}.dump()
+                      << '\n';
+        return 0;
+    }
     if (workflow.value().platform != "windows" || workflow.value().configuration != "Shipping")
         return fail(json_output, "target", "D2.3 currently supports Windows Shipping distributions only");
 
@@ -116,7 +142,7 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
                        .cook_profile = workflow.value().profile};
     manifest.role = server ? "server" : "client";
     manifest.finalizer = workflow.value().finalizer;
-    const auto binary = source_path(context.value().root, *binary_arg);
+    const auto binary = build_inputs ? build_inputs->executable : source_path(context.value().root, *binary_arg);
     if (binary.filename().empty()) return fail(json_output, "executable", "Executable filename is empty");
     manifest.entrypoint = {.kind = "executable", .value = "bin/" + binary.filename().generic_string()};
     manifest.runtime_config = "Config/runtime.json";
@@ -164,6 +190,13 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
     std::vector<fs::path> search_directories;
     std::vector<fs::path> explicit_libraries;
     std::vector<fs::path> plugins;
+    if (build_inputs)
+    {
+        explicit_libraries = build_inputs->libraries;
+        plugins = build_inputs->plugins;
+        for (const auto& library : explicit_libraries)
+            search_directories.push_back(library.parent_path());
+    }
     for (const auto& value : options(args, "--dll-dir"))
         search_directories.push_back(source_path(context.value().root, value));
     for (const auto& value : options(args, "--library"))
