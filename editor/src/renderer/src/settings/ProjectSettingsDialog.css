@@ -13,6 +13,12 @@
 .project-settings-content output {
   overflow-wrap: anywhere;
 }
+.project-settings-readonly {
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+  color: var(--arc-text-secondary);
+}
 .project-settings-footer,
 .project-settings-collection-row {
   display: flex;

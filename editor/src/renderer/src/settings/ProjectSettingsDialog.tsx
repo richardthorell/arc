@@ -4,7 +4,9 @@ import {
   validateProjectSettingChanges,
   type ProjectSettingsSnapshot,
   type ProjectSettingsField,
+  type ProjectSettingsCategory,
 } from '../../../common/projectSettingsTypes';
+import type { UiTreeNode } from '../ui';
 import { UiButton, UiDialogSettings, UiSettingsNavigation, UiSettingsCard, UiTextInput, UiToggleButton } from '../ui';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
 import {
@@ -22,6 +24,24 @@ type State = {
   replacement?: ProjectSettingsSnapshot;
 };
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const navigationNodes = (categories: ProjectSettingsCategory[], parentId?: string): UiTreeNode[] =>
+  categories
+    .filter((entry) => entry.parentId === parentId)
+    .map((entry) => ({
+      id: entry.id,
+      label: entry.planned ? `${entry.label} (Planned)` : entry.label,
+      children: navigationNodes(categories, entry.id),
+    }));
+const withinCategory = (categories: ProjectSettingsCategory[], candidate: string, selected: string): boolean => {
+  const visited = new Set<string>();
+  let current: string | undefined = candidate;
+  while (current && !visited.has(current)) {
+    if (current === selected) return true;
+    visited.add(current);
+    current = categories.find((entry) => entry.id === current)?.parentId;
+  }
+  return false;
+};
 
 export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<State>();
@@ -177,7 +197,11 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     const update = (next: unknown) => change(field.id, next);
     switch (field.control) {
       case 'readonly':
-        return <output>{String(value ?? '')}</output>;
+        return (
+          <output className="project-settings-readonly">
+            {typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : String(value ?? '')}
+          </output>
+        );
       case 'boolean':
         return (
           <UiToggleButton
@@ -231,8 +255,10 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const fields =
     state?.snapshot.catalog.fields.filter((field) =>
       search.trim()
-        ? `${field.label} ${field.id} ${field.description ?? ''}`.toLowerCase().includes(search.toLowerCase().trim())
-        : field.category === category,
+        ? `${field.label} ${field.id} ${field.description ?? ''} ${state.snapshot.catalog.categories.find((entry) => entry.id === field.category)?.label ?? ''}`
+            .toLowerCase()
+            .includes(search.toLowerCase().trim())
+        : withinCategory(state.snapshot.catalog.categories, field.category, category),
     ) ?? [];
   return (
     <UiDialogSettings
@@ -242,7 +268,8 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
       sidebar={
         state && (
           <UiSettingsNavigation
-            nodes={state.snapshot.catalog.categories.map((entry) => ({ id: entry.id, label: entry.label }))}
+            nodes={navigationNodes(state.snapshot.catalog.categories)}
+            defaultExpandedIds={['general-root', 'platforms', 'android', 'distribution']}
             selectedId={category}
             query={search}
             onQueryChange={setSearch}
@@ -299,6 +326,19 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
           </p>
         )}
         {!state && !errors._read && <p role="status">Loading project settings…</p>}
+        {state?.snapshot.catalog.categories
+          .filter(
+            (entry) =>
+              entry.description &&
+              (search.trim()
+                ? `${entry.label} ${entry.description}`.toLowerCase().includes(search.toLowerCase().trim())
+                : entry.id === category),
+          )
+          .map((entry) => (
+            <UiSettingsCard key={entry.id} title={entry.planned ? `${entry.label} — Planned` : entry.label}>
+              <p role="status">{entry.description}</p>
+            </UiSettingsCard>
+          ))}
         {state?.snapshot.capabilitiesPending && ['targets', 'build'].includes(category) && (
           <p role="status">Loading supported target options…</p>
         )}

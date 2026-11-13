@@ -46,19 +46,122 @@ export type ProjectSettingsField = {
   control: 'text' | 'number' | 'boolean' | 'readonly' | 'scene' | 'scenes' | 'targets' | 'profiles';
   defaultValue?: unknown;
 };
+export type ProjectSettingsCategory = {
+  id: string;
+  label: string;
+  parentId?: string;
+  description?: string;
+  planned?: boolean;
+};
 export const projectSettingsCatalog = {
   version: 1,
   categories: [
-    { id: 'general', label: 'General' },
-    { id: 'startup', label: 'Startup' },
-    { id: 'targets', label: 'Platforms & Targets' },
-    { id: 'build', label: 'Build & Cook' },
-  ],
+    { id: 'general-root', label: 'General' },
+    { id: 'general', label: 'Identity & Metadata', parentId: 'general-root' },
+    { id: 'startup', label: 'Startup & Scenes', parentId: 'general-root' },
+    {
+      id: 'paths',
+      label: 'Project Paths',
+      parentId: 'general-root',
+      description: 'Read-only. Relocating established roots requires a separate migration.',
+    },
+    { id: 'platforms', label: 'Platforms' },
+    { id: 'targets', label: 'Supported Platforms', parentId: 'platforms' },
+    {
+      id: 'windows',
+      label: 'Windows',
+      parentId: 'platforms',
+      planned: true,
+      description:
+        'Window and distribution overrides need a validated project contract and finalizer integration. Existing Windows build workflows remain available.',
+    },
+    { id: 'android', label: 'Android', parentId: 'platforms' },
+    { id: 'android-application', label: 'Application', parentId: 'android' },
+    {
+      id: 'android-compatibility',
+      label: 'Compatibility & Display',
+      parentId: 'android',
+      description:
+        'SDK identity is supported. Orientation, screen behavior and cutout policies are planned; compile SDK and NDK are owned by the toolchain.',
+    },
+    {
+      id: 'android-publishing',
+      label: 'Publishing & Signing',
+      parentId: 'android',
+      planned: true,
+      description:
+        'Release signing and publishing integration is planned. Never store private keys, passwords or tokens in project settings.',
+    },
+    {
+      id: 'other-platforms',
+      label: 'Other Platforms',
+      parentId: 'platforms',
+      planned: true,
+      description:
+        'Apple, Web and console application settings require their platform backends and finalizers. Available headless targets are listed under Supported Platforms.',
+    },
+    { id: 'distribution', label: 'Build & Distribution' },
+    {
+      id: 'build-profiles',
+      label: 'Build Profiles',
+      parentId: 'distribution',
+      planned: true,
+      description:
+        'Named build profiles and inheritance are separate from existing cook profiles. This page will use the shared workflow contract, not a second configuration system.',
+    },
+    { id: 'compile', label: 'Compile & Diagnostics', parentId: 'distribution' },
+    { id: 'build', label: 'Cooking', parentId: 'distribution' },
+    { id: 'packaging', label: 'Packaging', parentId: 'distribution' },
+    {
+      id: 'rendering',
+      label: 'Rendering & Quality',
+      description:
+        'Read-only descriptor defaults. Detailed quality and device-profile authoring belongs to the existing renderer configuration; editing it here is not yet integrated.',
+    },
+    {
+      id: 'input',
+      label: 'Input',
+      description: 'The input configuration remains authoritative. Detailed mapping editor integration is planned.',
+    },
+    {
+      id: 'physics',
+      label: 'Physics',
+      planned: true,
+      description:
+        'Project-level physics authoring is planned and requires subsystem validation and runtime integration.',
+    },
+    {
+      id: 'audio',
+      label: 'Audio',
+      planned: true,
+      description:
+        'Project-level audio authoring is planned and requires subsystem validation and runtime integration.',
+    },
+    {
+      id: 'runtime',
+      label: 'Runtime',
+      planned: true,
+      description:
+        'Lifecycle, timing, diagnostics, content delivery and dedicated-server policies need shared runtime contracts before they become editable here.',
+    },
+    {
+      id: 'content',
+      label: 'Content & Assets',
+      description:
+        'Content roots are read-only. Import policy and content delivery settings require their existing authoring services.',
+    },
+    {
+      id: 'modules',
+      label: 'Plugins & Modules',
+      description: 'Read-only declarations. Dependency-aware module and plugin editing is planned.',
+    },
+  ] satisfies ProjectSettingsCategory[],
   fields: [
     { id: 'name', category: 'general', label: 'Project name', control: 'text' },
     { id: 'package.applicationName', category: 'general', label: 'Application display name', control: 'text' },
     { id: 'package.companyName', category: 'general', label: 'Company name', control: 'text', defaultValue: '' },
     { id: 'guid', category: 'general', label: 'Project GUID', control: 'readonly' },
+    { id: 'formatVersion', category: 'general', label: 'Project descriptor version', control: 'readonly' },
     { id: 'engineVersion', category: 'general', label: 'Engine version', control: 'readonly' },
     { id: 'descriptorPath', category: 'general', label: 'Descriptor location', control: 'readonly' },
     { id: 'defaultScene', category: 'startup', label: 'Editor default scene', control: 'scene', defaultValue: null },
@@ -66,7 +169,7 @@ export const projectSettingsCatalog = {
     { id: 'targetPlatforms', category: 'targets', label: 'Project targets', control: 'targets' },
     {
       id: 'platformSettings.android.applicationId',
-      category: 'targets',
+      category: 'android-application',
       label: 'Android application ID',
       description: 'For example com.company.game. Required for project APK packaging; not the ARC project GUID.',
       control: 'text',
@@ -74,28 +177,28 @@ export const projectSettingsCatalog = {
     },
     {
       id: 'platformSettings.android.versionName',
-      category: 'targets',
+      category: 'android-application',
       label: 'Android version name',
       control: 'text',
       defaultValue: '1.0',
     },
     {
       id: 'platformSettings.android.versionCode',
-      category: 'targets',
+      category: 'android-application',
       label: 'Android version code',
       control: 'number',
       defaultValue: 1,
     },
     {
       id: 'platformSettings.android.minimumSdk',
-      category: 'targets',
+      category: 'android-compatibility',
       label: 'Android minimum SDK',
       control: 'number',
       defaultValue: 26,
     },
     {
       id: 'platformSettings.android.targetSdk',
-      category: 'targets',
+      category: 'android-compatibility',
       label: 'Android target SDK',
       control: 'number',
       defaultValue: 28,
@@ -103,7 +206,7 @@ export const projectSettingsCatalog = {
     { id: 'cookProfiles', category: 'build', label: 'Cook profiles', control: 'profiles', defaultValue: [] },
     {
       id: 'package.output',
-      category: 'build',
+      category: 'packaging',
       label: 'Package output directory',
       description: 'Relative to the project, inside its Build directory.',
       control: 'text',
@@ -116,6 +219,22 @@ export const projectSettingsCatalog = {
       control: 'boolean',
       defaultValue: true,
     },
+    ...['source', 'content', 'config', 'plugins', 'build', 'intermediate', 'saved'].map((name) => ({
+      id: `paths.${name}`,
+      category: 'paths',
+      label: `${name[0].toUpperCase()}${name.slice(1)} root`,
+      control: 'readonly' as const,
+    })),
+    { id: 'assetRoots', category: 'content', label: 'Asset roots', control: 'readonly' },
+    { id: 'toolchain', category: 'compile', label: 'Toolchain policy', control: 'readonly' },
+    { id: 'buildConfigurations', category: 'compile', label: 'Build configurations', control: 'readonly' },
+    { id: 'renderer.backend', category: 'rendering', label: 'Renderer backend', control: 'readonly' },
+    { id: 'renderer.api', category: 'rendering', label: 'Graphics API requirement', control: 'readonly' },
+    { id: 'renderer.quality', category: 'rendering', label: 'Quality default', control: 'readonly' },
+    { id: 'settings.renderer', category: 'rendering', label: 'Renderer configuration', control: 'readonly' },
+    { id: 'settings.input', category: 'input', label: 'Input mapping configuration', control: 'readonly' },
+    { id: 'modules', category: 'modules', label: 'Project modules and dependencies', control: 'readonly' },
+    { id: 'plugins', category: 'modules', label: 'Declared plugins', control: 'readonly' },
   ] satisfies ProjectSettingsField[],
 };
 export const projectSettingsCapabilitiesSchema = z.object({
@@ -127,7 +246,7 @@ export const projectSettingsCapabilitiesSchema = z.object({
   androidCompileSdk: z.number(),
 });
 export type ProjectSettingsSnapshot = {
-  catalog: { version: number; categories: { id: string; label: string }[]; fields: ProjectSettingsField[] };
+  catalog: { version: number; categories: ProjectSettingsCategory[]; fields: ProjectSettingsField[] };
   projectGuid: string;
   revision: string;
   writable: boolean;

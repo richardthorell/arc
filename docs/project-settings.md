@@ -1,10 +1,23 @@
 # Project Settings
 
 Open **Project → Project Settings** to edit source-controlled project metadata.
-The four categories are General, Startup, Platforms & Targets, and Build & Cook.
+The navigation follows the ARC Project Settings specification: General (identity,
+startup and paths), Platforms, Build & Distribution, Rendering & Quality, Input,
+Runtime, Content & Assets, and Plugins & Modules. Physics, Audio and unsupported
+platform/workflow configuration are explicitly marked Planned.
 Ordinary fields are rendered from the shared versioned catalog; scene, target,
 and profile collections use reusable editors. Native project metadata supplies
 supported target and texture options.
+
+The specification is a product direction, not a claim that all listed options
+are implemented. This iteration exposes supported identity/startup/target/cook/
+packaging and Android identity fields, plus read-only paths, compiler policy,
+renderer/input configuration references and module/plugin declarations. Root
+relocation, named build-profile inheritance, window/display options, signing,
+and subsystem editors need their own native contracts and integration before
+becoming editable. Existing Android keys remain `platformSettings.android`;
+the spec's proposed `platforms.android` spelling is not a second storage model.
+Apply/Cancel and the existing Android defaults remain unchanged.
 
 Changes stay in the dialog until **Apply**. Cancel/close asks before discarding a
 draft. Apply validates the complete candidate descriptor using `arc-project`,

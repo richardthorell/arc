@@ -76,7 +76,8 @@ it('keeps missing scene GUID bindings visible and unchanged when editing another
 it('renders catalog categories and applies only edited fields with captured authority', async () => {
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   const name = await screen.findByRole('textbox', { name: 'Project name' });
-  expect(screen.getAllByRole('treeitem')).toHaveLength(4);
+  expect(screen.getByRole('treeitem', { name: 'Identity & Metadata' })).toBeInTheDocument();
+  expect(screen.getByRole('treeitem', { name: 'Android' })).toBeInTheDocument();
   fireEvent.change(name, { target: { value: 'Updated' } });
   expect(apply).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
@@ -110,6 +111,30 @@ it('renders an additional catalog field without dialog-specific code and searche
   expect(await screen.findByRole('textbox', { name: 'Additional note' })).toHaveValue('visible');
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Additional' } });
   expect(screen.queryByRole('textbox', { name: 'Project name' })).not.toBeInTheDocument();
+});
+
+it('separates Android settings and exposes planned pages without editable placeholder settings', async () => {
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  await screen.findByRole('textbox', { name: 'Project name' });
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Application' }));
+  expect(screen.getByRole('textbox', { name: 'Android application ID' })).toBeInTheDocument();
+  expect(screen.queryByRole('spinbutton', { name: 'Android minimum SDK' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Compatibility & Display' }));
+  expect(screen.getByRole('spinbutton', { name: 'Android minimum SDK' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Physics (Planned)' }));
+  expect(screen.getByText(/Project-level physics authoring is planned/)).toBeInTheDocument();
+  expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('displays existing project paths read-only without introducing relocation writes', async () => {
+  snapshot.values['paths.content'] = 'GameContent';
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  await screen.findByRole('textbox', { name: 'Project name' });
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Project Paths' }));
+  expect(screen.getByText('GameContent')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
 });
 it('confirms discarding drafts and does not save them on close', async () => {
   const close = vi.fn();
@@ -152,12 +177,12 @@ it('retains drafts and shows native validation errors', async () => {
 it('edits targets and profiles without implicitly deleting disabled-target profiles', async () => {
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   await screen.findByRole('textbox', { name: 'Project name' });
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Build & Cook' }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Cooking' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add profile' }));
   expect(screen.getByRole('textbox', { name: 'Profile 1 ID' })).toHaveValue('profile');
   fireEvent.click(screen.getByRole('button', { name: 'Duplicate profile' }));
   expect(screen.getByRole('textbox', { name: 'Profile 2 ID' })).toHaveValue('profile-copy');
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Platforms & Targets' }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Supported Platforms' }));
   fireEvent.click(screen.getByRole('switch', { name: 'windows-x64-vulkan' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(apply).toHaveBeenCalled());
