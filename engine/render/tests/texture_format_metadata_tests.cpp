@@ -132,7 +132,6 @@ TEST_CASE("virtual textures reject block sizes that do not align to the current 
     CHECK(encoded.error().code == texture_artifact_error_code::unsupported_texture);
 }
 
-
 namespace
 {
 template <class T> void append_legacy(std::vector<std::byte>& bytes, const T& value)
@@ -147,7 +146,8 @@ std::vector<std::byte> legacy_texture_fixture()
     std::vector<std::byte> result;
     constexpr std::string_view magic = "ARC_TEXTURE_1";
     append_legacy(result, static_cast<std::uint64_t>(magic.size()));
-    for (const char letter : magic) result.push_back(static_cast<std::byte>(letter));
+    for (const char letter : magic)
+        result.push_back(static_cast<std::byte>(letter));
     append_legacy(result, std::uint32_t{2}); // width
     append_legacy(result, std::uint32_t{2}); // height
     append_legacy(result, std::uint32_t{1}); // depth
@@ -157,12 +157,13 @@ std::vector<std::byte> legacy_texture_fixture()
     append_legacy(result, texture_format::rgba8_srgb);
     append_legacy(result, texture_color_space::srgb);
     append_legacy(result, texture_semantic::base_color);
-    append_legacy(result, std::uint32_t{1}); // mip table entries
-    append_legacy(result, std::uint32_t{2}); // mip width
-    append_legacy(result, std::uint32_t{2}); // mip height
-    append_legacy(result, std::uint64_t{0}); // mip offset
-    append_legacy(result, std::uint64_t{16}); // mip size
-    append_legacy(result, std::uint64_t{16}); // payload size
+    // Exactly one mip, starting at offset zero, with sixteen bytes of RGBA8 pixels.
+    append_legacy(result, std::uint32_t{1});
+    append_legacy(result, std::uint32_t{2});
+    append_legacy(result, std::uint32_t{2});
+    append_legacy(result, std::uint64_t{0});
+    append_legacy(result, std::uint64_t{16});
+    append_legacy(result, std::uint64_t{16});
     result.insert(result.end(), 16, std::byte{0x7f});
     return result;
 }
@@ -194,15 +195,14 @@ TEST_CASE("Android runtime fails closed on malformed legacy texture mip and payl
     CHECK_FALSE(arc::render::decode_cooked_texture_data(extra));
 
     auto bad_mip = bytes;
-    constexpr std::size_t header_and_mip_offset = sizeof(std::uint64_t) + 13 + 5 * sizeof(std::uint32_t) +
-                                                   4 * sizeof(std::uint8_t) + sizeof(std::uint32_t) +
-                                                   2 * sizeof(std::uint32_t);
+    constexpr std::size_t header_size = sizeof(std::uint64_t) + 13 + 5 * sizeof(std::uint32_t);
+    constexpr std::size_t mip_table_header_size = 4 * sizeof(std::uint8_t) + sizeof(std::uint32_t);
+    constexpr std::size_t header_and_mip_offset = header_size + mip_table_header_size + 2 * sizeof(std::uint32_t);
     bad_mip[header_and_mip_offset] = std::byte{1}; // mip offset must be zero
     CHECK_FALSE(arc::render::decode_cooked_texture_data(bad_mip));
 
     auto wrong_format = bytes;
-    constexpr std::size_t format_offset = sizeof(std::uint64_t) + 13 + 5 * sizeof(std::uint32_t) +
-                                          sizeof(std::uint8_t);
+    constexpr std::size_t format_offset = header_size + sizeof(std::uint8_t);
     wrong_format[format_offset] = std::byte{0xff};
     CHECK_FALSE(arc::render::decode_cooked_texture_data(wrong_format));
 }
