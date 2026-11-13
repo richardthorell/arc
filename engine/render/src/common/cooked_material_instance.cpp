@@ -86,10 +86,11 @@ core::result<material_parameter_value, std::string> typed_value(const json& valu
     if (type == shader_parameter_type::int32 && value.is_number_integer())
     {
         const auto number = value.get<std::int64_t>();
-        const bool in_range = number >= std::numeric_limits<std::int32_t>::min() &&
-                              number <= std::numeric_limits<std::int32_t>::max();
-        if (in_range)
-            return result::success(material_parameter_value{static_cast<std::int32_t>(number)});
+        if (number < std::numeric_limits<std::int32_t>::min())
+            return result::failure("Material Instance integer override is below int32 range");
+        if (number > std::numeric_limits<std::int32_t>::max())
+            return result::failure("Material Instance integer override exceeds int32 range");
+        return result::success(material_parameter_value{static_cast<std::int32_t>(number)});
     }
     if (type == shader_parameter_type::uint32 && value.is_number_unsigned())
     {
