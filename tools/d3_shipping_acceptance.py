@@ -17,6 +17,7 @@ import sys
 import traceback
 
 from verify_relocated_package import SmokeFailure, smoke, verify_distribution
+from d3_shipping_negative import run as run_negative_acceptance
 
 
 def command(label: str, argv: list[str], cwd: Path, artifacts: Path) -> None:
@@ -137,6 +138,9 @@ def run(args: argparse.Namespace) -> None:
           expected_output="ARC packaged client bootstrap smoke passed")
     smoke(None, archive, args.timeout, ["--ci-smoke"], artifacts / "archive",
           expected_output="ARC packaged client bootstrap smoke passed")
+    # D3.3: mutate isolated copies of this actual production distribution and
+    # prove inventory and runtime boot fail closed with actionable diagnostics.
+    run_negative_acceptance(release, artifacts / "negative", timeout=args.timeout)
     shutil.copyfile(release / "arc-distribution.json", artifacts / "arc-distribution.json")
     (artifacts / "result.json").write_text(json.dumps({
         "status": "passed", "role": "client", "target": staged["target"],
