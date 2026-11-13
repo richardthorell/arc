@@ -54,56 +54,9 @@
       }
     },
     {
-      "id": "b80a0000-0000-4000-8000-000000000003",
-      "parent": null,
-      "order": 1,
-      "components": {
-        "Name": {
-          "typeId": "a7c00000000000010000000000000001",
-          "version": 1,
-          "value": "Android Device Smoke Sun"
-        },
-        "Active": {
-          "typeId": "a7c00000000000010000000000000004",
-          "version": 1,
-          "active": true
-        },
-        "Transform": {
-          "typeId": "a7c00000000000010000000000000002",
-          "version": 1,
-          "position": [
-            0.0,
-            12.0,
-            0.0
-          ],
-          "rotation": [
-            -0.258819,
-            -0.22,
-            0.061,
-            0.938
-          ],
-          "scale": [
-            1.0,
-            1.0,
-            1.0
-          ]
-        },
-        "Tag": {
-          "typeId": "a7c00000000000010000000000000003",
-          "version": 1,
-          "value": "Baseline / Fixed Lighting"
-        },
-        "DirectionalLight": {
-          "typeId": "a7c0000000000001000000000000000e",
-          "version": 3,
-          "enabled": true
-        }
-      }
-    },
-    {
       "id": "b80a0000-0000-4000-8000-000000000004",
       "parent": null,
-      "order": 4,
+      "order": 1,
       "components": {
         "Name": {
           "typeId": "a7c00000000000010000000000000001",
