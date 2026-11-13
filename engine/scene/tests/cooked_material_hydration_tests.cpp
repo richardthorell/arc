@@ -187,7 +187,6 @@ TEST_CASE("V3.4d.6 rejects incompatible parameter blocks and defaults before mat
     CHECK_FALSE(arc::render::realize_cooked_material_program(material, shaders));
 }
 
-
 TEST_CASE("V3.4d.7 keeps distinct instance handles while accepting shared parent shader packages")
 {
     arc::ecs::world scene;
@@ -204,14 +203,18 @@ TEST_CASE("V3.4d.7 keeps distinct instance handles while accepting shared parent
     REQUIRE(runtime);
     const auto shared_parent = descriptor(runtime.value());
     std::vector<arc::scene::cooked_material_upload> uploads;
-    uploads.push_back({.entity = {11, 12},
-                       .material = {101, 102},
-                       .program_asset = {9, 10},
-                       .descriptor = shared_parent});
-    uploads.push_back({.entity = {13, 14},
-                       .material = {103, 104},
-                       .program_asset = {9, 10},
-                       .descriptor = shared_parent});
+    arc::scene::cooked_material_upload first_upload;
+    first_upload.entity = {11, 12};
+    first_upload.material = {101, 102};
+    first_upload.program_asset = {9, 10};
+    first_upload.descriptor = shared_parent;
+    uploads.push_back(first_upload);
+    arc::scene::cooked_material_upload second_upload;
+    second_upload.entity = {13, 14};
+    second_upload.material = {103, 104};
+    second_upload.program_asset = {9, 10};
+    second_upload.descriptor = shared_parent;
+    uploads.push_back(second_upload);
 
     arc::scene::cooked_material_residencies residency;
     CHECK(arc::scene::hydrate_cooked_scene_materials(scene, renderer, uploads, residency).empty());
