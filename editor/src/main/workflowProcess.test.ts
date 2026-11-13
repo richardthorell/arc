@@ -27,6 +27,17 @@ describe('workflow subprocess', () => {
   it('bounds command output', async () => {
     await expect(run('process.stdout.write("x".repeat(2 * 1024 * 1024))')).rejects.toThrow('output exceeded');
   });
+  it('keeps only a bounded tail of verbose compiler logs without failing a successful build', async () => {
+    const output = await runWorkflowProcess({
+      executable: process.execPath,
+      args: ['-e', 'process.stdout.write("x".repeat(2 * 1024 * 1024))'],
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      outputMode: 'log',
+      timeoutMs: 5000,
+    });
+    expect(output).toHaveLength(1024 * 1024);
+  });
   it('cancels a running owned process', async () => {
     const controller = new AbortController();
     const pending = runWorkflowProcess({

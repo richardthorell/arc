@@ -19,6 +19,7 @@ import { AndroidTargetService } from './androidTargetService';
 import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
+import { resolveWindowsBuildEnvironment } from './windowsBuildWorkflow';
 import type { ArcBuildRequest } from '../common/buildTypes';
 import type { WorkflowRequest } from '../common/projectWorkflowTypes';
 import type { ArcCloneProjectRequest, ArcCreateProjectRequest } from '../common/projectTypes';
@@ -1136,6 +1137,7 @@ void app.whenReady().then(async () => {
     hostClient,
     (snapshot) => sendToActiveRenderer('build:state', snapshot),
     (snapshot) => sendToActiveRenderer('workflow:state', snapshot),
+    () => resolveWindowsBuildEnvironment(projectService?.projectTool() ?? '', settingsService?.snapshot() ?? null),
   );
   settingsService = new SettingsService(
     path.join(app.getPath('userData'), 'editor-settings.v1.json'),

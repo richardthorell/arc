@@ -89,7 +89,7 @@ describe('cook workflow service authority', () => {
   );
   it('blocks unsupported actions and read-only projects before planning', async () => {
     const { project, service } = setup();
-    await expect(service.execute({ ...request, action: 'build' })).rejects.toThrow('not ready');
+    await expect(service.execute({ ...request, action: 'play' })).rejects.toThrow('not ready');
     project.writable = false;
     await expect(service.execute(request)).rejects.toThrow('writable');
     expect(queryProjectWorkflowPlan).not.toHaveBeenCalled();

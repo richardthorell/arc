@@ -162,17 +162,45 @@ rejected. `--runtime-config` and `--cook-manifest` remain explicit. Existing nat
 PE import resolution completes the dependency closure from the selected inputs;
 no newest-file or SDK-directory guessing is introduced.
 
-This contract does **not** yet drive CMake from the editor workflow runner or
-produce runtime configuration. Windows Shipping remains the only executable
-package finalizer. Android packaging/boot remains independently owned; the new
-manifest does not advertise Android runnable-output support.
+### Windows Shipping execution (implemented)
+
+The existing main-process `workflow:execute` endpoint accepts saved-content
+`build` requests as well as `cook`. Build consumes the native plan's validate →
+configure → compile → cook → package stages. It never launches a runtime or
+reloads an editor module. The toolbar remains unchanged in this slice.
+
+Runtime Build requires a Windows host, a Windows Shipping profile, configured
+CMake/Visual Studio, and an installed ARC SDK containing the selected project
+tool and cooker. A source-tree CLI is deliberately not treated as an installed
+SDK. Visual Studio selection is resolved to its matching generator and instance,
+not whichever installation happens to be newest. The native build metadata
+verifier rejects incompatible compiled target/profile/configuration identities.
+
+Code builds use a separate profile/environment-keyed `RuntimeCode` directory
+under the configured project build root. CMake builds only `arc-runtime-output`;
+up-to-date compilation is reused. MSVC runtime DLLs now come from CMake's active
+compiler redistributable inventory and enter the hashed metadata. The packager
+also follows imports of explicitly loaded libraries such as the Vulkan backend.
+The existing installed-SDK Windows distribution CI smoke exercises this metadata
+path, including relocated directory/ZIP bootstrap and negative package tests.
+
+Cooking produces a private generation, verifies it, and supplies its exact
+manifest to native packaging together with the verified build manifest and the
+project's configured renderer settings file. This initial Windows path requires
+one cooked texture variant. Packaging produces another private generation; only
+successful final publication atomically replaces `current-workflow.json` under
+the planned package output. Failure, cancellation, stale authority, and invalid
+output leave the previous successful record intact. Failed private generations
+remain for diagnostics. Intermediate cooks are not separately published.
+
+Other targets, development packages, code-only UI, cleanup/rebuild UI and external
+Play remain follow-ups. Missing deployment tools do not block Cook Only. Android
+packaging/boot remains independently owned and is not enabled by this executor.
 
 ### Next slices
 
-1. Complete executable adapters and exact build artifact/dependency manifests.
-   Integrate existing native packaging and the parallel Android APK work; do not
-   scan directories for likely executables. Extend the process runner and tests to
-   compilation/packaging, incremental build reuse and active-session input leases.
+1. Extend executable adapters beyond Windows Shipping and integrate the parallel
+   Android APK work. Add active-session input leases when external Play exists.
 2. Wire narrow workflow IPC, capabilities, profile selection and build dashboard.
    Primary Build produces runnable output; retain separately named Build Editor
    Code for module reload. Offer cook-only and code-only, confirmed scoped clean

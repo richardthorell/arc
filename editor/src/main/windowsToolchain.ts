@@ -194,6 +194,36 @@ const findVswhere = (environment: Environment): string | null => {
   return null;
 };
 
+/** Select the generator for the configured installation, not the newest installed IDE. */
+export function resolveVisualStudioGenerator(root: string, environment: Environment = process.env): string | undefined {
+  const vswhere = findVswhere(environment);
+  if (!vswhere) return undefined;
+  try {
+    const entries: Array<{
+      installationPath: string;
+      installationVersion: string;
+      catalog?: { productLineVersion?: string };
+    }> = JSON.parse(
+      execFileSync(vswhere, ['-products', '*', '-format', 'json', '-utf8'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 5_000,
+        maxBuffer: 1024 * 1024,
+      }),
+    );
+    const entry = entries.find(
+      (value) => path.resolve(value.installationPath).toLowerCase() === path.resolve(root).toLowerCase(),
+    );
+    const major = Number(entry?.installationVersion.split('.')[0]);
+    const year = entry?.catalog?.productLineVersion ?? '';
+    return Number.isInteger(major) && major >= 17 && /^20\d\d$/u.test(year)
+      ? `Visual Studio ${major} ${year}`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const visualStudioFromVswhere = (environment: Environment): string | null => {
   const vswhere = findVswhere(environment);
   if (!vswhere) return null;
