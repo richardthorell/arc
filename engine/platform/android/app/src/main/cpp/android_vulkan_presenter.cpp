@@ -26,6 +26,7 @@ void android_vulkan_presenter::shutdown() noexcept
     material_residency_.clear();
     texture_residency_.clear();
     hydrated_generation_ = 0;
+    first_scene_present_logged_ = false;
     renderer_.reset();
     generation_ = 0;
     submitted_width_ = 0;
@@ -278,7 +279,16 @@ void android_vulkan_presenter::present(const lifecycle_state& lifecycle, android
     }
 
     const auto result = renderer_->backend()->present_surface_frame(state.width, state.height);
-    if (result || result.error().code == arc::render::surface_frame_error_code::out_of_date) return;
+    if (result)
+    {
+        if (submitted_scene && !first_scene_present_logged_)
+        {
+            first_scene_present_logged_ = true;
+            arc::diagnostics::info("Android", "DEVICE_SMOKE_FIRST_SCENE_FRAME_PRESENTED");
+        }
+        return;
+    }
+    if (result.error().code == arc::render::surface_frame_error_code::out_of_date) return;
     arc::diagnostics::error("Android", result.error().message);
     failed_generation_ = generation_;
     shutdown();
