@@ -81,7 +81,7 @@ jobs:
           }
 
   distribution:
-    name: Content / SDK / Shipping Validation
+    name: Distribution
     uses: ./.github/workflows/windows-distribution.yml
     with:
       run_cooker: ${{ inputs.run_cooker == true }}

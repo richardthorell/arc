@@ -1,4 +1,4 @@
-name: 03 · Windows x64 — Content, SDK & Distribution
+name: 02 · Windows x64 — Content, SDK & Distribution
 
 # Called by the Windows MSVC orchestrator. This remains part of the same
 # Actions run so the Shipping stage can download the exact cook artifact and

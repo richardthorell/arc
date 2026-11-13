@@ -8,7 +8,7 @@ GitHub Actions is organized by **intent** at workflow level and by
 | Pull Request | Change-based validation and the stable `PR Gate` required check |
 | 01 · Quality — Editor & Native | Independent dependency, C++ format, C++ analysis, editor static, and editor test jobs |
 | 02 · Windows x64 — MSVC (VS2022) | Native tests, Electron editor package, and artifact publication orchestrator |
-| 03 · Windows x64 — Content, SDK & Distribution | Reusable asset cook, D3 Shipping boot acceptance, SDK matrix and runtime package |
+| 02 · Windows x64 — Content, SDK & Distribution | Reusable asset cook, D3 Shipping boot acceptance, SDK matrix and runtime package |
 | 02 · Linux x64 — Clang 18 / GCC 14 | Native compiler matrix sharing CMake CI presets; Clang extended validation |
 | 03 · Android arm64 — NDK r30 / Clang | Debug APK build |
 | 04 · Coverage — Linux x64 / Clang 18 | LLVM test coverage |
