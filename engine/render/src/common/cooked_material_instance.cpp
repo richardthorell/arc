@@ -47,7 +47,10 @@ public:
         return true;
     }
 
-    [[nodiscard]] bool complete() const noexcept { return offset_ == bytes_.size(); }
+    [[nodiscard]] bool complete() const noexcept
+    {
+        return offset_ == bytes_.size();
+    }
 
 private:
     std::span<const std::byte> bytes_;
@@ -96,10 +99,10 @@ core::result<material_parameter_value, std::string> typed_value(const json& valu
     if (type == shader_parameter_type::float32 && finite_number(value))
         return result::success(material_parameter_value{value.get<float>()});
 
-    const auto vector_size = type == shader_parameter_type::float2 ? 2u
-                             : type == shader_parameter_type::float3 ? 3u
-                             : type == shader_parameter_type::float4 ? 4u
-                                                                      : 0u;
+    std::size_t vector_size{};
+    if (type == shader_parameter_type::float2) vector_size = 2;
+    if (type == shader_parameter_type::float3) vector_size = 3;
+    if (type == shader_parameter_type::float4) vector_size = 4;
     if (vector_size > 0 && value.is_array() && value.size() == vector_size)
     {
         for (const auto& component : value)
@@ -107,17 +110,20 @@ core::result<material_parameter_value, std::string> typed_value(const json& valu
         if (vector_size == 2)
         {
             math::vector2f vector{};
-            for (std::size_t i = 0; i < 2; ++i) vector[i] = value[i].get<float>();
+            for (std::size_t i = 0; i < 2; ++i)
+                vector[i] = value[i].get<float>();
             return result::success(material_parameter_value{vector});
         }
         if (vector_size == 3)
         {
             math::vector3f vector{};
-            for (std::size_t i = 0; i < 3; ++i) vector[i] = value[i].get<float>();
+            for (std::size_t i = 0; i < 3; ++i)
+                vector[i] = value[i].get<float>();
             return result::success(material_parameter_value{vector});
         }
         math::vector4f vector{};
-        for (std::size_t i = 0; i < 4; ++i) vector[i] = value[i].get<float>();
+        for (std::size_t i = 0; i < 4; ++i)
+            vector[i] = value[i].get<float>();
         return result::success(material_parameter_value{vector});
     }
     return result::failure("Unsupported or incompatible cooked Material Instance parameter value");
@@ -151,10 +157,12 @@ decode_cooked_material_instance_values(std::span<const std::byte> bytes)
         return result::failure("Material Instance embedded parent program identity mismatch");
 
     auto authored = json::parse(document, nullptr, false);
-    if (authored.is_discarded() || !authored.is_object() || !authored.contains("version") ||
-        !authored["version"].is_number_integer() || authored["version"] != 1 ||
-        !authored.contains("parent") || !authored["parent"].is_object() ||
-        !authored["parent"].contains("guid") || !authored["parent"]["guid"].is_string())
+    const bool version_ok = authored.is_object() && authored.contains("version") &&
+                            authored["version"].is_number_integer() && authored["version"] == 1;
+    const bool parent_ok = authored.is_object() && authored.contains("parent") &&
+                           authored["parent"].is_object() && authored["parent"].contains("guid") &&
+                           authored["parent"]["guid"].is_string();
+    if (!version_ok || !parent_ok)
         return result::failure("Material Instance authoring document is invalid");
     const auto authored_parent = assets::parse_asset_guid(authored["parent"]["guid"].get<std::string>());
     if (!authored_parent || *authored_parent != *parent)
