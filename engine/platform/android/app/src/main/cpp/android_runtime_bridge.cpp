@@ -75,8 +75,8 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
             }
             else
             {
-                auto material_bytes = catalog.read_active_artifact(
-                    material_guid, assets::asset_types::material, assets::artifact_schemas::material);
+                auto material_bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
+                                                                   assets::artifact_schemas::material);
                 if (!material_bytes)
                     return decoded_result::failure("Material " + assets::to_string(material_guid) + ": " +
                                                    material_bytes.error().message);
@@ -92,8 +92,8 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
             // Parent-reuse instances reference their parent's cooked shader and
             // texture artifacts. The instance GUID remains the renderer's
             // deduplication identity, so distinct value sets never alias.
-            auto manifest_bytes = catalog.read_active_artifact(
-                shader_guid, assets::asset_types::material, assets::artifact_schemas::material_textures);
+            auto manifest_bytes = catalog.read_active_artifact(shader_guid, assets::asset_types::material,
+                                                               assets::artifact_schemas::material_textures);
             if (!manifest_bytes)
                 return decoded_result::failure("Material texture manifest " + assets::to_string(shader_guid) + ": " +
                                                manifest_bytes.error().message);
@@ -107,8 +107,7 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
 
             // Material pass shader artifacts are additional representations of
             // the same authored material GUID, not separate shader asset GUIDs.
-            const auto material_record =
-                catalog.catalog().database().query(shader_guid, assets::asset_types::material);
+            const auto material_record = catalog.catalog().database().query(shader_guid, assets::asset_types::material);
             if (!material_record) return decoded_result::failure("Cooked material is missing from the active catalog");
             for (const auto& representation : material_record->representations)
             {
