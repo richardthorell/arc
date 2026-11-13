@@ -66,11 +66,19 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
          .dependencies = {{.kind = arc::project::dependency_kind::engine, .id = "ARC.Runtime", .version = "0.1.0"}}});
     descriptor.target_platforms.push_back({.id = "windows-x64-vulkan"});
     descriptor.cook_profiles.push_back({.id = "windows-x64-vulkan", .platform = "windows"});
+    descriptor.android = arc::project::android_project_settings{
+        .application_id = "com.example.game", .version_name = "2.0", .version_code = 7};
 
     REQUIRE(arc::project::save_descriptor(path, descriptor));
     const auto loaded = arc::project::load_descriptor(path);
     REQUIRE(loaded);
     CHECK(loaded.value().name == "Game");
+    REQUIRE(loaded.value().android);
+    CHECK(loaded.value().android->application_id == "com.example.game");
+    CHECK(loaded.value().android->version_name == "2.0");
+    CHECK(loaded.value().android->version_code == 7);
+    CHECK(loaded.value().android->minimum_sdk == 26);
+    CHECK(loaded.value().android->target_sdk == 28);
     CHECK(loaded.value().modules.front().target == "GameRuntime");
     REQUIRE(loaded.value().cook_profiles.size() == 1);
     CHECK(loaded.value().cook_profiles.front().textures.outputs == std::vector<std::string>{"bc"});

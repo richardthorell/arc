@@ -1,5 +1,10 @@
 import { contextBridge, ipcRenderer, sharedTexture, webUtils } from 'electron';
 import type {
+  ProjectSettingsSnapshot,
+  ProjectSettingsApplyRequest,
+  ProjectSettingsApplyResult,
+} from '../common/projectSettingsTypes';
+import type {
   ArcCloneProjectRequest,
   ArcCreateProjectRequest,
   ArcProjectBrowserSnapshot,
@@ -422,6 +427,18 @@ const arcApi = {
     ): Promise<ExternalModelImportResult> => importDroppedModel(file, destinationFolder, selectedDependencies),
   },
   settings: {
+    project: {
+      describe: (): Promise<ProjectSettingsSnapshot['catalog']> => ipcRenderer.invoke('projectSettings:describe'),
+      read: (): Promise<ProjectSettingsSnapshot> => ipcRenderer.invoke('projectSettings:read'),
+      apply: (request: ProjectSettingsApplyRequest): Promise<ProjectSettingsApplyResult> =>
+        ipcRenderer.invoke('projectSettings:apply', request),
+      onChanged: (callback: () => void): (() => void) => {
+        const listener = () => callback();
+        ipcRenderer.on('projectSettings:changed', listener);
+        return () => ipcRenderer.removeListener('projectSettings:changed', listener);
+      },
+    },
+    // Local editor preferences remain separate from source-controlled project settings.
     snapshot: (): Promise<EditorSettingsSnapshot | null> => ipcRenderer.invoke('settings:snapshot'),
     openAndroidSdkManager: (): Promise<{ succeeded: boolean; error: string }> =>
       ipcRenderer.invoke('settings:openAndroidSdkManager'),

@@ -48,11 +48,12 @@ export class BuildService {
     private readonly publish: (snapshot: ArcBuildSnapshot) => void,
     publishWorkflow: (snapshot: WorkflowExecutionSnapshot) => void = () => {},
     buildEnvironment: () => WindowsBuildEnvironment | undefined = () => undefined,
+    private readonly settingsBusy: () => boolean = () => false,
   ) {
     this.workflows = new CookWorkflowService(
       activeProject,
       projectTool,
-      () => this.legacyOperation,
+      () => this.legacyOperation || this.settingsBusy(),
       publishWorkflow,
       undefined,
       buildEnvironment,
@@ -61,6 +62,10 @@ export class BuildService {
 
   snapshot(): ArcBuildSnapshot {
     return structuredClone(this.snapshotValue);
+  }
+
+  isBusy(): boolean {
+    return this.legacyOperation || this.workflows.isBusy();
   }
 
   watchProject(): void {
@@ -118,6 +123,7 @@ export class BuildService {
   }
 
   async execute(request: ArcBuildRequest): Promise<ArcBuildSnapshot> {
+    if (this.settingsBusy()) throw new Error('Project Settings are being applied');
     if (this.workflows.isBusy()) throw new Error('A content workflow is running; cancel it before building code');
     if (request.action === 'cancel') return this.executeLegacy(request);
     if (this.legacyOperation) throw new Error('A project build is already running');

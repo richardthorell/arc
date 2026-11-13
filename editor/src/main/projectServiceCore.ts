@@ -239,6 +239,19 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
       output: stringValue(packageSettings.output, 'Build/Packages'),
       regionChunks: packageSettings.regionChunks !== false,
     },
+    ...(objectValue(source.platformSettings).android
+      ? {
+          platformSettings: {
+            android: {
+              applicationId: stringValue(objectValue(objectValue(source.platformSettings).android).applicationId),
+              versionName: stringValue(objectValue(objectValue(source.platformSettings).android).versionName, '1.0'),
+              versionCode: Number(objectValue(objectValue(source.platformSettings).android).versionCode ?? 1),
+              minimumSdk: Number(objectValue(objectValue(source.platformSettings).android).minimumSdk ?? 26),
+              targetSdk: Number(objectValue(objectValue(source.platformSettings).android).targetSdk ?? 28),
+            },
+          },
+        }
+      : {}),
     settings: {
       editor: normalizeProjectRelativePath(stringValue(settings.editor, 'Config/Editor.json'), 'settings.editor'),
       renderer: normalizeProjectRelativePath(
@@ -329,6 +342,12 @@ export class ProjectService {
 
   active(): ArcProjectCandidate | null {
     return this.activeProject;
+  }
+
+  /** Metadata-only refresh: never reopens the native world or saves documents. */
+  refreshSettings(raw: Record<string, unknown>, expected: ArcProjectCandidate): void {
+    if (this.activeProject !== expected) throw new Error('Project changed before settings refresh');
+    this.activeProject = { ...expected, descriptor: parseDescriptor(raw) };
   }
 
   projectTool(): string {

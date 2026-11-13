@@ -14,6 +14,7 @@
   "defaultScene": null,
   "startupScenes": [],
   "targetPlatforms": [{"id":"windows-x64-vulkan","enabled":true},{"id":"android-arm64-vulkan","enabled":true}],
+  "platformSettings": {"android":{"applicationId":"","versionName":"1.0","versionCode":1,"minimumSdk":26,"targetSdk":28}},
   "toolchain": {"compiler":"auto","minimumVersion":"","generator":"auto","architecture":"x86_64","cppStandard":20},
   "buildConfigurations": ["Debug","RelWithDebInfo","Shipping"],
   "renderer": {"backend":"vulkan","api":"1.2","quality":"standard"},
