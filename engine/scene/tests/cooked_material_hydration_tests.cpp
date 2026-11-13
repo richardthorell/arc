@@ -186,3 +186,43 @@ TEST_CASE("V3.4d.6 rejects incompatible parameter blocks and defaults before mat
     shaders[1].package.compiled.reflection.parameters.front().default_value.push_back(std::byte{0});
     CHECK_FALSE(arc::render::realize_cooked_material_program(material, shaders));
 }
+
+
+TEST_CASE("V3.4d.7 keeps distinct instance handles while accepting shared parent shader packages")
+{
+    arc::ecs::world scene;
+    arc::render::renderer renderer;
+    const auto first = scene.create();
+    const auto second = scene.create();
+    scene.emplace<arc::ecs::persistent_id_component>(first, arc::ecs::entity_guid{11, 12});
+    scene.emplace<arc::ecs::persistent_id_component>(second, arc::ecs::entity_guid{13, 14});
+    scene.emplace<arc::scene::mesh_renderer_component>(first);
+    scene.emplace<arc::scene::mesh_renderer_component>(second);
+
+    const std::array shaders{shader()};
+    const auto runtime = arc::render::realize_cooked_material_program(metadata(), shaders);
+    REQUIRE(runtime);
+    const auto shared_parent = descriptor(runtime.value());
+    std::vector<arc::scene::cooked_material_upload> uploads;
+    uploads.push_back({.entity = {11, 12},
+                       .material = {101, 102},
+                       .program_asset = {9, 10},
+                       .descriptor = shared_parent});
+    uploads.push_back({.entity = {13, 14},
+                       .material = {103, 104},
+                       .program_asset = {9, 10},
+                       .descriptor = shared_parent});
+
+    arc::scene::cooked_material_residencies residency;
+    CHECK(arc::scene::hydrate_cooked_scene_materials(scene, renderer, uploads, residency).empty());
+    REQUIRE(residency.size() == 2);
+    CHECK(residency[0].handle != residency[1].handle);
+    CHECK(renderer.material_alive(residency[0].handle));
+    CHECK(renderer.material_alive(residency[1].handle));
+    arc::scene::unbind_cooked_scene_materials(scene, residency);
+
+    uploads[1].program_asset = {5, 6};
+    CHECK_FALSE(arc::scene::hydrate_cooked_scene_materials(scene, renderer, uploads, residency).empty());
+    CHECK(residency.empty());
+    CHECK_FALSE(scene.get<arc::scene::mesh_renderer_component>(first).material.valid());
+}
