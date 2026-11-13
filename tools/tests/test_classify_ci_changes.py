@@ -88,6 +88,8 @@ class ClassifyCiChangesTests(unittest.TestCase):
             "engine/project/src/common/windows_distribution_finalizer.cpp",
             "engine/platform/windows/src/windows_entry.cpp",
             "tools/d3_shipping_acceptance.py",
+            "tools/d4_headless_shipping_acceptance.py",
+            "tools/tests/test_d4_headless_shipping_acceptance.py",
             "tools/d3_shipping_negative.py",
             "tools/tests/test_d3_shipping_negative.py",
         ):
