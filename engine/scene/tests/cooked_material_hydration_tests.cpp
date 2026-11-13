@@ -119,3 +119,71 @@ TEST_CASE("V3.4d.3 refuses invalid bindings without changing ECS")
     CHECK(residency.empty());
     CHECK_FALSE(scene.get<arc::scene::mesh_renderer_component>(entity).material.valid());
 }
+
+
+TEST_CASE("V3.4d.6 retains authored scalar defaults from cooked shader reflection")
+{
+    auto material = metadata();
+    arc::render::shader_parameter_descriptor roughness;
+    roughness.id = arc::render::shader_parameter_id{11};
+    roughness.name = "roughness";
+    roughness.type = arc::render::shader_parameter_type::float32;
+    roughness.offset = 0;
+    roughness.size = 4;
+    material.parameters.push_back(roughness);
+
+    auto cooked = shader();
+    cooked.package.compiled.reflection.parameter_block_size = 16;
+    roughness.default_value = {std::byte{0x00}, std::byte{0x00}, std::byte{0x40}, std::byte{0x3f}};
+    cooked.package.compiled.reflection.parameters.push_back(roughness);
+
+    const std::array shaders{cooked};
+    const auto realized = arc::render::realize_cooked_material_program(material, shaders);
+    REQUIRE(realized);
+    REQUIRE(realized.value().parameter_defaults.size() == 16);
+    for (std::size_t index = 0; index < roughness.default_value.size(); ++index)
+        CHECK(realized.value().parameter_defaults[index] == roughness.default_value[index]);
+    for (std::size_t index = roughness.default_value.size(); index < 16; ++index)
+        CHECK(realized.value().parameter_defaults[index] == std::byte{});
+}
+
+TEST_CASE("V3.4d.6 rejects incompatible parameter blocks and defaults before material allocation")
+{
+    auto material = metadata();
+    arc::render::shader_parameter_descriptor parameter;
+    parameter.id = arc::render::shader_parameter_id{11};
+    parameter.name = "roughness";
+    parameter.type = arc::render::shader_parameter_type::float32;
+    parameter.size = 4;
+    material.parameters.push_back(parameter);
+
+    auto forward = shader();
+    forward.package.compiled.reflection.parameter_block_size = 16;
+    parameter.default_value = {std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0x3f}};
+    forward.package.compiled.reflection.parameters.push_back(parameter);
+
+    auto shadow = forward;
+    shadow.artifact_name = "test.shadow";
+    shadow.package.permutation = arc::render::shader_permutation_id{5};
+    shadow.package.compiled.build_hash.bytes[0] = std::byte{0x44};
+    shadow.package.compiled.reflection.passes.front().pass = arc::render::material_pass::shadow;
+    material.compiled.passes.push_back({.pass = arc::render::material_pass::shadow,
+                                        .permutation = arc::render::shader_permutation_id{5},
+                                        .entry_point = arc::render::shader_entry_point_id{4},
+                                        .build_hash = shadow.package.compiled.build_hash});
+
+    std::array shaders{forward, shadow};
+    REQUIRE(arc::render::realize_cooked_material_program(material, shaders));
+
+    shaders[1].package.compiled.reflection.parameters.front().default_value[3] = std::byte{0x40};
+    CHECK_FALSE(arc::render::realize_cooked_material_program(material, shaders));
+    shaders[1] = shadow;
+    shaders[1].package.compiled.reflection.parameter_block_size = 32;
+    CHECK_FALSE(arc::render::realize_cooked_material_program(material, shaders));
+    shaders[1] = shadow;
+    shaders[1].package.compiled.reflection.parameters.front().offset = 14;
+    CHECK_FALSE(arc::render::realize_cooked_material_program(material, shaders));
+    shaders[1] = shadow;
+    shaders[1].package.compiled.reflection.parameters.front().default_value.push_back(std::byte{0});
+    CHECK_FALSE(arc::render::realize_cooked_material_program(material, shaders));
+}
