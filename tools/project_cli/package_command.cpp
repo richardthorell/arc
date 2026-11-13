@@ -207,7 +207,7 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
     }
     for (const auto& value : options(args, "--plugin"))
         plugins.push_back(source_path(context.value().root, value));
-    auto closure = project::resolve_windows_dependencies(binary, plugins, search_directories);
+    auto closure = project::resolve_windows_dependencies(binary, plugins, search_directories, explicit_libraries);
     if (!closure) return fail(json_output, closure.error().field, closure.error().message);
 
     std::vector<project::distribution_native_dependency> dependencies = std::move(closure.value().dependencies);

@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -20,7 +19,7 @@ from verify_relocated_package import SmokeFailure, smoke, verify_distribution
 from d3_shipping_negative import run as run_negative_acceptance
 
 
-def command(label: str, argv: list[str], cwd: Path, artifacts: Path) -> None:
+def command(label: str, argv: list[str], cwd: Path, artifacts: Path) -> str:
     print(f"[D3.2] {label}: {' '.join(argv)}", flush=True)
     result = subprocess.run(argv, cwd=cwd, capture_output=True, text=True,
                             errors="replace", check=False)
@@ -28,6 +27,7 @@ def command(label: str, argv: list[str], cwd: Path, artifacts: Path) -> None:
     (artifacts / f"{label}.stderr.txt").write_text(result.stderr, encoding="utf-8")
     if result.returncode:
         raise SmokeFailure(f"{label} exited {result.returncode}: {result.stderr[-3000:]}")
+    return result.stdout
 
 
 def prepare_minimal_startup_scene(project: Path) -> None:
@@ -86,48 +86,37 @@ def run(args: argparse.Namespace) -> None:
     prepare_minimal_startup_scene(project)
     command("configure", ["cmake", "-S", str(project), "-B", str(build), "-G", "Ninja",
                            "-DCMAKE_BUILD_TYPE=Shipping",
+                           "-DARC_WORKFLOW_PROFILE=windows-x64-vulkan",
                            f"-DCMAKE_PREFIX_PATH={sdk}"], root, artifacts)
-    command("compile", ["cmake", "--build", str(build), "--parallel"], root, artifacts)
-    command("cook", [str(cooker), "package", "--project", str(project),
+    command("compile", ["cmake", "--build", str(build), "--target", "arc-runtime-output", "--parallel"], root, artifacts)
+    command("cook", [str(cooker), "cook", "--project", str(project),
                      "--profile", "windows-x64-vulkan", "--output", str(cooked)], root, artifacts)
     command("cook-verify", [str(cooker), "verify", "--project", str(project),
                             "--profile", "windows-x64-vulkan", "--output", str(cooked)], root, artifacts)
 
-    binary = build / "ExternalGameGame.exe"
-    if not binary.is_file():
-        raise SmokeFailure(f"external project did not produce Shipping game: {binary}")
+    build_manifest = build / "arc-runtime-Shipping.json"
+    command("build-verify", [str(project_tool), "package", "--json", "--verify-build-only",
+                             "--project", str(descriptor), "--profile", "windows-x64-vulkan",
+                             "--build-manifest", str(build_manifest)], root, artifacts)
     manifest = cooked / "windows-x64-vulkan.arccookmanifest"
     if not manifest.is_file():
         raise SmokeFailure(f"cooker did not publish expected manifest: {manifest}")
+    packaged = json.loads(command("content-package", [str(cooker), "package", "--json",
+                                 "--project", str(project), "--profile", "windows-x64-vulkan",
+                                 "--manifest", str(manifest), "--output", str(cooked / "packaged")], root, artifacts))
+    if packaged.get("event") != "package.complete" or not packaged.get("manifest"):
+        raise SmokeFailure("content packaging did not return an exact manifest")
+    manifest = Path(packaged["manifest"])
+    command("content-verify", [str(cooker), "verify", "--project", str(project),
+                              "--manifest", str(manifest)], root, artifacts)
 
     # Only the project binary, its import closure and explicitly selected
     # native backends enter the package; never copy the whole build directory.
     package_args = [str(project_tool), "package", "--project", str(descriptor),
-                    "--profile", "windows-x64-vulkan", "--executable", str(binary),
+                    "--profile", "windows-x64-vulkan", "--build-manifest", str(build_manifest),
                     "--runtime-config", str(project / "Config" / "Renderer.json"),
                     "--cook-manifest", str(manifest), "--output", str(release),
-                    "--zip", str(archive), "--dll-dir", str(build),
-                    "--dll-dir", str(sdk / "bin")]
-    # The Vulkan renderer is loaded dynamically, so PE import-table discovery
-    # cannot prove its presence. The external project's CMake target copies it
-    # beside the executable; explicitly include that selected backend DLL.
-    renderers = sorted(path for path in build.glob("*.dll")
-                       if "vulkan" in path.name.casefold())
-    if len(renderers) != 1:
-        raise SmokeFailure(f"expected one copied Vulkan backend DLL, found: {renderers}")
-    package_args += ["--library", str(renderers[0])]
-    # MSVC /MD Shipping binaries depend on the redistributable CRT. This
-    # directory is supplied by the initialized VS toolchain on Windows CI.
-    # Include only the Microsoft.VC*.CRT folder, never the entire VS tree.
-    redist = os.environ.get("VCToolsRedistDir")
-    if not redist:
-        raise SmokeFailure("VCToolsRedistDir missing; cannot stage MSVC runtime dependencies")
-    redist_root = Path(redist).resolve()
-    crt_dirs = sorted(path for path in redist_root.glob("x64/Microsoft.VC*.CRT")
-                      if path.is_dir() and (path / "msvcp140.dll").is_file())
-    if len(crt_dirs) != 1:
-        raise SmokeFailure(f"expected one x64 VC++ CRT redistributable directory, found: {crt_dirs}")
-    package_args += ["--dll-dir", str(crt_dirs[0])]
+                    "--zip", str(archive)]
     command("package", package_args, root, artifacts)
     staged = verify_distribution(release)
     if staged["target"]["platform"] != "windows" or staged["role"] != "client":

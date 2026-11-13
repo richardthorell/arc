@@ -99,6 +99,20 @@ TEST_CASE("D2.4 missing imported DLL fails with an actionable dependency diagnos
     CHECK(resolved.error().message.find("missing.dll") != std::string::npos);
 }
 
+TEST_CASE("Shipping resolves imports of explicitly loaded backends before publication")
+{
+    pe_fixture f;
+    const auto executable = f.make("Game.exe", {"KERNEL32.dll"});
+    const auto backend = f.make("render.dll", {"backend_support.dll"});
+    REQUIRE_FALSE(project::resolve_windows_dependencies(executable, {}, {}, {backend}));
+    f.make("backend_support.dll", {"USER32.dll"});
+    const auto resolved = project::resolve_windows_dependencies(executable, {}, {}, {backend});
+    REQUIRE(resolved);
+    REQUIRE(resolved.value().files.size() == 2);
+    CHECK(resolved.value().files[0].destination == "bin/render.dll");
+    CHECK(resolved.value().files[1].destination == "bin/backend_support.dll");
+}
+
 TEST_CASE("D2.4 rejects malformed PE binaries instead of silently publishing missing libraries")
 {
     pe_fixture f;
