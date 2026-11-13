@@ -138,7 +138,7 @@ int main(int argc, char** argv)
         const auto passes = realized.value().passes.size();
         const auto artifacts = manifest.artifacts.size();
         std::cout << "Android device smoke: scene=1 mesh=1 textures=" << textured << " passes=" << passes
-                  << " verified-artifacts=" << artifacts << '\\n';
+                  << " verified-artifacts=" << artifacts << '\n';
         return 0;
     }
     catch (const std::exception& error)
