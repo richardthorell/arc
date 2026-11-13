@@ -114,7 +114,6 @@ void put_mesh_field(persistence::archive_component_record& record, ecs::componen
     record.fields.push_back({id, std::string(name), std::move(value), true});
 }
 
-
 persistence::archive_value camera_color(const math::vector4f& color)
 {
     persistence::archive_value result;
