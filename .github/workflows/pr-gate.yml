@@ -25,6 +25,7 @@ jobs:
       quality_editor: ${{ steps.classify.outputs.quality_editor }}
       shaders: ${{ steps.classify.outputs.shaders }}
       cooker: ${{ steps.classify.outputs.cooker }}
+      editor_package: ${{ steps.classify.outputs.editor_package }}
       docs_only: ${{ steps.classify.outputs.docs_only }}
     steps:
       - name: Checkout Repository
@@ -57,6 +58,7 @@ jobs:
             echo '| Editor quality | ${{ steps.classify.outputs.quality_editor }} |'
             echo '| Shader validation | ${{ steps.classify.outputs.shaders }} |'
             echo '| Cooker smoke | ${{ steps.classify.outputs.cooker }} |'
+            echo '| Editor package smoke | ${{ steps.classify.outputs.editor_package }} |'
             echo '| Docs only | ${{ steps.classify.outputs.docs_only }} |'
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -93,6 +95,7 @@ jobs:
     with:
       run_shaders: ${{ needs.changes.outputs.shaders == 'true' }}
       run_cooker: ${{ needs.changes.outputs.cooker == 'true' }}
+      run_editor_package: ${{ needs.changes.outputs.editor_package == 'true' }}
 
   android:
     name: 05 · Android arm64
@@ -116,34 +119,38 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           QUALITY: ${{ needs.quality.result }}
+          QUALITY_SELECTED: ${{ needs.changes.outputs.quality_native == 'true' || needs.changes.outputs.quality_editor == 'true' }}
           CLANG: ${{ needs.clang.result }}
+          CLANG_SELECTED: ${{ needs.changes.outputs.clang == 'true' }}
           GCC: ${{ needs.gcc.result }}
+          GCC_SELECTED: ${{ needs.changes.outputs.gcc == 'true' }}
           MSVC: ${{ needs.msvc.result }}
+          MSVC_SELECTED: ${{ needs.changes.outputs.msvc == 'true' }}
           ANDROID: ${{ needs.android.result }}
+          ANDROID_SELECTED: ${{ needs.changes.outputs.android == 'true' }}
           COVERAGE: ${{ needs.coverage.result }}
+          COVERAGE_SELECTED: ${{ needs.changes.outputs.coverage == 'true' }}
         shell: bash
         run: |
+          set -euo pipefail
           if [[ "$CHANGES" != success ]]; then
-            echo "Change classification failed: $CHANGES"
+            echo "::error::Change classification failed: $CHANGES"
             exit 1
           fi
 
-          for entry in \
-            "Quality:$QUALITY" \
-            "Clang:$CLANG" \
-            "GCC:$GCC" \
-            "MSVC:$MSVC" \
-            "Android:$ANDROID" \
-            "Coverage:$COVERAGE"; do
-            name=${entry%%:*}
-            result=${entry#*:}
-            case "$result" in
-              success|skipped)
-                echo "$name: $result"
-                ;;
-              *)
-                echo "$name failed: $result"
-                exit 1
-                ;;
-            esac
+          # A selected check must succeed; a skipped selected check is never
+          # equivalent to validation. Intentionally unselected jobs may skip.
+          for name in QUALITY CLANG GCC MSVC ANDROID COVERAGE; do
+            result="${!name}"
+            selected_key="${name}_SELECTED"
+            selected="${!selected_key}"
+            if [[ "$selected" == "true" && "$result" != "success" ]]; then
+              echo "::error::$name was selected but concluded $result"
+              exit 1
+            fi
+            if [[ "$selected" == "false" && "$result" != "skipped" ]]; then
+              echo "::error::$name was not selected but concluded $result"
+              exit 1
+            fi
+            echo "$name: $result (selected: $selected)"
           done

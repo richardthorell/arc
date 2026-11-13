@@ -31,6 +31,7 @@ class CiSelection:
     quality_editor: bool = False
     shaders: bool = False
     cooker: bool = False
+    editor_package: bool = False
     docs_only: bool = False
 
     def enable_full_matrix(self) -> None:
@@ -84,6 +85,29 @@ def _is_editor_web(path: str) -> bool:
     return path.startswith("editor/") and not path.startswith("editor/native/") and PurePosixPath(path).name != "CMakeLists.txt"
 
 
+def _needs_editor_package(path: str) -> bool:
+    """Select Windows Electron packaging for changes affecting the packaged app.
+
+    Ordinary renderer/UI changes already get editor lint/typecheck/tests and
+    should not rebuild the native host + installer on every PR.
+    """
+    return (
+        path.startswith(("editor/src/main/", "editor/src/preload/", "editor/native/", "editor/resources/"))
+        or path in {
+            "editor/forge.config.ts",
+            "editor/package.json",
+            "editor/package-lock.json",
+            "editor/vite.main.config.ts",
+            "editor/vite.preload.config.ts",
+            "editor/CMakeLists.txt",
+            ".github/workflows/build-msvc.yml",
+            ".github/workflows/pr-gate.yml",
+            ".github/actions/setup-windows-toolchain/action.yml",
+            "tools/classify_ci_changes.py",
+        }
+    )
+
+
 def _is_native(path: str) -> bool:
     p = PurePosixPath(path)
     return (
@@ -133,6 +157,14 @@ def classify(paths: list[str]) -> CiSelection:
 
     recognised = False
     for path in paths:
+        if _needs_editor_package(path):
+            result.editor_package = True
+            result.msvc = True
+            recognised = True
+        if path in {"tools/verify_android_apk.py", "tools/tests/test_verify_android_apk.py"}:
+            result.android = True
+            result.quality_native = True
+            recognised = True
         if _is_build_or_ci(path):
             result.enable_full_matrix()
             recognised = True

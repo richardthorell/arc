@@ -75,3 +75,23 @@ The root README shows the `Pull Request` workflow badge, scoped to
 `event=pull_request` rather than to `branch=main` (the PR workflow runs
 against PR heads). It is an overview of the latest PR workflow run,
 **not** a claim that every PR or every `main` build is green.
+
+## CI.3.1: targeted editor packaging and APK integrity
+
+- `editor_package` is an independent change-classifier decision. Changes
+  affecting Forge, Electron main/preload, native host, packaged resources or
+  the Windows packaging workflow run the existing Windows Electron pack/smoke
+  job on PRs. Renderer-only changes continue to use fast editor quality jobs.
+- On PRs, editor packaging **smoke-tests** the package but does not upload the
+  large editor artifact. Main branch retains its normal publishing flow.
+- The `PR Gate` now rejects a `skipped` status for a selected check, and
+  rejects unexpected runs for unselected checks. The required check name
+  remains `PR Gate`.
+- Android CI separates `Assemble APK` from **APK & Native ABI integrity**
+  validation, checking actual ZIP members and the AArch64 ELF header from
+  the uploaded build artifact. This is not a device boot claim. The current
+  arm64-only APK requires an arm64 device or a separately built emulator ABI
+  before a GitHub-hosted x86-64 emulator can run it.
+- Full Windows dedicated-server Shipping relocation/boot remains with
+  distribution #1097; avoid claiming it passed until the production server
+  packaging path is implemented and exercised.

@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_editor_package:
+        description: Build and smoke the Electron package on selected pull requests
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -88,7 +93,7 @@ jobs:
 
   editor-package:
     name: MSVC (VS2022) — Electron Editor Package & Smoke
-    if: github.event_name != 'pull_request'
+    if: ${{ github.event_name != 'pull_request' || inputs.run_editor_package }}
     needs: build-test
     runs-on: windows-2022
     steps:
@@ -142,6 +147,7 @@ jobs:
           python tools/run_process_smoke.py --timeout 30 out/build/editor-package/samples/arc_headless.exe --ticks 10 --no-sleep
 
       - name: Stage Editor Package
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: _arc-editor-windows-x64
