@@ -246,7 +246,6 @@ TEST_CASE("V3.4b editor v4 MeshRenderer field names migrate to the runtime schem
     CHECK(field->known);
 }
 
-
 TEST_CASE("Android device smoke Camera codec preserves projection exposure and rejects unknown fields")
 {
     arc::persistence::component_persistence_registry registry;
