@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   changes:
-    name: Classify Changes
+    name: Change Detection · Changed Paths
     runs-on: ubuntu-24.04
     outputs:
       clang: ${{ steps.classify.outputs.clang }}
@@ -61,7 +61,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   quality:
-    name: Quality
+    name: 01 · Code Quality
     needs: changes
     if: ${{ needs.changes.outputs.quality_native == 'true' || needs.changes.outputs.quality_editor == 'true' }}
     uses: ./.github/workflows/quality.yml
@@ -70,7 +70,7 @@ jobs:
       run_editor: ${{ needs.changes.outputs.quality_editor == 'true' }}
 
   clang:
-    name: Clang
+    name: 02 · Linux x64 / Clang 18
     needs: changes
     if: ${{ needs.changes.outputs.clang == 'true' }}
     uses: ./.github/workflows/build-clang.yml
@@ -78,7 +78,7 @@ jobs:
       run_shaders: ${{ needs.changes.outputs.shaders == 'true' }}
 
   gcc:
-    name: GCC
+    name: 03 · Linux x64 / GCC 14
     needs: changes
     if: ${{ needs.changes.outputs.gcc == 'true' }}
     uses: ./.github/workflows/build-gcc.yml
@@ -86,7 +86,7 @@ jobs:
       run_shaders: ${{ needs.changes.outputs.shaders == 'true' }}
 
   msvc:
-    name: MSVC
+    name: 04 · Windows x64 / MSVC (VS2022)
     needs: changes
     if: ${{ needs.changes.outputs.msvc == 'true' }}
     uses: ./.github/workflows/build-msvc.yml
@@ -95,13 +95,13 @@ jobs:
       run_cooker: ${{ needs.changes.outputs.cooker == 'true' }}
 
   android:
-    name: Android
+    name: 05 · Android arm64 / NDK r30
     needs: changes
     if: ${{ needs.changes.outputs.android == 'true' }}
     uses: ./.github/workflows/build-android.yml
 
   coverage:
-    name: Coverage
+    name: 06 · Linux x64 / Clang 18 Coverage
     needs: changes
     if: ${{ needs.changes.outputs.coverage == 'true' }}
     uses: ./.github/workflows/coverage.yml

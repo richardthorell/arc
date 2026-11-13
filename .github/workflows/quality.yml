@@ -1,4 +1,4 @@
-name: Code Quality
+name: 01 · Quality — Editor & Native
 
 on:
   push:
@@ -25,51 +25,49 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  code-quality:
-    name: Code Quality
+  dependency-policy:
+    name: Project · Python 3 — Dependency Policy & Tool Tests
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Set Up Node 22.23
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
-        with:
-          node-version: 22.23.2
-          cache: npm
-          cache-dependency-path: editor/package-lock.json
-      - name: Install Native Quality Tools
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native || inputs.run_editor }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang-format-18 clang-tidy-18 ninja-build
-      - name: Install Electron Dependencies
-        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
-        run: npm ci --prefix editor
-      - name: Ensure Electron binary for main-process tests
-        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
-        working-directory: editor
-        shell: bash
-        run: |
-          # npm ci can finish without the Electron binary if an optional
-          # postinstall download was skipped. Main-process tests import
-          # Electron directly and need the pinned platform binary installed.
-          if ! node -e 'require("electron")'; then
-            node node_modules/electron/install.js
-          fi
-          node -e 'require("electron")'
-
       - name: Dependency Policy
         run: |
           python3 tools/check_dependencies.py
           python3 -m unittest discover -s tools/tests -p "test_*.py"
+
+  native-format:
+    name: Native · Clang Format 18 — C++ Formatting
+    if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install Clang Format 18
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
       - name: C++ Formatting
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: python3 tools/check_format.py --clang-format clang-format-18
+
+  native-analysis:
+    name: Native · Clang Tidy 18 — Static Analysis
+    if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install Clang 18 and Static Analysis Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 clang-tidy-18 ninja-build
       - name: Configure Compile Database
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native || inputs.run_editor }}
         run: >
           cmake -S . -B out/build/analysis -G Ninja
           -DCMAKE_CXX_COMPILER=clang++-18
@@ -79,24 +77,10 @@ jobs:
           -DARC_FETCH_TIFF=OFF
           -DBUILD_TESTING=OFF
       - name: Generate Static Analysis Sources
-        if: ${{ github.event_name != 'pull_request' || inputs.run_native }}
         run: >
           python3 tools/ecs_codegen.py
           --schema engine/scene/schema/components.arccomponents.json
           --cpp-output out/build/analysis/engine/scene/generated/arc/scene/generated_component_metadata.h
-      - name: Build Project Test Authority
-        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
-        run: cmake --build out/build/analysis --target arc-project-cli --parallel 2
-      - name: Electron Formatting, Lint, Typecheck, and Tests
-        if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
-        working-directory: editor
-        env:
-          ARC_PROJECT_TOOL_PATH: ../out/build/analysis/tools/project_cli/arc-project
-        run: |
-          npm run format:check
-          npm run lint
-          npm run typecheck
-          npm test
       - name: Static Analysis (PR Changes)
         if: ${{ github.event_name == 'pull_request' && inputs.run_native }}
         shell: bash
@@ -123,3 +107,79 @@ jobs:
       - name: Static Analysis (Full Repository)
         if: ${{ github.event_name != 'pull_request' }}
         run: run-clang-tidy-18 -p out/build/analysis -quiet '.*/(engine|editor/native|samples|tools)/.*'
+
+  editor-static:
+    name: Editor · Node 22 — Format / ESLint / Typecheck
+    if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Set Up Node 22.23
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.2
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Install Electron Dependencies
+        run: npm ci --prefix editor
+      - name: Check Editor Formatting
+        working-directory: editor
+        run: npm run format:check
+      - name: Lint Editor
+        working-directory: editor
+        run: npm run lint
+      - name: Typecheck Editor
+        working-directory: editor
+        run: npm run typecheck
+
+  editor-tests:
+    name: Editor · Node 22 / Electron — Unit & Integration Tests
+    if: ${{ github.event_name != 'pull_request' || inputs.run_editor }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Set Up Node 22.23
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.23.2
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Install Native CLI Build Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build
+      - name: Install Electron Dependencies
+        run: npm ci --prefix editor
+      - name: Ensure Electron binary for main-process tests
+        working-directory: editor
+        shell: bash
+        run: |
+          # npm ci can finish without the Electron binary if an optional
+          # postinstall download was skipped. Main-process tests import
+          # Electron directly and need the pinned platform binary installed.
+          if ! node -e 'require("electron")'; then
+            node node_modules/electron/install.js
+          fi
+          node -e 'require("electron")'
+      - name: Configure Compile Database
+        run: >
+          cmake -S . -B out/build/analysis -G Ninja
+          -DCMAKE_CXX_COMPILER=clang++-18
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_EDITOR=OFF
+          -DARC_BUILD_RENDER_VULKAN=OFF
+          -DARC_FETCH_TIFF=OFF
+          -DBUILD_TESTING=OFF
+      - name: Build Project Test Authority
+        run: cmake --build out/build/analysis --target arc-project-cli --parallel 2
+      - name: Run Editor Tests
+        working-directory: editor
+        env:
+          ARC_PROJECT_TOOL_PATH: ../out/build/analysis/tools/project_cli/arc-project
+        run: npm test

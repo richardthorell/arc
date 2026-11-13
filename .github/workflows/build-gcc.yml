@@ -1,4 +1,4 @@
-name: Linux GCC
+name: 02 · Linux x64 — GCC 14
 
 on:
   push:
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   gcc:
-    name: Linux GCC 14
+    name: Linux x64 · GCC 14 · RelWithDebInfo — Native Build & Test
     runs-on: ubuntu-24.04
     env:
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-gcc

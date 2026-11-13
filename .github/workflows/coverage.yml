@@ -1,4 +1,4 @@
-name: Coverage
+name: 04 · Coverage — Linux x64 / Clang 18
 
 on:
   push:
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   coverage:
-    name: LLVM Coverage
+    name: Linux x64 · Clang 18 — LLVM Coverage Report
     runs-on: ubuntu-24.04
     env:
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-coverage
