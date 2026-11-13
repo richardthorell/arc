@@ -114,6 +114,174 @@ void put_mesh_field(persistence::archive_component_record& record, ecs::componen
     record.fields.push_back({id, std::string(name), std::move(value), true});
 }
 
+persistence::archive_value camera_color(const math::vector4f& color)
+{
+    persistence::archive_value result;
+    result.kind = persistence::archive_value_kind::array;
+    for (std::size_t index = 0; index < 4; ++index)
+        result.array.push_back(mesh_float(color[index]));
+    return result;
+}
+
+bool read_camera_color(const persistence::archive_value& source, math::vector4f& destination)
+{
+    if (source.kind != persistence::archive_value_kind::array || source.array.size() != 4) return false;
+    math::vector4f color{};
+    for (std::size_t index = 0; index < 4; ++index)
+        if (!read_mesh_float(source.array[index], color[index])) return false;
+    destination = color;
+    return true;
+}
+
+persistence::archive_value camera_exposure(const render::exposure_settings& settings)
+{
+    persistence::archive_value result;
+    result.kind = persistence::archive_value_kind::object;
+    result.object.emplace_back("mode", mesh_int(static_cast<std::int32_t>(settings.mode)));
+    result.object.emplace_back("metering", mesh_int(static_cast<std::int32_t>(settings.metering)));
+    result.object.emplace_back("manual_ev100", mesh_float(settings.manual_ev100));
+    result.object.emplace_back("compensation_ev", mesh_float(settings.compensation_ev));
+    result.object.emplace_back("minimum_ev100", mesh_float(settings.minimum_ev100));
+    result.object.emplace_back("maximum_ev100", mesh_float(settings.maximum_ev100));
+    result.object.emplace_back("brighten_speed", mesh_float(settings.brighten_speed));
+    result.object.emplace_back("darken_speed", mesh_float(settings.darken_speed));
+    return result;
+}
+
+bool read_camera_exposure(const persistence::archive_value& source, render::exposure_settings& destination)
+{
+    if (source.kind != persistence::archive_value_kind::object) return false;
+    auto settings = destination;
+    for (const auto& field : source.object)
+    {
+        if (field.name == "mode" || field.name == "metering")
+        {
+            std::int32_t value{};
+            if (!read_mesh_int(field.value, value) || value < 0 || value > 1) return false;
+            if (field.name == "mode")
+                settings.mode = static_cast<render::exposure_mode>(value);
+            else
+                settings.metering = static_cast<render::exposure_metering_mode>(value);
+        }
+        else if (field.name == "manual_ev100" || field.name == "manualEV100")
+        {
+            if (!read_mesh_float(field.value, settings.manual_ev100)) return false;
+        }
+        else if (field.name == "compensation_ev" || field.name == "compensationEV")
+        {
+            if (!read_mesh_float(field.value, settings.compensation_ev)) return false;
+        }
+        else if (field.name == "minimum_ev100" || field.name == "minimumEV100")
+        {
+            if (!read_mesh_float(field.value, settings.minimum_ev100)) return false;
+        }
+        else if (field.name == "maximum_ev100" || field.name == "maximumEV100")
+        {
+            if (!read_mesh_float(field.value, settings.maximum_ev100)) return false;
+        }
+        else if (field.name == "brighten_speed" || field.name == "brightenSpeed")
+        {
+            if (!read_mesh_float(field.value, settings.brighten_speed)) return false;
+        }
+        else if (field.name == "darken_speed" || field.name == "darkenSpeed")
+        {
+            if (!read_mesh_float(field.value, settings.darken_speed)) return false;
+        }
+        else
+            return false;
+    }
+    if (settings.minimum_ev100 > settings.maximum_ev100 || settings.brighten_speed < 0.0f ||
+        settings.darken_speed < 0.0f)
+        return false;
+    destination = settings;
+    return true;
+}
+
+persistence::persistence_status encode_camera(const void* component, persistence::archive_component_record& record)
+{
+    const auto& camera = *static_cast<const camera_component*>(component);
+    record.fields.clear();
+    put_mesh_field(record, 1u, "projection", mesh_int(static_cast<std::int32_t>(camera.projection)));
+    put_mesh_field(record, 2u, "fov_y_radians", mesh_float(camera.fov_y_radians));
+    put_mesh_field(record, 3u, "near_plane", mesh_float(camera.near_plane));
+    put_mesh_field(record, 4u, "far_plane", mesh_float(camera.far_plane));
+    put_mesh_field(record, 5u, "orthographic_height", mesh_float(camera.orthographic_height));
+    put_mesh_field(record, 6u, "active", mesh_bool(camera.active));
+    put_mesh_field(record, 7u, "clear_color", camera_color(camera.clear_color));
+    put_mesh_field(record, 8u, "exposure", camera_exposure(camera.exposure));
+    put_mesh_field(record, 9u, "anti_aliasing", mesh_int(static_cast<std::int32_t>(camera.anti_aliasing)));
+    return persistence::persistence_status::success();
+}
+
+persistence::persistence_status decode_camera(void* component, const persistence::archive_component_record& record)
+{
+    auto next = *static_cast<camera_component*>(component);
+    for (const auto& field : record.fields)
+    {
+        bool valid = false;
+        switch (field.id)
+        {
+            case 1u:
+            {
+                std::int32_t value{};
+                valid = read_mesh_int(field.value, value) && value >= 0 && value <= 1;
+                if (valid) next.projection = static_cast<camera_projection>(value);
+                break;
+            }
+            case 2u:
+                valid = read_mesh_float(field.value, next.fov_y_radians);
+                break;
+            case 3u:
+                valid = read_mesh_float(field.value, next.near_plane);
+                break;
+            case 4u:
+                valid = read_mesh_float(field.value, next.far_plane);
+                break;
+            case 5u:
+                valid = read_mesh_float(field.value, next.orthographic_height);
+                break;
+            case 6u:
+                valid = read_mesh_bool(field.value, next.active);
+                break;
+            case 7u:
+                valid = read_camera_color(field.value, next.clear_color);
+                break;
+            case 8u:
+                valid = read_camera_exposure(field.value, next.exposure);
+                break;
+            case 9u:
+            {
+                std::int32_t value{};
+                valid = read_mesh_int(field.value, value) && value >= 0 && value <= 8;
+                if (valid) next.anti_aliasing = static_cast<render::camera_anti_aliasing_override>(value);
+                break;
+            }
+            default:
+                break;
+        }
+        if (!valid)
+        {
+            persistence::persistence_error error;
+            error.code = persistence::persistence_error_code::decode_failed;
+            error.component = record.type;
+            error.field = field.id;
+            error.message = "Invalid cooked Camera field: " + field.name;
+            return persistence::persistence_status::failure(std::move(error));
+        }
+    }
+    if (next.near_plane <= 0.0f || next.far_plane <= next.near_plane || next.orthographic_height <= 0.0f ||
+        next.fov_y_radians <= 0.0f)
+    {
+        persistence::persistence_error error;
+        error.code = persistence::persistence_error_code::decode_failed;
+        error.component = record.type;
+        error.message = "Cooked Camera has invalid projection bounds";
+        return persistence::persistence_status::failure(std::move(error));
+    }
+    *static_cast<camera_component*>(component) = next;
+    return persistence::persistence_status::success();
+}
+
 persistence::persistence_status encode_mesh_renderer(const void* component,
                                                      persistence::archive_component_record& record)
 {
@@ -239,7 +407,12 @@ bool register_persistence_components(persistence::component_persistence_registry
     result &= register_component<active_component>(registry, {"Active"});
     result &= register_component<selection_component>(registry, {"Selection"});
     result &= register_component<bounds_component>(registry, {"Bounds"});
-    result &= register_component<camera_component>(registry, {"Camera"});
+    persistence::component_persistence_descriptor camera_codec;
+    camera_codec.component = &ecs::component_metadata<camera_component>();
+    camera_codec.legacy_names = {"Camera"};
+    camera_codec.encode = encode_camera;
+    camera_codec.decode = decode_camera;
+    result &= registry.register_component(std::move(camera_codec));
     persistence::component_persistence_descriptor mesh_codec;
     mesh_codec.component = &ecs::component_metadata<mesh_renderer_component>();
     mesh_codec.legacy_names = {"MeshRenderer"};

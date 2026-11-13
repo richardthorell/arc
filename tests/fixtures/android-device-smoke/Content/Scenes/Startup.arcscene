@@ -1,0 +1,124 @@
+{
+  "format": "arc.scene",
+  "formatVersion": 3,
+  "scene": {
+    "id": "b80a0000-0000-4000-8000-000000000001",
+    "name": "Android Device Smoke"
+  },
+  "entities": [
+    {
+      "id": "b80a0000-0000-4000-8000-000000000002",
+      "parent": null,
+      "order": 0,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Android Device Smoke Camera"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "active": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0.0,
+            1.75,
+            6.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline / Fixed Camera"
+        },
+        "Camera": {
+          "typeId": "a7c00000000000010000000000000007",
+          "version": 2,
+          "active": true
+        }
+      }
+    },
+    {
+      "id": "b80a0000-0000-4000-8000-000000000004",
+      "parent": null,
+      "order": 1,
+      "components": {
+        "Name": {
+          "typeId": "a7c00000000000010000000000000001",
+          "version": 1,
+          "value": "Android Device Smoke Model"
+        },
+        "Active": {
+          "typeId": "a7c00000000000010000000000000004",
+          "version": 1,
+          "active": true
+        },
+        "Transform": {
+          "typeId": "a7c00000000000010000000000000002",
+          "version": 1,
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        "Tag": {
+          "typeId": "a7c00000000000010000000000000003",
+          "version": 1,
+          "value": "Baseline/1/1"
+        },
+        "MeshRenderer": {
+          "typeId": "a7c00000000000010000000000000008",
+          "version": 5,
+          "visible": true
+        }
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "guid": "fa99c80b-dca6-4a36-a505-eb75c3c444ee",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000007",
+      "pathHint": "Content/models/UAL2_Standard.glb",
+      "ownerEntity": "b80a0000-0000-4000-8000-000000000004",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000001",
+      "required": true
+    },
+    {
+      "guid": "c9430000-0000-4000-8000-000000000015",
+      "expectedType": "a7ca55e7-0000-0001-0000-000000000003",
+      "pathHint": "Content/materials/unlit_texture.arcmat",
+      "ownerEntity": "b80a0000-0000-4000-8000-000000000004",
+      "ownerComponent": "a7c00000000000010000000000000008",
+      "ownerField": "0000000000000002",
+      "required": true
+    }
+  ]
+}
