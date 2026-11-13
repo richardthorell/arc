@@ -43,9 +43,10 @@ std::string hydrate_cooked_scene_materials(ecs::world& scene, render::renderer& 
             !render::material_runtime_program_compatible(*upload.descriptor.runtime_program) ||
             upload.descriptor.runtime_program->passes.empty())
             return "Cooked material has no compatible executable runtime program";
-        if (upload.descriptor.shader_package.high != upload.material.high ||
-            upload.descriptor.shader_package.low != upload.material.low)
-            return "Cooked material package identity differs from its catalog GUID";
+        const auto program_owner = upload.program_asset.valid() ? upload.program_asset : upload.material;
+        if (upload.descriptor.shader_package.high != program_owner.high ||
+            upload.descriptor.shader_package.low != program_owner.low)
+            return "Cooked material shader package identity differs from its declared program owner";
         unique_materials.try_emplace(upload.material, i);
         destinations.push_back(owner->second);
     }
