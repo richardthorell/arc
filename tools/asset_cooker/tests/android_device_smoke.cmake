@@ -37,7 +37,7 @@ set(scene "Content/Scenes/Startup.arcscene")
 
 message(STATUS "Android V3.4f.1: cooking isolated Android arm64 Vulkan scene")
 execute_process(
-    COMMAND "${ARC_COOK}" cook --project "${ARC_TEST_ROOT}" --root "${scene}"
+    COMMAND "${ARC_COOK}" cook --profile android-arm64-vulkan --project "${ARC_TEST_ROOT}" --root "${scene}"
             --output "${output}" --json
     RESULT_VARIABLE cook_status OUTPUT_VARIABLE cook_output ERROR_VARIABLE cook_error
     TIMEOUT ${ARC_DEVICE_SMOKE_TIMEOUT})
@@ -47,7 +47,7 @@ endif()
 
 message(STATUS "Android V3.4f.1: packaging source-free asset manifest")
 execute_process(
-    COMMAND "${ARC_COOK}" package --project "${ARC_TEST_ROOT}" --root "${scene}"
+    COMMAND "${ARC_COOK}" package --profile android-arm64-vulkan --project "${ARC_TEST_ROOT}" --root "${scene}"
             --output "${output}" --json
     RESULT_VARIABLE package_status OUTPUT_VARIABLE package_output ERROR_VARIABLE package_error
     TIMEOUT ${ARC_DEVICE_SMOKE_TIMEOUT})
@@ -56,7 +56,7 @@ if(NOT package_status EQUAL 0)
 endif()
 
 execute_process(
-    COMMAND "${ARC_COOK}" verify --project "${ARC_TEST_ROOT}" --output "${output}" --json
+    COMMAND "${ARC_COOK}" verify --profile android-arm64-vulkan --project "${ARC_TEST_ROOT}" --output "${output}" --json
     RESULT_VARIABLE verify_status OUTPUT_VARIABLE verify_output ERROR_VARIABLE verify_error
     TIMEOUT 120)
 if(NOT verify_status EQUAL 0)
