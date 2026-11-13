@@ -22,7 +22,8 @@ template <class T> void append(std::vector<std::byte>& output, const T& value)
 void append_string(std::vector<std::byte>& output, std::string_view value)
 {
     append(output, static_cast<std::uint64_t>(value.size()));
-    for (const auto ch : value) output.push_back(static_cast<std::byte>(ch));
+    for (const auto ch : value)
+        output.push_back(static_cast<std::byte>(ch));
 }
 
 std::vector<std::byte> parent_package()
@@ -48,8 +49,8 @@ std::vector<std::byte> parent_package()
 }
 
 std::vector<std::byte> instance_package(std::string_view overrides,
-                                         std::string_view parent = "00000000-0000-0009-0000-00000000000a",
-                                         std::uint64_t specialization = 0)
+                                        std::string_view parent = "00000000-0000-0009-0000-00000000000a",
+                                        std::uint64_t specialization = 0)
 {
     std::vector<std::byte> bytes;
     append_string(bytes, "ARC_MATERIAL_INSTANCE_1");
@@ -59,10 +60,11 @@ std::vector<std::byte> instance_package(std::string_view overrides,
     const auto parent_bytes = parent_package();
     append(bytes, static_cast<std::uint64_t>(parent_bytes.size()));
     bytes.insert(bytes.end(), parent_bytes.begin(), parent_bytes.end());
-    const std::string authored = std::string{R"({"version":1,"name":"Rough Floor","parent":{"guid":")"} +
-                                std::string(parent) +
-                                R"(","pathHint":"materials/base.arcmat"},"parameterOverrides":)" +
-                                std::string(overrides) + R"(,"functionOverrides":[]})";
+    std::string authored = R"({"version":1,"name":"Rough Floor","parent":{"guid":")";
+    authored += parent;
+    authored += R"(","pathHint":"materials/base.arcmat"},"parameterOverrides":)";
+    authored += overrides;
+    authored += R"(,"functionOverrides":[]})";
     append_string(bytes, authored);
     return bytes;
 }
@@ -92,18 +94,14 @@ TEST_CASE("V3.4d.7 value-only instance decodes parent and scalar override")
 
 TEST_CASE("V3.4d.7 rejects unsupported instance values and parent mismatch")
 {
-    CHECK_FALSE(arc::render::decode_cooked_material_instance_values(
-        instance_package(R"([{"parameterId":"31","value":2.0}])")));
-    CHECK_FALSE(arc::render::decode_cooked_material_instance_values(
-        instance_package(R"([{"parameterId":"999","value":0.5}])")));
-    CHECK_FALSE(arc::render::decode_cooked_material_instance_values(
-        instance_package(R"([{"parameterId":"31","value":"not scalar"}])")));
-    CHECK_FALSE(arc::render::decode_cooked_material_instance_values(
-        instance_package(R"([{"parameterId":"31","value":0.5},{"parameterId":"31","value":0.6}])")));
-    CHECK_FALSE(arc::render::decode_cooked_material_instance_values(
-        instance_package("[]", "00000000-0000-0009-0000-00000000000b")));
-    CHECK_FALSE(arc::render::decode_cooked_material_instance_values(
-        instance_package("[]", "00000000-0000-0009-0000-00000000000a", 9)));
+    const auto rejected = [](const auto& bytes)
+    { CHECK_FALSE(arc::render::decode_cooked_material_instance_values(bytes)); };
+    rejected(instance_package(R"([{"parameterId":"31","value":2.0}])"));
+    rejected(instance_package(R"([{"parameterId":"999","value":0.5}])"));
+    rejected(instance_package(R"([{"parameterId":"31","value":"not scalar"}])"));
+    rejected(instance_package(R"([{"parameterId":"31","value":0.5},{"parameterId":"31","value":0.6}])"));
+    rejected(instance_package("[]", "00000000-0000-0009-0000-00000000000b"));
+    rejected(instance_package("[]", "00000000-0000-0009-0000-00000000000a", 9));
     auto truncated = instance_package("[]");
     truncated.pop_back();
     CHECK_FALSE(arc::render::decode_cooked_material_instance_values(truncated));
