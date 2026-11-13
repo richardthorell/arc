@@ -5,7 +5,7 @@ import {
   type ProjectSettingsSnapshot,
   type ProjectSettingsField,
 } from '../../../common/projectSettingsTypes';
-import { UiButton, UiDialogSettings, UiSettingsNavigation, UiSettingsCard, UiTextInput } from '../ui';
+import { UiButton, UiDialogSettings, UiSettingsNavigation, UiSettingsCard, UiTextInput, UiToggleButton } from '../ui';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
 import {
   ProjectProfileList,
@@ -180,11 +180,11 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         return <output>{String(value ?? '')}</output>;
       case 'boolean':
         return (
-          <input
+          <UiToggleButton
             aria-label={field.label}
-            type="checkbox"
+            className="settings-toggle-control"
             checked={value === true}
-            onChange={(event) => update(event.target.checked)}
+            onCheckedChange={update}
           />
         );
       case 'scene':
@@ -218,6 +218,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
       default:
         return (
           <UiTextInput
+            className="settings-value-control"
             aria-label={field.label}
             aria-invalid={Boolean(errors[field.id])}
             type={field.control === 'number' ? 'number' : 'text'}
@@ -259,9 +260,6 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             </>
           ) : (
             <>
-              <span>
-                {busy ? 'Applying…' : dirty ? 'Unapplied changes' : 'Project files are saved only when you Apply.'}
-              </span>
               <UiButton disabled={busy} onClick={close}>
                 Cancel
               </UiButton>
@@ -272,7 +270,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
                 }
                 onClick={() => void apply()}
               >
-                Apply
+                {busy ? 'Applying…' : 'Apply'}
               </UiButton>
             </>
           )}
@@ -320,12 +318,27 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
           </UiSettingsCard>
         )}
         <fieldset disabled={busy || !state?.snapshot.writable}>
-          {fields.map((field) => (
-            <UiSettingsCard title={field.label} subtitle={field.description} key={field.id}>
-              {fieldControl(field)}
-              {errors[field.id] && <p role="alert">{errors[field.id]}</p>}
-            </UiSettingsCard>
-          ))}
+          {state?.snapshot.catalog.categories.map((entry) => {
+            const entries = fields.filter((field) => field.category === entry.id);
+            if (!entries.length) return null;
+            return (
+              <UiSettingsCard title={entry.label} key={entry.id}>
+                {entries.map((field) => (
+                  <div
+                    key={field.id}
+                    className={`settings-field-row${['scenes', 'targets', 'profiles'].includes(field.control) ? ' project-settings-collection-field' : ''}`}
+                  >
+                    <span className="settings-field-description">
+                      <strong title={field.label}>{field.label}</strong>
+                      <small title={field.description}>{field.description}</small>
+                      {errors[field.id] && <span role="alert">{errors[field.id]}</span>}
+                    </span>
+                    {fieldControl(field)}
+                  </div>
+                ))}
+              </UiSettingsCard>
+            );
+          })}
         </fieldset>
       </div>
     </UiDialogSettings>

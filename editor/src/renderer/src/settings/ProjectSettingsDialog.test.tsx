@@ -90,6 +90,14 @@ it('renders catalog categories and applies only edited fields with captured auth
   );
   await waitFor(() => expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled());
 });
+it('uses preference-style rows and controls without a permanent footer label', async () => {
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  const input = await screen.findByRole('textbox', { name: 'Project name' });
+  expect(input).toHaveClass('settings-value-control');
+  expect(input.closest('.settings-field-row')).not.toBeNull();
+  expect(screen.queryByText('Project files are saved only when you Apply.')).not.toBeInTheDocument();
+});
+
 it('renders an additional catalog field without dialog-specific code and searches it', async () => {
   snapshot.catalog.fields.push({
     id: 'extension.note',
@@ -150,7 +158,7 @@ it('edits targets and profiles without implicitly deleting disabled-target profi
   fireEvent.click(screen.getByRole('button', { name: 'Duplicate profile' }));
   expect(screen.getByRole('textbox', { name: 'Profile 2 ID' })).toHaveValue('profile-copy');
   fireEvent.click(screen.getByRole('treeitem', { name: 'Platforms & Targets' }));
-  fireEvent.click(screen.getByRole('checkbox', { name: 'windows-x64-vulkan' }));
+  fireEvent.click(screen.getByRole('switch', { name: 'windows-x64-vulkan' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(apply).toHaveBeenCalled());
   expect(apply.mock.calls[0][0].changes.cookProfiles).toHaveLength(2);

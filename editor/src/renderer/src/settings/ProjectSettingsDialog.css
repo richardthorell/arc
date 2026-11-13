@@ -17,6 +17,13 @@
 .project-settings-footer > span {
   margin-right: auto;
 }
+.project-settings-footer {
+  justify-content: flex-end;
+  padding: 12px 20px;
+}
+.project-settings-collection-field {
+  grid-template-columns: minmax(0, 1fr);
+}
 .project-settings-collection {
   display: grid;
   gap: 12px;

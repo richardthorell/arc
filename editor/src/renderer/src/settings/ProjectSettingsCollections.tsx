@@ -1,7 +1,7 @@
 import type { ArcProjectAssetReference, ArcProjectDescriptor } from '../../../common/projectTypes';
 import type { ProjectSettingsSnapshot } from '../../../common/projectSettingsTypes';
 import { AssetPicker, type AssetPickerItem } from '../inspector/AssetPicker';
-import { UiButton, UiSelect, UiTextInput } from '../ui';
+import { UiButton, UiSelect, UiTextInput, UiToggleButton } from '../ui';
 
 const options = (values: string[]) => values.map((value) => ({ value, label: value }));
 export function ProjectSceneSetting({
@@ -99,15 +99,16 @@ export function ProjectTargetList({
     <div className="project-settings-collection">
       {[...new Set([...supported, ...value.map((entry) => entry.id)])].map((id) => (
         <label key={id}>
-          <input
-            type="checkbox"
+          <UiToggleButton
+            aria-label={id}
+            className="settings-toggle-control"
             checked={value.find((entry) => entry.id === id)?.enabled ?? false}
             disabled={!supported.includes(id)}
-            onChange={(event) =>
+            onCheckedChange={(checked) =>
               onChange(
                 value.some((entry) => entry.id === id)
-                  ? value.map((entry) => (entry.id === id ? { ...entry, enabled: event.target.checked } : entry))
-                  : [...value, { id, enabled: event.target.checked }],
+                  ? value.map((entry) => (entry.id === id ? { ...entry, enabled: checked } : entry))
+                  : [...value, { id, enabled: checked }],
               )
             }
           />
@@ -204,14 +205,15 @@ export function ProjectProfileList({
               Texture outputs
               {snapshot.capabilities.textureOutputs.map((family) => (
                 <label key={family}>
-                  <input
-                    type="checkbox"
+                  <UiToggleButton
+                    aria-label={`Profile ${index + 1} texture output ${family}`}
+                    className="settings-toggle-control"
                     checked={profile.textures.outputs.includes(family)}
-                    onChange={(event) =>
+                    onCheckedChange={(checked) =>
                       update({
                         textures: {
                           ...profile.textures,
-                          outputs: event.target.checked
+                          outputs: checked
                             ? [...profile.textures.outputs, family]
                             : profile.textures.outputs.filter((entry) => entry !== family),
                         },
