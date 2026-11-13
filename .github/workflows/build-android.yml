@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   build:
-    name: Android arm64 · NDK r30 / Clang · Debug — Assemble APK
+    name: NDK r30 / Clang · Debug — Assemble APK
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

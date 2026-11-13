@@ -70,7 +70,7 @@ jobs:
       run_editor: ${{ needs.changes.outputs.quality_editor == 'true' }}
 
   clang:
-    name: 02 · Linux x64 / Clang 18
+    name: 02 · Linux x64
     needs: changes
     if: ${{ needs.changes.outputs.clang == 'true' }}
     uses: ./.github/workflows/build-clang.yml
@@ -78,7 +78,7 @@ jobs:
       run_shaders: ${{ needs.changes.outputs.shaders == 'true' }}
 
   gcc:
-    name: 03 · Linux x64 / GCC 14
+    name: 03 · Linux x64
     needs: changes
     if: ${{ needs.changes.outputs.gcc == 'true' }}
     uses: ./.github/workflows/build-gcc.yml
@@ -86,7 +86,7 @@ jobs:
       run_shaders: ${{ needs.changes.outputs.shaders == 'true' }}
 
   msvc:
-    name: 04 · Windows x64 / MSVC (VS2022)
+    name: 04 · Windows x64
     needs: changes
     if: ${{ needs.changes.outputs.msvc == 'true' }}
     uses: ./.github/workflows/build-msvc.yml
@@ -95,13 +95,13 @@ jobs:
       run_cooker: ${{ needs.changes.outputs.cooker == 'true' }}
 
   android:
-    name: 05 · Android arm64 / NDK r30
+    name: 05 · Android arm64
     needs: changes
     if: ${{ needs.changes.outputs.android == 'true' }}
     uses: ./.github/workflows/build-android.yml
 
   coverage:
-    name: 06 · Linux x64 / Clang 18 Coverage
+    name: 06 · Coverage
     needs: changes
     if: ${{ needs.changes.outputs.coverage == 'true' }}
     uses: ./.github/workflows/coverage.yml

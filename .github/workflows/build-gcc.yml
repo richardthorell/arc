@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   gcc:
-    name: Linux x64 · GCC 14 · RelWithDebInfo — Native Build & Test
+    name: GCC 14 · RelWithDebInfo — Native Build & Test
     runs-on: ubuntu-24.04
     env:
       CCACHE_DIR: ${{ github.workspace }}/.cache/ccache-gcc
