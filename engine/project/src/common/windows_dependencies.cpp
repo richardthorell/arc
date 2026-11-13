@@ -174,7 +174,8 @@ bool system_dll(std::string_view name)
 } // namespace
 
 windows_dependency_result resolve_windows_dependencies(const fs::path& executable, const std::vector<fs::path>& plugins,
-                                                       const std::vector<fs::path>& search_directories)
+                                                       const std::vector<fs::path>& search_directories,
+                                                       const std::vector<fs::path>& explicit_libraries)
 {
     const auto reject = [](std::string message)
     { return windows_dependency_result::failure(error("dependencies", std::move(message))); };
@@ -197,6 +198,7 @@ windows_dependency_result resolve_windows_dependencies(const fs::path& executabl
     windows_dependency_closure closure;
     std::vector<fs::path> pending{executable};
     pending.insert(pending.end(), plugins.begin(), plugins.end());
+    pending.insert(pending.end(), explicit_libraries.begin(), explicit_libraries.end());
     std::set<std::string> processed;
     std::set<std::string> destinations;
     for (const auto& plugin : plugins)
@@ -206,6 +208,15 @@ windows_dependency_result resolve_windows_dependencies(const fs::path& executabl
         closure.files.push_back(
             {.source = plugin, .destination = "plugins/" + plugin.filename().string(), .kind = "plugin"});
         closure.dependencies.push_back({.destination = closure.files.back().destination, .kind = "plugin"});
+    }
+
+    for (const auto& library : explicit_libraries)
+    {
+        const auto name = lower(library.filename().string());
+        if (!destinations.insert(name).second) return reject("Duplicate plugin/DLL filename: " + name);
+        closure.files.push_back(
+            {.source = library, .destination = "bin/" + library.filename().string(), .kind = "library"});
+        closure.dependencies.push_back({.destination = closure.files.back().destination, .kind = "library"});
     }
 
     for (std::size_t index = 0; index < pending.size(); ++index)

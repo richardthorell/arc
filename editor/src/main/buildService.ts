@@ -8,6 +8,7 @@ import type { WorkflowRequest, WorkflowPlan } from '../common/projectWorkflowTyp
 import { queryProjectWorkflowPlan } from './projectWorkflowPlanner';
 import { CookWorkflowService } from './cookWorkflowService';
 import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
+import type { WindowsBuildEnvironment } from './windowsBuildWorkflow';
 
 type HostBridge = {
   command(
@@ -46,8 +47,16 @@ export class BuildService {
     private readonly host: HostBridge,
     private readonly publish: (snapshot: ArcBuildSnapshot) => void,
     publishWorkflow: (snapshot: WorkflowExecutionSnapshot) => void = () => {},
+    buildEnvironment: () => WindowsBuildEnvironment | undefined = () => undefined,
   ) {
-    this.workflows = new CookWorkflowService(activeProject, projectTool, () => this.legacyOperation, publishWorkflow);
+    this.workflows = new CookWorkflowService(
+      activeProject,
+      projectTool,
+      () => this.legacyOperation,
+      publishWorkflow,
+      undefined,
+      buildEnvironment,
+    );
   }
 
   snapshot(): ArcBuildSnapshot {

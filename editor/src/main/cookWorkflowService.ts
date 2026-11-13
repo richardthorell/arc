@@ -8,6 +8,7 @@ import { queryProjectWorkflowPlan } from './projectWorkflowPlanner';
 import { createCookWorkflowAdapter } from './cookWorkflowAdapter';
 import { ProjectWorkflowRunner } from './projectWorkflowRunner';
 import type { CookWorkflowOptions } from '../common/projectWorkflowTypes';
+import { createWindowsBuildWorkflow, type WindowsBuildEnvironment } from './windowsBuildWorkflow';
 
 /** Resolve only known locations belonging to the selected project-tool installation/build. */
 export function resolveWorkflowCooker(projectTool: string): string {
@@ -43,6 +44,7 @@ export class CookWorkflowService {
     private readonly legacyBusy: () => boolean,
     private readonly publish: (snapshot: WorkflowExecutionSnapshot) => void,
     private readonly cooker: (tool: string) => string = resolveWorkflowCooker,
+    private readonly buildEnvironment: () => WindowsBuildEnvironment | undefined = () => undefined,
   ) {}
 
   isBusy(): boolean {
@@ -90,6 +92,7 @@ export class CookWorkflowService {
           epoch: this.authorityEpoch,
           tool: executableIdentity(this.tool()),
           cooker: executableIdentity(this.cooker(this.tool())),
+          buildEnvironment: this.buildEnvironment(),
         }),
       )
       .digest('hex');
@@ -131,17 +134,25 @@ export class CookWorkflowService {
     )
       throw new Error('Project or SDK changed; reopen Cook Content Only before continuing');
     const request = workflowRequestSchema.parse(raw);
-    if (request.action !== 'cook' || request.destination !== 'none' || request.sessionId)
-      throw new Error('Only Cook Content Only is executable; other workflow adapters are not ready');
+    if (!['cook', 'build'].includes(request.action) || request.destination !== 'none' || request.sessionId)
+      throw new Error('Only saved-content Cook and Build workflows are executable; launch adapters are not ready');
     if (this.busy || this.legacyBusy()) throw new Error('A project workflow or code build is already running');
     const project = this.project();
     if (!project?.writable) throw new Error('Cooking requires a writable open project');
     const tool = this.tool();
     const cooker = this.cooker(tool);
+    const environment = request.action === 'build' ? structuredClone(this.buildEnvironment()) : undefined;
+    const environmentIdentity = JSON.stringify(environment);
     if (!cooker) throw new Error('ARC cooker is unavailable in the selected SDK');
     const toolStamp = () =>
       JSON.stringify(
-        [tool, cooker].map((executable) => {
+        [
+          tool,
+          cooker,
+          ...(environment
+            ? [environment.cmake, path.join(environment.sdkRoot, 'lib', 'cmake', 'ARC', 'ARCConfig.cmake')]
+            : []),
+        ].map((executable) => {
           const stat = fs.statSync(executable);
           if (!stat.isFile()) throw new Error('Workflow executable is not a file');
           return { path: fs.realpathSync(executable), size: stat.size, modified: stat.mtimeMs };
@@ -150,6 +161,11 @@ export class CookWorkflowService {
     const sdkIdentity = toolStamp();
     const descriptorPath = project.descriptorPath;
     const projectRoot = project.projectRoot;
+    const runtimeConfig =
+      request.action === 'build' ? path.resolve(projectRoot, project.descriptor.settings.renderer) : undefined;
+    const runtimeConfigHash = () =>
+      runtimeConfig ? createHash('sha256').update(fs.readFileSync(runtimeConfig)).digest('hex') : '';
+    const capturedConfigHash = runtimeConfigHash();
     const descriptorHash = () => createHash('sha256').update(fs.readFileSync(descriptorPath)).digest('hex');
     const hash = descriptorHash();
     const descriptor = JSON.stringify(project.descriptor);
@@ -165,7 +181,9 @@ export class CookWorkflowService {
           this.tool() === tool &&
           this.cooker(tool) === cooker &&
           toolStamp() === sdkIdentity &&
-          descriptorHash() === hash
+          descriptorHash() === hash &&
+          runtimeConfigHash() === capturedConfigHash &&
+          (request.action !== 'build' || JSON.stringify(this.buildEnvironment()) === environmentIdentity)
         );
       } catch {
         return false;
@@ -180,15 +198,29 @@ export class CookWorkflowService {
       const plan = await queryProjectWorkflowPlan(tool, descriptorPath, request);
       if (!current() || plan.projectGuid !== project.descriptor.guid)
         throw new Error('Workflow cancelled or project/SDK changed while planning');
-      if (plan.stages.join(',') !== 'validate,cook') throw new Error('Unexpected native cook workflow stages');
-      const adapter = createCookWorkflowAdapter(cooker, undefined, (text) => {
+      const expectedStages = request.action === 'build' ? 'validate,configure,compile,cook,package' : 'validate,cook';
+      if (plan.stages.join(',') !== expectedStages) throw new Error('Unexpected native workflow stages');
+      const onOutput = (text: string) => {
         this.value.output.push(text);
         // Bounded diagnostics; each process chunk is at most 16 KiB.
         this.value.output = this.value.output.slice(-64);
         this.emit();
-      });
+      };
+      const adapter = createCookWorkflowAdapter(cooker, undefined, onOutput);
+      const build =
+        request.action === 'build'
+          ? createWindowsBuildWorkflow(
+              tool,
+              cooker,
+              environment,
+              path.resolve(projectRoot, project.descriptor.paths.build),
+              runtimeConfig!,
+              undefined,
+              onOutput,
+            )
+          : undefined;
       this.runner = new ProjectWorkflowRunner(
-        {
+        build?.adapters ?? {
           validate: {
             capability: () => ({ available: true }),
             execute: async (context) => context.assertCurrent(),
@@ -197,7 +229,7 @@ export class CookWorkflowService {
           cook: adapter.adapter,
         },
         current,
-        adapter.publication,
+        build?.publication ?? adapter.publication,
         (run) => {
           this.value.run = run;
           this.emit();

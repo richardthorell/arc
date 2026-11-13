@@ -922,6 +922,7 @@ int main(int argc, char** argv)
         }
         if (command.json)
             std::cout << nlohmann::json{{"event", "package.complete"},
+                                        {"manifest", package.manifest_path.generic_string()},
                                         {"artifacts", manifest.value().artifacts.size()},
                                         {"chunks", package.chunks.size()}}
                              .dump()

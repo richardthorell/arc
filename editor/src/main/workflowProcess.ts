@@ -8,6 +8,8 @@ export type WorkflowProcessRequest = {
   signal: AbortSignal;
   onOutput?: (text: string) => void;
   timeoutMs?: number;
+  /** Text-only compiler logs keep a bounded tail; protocol responses must remain complete. */
+  outputMode?: 'protocol' | 'log';
 };
 
 /** Bounded output and lifetime; cancellation addresses only the owned process tree. */
@@ -68,7 +70,7 @@ export async function runWorkflowProcess(request: WorkflowProcessRequest): Promi
         stdout += text;
         if (stdout.length > 1024 * 1024) {
           stdout = stdout.slice(-1024 * 1024);
-          stop('Workflow command output exceeded limit');
+          if (request.outputMode !== 'log') stop('Workflow command output exceeded limit');
         }
       }
       try {

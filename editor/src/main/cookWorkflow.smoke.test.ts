@@ -89,6 +89,37 @@ it.skipIf(!tool || !cooker).each(['windows-x64-vulkan', 'android-arm64-vulkan'])
         });
       expect(completion).toHaveLength(1);
       expect(completion[0].cacheHits).toBeGreaterThan(0);
+      if (profile === 'windows-x64-vulkan') {
+        const packed = JSON.parse(
+          await runWorkflowProcess({
+            executable: cooker!,
+            args: [
+              'package',
+              '--json',
+              '--project',
+              descriptorPath,
+              '--profile',
+              profile,
+              '--manifest',
+              second.artifacts[0].manifestPath,
+              '--output',
+              path.join(root, 'packed'),
+            ],
+            cwd: projectRoot,
+            signal: new AbortController().signal,
+          }),
+        );
+        expect(packed.event).toBe('package.complete');
+        expect(path.isAbsolute(packed.manifest)).toBe(true);
+        expect(fs.existsSync(packed.manifest)).toBe(true);
+        await runWorkflowProcess({
+          executable: cooker!,
+          args: ['verify', '--project', descriptorPath, '--manifest', packed.manifest],
+          cwd: projectRoot,
+          signal: new AbortController().signal,
+        });
+        expect(fs.readFileSync(scene, 'utf8')).toBe(before);
+      }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

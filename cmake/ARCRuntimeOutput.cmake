@@ -58,6 +58,15 @@ function(arc_register_runtime_output)
             string(APPEND spec "list(APPEND ${group} [==[$<TARGET_FILE:${dependency}>]==])\n")
         endforeach()
     endforeach()
+    # Use the active compiler's redistributable inventory, never a directory scan
+    # in the editor. Keep these exact files in the hashed build output contract.
+    if(MSVC)
+        set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
+        include(InstallRequiredSystemLibraries)
+        foreach(runtime IN LISTS CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+            string(APPEND spec "list(APPEND LIBRARIES [==[${runtime}]==])\n")
+        endforeach()
+    endif()
     set(spec_path "${CMAKE_CURRENT_BINARY_DIR}/arc-runtime-input-$<CONFIG>.cmake")
     file(GENERATE OUTPUT "${spec_path}" CONTENT "${spec}")
     add_custom_target(arc-runtime-output

@@ -32,12 +32,13 @@ export function createCookWorkflowAdapter(
   cooker: string,
   runProcess: (request: WorkflowProcessRequest) => Promise<string> = runWorkflowProcess,
   onOutput?: (text: string) => void,
-): { adapter: WorkflowStageAdapter; publication: WorkflowPublication } {
+): { adapter: WorkflowStageAdapter; publication: WorkflowPublication; prepared: () => WorkflowArtifact[] } {
   let generation: string | undefined;
   let artifacts: WorkflowArtifact[] = [];
   let recordRoot: string | undefined;
-  const supports = (plan: WorkflowPlan) => plan.action === 'cook' && plan.destination === 'none';
+  const supports = (plan: WorkflowPlan) => ['cook', 'build'].includes(plan.action) && plan.destination === 'none';
   return {
+    prepared: () => structuredClone(artifacts),
     adapter: {
       capability: (plan) =>
         !supports(plan)
