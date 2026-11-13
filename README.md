@@ -1,8 +1,15 @@
 # arc
 
-[![Pull Request CI](https://github.com/richardthorell/arc/actions/workflows/pr-gate.yml/badge.svg?event=pull_request)](https://github.com/richardthorell/arc/actions/workflows/pr-gate.yml)
+## Platform build status
 
-The badge reports the latest **Pull Request** workflow result. That workflow runs the changed-path checks and finishes with the required **PR Gate**. For individual compiler, editor, Android, or distribution results, open [GitHub Actions](https://github.com/richardthorell/arc/actions).
+| Platform | Architecture | Compiler / toolchain | Build (`main`) |
+| --- | --- | --- | --- |
+| Windows | x64 | MSVC · Visual Studio 2022 | [![Windows x64 build](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml/badge.svg?branch=main&event=push)](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml?query=branch%3Amain+event%3Apush) |
+| Linux | x64 | Clang 18 · Ubuntu 24.04 | [![Linux x64 Clang 18 build](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml/badge.svg?branch=main&event=push)](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml?query=branch%3Amain+event%3Apush) |
+| Linux | x64 | GCC 14 · Ubuntu 24.04 | [![Linux x64 GCC 14 build](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml/badge.svg?branch=main&event=push)](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml?query=branch%3Amain+event%3Apush) |
+| Android | arm64-v8a | Clang · Android NDK r30 | [![Android ARM64 build](https://github.com/richardthorell/arc/actions/workflows/build-android.yml/badge.svg?branch=main&event=push)](https://github.com/richardthorell/arc/actions/workflows/build-android.yml?query=branch%3Amain+event%3Apush) |
+
+Badges report the latest `main` **push workflow** for each platform/toolchain, not the aggregate pull-request gate. A passing badge means that workflow succeeded, including compilation and its other validation jobs; it does not by itself prove a game launched on a physical device. Android currently verifies APK assembly and native-library integrity, not device startup. Other platforms do not yet have CI compile-status badges.
 
 **arc** is a modern C++20 3D game engine with an integrated editor, built around explicit systems, data-oriented runtime architecture, and source-controlled projects.
 
@@ -166,11 +173,8 @@ arc-project toolchains
 
 ## CI
 
-ARC continuously validates the engine and editor across the primary compiler families:
+ARC compiles and tests Windows x64 (MSVC), Linux x64 (Clang 18 and GCC 14), and Android ARM64 (NDK r30) using the separate platform workflows linked in the [build-status table](#platform-build-status).
 
-- **Clang 18 / Ubuntu 24.04** — native build and tests, Vulkan validation, installed-SDK checks, plus ASan/UBSan and TSan coverage in dedicated jobs.
-- **GCC 14 / Ubuntu 24.04** — native build and tests with Vulkan compile coverage.
-- **MSVC / Windows Server 2022** — native engine/editor build and tests, with content cooking, Shipping distribution, and SDK validation organized in a reusable workflow.
-- **Quality and coverage** — formatting, static analysis, dependency policy, shader validation, and LLVM source coverage.
+Windows also validates asset cooking, SDK installations, and Shipping distributions. Linux has dedicated coverage and sanitizer checks; Android checks the assembled APK's native ABI and contents. These additional checks are included in their respective workflow status where applicable.
 
-Pull requests classify their changes so expensive validation can be scoped appropriately, while merges to `main` retain the broader repository checks. The stable, aggregate `PR Gate` is the merge check; see [CI workflow structure](docs/ci-workflows.md) for the platform, compiler, and distribution job tree.
+Pull requests classify changed files to select relevant checks; pushes to `main` retain broader validation. See [CI workflow structure](docs/ci-workflows.md) for the full job breakdown.
