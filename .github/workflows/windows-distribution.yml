@@ -1,0 +1,400 @@
+name: 02 · Windows x64 — Content, SDK & Distribution
+
+# Called by the Windows MSVC orchestrator. This remains part of the same
+# Actions run so the Shipping stage can download the exact cook artifact and
+# the publisher can collect all artifacts without cross-run API permissions.
+on:
+  workflow_call:
+    inputs:
+      run_cooker:
+        description: Run cooker and external Shipping acceptance on this PR
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  asset-cook:
+    name: MSVC (VS2022) — Asset Cook & Verify
+    if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Configure Cook Tools
+        run: >
+          cmake -S . -B out/build/cook -G Ninja
+          -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded
+          -DCMAKE_POLICY_DEFAULT_CMP0141=NEW
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DARC_BUILD_EDITOR=OFF
+          -DARC_BUILD_RENDER_VULKAN=ON
+          -DARC_BUILD_SAMPLES=OFF
+          -DARC_WARNINGS_AS_ERRORS=ON
+          -DBUILD_TESTING=OFF
+
+      - name: Build Cook Tools
+        run: cmake --build out/build/cook --target arc-project-cli arc-cook --parallel
+
+      - name: Create Cook Fixture
+        run: out/build/cook/tools/project_cli/arc-project.exe create --name CookFixture --destination out/cook-fixture --template rendering-sample --templates templates --engine 0.1.0
+
+      - name: Restore Derived-Data Cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            out/cook-fixture/Intermediate/Cache/cas
+            out/cook-fixture/Intermediate/Cache/actions
+          key: arc-ddc-windows-v3-${{ hashFiles('templates/**/*.arcproject', 'editor/package-lock.json', 'engine/assets/**', 'engine/render/**') }}
+          restore-keys: arc-ddc-windows-v3-
+
+      - name: Cook Fixture
+        run: out/build/cook/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+
+      - name: Verify Cooked Fixture
+        run: out/build/cook/tools/asset_cooker/arc-cook.exe verify --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan
+
+      - name: Verify Warm Cook Cache Hits
+        run: |
+          $warmCook = (& out/build/cook/tools/asset_cooker/arc-cook.exe package --project out/cook-fixture --profile windows-x64-vulkan --output out/cooked/windows-x64-vulkan --json | ConvertFrom-Json)
+          if ($warmCook.cooked -ne 0) { throw "Second fixture cook was not entirely cache-hit" }
+
+      - name: Stage Cooked Content
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-cooked-windows-x64
+          path: out/cooked/windows-x64-vulkan
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compiler Cache Stats
+        if: always()
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }
+
+  d3-shipping-acceptance:
+    name: MSVC (VS2022) · Shipping — External Game Package & Boot
+    if: ${{ github.event_name != 'pull_request' || inputs.run_cooker }}
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Validate D3 Python Syntax and Harness
+        shell: pwsh
+        run: |
+          python -m py_compile tools/d3_shipping_acceptance.py tools/verify_relocated_package.py tools/tests/test_relocated_package.py
+          if ($LASTEXITCODE -ne 0) { throw "D3 Python syntax validation failed" }
+          python -m unittest discover -s tools/tests -p test_relocated_package.py -v
+          if ($LASTEXITCODE -ne 0) { throw "D3 smoke harness tests failed" }
+
+      - name: Configure Shipping SDK and Cooker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S . -B out/build/d3-sdk -G Ninja -DCMAKE_BUILD_TYPE=Shipping -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_WARNINGS_AS_ERRORS=ON -DBUILD_TESTING=OFF
+          if ($LASTEXITCODE -ne 0) { throw "Shipping SDK configuration failed" }
+          cmake --build out/build/d3-sdk --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Shipping SDK build failed" }
+          cmake --install out/build/d3-sdk --prefix out/d3-sdk-installed
+          if ($LASTEXITCODE -ne 0) { throw "Shipping SDK install failed" }
+          # ARC intentionally disables the asset cooker in Shipping builds.
+          # Build the production cooker tool separately in RelWithDebInfo.
+          cmake -S . -B out/build/d3-cooker -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_PROJECT_TOOL=OFF -DBUILD_TESTING=OFF
+          if ($LASTEXITCODE -ne 0) { throw "Cooker configuration failed" }
+          cmake --build out/build/d3-cooker --target arc-cook --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Cooker build failed" }
+
+      - name: Package and Boot External Shipping Game
+        shell: pwsh
+        run: |
+          python tools/d3_shipping_acceptance.py --sdk out/d3-sdk-installed --cooker out/build/d3-cooker/tools/asset_cooker/arc-cook.exe --workspace out/d3-acceptance --artifacts out/d3-results --timeout 30
+          if ($LASTEXITCODE -ne 0) { throw "D3.2 Shipping package acceptance failed" }
+
+      - name: Upload D3 Package and Diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-d3-shipping-acceptance
+          path: |
+            out/d3-results
+            out/d3-acceptance/dist/GameShipping/arc-distribution.json
+            out/d3-acceptance/dist/GameShipping.zip
+          if-no-files-found: warn
+          retention-days: 7
+
+  sdk-validation:
+    name: MSVC (VS2022) — SDK Multi-Config Validation
+    if: github.event_name != 'pull_request'
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Configure and Build RelWithDebInfo SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cmake -S . -B out/build/sdk -G "Ninja Multi-Config"   -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DARC_ENABLE_SHIPPING_LTO=OFF -DARC_BUILD_RENDER_VULKAN=ON -DARC_BUILD_EDITOR=OFF -DARC_BUILD_SAMPLES=OFF -DBUILD_TESTING=OFF
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "SDK configure failed with exit code ${exitCode}" }
+
+          cmake --build out/build/sdk --config RelWithDebInfo --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK build failed with exit code ${exitCode}" }
+
+      - name: Build Debug SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cmake --build out/build/sdk --config Debug --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Debug SDK build failed with exit code ${exitCode}" }
+
+      - name: Build Shipping SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cmake --build out/build/sdk --config Shipping --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Shipping SDK build failed with exit code ${exitCode}" }
+
+      - name: Install SDK Configurations
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cmake --install out/build/sdk --config Shipping --prefix out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Shipping SDK install failed with exit code ${exitCode}" }
+
+          cmake --install out/build/sdk --config Debug --prefix out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "Debug SDK install failed with exit code ${exitCode}" }
+
+          cmake --install out/build/sdk --config RelWithDebInfo --prefix out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "RelWithDebInfo SDK install failed with exit code ${exitCode}" }
+
+      - name: Verify SDK CMake Configurations
+        shell: pwsh
+        run: |
+          $targetsDir = 'out/sdk/arc-0.1.0/lib/cmake/ARC'
+          foreach ($configuration in @('debug', 'relwithdebinfo', 'shipping')) {
+            $targetsFile = Join-Path $targetsDir "ARCTargets-${configuration}.cmake"
+            if (-not (Test-Path $targetsFile)) { throw "Installed SDK is missing ${targetsFile}" }
+          }
+
+      - name: Register SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $cli = (Resolve-Path 'out/sdk/arc-0.1.0/bin/arc-project.exe').Path
+          $manifest = (Resolve-Path 'out/sdk/arc-0.1.0/arc-installation.json').Path
+          $registry = Join-Path (Resolve-Path 'out/sdk').Path 'installations.v1.json'
+
+          & $cli engine register --manifest $manifest --registry $registry
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "arc-project engine register failed with exit code ${exitCode}" }
+
+      - name: Verify SDK Registry
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $cli = (Resolve-Path 'out/sdk/arc-0.1.0/bin/arc-project.exe').Path
+          $registry = Join-Path (Resolve-Path 'out/sdk').Path 'installations.v1.json'
+
+          & $cli engine verify --registry $registry
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "arc-project engine verify failed with exit code ${exitCode}" }
+
+      - name: Create External Blank 3D Project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          & out/sdk/arc-0.1.0/bin/arc-project.exe create --name ExternalGame --destination out/external-game --template blank-3d --templates out/sdk/arc-0.1.0/share/arc/templates --engine 0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "arc-project create failed with exit code ${exitCode}" }
+
+      - name: Build External RelWithDebInfo Project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cmake -S out/external-game -B out/external-game/Build/ci -G Ninja   -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External RelWithDebInfo configure failed with exit code ${exitCode}" }
+
+          cmake --build out/external-game/Build/ci --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External RelWithDebInfo build failed with exit code ${exitCode}" }
+
+      - name: Build External Debug Project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cmake -S out/external-game -B out/external-game/Build/ci-debug -G Ninja   -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Debug configure failed with exit code ${exitCode}" }
+
+          cmake --build out/external-game/Build/ci-debug --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Debug build failed with exit code ${exitCode}" }
+
+      - name: Build External Shipping Project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          cmake -S out/external-game -B out/external-game/Build/ci-shipping -G Ninja   -DCMAKE_BUILD_TYPE=Shipping -DCMAKE_PREFIX_PATH=${{ github.workspace }}/out/sdk/arc-0.1.0
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Shipping configure failed with exit code ${exitCode}" }
+
+          cmake --build out/external-game/Build/ci-shipping --parallel
+          $exitCode = $LASTEXITCODE
+          if ($exitCode -ne 0) { throw "External Shipping build failed with exit code ${exitCode}" }
+
+      - name: Verify SDK Relocatability
+        shell: pwsh
+        run: |
+          $tracked = Get-ChildItem out/external-game,out/sdk/arc-0.1.0/lib/cmake/ARC -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/]Build[\\/]' }
+          if ($tracked | Select-String -SimpleMatch "${{ github.workspace }}") { throw "Installed SDK or generated project embeds the ARC checkout path" }
+
+      - name: SDK Failure Diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host '::group::SDK installation manifest'
+          if (Test-Path 'out/sdk/arc-0.1.0/arc-installation.json') {
+            Get-Content 'out/sdk/arc-0.1.0/arc-installation.json' -Raw
+          } else {
+            Write-Host 'arc-installation.json is missing.'
+          }
+          Write-Host '::endgroup::'
+
+          Write-Host '::group::SDK registry'
+          if (Test-Path 'out/sdk/installations.v1.json') {
+            Get-Content 'out/sdk/installations.v1.json' -Raw
+          } else {
+            Write-Host 'installations.v1.json is missing.'
+          }
+          Write-Host '::endgroup::'
+
+      - name: Compiler Cache Stats
+        if: always()
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }
+
+  shipping-runtime:
+    name: MSVC (VS2022) · Shipping — Runtime Package
+    if: github.event_name != 'pull_request'
+    needs: asset-cook
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set Up Windows Toolchain
+        uses: ./.github/actions/setup-windows-toolchain
+
+      - name: Download Cooked Content
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: _arc-cooked-windows-x64
+          path: out/cooked/windows-x64-vulkan
+
+      - name: Configure Shipping Runtime
+        run: >
+          cmake -S . -B out/build/ci-shipping -G Ninja
+          -DCMAKE_BUILD_TYPE=Shipping
+          -DARC_BUILD_SAMPLES=ON
+          -DARC_WARNINGS_AS_ERRORS=ON
+          -DARC_SHIPPING_CONTENT_DIR=${{ github.workspace }}/out/cooked/windows-x64-vulkan
+
+      - name: Build and Install Shipping Runtime
+        run: |
+          cmake --build out/build/ci-shipping --parallel
+          cmake --install out/build/ci-shipping --prefix out/dist/runtime
+          cpack --config out/build/ci-shipping/CPackConfig.cmake -C Shipping
+
+      - name: Verify Shipping Runtime
+        run: |
+          python tools/verify_distribution.py out/dist/runtime --require bin/arc_headless.exe --require bin/arc_sample_game.exe --require build-manifest.json
+          python tools/run_process_smoke.py --timeout 30 out/dist/runtime/bin/arc_headless.exe --ticks 10 --no-sleep
+          python tools/run_process_smoke.py --timeout 30 out/dist/runtime/bin/arc_sample_game.exe --ci-smoke
+
+      - name: Stage Headless Runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-headless-windows-x64
+          path: |
+            out/dist/runtime/bin/arc_headless.exe
+            out/dist/runtime/content
+            out/dist/runtime/build-manifest.json
+          retention-days: 1
+
+      - name: Stage Sample Game
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-sample-game-windows-x64
+          path: |
+            out/dist/runtime/bin/arc_sample_game.exe
+            out/dist/runtime/content
+            out/dist/runtime/build-manifest.json
+          retention-days: 1
+
+      - name: Stage Shipping Symbols
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-shipping-symbols-windows-x64
+          path: out/build/ci-shipping/**/*.pdb
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Stage CMake Packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-cmake-packages-windows-x64
+          path: out/build/ci-shipping/packages/*.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Compiler Cache Stats
+        if: always()
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            sccache --show-stats
+          } else {
+            Write-Host "sccache not installed; compilation was uncached."
+          }

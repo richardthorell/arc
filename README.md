@@ -1,10 +1,8 @@
 # arc
 
-| Target | Status |
-| --- | --- |
-| Clang | [![Build: Clang](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-clang.yml) |
-| GCC | [![Build: GCC](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-gcc.yml) |
-| MSVC | [![Build: MSVC](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml/badge.svg?branch=main)](https://github.com/richardthorell/arc/actions/workflows/build-msvc.yml) |
+[![Pull Request CI](https://github.com/richardthorell/arc/actions/workflows/pr-gate.yml/badge.svg?event=pull_request)](https://github.com/richardthorell/arc/actions/workflows/pr-gate.yml)
+
+The badge reports the latest **Pull Request** workflow result. That workflow runs the changed-path checks and finishes with the required **PR Gate**. For individual compiler, editor, Android, or distribution results, open [GitHub Actions](https://github.com/richardthorell/arc/actions).
 
 **arc** is a modern C++20 3D game engine with an integrated editor, built around explicit systems, data-oriented runtime architecture, and source-controlled projects.
 
@@ -172,7 +170,7 @@ ARC continuously validates the engine and editor across the primary compiler fam
 
 - **Clang 18 / Ubuntu 24.04** — native build and tests, Vulkan validation, installed-SDK checks, plus ASan/UBSan and TSan coverage in dedicated jobs.
 - **GCC 14 / Ubuntu 24.04** — native build and tests with Vulkan compile coverage.
-- **MSVC / Windows Server 2022** — native engine/editor build and tests, packaging and product validation where applicable.
+- **MSVC / Windows Server 2022** — native engine/editor build and tests, with content cooking, Shipping distribution, and SDK validation organized in a reusable workflow.
 - **Quality and coverage** — formatting, static analysis, dependency policy, shader validation, and LLVM source coverage.
 
-Pull requests classify their changes so expensive validation can be scoped appropriately, while merges to `main` retain the broader repository checks.
+Pull requests classify their changes so expensive validation can be scoped appropriately, while merges to `main` retain the broader repository checks. The stable, aggregate `PR Gate` is the merge check; see [CI workflow structure](docs/ci-workflows.md) for the platform, compiler, and distribution job tree.
