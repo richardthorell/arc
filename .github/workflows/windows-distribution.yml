@@ -100,6 +100,8 @@ jobs:
         run: |
           python -m py_compile tools/d3_shipping_acceptance.py tools/d3_shipping_negative.py tools/d4_headless_shipping_acceptance.py tools/verify_relocated_package.py tools/tests/test_relocated_package.py tools/tests/test_d3_shipping_negative.py
           if ($LASTEXITCODE -ne 0) { throw "D3 Python syntax validation failed" }
+          python -m unittest discover -s tools/tests -p test_d4_headless_shipping_acceptance.py -v
+          if ($LASTEXITCODE -ne 0) { throw "D4.1 headless distribution tests failed" }
           python -m unittest discover -s tools/tests -p test_d3_shipping_negative.py -v
           if ($LASTEXITCODE -ne 0) { throw "D3.3 negative harness tests failed" }
           python -m unittest discover -s tools/tests -p test_relocated_package.py -v
