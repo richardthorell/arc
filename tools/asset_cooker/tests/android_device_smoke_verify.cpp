@@ -30,13 +30,11 @@ assets::asset_guid guid(std::string_view text)
     return *parsed;
 }
 
-std::vector<std::byte> load(const assets::cook_manifest& manifest,
-                            const assets::package_artifact_reader& reader, assets::asset_guid asset,
-                            assets::artifact_schema_id schema, const std::string& label)
+std::vector<std::byte> load(const assets::cook_manifest& manifest, const assets::package_artifact_reader& reader,
+                            assets::asset_guid asset, assets::artifact_schema_id schema, const std::string& label)
 {
-    const auto found = std::find_if(manifest.artifacts.begin(), manifest.artifacts.end(),
-                                    [&](const auto& artifact)
-                                    { return artifact.asset == asset && artifact.schema == schema; });
+    const auto matching = [&](const auto& artifact) { return artifact.asset == asset && artifact.schema == schema; };
+    const auto found = std::find_if(manifest.artifacts.begin(), manifest.artifacts.end(), matching);
     require(found != manifest.artifacts.end(), label + ": missing cooked artifact");
     const auto loaded = reader.read({found->asset, found->schema, found->name});
     require(static_cast<bool>(loaded), label + ": failed to read active cooked package");
@@ -92,8 +90,7 @@ int main(int argc, char** argv)
 
         const auto mesh_bytes = load(manifest, reader, mesh_guid, assets::artifact_schemas::mesh, "Mesh");
         const auto mesh = arc::render::decode_conventional_mesh_artifact(mesh_bytes, bindings[0].subresource);
-        require(static_cast<bool>(mesh), "Android mesh decoder rejected the cooked mesh: " +
-                                           (mesh ? std::string{} : mesh.error()));
+        if (!mesh) throw std::runtime_error("Android mesh decoder rejected the cooked mesh: " + mesh.error());
         require(!mesh.value().mesh.vertices.empty(), "Cooked mesh contains no vertices");
         require(!mesh.value().mesh.indices.empty(), "Cooked mesh contains no triangles");
 
@@ -138,10 +135,10 @@ int main(int argc, char** argv)
         require(static_cast<bool>(realized), "Runtime rejected executable material shader package");
         require(!realized.value().passes.empty(), "Material has no executable shader passes");
 
-        std::cout << "Android device smoke preflight passed: one startup scene, one decoded mesh, "
-                  << textured << " cooked texture(s), " << realized.value().passes.size()
-                  << " executable material pass(es), " << manifest.artifacts.size()
-                  << " hash-verified named package artifacts\n";
+        const auto passes = realized.value().passes.size();
+        const auto artifacts = manifest.artifacts.size();
+        std::cout << "Android device smoke: scene=1 mesh=1 textures=" << textured << " passes=" << passes
+                  << " verified-artifacts=" << artifacts << '\\n';
         return 0;
     }
     catch (const std::exception& error)
