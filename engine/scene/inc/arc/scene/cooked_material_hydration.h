@@ -20,6 +20,8 @@ struct cooked_material_upload
 {
     ecs::entity_guid entity{};
     assets::asset_guid material{};
+    /** GPU shader package owner; differs from material GUID for parent-reuse instances. */
+    assets::asset_guid program_asset{};
     render::material_descriptor descriptor;
 };
 

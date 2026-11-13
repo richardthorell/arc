@@ -53,47 +53,61 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
         if (binding.material.resolved())
         {
             const auto material_guid = binding.material.guid;
-            if (binding.material.expected_type != assets::asset_types::material)
-                return decoded_result::failure("Material " + assets::to_string(material_guid) +
-                                               ": only conventional cooked Material v4 is supported");
+            const auto instance_type = binding.material.expected_type == assets::asset_types::material_instance;
+            if (!instance_type && binding.material.expected_type != assets::asset_types::material)
+                return decoded_result::failure("Unsupported cooked scene material asset type");
 
-            auto material_bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
-                                                               assets::artifact_schemas::material);
-            if (!material_bytes)
-                return decoded_result::failure("Material " + assets::to_string(material_guid) + ": " +
-                                               material_bytes.error().message);
-            auto material = render::decode_cooked_material_metadata(material_bytes.value());
-            if (!material)
+            assets::asset_guid shader_guid = material_guid;
+            if (instance_type)
             {
-                const auto message = "Material " + assets::to_string(material_guid) + ": " + material.error();
-                return decoded_result::failure(message);
+                auto instance_bytes = catalog.read_active_artifact(
+                    material_guid, assets::asset_types::material_instance, assets::artifact_schemas::material_instance);
+                if (!instance_bytes)
+                    return decoded_result::failure("Material Instance " + assets::to_string(material_guid) + ": " +
+                                                   instance_bytes.error().message);
+                auto instance = render::decode_cooked_material_instance_values(instance_bytes.value());
+                if (!instance)
+                    return decoded_result::failure("Material Instance " + assets::to_string(material_guid) + ": " +
+                                                   instance.error());
+                shader_guid = instance.value().parent;
+                resources.instance = std::move(instance).value();
+                resources.material = resources.instance->parent_material;
+            }
+            else
+            {
+                auto material_bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
+                                                                   assets::artifact_schemas::material);
+                if (!material_bytes)
+                    return decoded_result::failure("Material " + assets::to_string(material_guid) + ": " +
+                                                   material_bytes.error().message);
+                auto material = render::decode_cooked_material_metadata(material_bytes.value());
+                if (!material)
+                    return decoded_result::failure("Material " + assets::to_string(material_guid) + ": " +
+                                                   material.error());
+                resources.material = std::move(material).value();
             }
             resources.material_guid = material_guid;
-            resources.material = std::move(material).value();
+            resources.shader_material_guid = shader_guid;
 
-            auto manifest_bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
+            // Parent-reuse instances reference their parent's cooked shader and
+            // texture artifacts. The instance GUID remains the renderer's
+            // deduplication identity, so distinct value sets never alias.
+            auto manifest_bytes = catalog.read_active_artifact(shader_guid, assets::asset_types::material,
                                                                assets::artifact_schemas::material_textures);
             if (!manifest_bytes)
-            {
-                const auto error = "Material texture manifest " + assets::to_string(material_guid) + ": " +
-                                   manifest_bytes.error().message;
-                return decoded_result::failure(error);
-            }
+                return decoded_result::failure("Material texture manifest " + assets::to_string(shader_guid) + ": " +
+                                               manifest_bytes.error().message);
             auto manifest = render::decode_cooked_material_texture_manifest(manifest_bytes.value());
             if (!manifest)
-            {
-                const auto error =
-                    "Material texture manifest " + assets::to_string(material_guid) + ": " + manifest.error();
-                return decoded_result::failure(error);
-            }
+                return decoded_result::failure("Material texture manifest " + assets::to_string(shader_guid) + ": " +
+                                               manifest.error());
             if (manifest.value().material != resources.material->compiled.package)
-                return decoded_result::failure("Cooked material texture manifest has a different material identity");
+                return decoded_result::failure("Cooked material texture manifest has a different program identity");
             resources.material_textures = std::move(manifest).value();
 
             // Material pass shader artifacts are additional representations of
             // the same authored material GUID, not separate shader asset GUIDs.
-            const auto material_record =
-                catalog.catalog().database().query(material_guid, assets::asset_types::material);
+            const auto material_record = catalog.catalog().database().query(shader_guid, assets::asset_types::material);
             if (!material_record) return decoded_result::failure("Cooked material is missing from the active catalog");
             for (const auto& representation : material_record->representations)
             {
@@ -102,11 +116,11 @@ decoded_result decode_scene_resources(arc::project::runtime_catalog_session& cat
                 if (!locator) continue;
                 const auto address = assets::parse_cooked_artifact_virtual_path(locator.value());
                 const bool shader_schema =
-                    address && address->asset == material_guid && address->schema == assets::artifact_schemas::shader;
+                    address && address->asset == shader_guid && address->schema == assets::artifact_schemas::shader;
                 if (!shader_schema || address->name != representation.name ||
                     representation.name.ends_with(".coat-neutral"))
                     continue;
-                auto bytes = catalog.read_active_artifact(material_guid, assets::asset_types::material,
+                auto bytes = catalog.read_active_artifact(shader_guid, assets::asset_types::material,
                                                           assets::artifact_schemas::shader, representation.name);
                 if (!bytes)
                     return decoded_result::failure("Material shader " + representation.name + ": " +

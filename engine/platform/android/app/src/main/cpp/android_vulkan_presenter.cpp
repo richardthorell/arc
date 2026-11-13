@@ -159,10 +159,25 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
             arc::diagnostics::error("Android", "Cooked material texture binding failed: " + bound.error());
             return false;
         }
-        bound.value().name = arc::assets::to_string(resource.material_guid);
+        if (resource.instance)
+        {
+            auto applied =
+                arc::render::apply_cooked_material_instance_values(std::move(bound).value(), *resource.instance);
+            if (!applied)
+            {
+                arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
+                arc::diagnostics::error("Android", "Cooked Material Instance parameters failed: " + applied.error());
+                return false;
+            }
+            bound = std::move(applied);
+        }
+        else
+            bound.value().name = arc::assets::to_string(resource.material_guid);
+
         arc::scene::cooked_material_upload upload;
         upload.entity = resource.entity;
         upload.material = resource.material_guid;
+        upload.program_asset = resource.shader_material_guid;
         upload.descriptor = std::move(bound).value();
         materials.push_back(std::move(upload));
     }
