@@ -36,7 +36,10 @@ public:
         return true;
     }
 
-    [[nodiscard]] std::size_t cursor() const noexcept { return cursor_; }
+    [[nodiscard]] std::size_t cursor() const noexcept
+    {
+        return cursor_;
+    }
 
 private:
     std::span<const std::byte> bytes_;
@@ -58,16 +61,17 @@ core::result<texture_data, std::string> decode_legacy_texture(std::span<const st
     using result = core::result<texture_data, std::string>;
     legacy_reader reader(bytes);
     std::uint64_t magic_size{};
-    if (!reader.read(magic_size) || magic_size != legacy_magic.size() ||
-        !reader.skip(legacy_magic.size()))
+    if (!reader.read(magic_size) || magic_size != legacy_magic.size() || !reader.skip(legacy_magic.size()))
         return result::failure("Invalid ARC_TEXTURE_1 header");
 
     texture_data texture;
     std::uint32_t mip_count{};
-    if (!reader.read(texture.width) || !reader.read(texture.height) || !reader.read(texture.depth) ||
-        !reader.read(texture.array_layers) || !reader.read(texture.mip_levels) ||
-        !reader.read(texture.dimension) || !reader.read(texture.format) || !reader.read(texture.color_space) ||
-        !reader.read(texture.semantic) || !reader.read(mip_count))
+    const bool valid_header = reader.read(texture.width) && reader.read(texture.height) && reader.read(texture.depth) &&
+                              reader.read(texture.array_layers) && reader.read(texture.mip_levels) &&
+                              reader.read(texture.dimension) && reader.read(texture.format) &&
+                              reader.read(texture.color_space) && reader.read(texture.semantic) &&
+                              reader.read(mip_count);
+    if (!valid_header)
         return result::failure("Truncated ARC_TEXTURE_1 metadata");
 
     if (texture.width == 0 || texture.height == 0 || texture.depth == 0 || texture.array_layers == 0 ||
@@ -98,10 +102,8 @@ core::result<texture_data, std::string> decode_legacy_texture(std::span<const st
         if (width != expected_width || height != expected_height || offset != expected_offset)
             return result::failure("Invalid ARC_TEXTURE_1 mip ordering or dimensions");
 
-        const std::uint64_t blocks_x = (static_cast<std::uint64_t>(width) + layout.block_width - 1u) /
-                                       layout.block_width;
-        const std::uint64_t blocks_y = (static_cast<std::uint64_t>(height) + layout.block_height - 1u) /
-                                       layout.block_height;
+        const auto blocks_x = (static_cast<std::uint64_t>(width) + layout.block_width - 1u) / layout.block_width;
+        const auto blocks_y = (static_cast<std::uint64_t>(height) + layout.block_height - 1u) / layout.block_height;
         const std::uint64_t multiplier = static_cast<std::uint64_t>(expected_depth) * texture.array_layers * face_count;
         if (blocks_x > std::numeric_limits<std::uint64_t>::max() / blocks_y ||
             blocks_x * blocks_y > std::numeric_limits<std::uint64_t>::max() / layout.bytes_per_block ||
@@ -111,21 +113,22 @@ core::result<texture_data, std::string> decode_legacy_texture(std::span<const st
             offset > std::numeric_limits<std::size_t>::max() || size > std::numeric_limits<std::size_t>::max())
             return result::failure("Invalid ARC_TEXTURE_1 mip payload size");
 
-        texture.mips.push_back({.width = width, .height = height, .offset = static_cast<std::size_t>(offset),
-                                .size = static_cast<std::size_t>(size)});
+        texture_mip_data mip;
+        mip.width = width;
+        mip.height = height;
+        mip.offset = static_cast<std::size_t>(offset);
+        mip.size = static_cast<std::size_t>(size);
+        texture.mips.push_back(mip);
         expected_offset += size;
         expected_width = std::max(1u, expected_width / 2u);
         expected_height = std::max(1u, expected_height / 2u);
-        if (texture.dimension == texture_dimension::texture_3d)
-            expected_depth = std::max(1u, expected_depth / 2u);
+        if (texture.dimension == texture_dimension::texture_3d) expected_depth = std::max(1u, expected_depth / 2u);
     }
 
     std::uint64_t payload_size{};
-    if (!reader.read(payload_size) || payload_size != expected_offset ||
-        payload_size > bytes.size() - reader.cursor())
+    if (!reader.read(payload_size) || payload_size != expected_offset || payload_size > bytes.size() - reader.cursor())
         return result::failure("Invalid ARC_TEXTURE_1 payload length");
-    if (payload_size != bytes.size() - reader.cursor())
-        return result::failure("Trailing ARC_TEXTURE_1 payload data");
+    if (payload_size != bytes.size() - reader.cursor()) return result::failure("Trailing ARC_TEXTURE_1 payload data");
 
     texture.compressed = layout.compressed;
     auto& payload = texture.compressed ? texture.encoded : texture.pixels;
