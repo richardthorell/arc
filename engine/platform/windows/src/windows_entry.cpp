@@ -13,6 +13,8 @@
 #include <arc/platform/windows/packaged_client.h>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <system_error>
 #include <utility>
 #endif
@@ -24,6 +26,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -301,20 +304,42 @@ std::filesystem::path writable_data_root(const std::string& project_guid)
     return std::filesystem::path(value) / L"ARC" / widen(project_guid);
 }
 
+// GUI-subsystem applications do not necessarily have stdout/stderr. Write a
+// deterministic CI-only diagnostic file rather than displaying modal UI.
+bool write_ci_smoke_diagnostic(std::string_view text)
+{
+    const DWORD length = GetEnvironmentVariableW(L"ARC_CI_SMOKE_LOG", nullptr, 0);
+    if (length <= 1 || length > 32768) return false;
+    std::wstring path(length, L'\0');
+    const DWORD actual = GetEnvironmentVariableW(L"ARC_CI_SMOKE_LOG", path.data(), length);
+    if (actual == 0 || actual >= length) return false;
+    path.resize(actual);
+    std::ofstream out(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out << text << '\n';
+    out.flush();
+    return out.good();
+}
+
 int boot_failure(const std::string& message)
 {
     const auto wide = widen(message);
     OutputDebugStringW(wide.c_str());
-    MessageBoxW(nullptr, wide.c_str(), L"ARC packaged client failure", MB_OK | MB_ICONERROR);
+    if (!write_ci_smoke_diagnostic("failure: " + message))
+        MessageBoxW(nullptr, wide.c_str(), L"ARC packaged client failure", MB_OK | MB_ICONERROR);
     return -5;
 }
 #endif
 
 } // namespace
 
-int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
+int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_command)
 {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+#if !defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+    (void)command_line;
+#endif
 
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     namespace fs = std::filesystem;
@@ -345,9 +370,20 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show_command)
                                               .native_files = &native_files,
                                               .registrations = std::move(definition.registrations),
                                               .config = std::move(definition.config)};
+    static_cast<void>(write_ci_smoke_diagnostic("starting packaged runtime bootstrap"));
     auto started = project::start_packaged_runtime(std::move(request));
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
+    // This exercises the real Shipping bootstrap and startup scene on CI
+    // without requiring a GPU or opening a window. Normal launches are unchanged.
+    if (command_line && std::string_view(command_line) == "--ci-smoke")
+    {
+        auto stopped = session->shutdown();
+        if (!stopped) return boot_failure(stopped.error().field + ": " + stopped.error().message);
+        if (!write_ci_smoke_diagnostic("ARC packaged client bootstrap smoke passed"))
+            return boot_failure("Cannot publish CI smoke success diagnostic");
+        return 0;
+    }
     arc::framework::runtime& runtime = *session->runtime();
 #else
     std::unique_ptr<arc::framework::application> app = arc::framework::create_application();

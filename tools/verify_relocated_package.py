@@ -129,6 +129,11 @@ def smoke(distribution: Path | None, archive: Path | None, timeout: float,
         env = os.environ.copy()
         env.pop("ELECTRON_RUN_AS_NODE", None)
         env["ARC_SERVER_DATA_ROOT"] = str(writable_data)
+        diagnostic = workspace / "ci-smoke-diagnostic.txt"
+        if manifest["role"] == "client" and "--ci-smoke" in arguments:
+            env["ARC_CI_SMOKE_LOG"] = str(diagnostic)
+        else:
+            env.pop("ARC_CI_SMOKE_LOG", None)
         command = [str(entry), *arguments]
         if manifest["role"] == "server" and not arguments:
             command += ["--ticks", "10", "--no-sleep"]
@@ -145,8 +150,10 @@ def smoke(distribution: Path | None, archive: Path | None, timeout: float,
         except OSError as exc:
             code, stdout, stderr = 127, "", str(exc)
 
+        diagnostic_text = diagnostic.read_text(encoding="utf-8", errors="replace") if diagnostic.is_file() else ""
         if artifacts is not None:
             artifacts.mkdir(parents=True, exist_ok=True)
+            (artifacts / "ci-smoke-diagnostic.txt").write_text(diagnostic_text, encoding="utf-8")
             (artifacts / "stdout.txt").write_text(stdout, encoding="utf-8")
             (artifacts / "stderr.txt").write_text(stderr, encoding="utf-8")
             (artifacts / "launch.json").write_text(
@@ -156,9 +163,11 @@ def smoke(distribution: Path | None, archive: Path | None, timeout: float,
             shutil.copyfile(stage / "arc-distribution.json", artifacts / "arc-distribution.json")
 
         if code != 0:
-            raise SmokeFailure(f"relocated {manifest['role']} exited {code}: {stderr[-3000:]}")
-        if expected_output is not None and expected_output not in stdout:
-            raise SmokeFailure(f"missing expected startup output: {expected_output!r}; output: {stdout[-2000:]}")
+            raise SmokeFailure(f"relocated {manifest['role']} exited {code}: "
+                               f"{diagnostic_text[-3000:]} {stderr[-3000:]}")
+        if expected_output is not None and expected_output not in stdout and expected_output not in diagnostic_text:
+            raise SmokeFailure(f"missing expected startup output: {expected_output!r}; "
+                               f"output: {stdout[-2000:]}; diagnostic: {diagnostic_text[-2000:]}")
 
 
 def main() -> int:

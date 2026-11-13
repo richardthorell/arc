@@ -110,6 +110,16 @@ def _is_cooker_related(path: str) -> bool:
         path.startswith("templates/")
         or path.startswith("engine/assets/")
         or path.startswith("tools/asset_cooker/")
+        or path.startswith("tools/project_cli/")
+        or path in {
+            "tools/d3_shipping_acceptance.py",
+            "tools/verify_relocated_package.py",
+            "engine/platform/windows/src/windows_entry.cpp",
+        }
+        or path.startswith("engine/project/src/common/distribution_")
+        or path.startswith("engine/project/inc/arc/project/distribution_")
+        or path.startswith("engine/project/src/common/windows_distribution")
+        or path.startswith("engine/project/inc/arc/project/windows_distribution")
     )
 
 

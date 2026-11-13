@@ -318,7 +318,7 @@ describe('ContentBrowserPanel', () => {
     expect(importModel).not.toHaveBeenCalled();
 
     fireEvent.click(view.getByRole('button', { name: 'Clear' }));
-    expect(view.getByRole('checkbox', { name: 'tree.bin' })).not.toBeChecked();
+    await waitFor(() => expect(view.getByRole('checkbox', { name: 'tree.bin' })).not.toBeChecked());
     fireEvent.click(view.getByRole('checkbox', { name: 'textures/bark.png' }));
     const dialog = view.getByRole('dialog', { name: 'Import tree.gltf' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
