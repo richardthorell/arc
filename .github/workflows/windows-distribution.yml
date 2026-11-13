@@ -98,8 +98,10 @@ jobs:
       - name: Validate D3 Python Syntax and Harness
         shell: pwsh
         run: |
-          python -m py_compile tools/d3_shipping_acceptance.py tools/d3_shipping_negative.py tools/verify_relocated_package.py tools/tests/test_relocated_package.py tools/tests/test_d3_shipping_negative.py
+          python -m py_compile tools/d3_shipping_acceptance.py tools/d3_shipping_negative.py tools/d4_headless_shipping_acceptance.py tools/verify_relocated_package.py tools/tests/test_relocated_package.py tools/tests/test_d3_shipping_negative.py
           if ($LASTEXITCODE -ne 0) { throw "D3 Python syntax validation failed" }
+          python -m unittest discover -s tools/tests -p test_d4_headless_shipping_acceptance.py -v
+          if ($LASTEXITCODE -ne 0) { throw "D4.1 headless distribution tests failed" }
           python -m unittest discover -s tools/tests -p test_d3_shipping_negative.py -v
           if ($LASTEXITCODE -ne 0) { throw "D3.3 negative harness tests failed" }
           python -m unittest discover -s tools/tests -p test_relocated_package.py -v
@@ -127,6 +129,24 @@ jobs:
         run: |
           python tools/d3_shipping_acceptance.py --sdk out/d3-sdk-installed --cooker out/build/d3-cooker/tools/asset_cooker/arc-cook.exe --workspace out/d3-acceptance --artifacts out/d3-results --timeout 30
           if ($LASTEXITCODE -ne 0) { throw "D3 Shipping package and negative acceptance failed" }
+
+      - name: Package and Boot External Headless Shipping Server
+        shell: pwsh
+        run: |
+          python tools/d4_headless_shipping_acceptance.py --sdk out/d3-sdk-installed --cooker out/build/d3-cooker/tools/asset_cooker/arc-cook.exe --workspace out/d4-acceptance --artifacts out/d4-results --timeout 30
+          if ($LASTEXITCODE -ne 0) { throw "D4.1 headless server Shipping acceptance failed" }
+
+      - name: Upload D4 Headless Package and Diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: _arc-d4-headless-shipping-acceptance
+          path: |
+            out/d4-results
+            out/d4-acceptance/dist/ServerShipping/arc-distribution.json
+            out/d4-acceptance/dist/ServerShipping.zip
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload D3 Package and Diagnostics
         if: always()

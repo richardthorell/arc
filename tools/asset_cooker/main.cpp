@@ -953,9 +953,53 @@ int main(int argc, char** argv)
     const auto roots = resolve_roots(assets, command, descriptor.value());
     if (roots.empty())
     {
-        std::cerr << "No cook roots resolved. Add a default/startup scene to .arcproject or pass --root.\n";
+        // A Blank Headless server may have no authored content at all. Publish
+        // the normal versioned cook manifest with an empty artifact inventory;
+        // the D0 package and D1 runtime still validate and mount it normally.
+        // Do not silently accept missing cook roots for graphical clients.
+        const bool empty_headless = command.roots.empty() && descriptor.value().startup_scenes.empty() &&
+                                    !variants.empty() &&
+                                    std::all_of(variants.begin(), variants.end(), [](const cook_variant& variant)
+                                                { return variant.target.renderer == cook_renderer::none; });
+        if (!empty_headless || (command.command != "package" && command.command != "cook"))
+        {
+            std::cerr << "No cook roots resolved. Add a default/startup scene to .arcproject or pass --root.\n";
+            assets.on_shutdown(context);
+            return 1;
+        }
+        for (const auto& variant : variants)
+        {
+            cook_manifest manifest;
+            manifest.target = variant.target;
+            manifest.build_id = "empty-headless-" + variant.target.name;
+            if (command.command == "package")
+            {
+                const auto packaged = build_asset_packages(std::move(manifest), cache, variant.output);
+                if (!packaged.succeeded())
+                {
+                    std::cerr << packaged.error << '\n';
+                    assets.on_shutdown(context);
+                    return 1;
+                }
+            }
+            else
+            {
+                std::filesystem::create_directories(variant.output);
+                const auto saved = save_cook_manifest(variant.manifest, manifest);
+                if (!saved)
+                {
+                    std::cerr << saved.error().message << '\n';
+                    assets.on_shutdown(context);
+                    return 1;
+                }
+            }
+        }
         assets.on_shutdown(context);
-        return 1;
+        if (command.json)
+            std::cout << nlohmann::json{{"event", "package.complete"}, {"cooked", 0}, {"artifacts", 0}}.dump() << '\n';
+        else
+            std::cout << "packaged empty headless content manifest\n";
+        return 0;
     }
     nlohmann::json variant_results = nlohmann::json::array();
     std::size_t total_cooked{};

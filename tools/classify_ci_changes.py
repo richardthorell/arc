@@ -141,6 +141,8 @@ def _is_cooker_related(path: str) -> bool:
         or path.startswith("tools/project_cli/")
         or path in {
             "tools/d3_shipping_acceptance.py",
+            "tools/d4_headless_shipping_acceptance.py",
+            "tools/tests/test_d4_headless_shipping_acceptance.py",
             "tools/d3_shipping_negative.py",
             "tools/tests/test_d3_shipping_negative.py",
             "tools/verify_relocated_package.py",
