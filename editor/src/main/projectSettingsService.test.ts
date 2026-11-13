@@ -90,6 +90,23 @@ function fixture() {
   };
 }
 describe('Project Settings persistence', () => {
+  it('returns settings without waiting for native option discovery', async () => {
+    const value = fixture();
+    let complete!: (value: unknown) => void;
+    value.query.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const snapshot = await value.service.read();
+    expect(snapshot.values.name).toBe('Game');
+    expect(snapshot.capabilitiesPending).toBe(true);
+    complete(capabilities);
+    await Promise.resolve();
+    expect((await value.service.read()).capabilities.targets).toContain('android-arm64-vulkan');
+    expect(value.query).toHaveBeenCalledOnce();
+  });
   it('rejects a descriptor replaced with a different project identity', async () => {
     const value = fixture();
     fs.writeFileSync(value.descriptorPath, JSON.stringify({ ...value.raw, guid: 'replacement' }));

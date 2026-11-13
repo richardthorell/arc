@@ -74,6 +74,8 @@ export class ProjectSettingsService {
   private epoch = 0;
   private observed: ArcProjectCandidate | null = null;
   private capabilities?: { tool: string; promise: Promise<ProjectSettingsSnapshot['capabilities']> };
+  private resolvedCapabilities?: ProjectSettingsSnapshot['capabilities'];
+  private capabilitiesError?: string;
   constructor(
     private readonly active: () => ArcProjectCandidate | null,
     private readonly tool: () => string,
@@ -99,19 +101,37 @@ export class ProjectSettingsService {
     if (!project) throw new Error('Open a project to edit Project Settings');
     const tool = this.tool();
     if (!this.capabilities || this.capabilities.tool !== tool) {
+      this.resolvedCapabilities = undefined;
+      this.capabilitiesError = undefined;
       this.capabilities = {
         tool,
-        promise: this.query(tool, ['settings', 'describe']).then((value) =>
-          projectSettingsCapabilitiesSchema.parse(value),
-        ),
+        promise: this.query(tool, ['settings', 'describe']).then((value) => {
+          const parsed = projectSettingsCapabilitiesSchema.parse(value);
+          if (this.capabilities?.tool === tool) this.resolvedCapabilities = parsed;
+          return parsed;
+        }),
       };
       void this.capabilities.promise.catch(() => {
-        this.capabilities = undefined;
+        if (this.capabilities?.tool === tool)
+          this.capabilitiesError = 'Native target options are unavailable. Check the configured project tool.';
       });
     }
-    const capabilities = await this.capabilities.promise;
     if (project !== this.active()) throw new Error('Project changed while reading settings');
-    return this.snapshotFor(project, capabilities);
+    return {
+      ...this.snapshotFor(
+        project,
+        this.resolvedCapabilities ?? {
+          version: 1,
+          targets: [],
+          textureOutputs: [],
+          textureQualities: [],
+          androidMinimumSdk: 26,
+          androidCompileSdk: 35,
+        },
+      ),
+      capabilitiesPending: !this.resolvedCapabilities && !this.capabilitiesError,
+      capabilitiesError: this.capabilitiesError,
+    };
   }
   private snapshotFor(
     project: ArcProjectCandidate,
@@ -160,6 +180,7 @@ export class ProjectSettingsService {
         throw new Error('Editing a linked project descriptor is not supported');
       const tool = this.tool();
       const metadata = await this.read();
+      metadata.capabilities = await this.capabilities!.promise;
       const { raw, bytes } = readDescriptor(project.descriptorPath);
       const assertCurrent = () => {
         if (

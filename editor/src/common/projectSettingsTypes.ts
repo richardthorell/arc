@@ -134,6 +134,8 @@ export type ProjectSettingsSnapshot = {
   values: Record<string, unknown>;
   capabilities: z.infer<typeof projectSettingsCapabilitiesSchema>;
   configurations: string[];
+  capabilitiesPending?: boolean;
+  capabilitiesError?: string;
 };
 export type ProjectSettingsApplyRequest = {
   catalogVersion: number;

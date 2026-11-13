@@ -46,7 +46,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
       const snapshot = await api.read();
       if (!mounted.current || token !== generation.current) return;
       setState((previous) => {
-        if (previous?.snapshot.revision === snapshot.revision) return previous;
+        if (previous?.snapshot.revision === snapshot.revision) return { ...previous, snapshot };
         if (previous && !equal(previous.draft, previous.snapshot.values)) return { ...previous, replacement: snapshot };
         return { snapshot, draft: structuredClone(snapshot.values) };
       });
@@ -277,7 +277,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         </div>
       }
     >
-      <div className="settings-fields project-settings-content">
+      <div className={`settings-fields project-settings-content${!state && !errors._read ? ' is-loading' : ''}`}>
         {Object.entries(errors)
           .filter(([key]) => key.startsWith('_'))
           .map(([key, error]) => (
@@ -298,7 +298,11 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             </UiButton>
           </p>
         )}
-        {!state && !errors._read && <p>Loading project settings…</p>}
+        {!state && !errors._read && <p role="status">Loading project settings…</p>}
+        {state?.snapshot.capabilitiesPending && ['targets', 'build'].includes(category) && (
+          <p role="status">Loading supported target options…</p>
+        )}
+        {state?.snapshot.capabilitiesError && <p role="alert">{state.snapshot.capabilitiesError}</p>}
         {state && !state.snapshot.writable && <p role="status">This project is read-only.</p>}
         {category === 'targets' && (
           <UiSettingsCard
@@ -333,7 +337,15 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
                       <small title={field.description}>{field.description}</small>
                       {errors[field.id] && <span role="alert">{errors[field.id]}</span>}
                     </span>
-                    {fieldControl(field)}
+                    {['targets', 'profiles'].includes(field.control) ? (
+                      <fieldset
+                        disabled={Boolean(state.snapshot.capabilitiesPending || state.snapshot.capabilitiesError)}
+                      >
+                        {fieldControl(field)}
+                      </fieldset>
+                    ) : (
+                      fieldControl(field)
+                    )}
                   </div>
                 ))}
               </UiSettingsCard>
