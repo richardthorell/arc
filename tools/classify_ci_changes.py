@@ -54,6 +54,10 @@ def _normalise(path: str) -> str:
 
 
 def _is_docs(path: str) -> bool:
+    # Markdown packaged into the editor is an executable distribution input,
+    # not documentation-only PR content.
+    if _needs_editor_package(path):
+        return False
     p = PurePosixPath(path)
     return (
         path.startswith("docs/")
