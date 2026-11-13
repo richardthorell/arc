@@ -970,8 +970,7 @@ int main(int argc, char** argv)
         {
             cook_manifest manifest;
             manifest.target = variant.target;
-            manifest.build_id = to_string(hash_bytes(std::span<const std::byte>{}));
-            asset_status saved;
+            manifest.build_id = "empty-headless-" + variant.target.name;
             if (command.command == "package")
             {
                 const auto packaged = build_asset_packages(std::move(manifest), cache, variant.output);
@@ -985,7 +984,7 @@ int main(int argc, char** argv)
             else
             {
                 std::filesystem::create_directories(variant.output);
-                saved = save_cook_manifest(variant.manifest, manifest);
+                const auto saved = save_cook_manifest(variant.manifest, manifest);
                 if (!saved)
                 {
                     std::cerr << saved.error().message << '\n';
