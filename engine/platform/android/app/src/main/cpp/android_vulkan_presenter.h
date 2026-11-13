@@ -46,5 +46,6 @@ private:
     std::uint32_t submitted_width_{};
     std::uint32_t submitted_height_{};
     std::uint64_t frame_index_{};
+    bool first_scene_present_logged_{};
 };
 } // namespace arc::platform::android
