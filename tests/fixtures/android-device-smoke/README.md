@@ -1,8 +1,7 @@
 # Android device smoke fixture (V3.4f.1)
 
 This deliberately small **external ARC project** is the target for the first
-physical-device frame milestone. It has one persisted active camera, one
-directional light, one MeshRenderer asset GUID, one graph-authored unlit
+physical-device frame milestone. It has one persisted active camera, one MeshRenderer asset GUID, one graph-authored unlit
 material, and one actual source texture.
 
 The fixture stores the scene and project configuration here, but **copies**
