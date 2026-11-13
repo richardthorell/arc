@@ -25,6 +25,35 @@ class ClassifyCiChangesTests(unittest.TestCase):
         self.assertFalse(result.coverage)
         self.assertFalse(result.android)
 
+    def test_editor_package_impact_selects_windows_smoke(self):
+        for path in (
+            "editor/forge.config.ts",
+            "editor/package.json",
+            "editor/package-lock.json",
+            "editor/src/main/index.ts",
+            "editor/src/preload/index.ts",
+            "editor/native/src/host.cpp",
+            "editor/resources/ai-skills/play-workflows/SKILL.md",
+            ".github/workflows/build-msvc.yml",
+            "tools/classify_ci_changes.py",
+        ):
+            with self.subTest(path=path):
+                selection = classify([path])
+                self.assertTrue(selection.editor_package)
+                self.assertTrue(selection.msvc)
+
+    def test_renderer_only_does_not_package_editor(self):
+        selection = classify(["editor/src/renderer/src/app/Workbench.tsx"])
+        self.assertTrue(selection.quality_editor)
+        self.assertFalse(selection.editor_package)
+        self.assertFalse(selection.msvc)
+
+    def test_android_apk_verifier_change_runs_android(self):
+        selection = classify(["tools/verify_android_apk.py"])
+        self.assertTrue(selection.android)
+        self.assertTrue(selection.quality_native)
+        self.assertFalse(selection.editor_package)
+
     def test_native_change_runs_compilers_and_coverage(self):
         result = classify(["engine/core/src/JobSystem.cpp"])
         self.assertTrue(result.clang)

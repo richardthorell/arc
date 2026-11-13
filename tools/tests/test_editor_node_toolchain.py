@@ -28,6 +28,15 @@ class EditorNodeToolchainTests(unittest.TestCase):
         self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "10.9.7"))
         self.assertFalse(arc_build.editor_node_toolchain_supported("v22.23.2", "not-a-version"))
 
+    def test_windows_editor_package_ci_uses_pinned_node(self) -> None:
+        """CI must not install an old Node that npm ci rejects via engine-strict."""
+        package = json.loads((REPO_ROOT / "editor" / "package.json").read_text(encoding="utf-8"))
+        workflow = (REPO_ROOT / ".github" / "workflows" / "build-msvc.yml").read_text(encoding="utf-8")
+        setup = workflow.split("  editor-package:", 1)[1].split("  publish-artifacts:", 1)[0]
+        self.assertIn(f"node-version: {package['engines']['node']}", setup)
+        self.assertIn("Verify Editor Node and npm Toolchain", setup)
+        self.assertIn("npmVersion", setup)
+
     def test_editor_package_engines_match_prerequisite_policy(self) -> None:
         package = json.loads((REPO_ROOT / "editor" / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(package["engines"]["node"], arc_build.EDITOR_NODE_VERSION)
