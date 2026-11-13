@@ -2,7 +2,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <charconv>
+#include <optional>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
