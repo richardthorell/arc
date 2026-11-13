@@ -278,7 +278,7 @@ persistence::persistence_status decode_camera(void* component, const persistence
         error.message = "Cooked Camera has invalid projection bounds";
         return persistence::persistence_status::failure(std::move(error));
     }
-    *static_cast<camera_component*>(component) = std::move(next);
+    *static_cast<camera_component*>(component) = next;
     return persistence::persistence_status::success();
 }
 
