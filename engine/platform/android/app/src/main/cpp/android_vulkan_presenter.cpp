@@ -161,8 +161,8 @@ bool android_vulkan_presenter::hydrate_scene(android_runtime_bridge& runtime)
         }
         if (resource.instance)
         {
-            auto applied = arc::render::apply_cooked_material_instance_values(std::move(bound).value(),
-                                                                              *resource.instance);
+            auto applied =
+                arc::render::apply_cooked_material_instance_values(std::move(bound).value(), *resource.instance);
             if (!applied)
             {
                 arc::scene::release_cooked_scene_textures(*renderer_, texture_residency_);
