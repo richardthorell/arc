@@ -25,20 +25,20 @@
           "typeId": "a7c00000000000010000000000000002",
           "version": 1,
           "position": [
-            0,
+            0.0,
             1.75,
-            6
+            6.0
           ],
           "rotation": [
-            0,
-            0,
-            0,
-            1
+            0.0,
+            0.0,
+            0.0,
+            1.0
           ],
           "scale": [
-            1,
-            1,
-            1
+            1.0,
+            1.0,
+            1.0
           ]
         },
         "Tag": {
@@ -52,24 +52,24 @@
           "projection": 0,
           "fovY": 1.0471975512,
           "near": 0.1,
-          "far": 2000,
-          "orthographicHeight": 10,
+          "far": 2000.0,
+          "orthographicHeight": 10.0,
           "active": true,
           "clearColor": [
             0.04,
             0.07,
             0.12,
-            1
+            1.0
           ],
           "exposure": {
             "mode": 0,
             "metering": 0,
-            "manualEV100": 10,
-            "compensationEV": 0,
-            "minimumEV100": -6,
-            "maximumEV100": 16,
-            "brightenSpeed": 3,
-            "darkenSpeed": 1
+            "manualEV100": 10.0,
+            "compensationEV": 0.0,
+            "minimumEV100": -6.0,
+            "maximumEV100": 16.0,
+            "brightenSpeed": 3.0,
+            "darkenSpeed": 1.0
           }
         }
       }
@@ -93,9 +93,9 @@
           "typeId": "a7c00000000000010000000000000002",
           "version": 1,
           "position": [
-            0,
-            12,
-            0
+            0.0,
+            12.0,
+            0.0
           ],
           "rotation": [
             -0.258819,
@@ -104,9 +104,9 @@
             0.938
           ],
           "scale": [
-            1,
-            1,
-            1
+            1.0,
+            1.0,
+            1.0
           ]
         },
         "Tag": {
@@ -118,15 +118,15 @@
           "typeId": "a7c0000000000001000000000000000e",
           "version": 3,
           "color": [
-            1,
+            1.0,
             0.95,
             0.88
           ],
-          "intensity": 50000,
+          "intensity": 50000.0,
           "castsShadows": true,
           "enabled": true,
           "useColorTemperature": false,
-          "temperatureKelvin": 5300,
+          "temperatureKelvin": 5300.0,
           "intensityUnit": 1,
           "shadow": {
             "enabled": true,
@@ -142,7 +142,7 @@
           },
           "cascades": {
             "count": 4,
-            "maximumDistance": 200,
+            "maximumDistance": 200.0,
             "splitLambda": 0.65,
             "blendFraction": 0.1,
             "stable": true
@@ -169,20 +169,20 @@
           "typeId": "a7c00000000000010000000000000002",
           "version": 1,
           "position": [
-            0,
-            0,
-            0
+            0.0,
+            0.0,
+            0.0
           ],
           "rotation": [
-            0,
-            0,
-            0,
-            1
+            0.0,
+            0.0,
+            0.0,
+            1.0
           ],
           "scale": [
-            1,
-            1,
-            1
+            1.0,
+            1.0,
+            1.0
           ]
         },
         "Tag": {
@@ -195,10 +195,10 @@
           "version": 5,
           "visible": true,
           "baseColorTint": [
-            1,
-            1,
-            1,
-            1
+            1.0,
+            1.0,
+            1.0,
+            1.0
           ]
         }
       }
