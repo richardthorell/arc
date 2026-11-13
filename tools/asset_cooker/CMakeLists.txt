@@ -28,7 +28,7 @@ if(BUILD_TESTING)
     arc_configure_first_party_target(arc_cook_material_shader_dependency_tests)
     target_compile_features(arc_cook_material_shader_dependency_tests PRIVATE cxx_std_20)
     target_link_libraries(arc_cook_material_shader_dependency_tests
-        PRIVATE arc-assets Catch2::Catch2WithMain
+        PRIVATE arc-assets arc-render arc-render-tools Catch2::Catch2WithMain
     )
     add_test(NAME arc-cook-material-shader-dependency COMMAND arc_cook_material_shader_dependency_tests)
     set_tests_properties(arc-cook-material-shader-dependency PROPERTIES LABELS "unit;assets;materials")

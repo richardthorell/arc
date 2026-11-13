@@ -1,4 +1,5 @@
 #include "../material_shader_dependency.h"
+#include "../material_texture_manifest.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -70,4 +71,49 @@ TEST_CASE("Material Shader duplicate exact paths are ambiguous")
     const auto result = arc::tools::detail::find_material_shader_dependency(dependencies, "Shaders/custom.slang");
     REQUIRE(result.ambiguous);
     REQUIRE(result.dependency == nullptr);
+}
+
+TEST_CASE("Material texture bindings map compiler-assigned slots to exact registered asset GUIDs")
+{
+    arc::render::tools::material_graph_descriptor graph;
+    arc::render::tools::material_texture_binding albedo_binding;
+    albedo_binding.node_id = "albedo";
+    albedo_binding.slot = 0;
+    albedo_binding.type = arc::render::shader_parameter_type::texture_2d;
+    albedo_binding.dimension_slot = 0;
+    albedo_binding.default_source = "Textures/albedo.png";
+    graph.textures.push_back(albedo_binding);
+
+    arc::render::tools::material_texture_binding normal_binding;
+    normal_binding.node_id = "normal";
+    normal_binding.slot = 1;
+    normal_binding.type = arc::render::shader_parameter_type::texture_2d;
+    normal_binding.dimension_slot = 1;
+    normal_binding.default_source = "Textures/normal.png";
+    graph.textures.push_back(normal_binding);
+
+    arc::render::tools::material_texture_binding unbound;
+    unbound.node_id = "unbound";
+    unbound.slot = 2;
+    unbound.type = arc::render::shader_parameter_type::texture_2d;
+    unbound.dimension_slot = 2;
+    graph.textures.push_back(unbound);
+    auto albedo = shader("project/assets/Textures/albedo.png");
+    albedo.type = arc::assets::asset_types::texture_2d;
+    albedo.guid = {1, 2};
+    auto normal = shader("project/assets/Textures/normal.png");
+    normal.type = arc::assets::asset_types::texture_2d;
+    normal.guid = {3, 4};
+    const std::vector dependencies{normal, albedo};
+    const auto manifest = arc::tools::detail::make_material_texture_manifest({9, 10}, graph, dependencies);
+    REQUIRE(manifest);
+    REQUIRE(manifest.value().textures.size() == 3);
+    CHECK(manifest.value().textures[0].asset == albedo.guid);
+    CHECK(manifest.value().textures[1].asset == normal.guid);
+    CHECK_FALSE(manifest.value().textures[2].asset.valid());
+
+    const std::vector ambiguous{albedo, albedo, normal};
+    CHECK_FALSE(arc::tools::detail::make_material_texture_manifest({9, 10}, graph, ambiguous));
+    const std::vector missing{normal};
+    CHECK_FALSE(arc::tools::detail::make_material_texture_manifest({9, 10}, graph, missing));
 }

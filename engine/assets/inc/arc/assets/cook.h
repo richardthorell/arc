@@ -78,6 +78,7 @@ inline constexpr artifact_schema_id mesh_distance_field{0xa7ca55e700000004ull, 0
 inline constexpr artifact_schema_id material_instance{0xa7ca55e700000004ull, 0x000000000000000bull};
 inline constexpr artifact_schema_id terrain_manifest{0xa7ca55e700000004ull, 0x000000000000000cull};
 inline constexpr artifact_schema_id material_function{0xa7ca55e700000004ull, 0x000000000000000dull};
+inline constexpr artifact_schema_id material_textures{0xa7ca55e700000004ull, 0x000000000000000eull};
 } // namespace artifact_schemas
 
 enum class cook_platform : std::uint8_t
