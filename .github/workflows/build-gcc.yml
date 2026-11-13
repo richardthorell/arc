@@ -47,18 +47,8 @@ jobs:
             arc-ccache-gcc14-relwithdebinfo-v2-
       - name: Reset Compiler Cache Stats
         run: ccache --zero-stats
-      - name: Configure
-        run: >
-          cmake -S . -B out/build/gcc -G Ninja
-          -DCMAKE_C_COMPILER=gcc-14
-          -DCMAKE_CXX_COMPILER=g++-14
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          -DARC_BUILD_EDITOR=ON
-          -DARC_BUILD_RENDER_VULKAN=ON
-          -DARC_WARNINGS_AS_ERRORS=ON
-          -DBUILD_TESTING=ON
+      - name: Configure Linux x64 / GCC 14
+        run: cmake --preset ci-linux-gcc14
       - name: Build
         run: cmake --build out/build/gcc --parallel
       - name: Validate Shaders

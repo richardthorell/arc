@@ -47,19 +47,8 @@ jobs:
         run: ccache --zero-stats
       - name: Set Up Vulkan SDK 1.4.350.0
         uses: ./.github/actions/setup-vulkan
-      - name: Configure
-        run: >
-          cmake -S . -B out/build/clang-vulkan -G Ninja
-          -DCMAKE_C_COMPILER=clang-18
-          -DCMAKE_CXX_COMPILER=clang++-18
-          -DCMAKE_C_COMPILER_LAUNCHER=ccache
-          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          -DARC_BUILD_EDITOR=ON
-          -DARC_BUILD_RENDER_VULKAN=ON
-          -DARC_BUILD_SAMPLES=ON
-          -DARC_WARNINGS_AS_ERRORS=ON
-          -DBUILD_TESTING=ON
+      - name: Configure Linux x64 / Clang 18
+        run: cmake --preset ci-linux-clang18
       - name: Build
         run: cmake --build out/build/clang-vulkan --parallel
       - name: Validate Shaders

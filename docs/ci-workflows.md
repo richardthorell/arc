@@ -7,8 +7,9 @@ GitHub Actions is organized by **intent** at workflow level and by
 | --- | --- |
 | Pull Request | Change-based validation and the stable `PR Gate` required check |
 | 01 · Quality — Editor & Native | Independent dependency, C++ format, C++ analysis, editor static, and editor test jobs |
-| 02 · Windows x64 — MSVC (VS2022) | Native tests, asset cook, Shipping acceptance, SDK and editor packages |
-| 02 · Linux x64 — Clang 18 / GCC 14 | Native compiler matrix and Clang extended validation |
+| 02 · Windows x64 — MSVC (VS2022) | Native tests, Electron editor package, and artifact publication orchestrator |
+| 03 · Windows x64 — Content, SDK & Distribution | Reusable asset cook, D3 Shipping boot acceptance, SDK matrix and runtime package |
+| 02 · Linux x64 — Clang 18 / GCC 14 | Native compiler matrix sharing CMake CI presets; Clang extended validation |
 | 03 · Android arm64 — NDK r30 / Clang | Debug APK build |
 | 04 · Coverage — Linux x64 / Clang 18 | LLVM test coverage |
 | 05 · Performance — CPU Regression | Benchmark regression check |
@@ -47,3 +48,30 @@ belong to CI.2/CI.3.
 The obsolete branch-write automation for
 `feature/material-editor-foundation` and `feature/ai-assistant-stage-1`
 was removed after confirming both target branches no longer exist.
+
+## CI.2: distribution isolation and shared native configurations
+
+`build-msvc.yml` is still the existing entrypoint for Windows PR checks and
+`main` builds. It owns the native build/test, editor package, and publication
+orchestration. It invokes `windows-distribution.yml` as a nested reusable
+workflow, keeping the original four job IDs and their behavior:
+`asset-cook`, `d3-shipping-acceptance`, `sdk-validation`, and
+`shipping-runtime`. The Shipping runtime still depends on the verified cook
+artifact. Artifacts are produced and consumed **within the same GitHub Actions
+run**, without cross-workflow-run artifact discovery or permissions. On PRs,
+the original `run_cooker` selector still controls both cooker and D3 tests;
+SDK and Shipping runtime remain main-only. The editor package still depends
+on the Windows native build, and artifact publication waits for native,
+distribution, and editor jobs to succeed.
+
+Linux Clang 18 and GCC 14 share `ci-linux-vulkan-base` in
+`CMakePresets.json`; each toolchain preset retains its compiler,
+binary directory, and original target-specific flags. Cache keys, test runs,
+shader checks, and main-only installed-SDK verification are unchanged. The
+Clang installed-SDK stages remain in the Clang build job until an artifact
+handoff can be added without rebuilding the same SDK twice.
+
+The root README shows the `Pull Request` workflow badge, scoped to
+`event=pull_request` rather than to `branch=main` (the PR workflow runs
+against PR heads). It is an overview of the latest PR workflow run,
+**not** a claim that every PR or every `main` build is green.

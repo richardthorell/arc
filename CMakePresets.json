@@ -121,6 +121,39 @@
         "ARC_BUILD_RENDER_VULKAN": "OFF",
         "ARC_BUILD_EDITOR": "OFF"
       }
+    },
+    {
+      "name": "ci-linux-vulkan-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ARC_BUILD_EDITOR": "ON",
+        "ARC_BUILD_RENDER_VULKAN": "ON",
+        "ARC_WARNINGS_AS_ERRORS": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "ci-linux-clang18",
+      "inherits": "ci-linux-vulkan-base",
+      "binaryDir": "${sourceDir}/out/build/clang-vulkan",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-18",
+        "CMAKE_CXX_COMPILER": "clang++-18",
+        "ARC_BUILD_SAMPLES": "ON"
+      }
+    },
+    {
+      "name": "ci-linux-gcc14",
+      "inherits": "ci-linux-vulkan-base",
+      "binaryDir": "${sourceDir}/out/build/gcc",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc-14",
+        "CMAKE_CXX_COMPILER": "g++-14"
+      }
     }
   ],
   "buildPresets": [
