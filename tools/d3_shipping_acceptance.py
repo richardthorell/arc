@@ -7,6 +7,7 @@ used. All diagnostics and the final manifests are retained under --artifacts.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -47,7 +48,16 @@ def prepare_minimal_startup_scene(project: Path) -> None:
             name: component for name, component in components.items()
             if name in {"Name", "Transform"}
         }
-    source.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    # ARC persistence seals the canonical JSON payload (without the integrity
+    # envelope). Re-seal after editing; otherwise arc-cook correctly rejects
+    # the generated scene as corrupt.
+    document.pop("integrity", None)
+    canonical = json.dumps(document, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    document["integrity"] = {
+        "algorithm": "sha256",
+        "payloadHash": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    }
+    source.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def run(args: argparse.Namespace) -> None:
