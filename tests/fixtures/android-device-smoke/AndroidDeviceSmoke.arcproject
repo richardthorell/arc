@@ -1,0 +1,83 @@
+{
+  "format": "arc-project",
+  "formatVersion": 3,
+  "guid": "b80a0000-0000-4000-8000-000000000006",
+  "name": "Android Device Smoke",
+  "engineVersion": "0.1.0",
+  "paths": {
+    "source": "Source",
+    "content": "Content",
+    "config": "Config",
+    "plugins": "Plugins",
+    "saved": "Saved",
+    "intermediate": "Intermediate",
+    "build": "Build"
+  },
+  "assetRoots": [
+    "Content"
+  ],
+  "modules": [],
+  "plugins": [],
+  "defaultScene": {
+    "guid": "b80a0000-0000-4000-8000-000000000005",
+    "expectedType": "scene",
+    "pathHint": "Content/Scenes/Startup.arcscene"
+  },
+  "startupScenes": [
+    {
+      "guid": "b80a0000-0000-4000-8000-000000000005",
+      "expectedType": "scene",
+      "pathHint": "Content/Scenes/Startup.arcscene"
+    }
+  ],
+  "targetPlatforms": [
+    {
+      "id": "android-arm64-vulkan",
+      "enabled": true
+    }
+  ],
+  "toolchain": {
+    "compiler": "auto",
+    "minimumVersion": "",
+    "generator": "auto",
+    "architecture": "arm64",
+    "cppStandard": 20
+  },
+  "buildConfigurations": [
+    "Debug",
+    "RelWithDebInfo",
+    "Shipping"
+  ],
+  "renderer": {
+    "backend": "vulkan",
+    "api": "1.2",
+    "quality": "low"
+  },
+  "cookProfiles": [
+    {
+      "id": "android-arm64-vulkan",
+      "platform": "android",
+      "architecture": "arm64",
+      "renderer": "vulkan",
+      "api": "1.2",
+      "textures": {
+        "outputs": [
+          "astc"
+        ],
+        "quality": "balanced"
+      },
+      "configuration": "Shipping"
+    }
+  ],
+  "package": {
+    "applicationName": "ARC Android Device Smoke",
+    "companyName": "ARC",
+    "output": "Build/Packages",
+    "regionChunks": true
+  },
+  "settings": {
+    "editor": "Config/Editor.json",
+    "renderer": "Config/Renderer.json",
+    "input": "Config/Input.json"
+  }
+}
