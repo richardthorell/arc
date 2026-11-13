@@ -86,8 +86,9 @@ core::result<material_parameter_value, std::string> typed_value(const json& valu
     if (type == shader_parameter_type::int32 && value.is_number_integer())
     {
         const auto number = value.get<std::int64_t>();
-        if (number >= std::numeric_limits<std::int32_t>::min() &&
-            number <= std::numeric_limits<std::int32_t>::max())
+        const bool in_range = number >= std::numeric_limits<std::int32_t>::min() &&
+                              number <= std::numeric_limits<std::int32_t>::max();
+        if (in_range)
             return result::success(material_parameter_value{static_cast<std::int32_t>(number)});
     }
     if (type == shader_parameter_type::uint32 && value.is_number_unsigned())
@@ -152,18 +153,18 @@ decode_cooked_material_instance_values(std::span<const std::byte> bytes)
     if (!parent) return result::failure("Material Instance parent GUID is invalid");
     auto metadata = decode_cooked_material_metadata(material_bytes);
     if (!metadata) return result::failure("Material Instance parent package: " + metadata.error());
-    if (metadata.value().compiled.package.high != parent->high ||
-        metadata.value().compiled.package.low != parent->low)
+    const auto package_id = metadata.value().compiled.package;
+    if (package_id.high != parent->high || package_id.low != parent->low)
         return result::failure("Material Instance embedded parent program identity mismatch");
 
     auto authored = json::parse(document, nullptr, false);
     const bool version_ok = authored.is_object() && authored.contains("version") &&
                             authored["version"].is_number_integer() && authored["version"] == 1;
-    const bool parent_ok = authored.is_object() && authored.contains("parent") &&
-                           authored["parent"].is_object() && authored["parent"].contains("guid") &&
-                           authored["parent"]["guid"].is_string();
-    if (!version_ok || !parent_ok)
-        return result::failure("Material Instance authoring document is invalid");
+    if (!version_ok) return result::failure("Material Instance authoring document is invalid");
+    if (!authored.contains("parent") || !authored["parent"].is_object())
+        return result::failure("Material Instance authoring parent is invalid");
+    if (!authored["parent"].contains("guid") || !authored["parent"]["guid"].is_string())
+        return result::failure("Material Instance parent GUID field is invalid");
     const auto authored_parent = assets::parse_asset_guid(authored["parent"]["guid"].get<std::string>());
     if (!authored_parent || *authored_parent != *parent)
         return result::failure("Material Instance authored parent differs from cooked parent");
