@@ -245,3 +245,32 @@ TEST_CASE("V3.4b editor v4 MeshRenderer field names migrate to the runtime schem
     CHECK(field->id == 5u);
     CHECK(field->known);
 }
+
+
+TEST_CASE("Android device smoke Camera codec preserves projection exposure and rejects unknown fields")
+{
+    arc::persistence::component_persistence_registry registry;
+    REQUIRE(arc::scene::register_persistence_components(registry));
+    arc::scene::camera_component input;
+    input.projection = arc::scene::camera_projection::orthographic;
+    input.orthographic_height = 8.0f;
+    input.clear_color = {0.2f, 0.3f, 0.4f, 1.0f};
+    input.exposure.mode = arc::render::exposure_mode::manual;
+    input.exposure.manual_ev100 = 12.0f;
+
+    const auto id = arc::ecs::component_metadata<arc::scene::camera_component>().id;
+    arc::persistence::archive_component_record encoded;
+    REQUIRE(registry.encode(id, &input, encoded));
+    arc::scene::camera_component restored;
+    REQUIRE(registry.decode(id, &restored, encoded));
+    CHECK(restored.projection == input.projection);
+    CHECK(restored.orthographic_height == 8.0f);
+    CHECK(restored.clear_color[1] == 0.3f);
+    CHECK(restored.exposure.mode == arc::render::exposure_mode::manual);
+    CHECK(restored.exposure.manual_ev100 == 12.0f);
+
+    auto invalid = encoded;
+    invalid.fields.push_back({99u, "unexpected", {}, true});
+    CHECK_FALSE(registry.decode(id, &restored, invalid));
+    CHECK(restored.exposure.manual_ev100 == 12.0f);
+}
