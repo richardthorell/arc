@@ -71,8 +71,7 @@ core::result<texture_data, std::string> decode_legacy_texture(std::span<const st
                               reader.read(texture.dimension) && reader.read(texture.format) &&
                               reader.read(texture.color_space) && reader.read(texture.semantic) &&
                               reader.read(mip_count);
-    if (!valid_header)
-        return result::failure("Truncated ARC_TEXTURE_1 metadata");
+    if (!valid_header) return result::failure("Truncated ARC_TEXTURE_1 metadata");
 
     if (texture.width == 0 || texture.height == 0 || texture.depth == 0 || texture.array_layers == 0 ||
         texture.mip_levels == 0 || mip_count == 0 || mip_count > 32 || mip_count != texture.mip_levels ||
