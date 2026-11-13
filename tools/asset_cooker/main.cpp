@@ -995,8 +995,7 @@ int main(int argc, char** argv)
         }
         assets.on_shutdown(context);
         if (command.json)
-            std::cout << nlohmann::json{{"event", "package.complete"}, {"cooked", 0}, {"artifacts", 0}}.dump()
-                      << '\n';
+            std::cout << nlohmann::json{{"event", "package.complete"}, {"cooked", 0}, {"artifacts", 0}}.dump() << '\n';
         else
             std::cout << "packaged empty headless content manifest\n";
         return 0;
