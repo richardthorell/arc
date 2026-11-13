@@ -115,7 +115,9 @@ int main(int argc, char** argv)
             require_closure(manifest, entry.asset, "Texture");
             const auto bytes = load(manifest, reader, entry.asset, assets::artifact_schemas::texture, "Texture");
             const auto texture = arc::render::decode_cooked_texture_data(bytes);
-            require(static_cast<bool>(texture), "Runtime texture decoder rejected the cooked texture");
+            if (!texture)
+                throw std::runtime_error("Runtime texture decoder rejected cooked texture " +
+                                         assets::to_string(entry.asset) + ": " + texture.error());
         }
         require(textured >= 1, "Fixture requires at least one bound, cooked source texture");
 
