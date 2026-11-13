@@ -18,6 +18,12 @@ wrapper JAR. Point Gradle at the SDK using `ANDROID_HOME` or an untracked
 
 ## Build and launch
 
+Project-owned application ID, display name, versions, and SDK levels can be
+configured through [Project Settings](../../../docs/project-settings.md).
+Pass its validated JSON export with `-ParcProjectSettings=/absolute/export.json`.
+Omitting this property retains the engine-host defaults below; a supplied invalid
+export fails configuration instead of silently selecting those defaults.
+
 Run from `engine/platform/android`:
 
 ```sh

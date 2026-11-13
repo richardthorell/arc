@@ -19,6 +19,8 @@ import { AndroidTargetService } from './androidTargetService';
 import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
+import { ProjectSettingsService } from './projectSettingsService';
+import type { ProjectSettingsApplyRequest } from '../common/projectSettingsTypes';
 import { resolveWindowsBuildEnvironment } from './windowsBuildWorkflow';
 import type { ArcBuildRequest } from '../common/buildTypes';
 import type { WorkflowRequest } from '../common/projectWorkflowTypes';
@@ -55,6 +57,7 @@ let sourceControlService: SourceControlService | null = null;
 let recoveryService: RecoveryService | null = null;
 let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
+let projectSettingsService: ProjectSettingsService | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
 let closeChoiceResolve: ((choice: 'save' | 'discard' | 'cancel') => void) | null = null;
@@ -1138,6 +1141,17 @@ void app.whenReady().then(async () => {
     (snapshot) => sendToActiveRenderer('build:state', snapshot),
     (snapshot) => sendToActiveRenderer('workflow:state', snapshot),
     () => resolveWindowsBuildEnvironment(projectService?.projectTool() ?? '', settingsService?.snapshot() ?? null),
+    () => projectSettingsService?.isBusy() ?? false,
+  );
+  projectSettingsService = new ProjectSettingsService(
+    () => projectService?.active() ?? null,
+    () => projectService?.projectTool() ?? '',
+    () => buildService?.isBusy() ?? false,
+    (raw, expected) => {
+      projectService!.refreshSettings(raw, expected);
+      buildService?.watchProject();
+      sendToActiveRenderer('projectSettings:changed');
+    },
   );
   settingsService = new SettingsService(
     path.join(app.getPath('userData'), 'editor-settings.v1.json'),
@@ -1239,6 +1253,11 @@ void app.whenReady().then(async () => {
     ciSmoke: isCiSmoke,
   }));
   ipcMain.handle('project:snapshot', () => projectService?.snapshot() ?? null);
+  ipcMain.handle('projectSettings:describe', () => projectSettingsService?.describe());
+  ipcMain.handle('projectSettings:read', () => projectSettingsService?.read());
+  ipcMain.handle('projectSettings:apply', (_event, request: ProjectSettingsApplyRequest) =>
+    projectSettingsService?.apply(request),
+  );
   ipcMain.handle(
     'project:open',
     async (_event, candidate: string, options: { readOnly?: boolean; upgrade?: boolean } = {}) => {

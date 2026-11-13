@@ -562,12 +562,12 @@ describe('EditorPreferencesDialog', () => {
 });
 
 describe('ProjectSettingsDialog', () => {
-  it('uses the shared settings shell and remains empty for now', () => {
+  it('uses the shared settings shell and reports an unavailable project-settings bridge', async () => {
     render(<ProjectSettingsDialog onClose={vi.fn()} />);
 
     expect(screen.getByRole('dialog', { name: 'Project Settings' })).toBeInTheDocument();
     expect(screen.queryByRole('tree')).not.toBeInTheDocument();
-    expect(window.arc.settings.snapshot).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('updated editor host');
   });
 });
 

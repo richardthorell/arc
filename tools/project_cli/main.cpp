@@ -273,9 +273,10 @@ int main(int argc, char** argv)
         args.values.emplace_back(argv[index]);
     const bool json_output = args.has("--json");
     if (args.values.empty())
-        return fail(
-            json_output,
-            "expected create, validate, upgrade, engine, toolchains, configure, build, package, workflow, or ide", 2);
+        return fail(json_output,
+                    "expected create, validate, upgrade, settings, engine, toolchains, configure, build, package, "
+                    "workflow, or ide",
+                    2);
     const auto command = args.values.front();
     if (command == "create")
     {
@@ -341,6 +342,40 @@ int main(int argc, char** argv)
         if (!json_output)
             for (const auto& tool : result.value())
                 std::cout << tool.id << ": " << (tool.available ? "available" : "missing") << '\n';
+        return 0;
+    }
+    if (command == "settings")
+    {
+        if (args.values.size() > 1 && args.values[1] == "describe")
+        {
+            print_json(true, {{"version", 1},
+                              {"targets", arc::project::supported_project_targets()},
+                              {"textureOutputs", {"bc", "astc", "etc2", "portable"}},
+                              {"textureQualities", {"balanced", "quality", "size"}},
+                              {"androidMinimumSdk", 26},
+                              {"androidCompileSdk", 35}});
+            return 0;
+        }
+        if (args.values.size() <= 1 || args.values[1] != "export-android")
+            return fail(json_output, "settings expects describe or export-android", 2);
+        const auto file = descriptor_from(args);
+        if (file.empty()) return fail(json_output, "settings export-android requires --project", 2);
+        const auto descriptor = arc::project::load_descriptor(file);
+        if (!descriptor) return fail(json_output, descriptor.error().message);
+        const auto validated = arc::project::validate_descriptor(file, descriptor.value());
+        if (!validated) return fail(json_output, validated.error().message);
+        if (!descriptor.value().android || descriptor.value().android->application_id.empty())
+            return fail(json_output, "Configure the Android application ID in Project Settings before packaging");
+        const auto& android = *descriptor.value().android;
+        print_json(true, {{"format", "arc.android-project-settings"},
+                          {"version", 1},
+                          {"projectGuid", descriptor.value().guid},
+                          {"applicationId", android.application_id},
+                          {"displayName", descriptor.value().package.application_name},
+                          {"versionName", android.version_name},
+                          {"versionCode", android.version_code},
+                          {"minimumSdk", android.minimum_sdk},
+                          {"targetSdk", android.target_sdk}});
         return 0;
     }
     if (command == "configure") return configure_or_build(args, false, json_output);
