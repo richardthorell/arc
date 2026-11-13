@@ -192,7 +192,28 @@ realize_cooked_material_program(const cooked_material_metadata& material,
                 expected.size != actual.size)
                 return result::failure("Cooked shader parameter layout differs from material contract");
         }
-        program.parameter_block_size = std::max(program.parameter_block_size, reflection.parameter_block_size);
+        // Material parameter bytes must mean exactly the same thing in every
+        // cooked pass. Picking the first pass's defaults can hide a stale shader
+        // permutation or a corrupted cooker output until a device draws it.
+        if (!program.passes.empty() && program.parameter_block_size != reflection.parameter_block_size)
+            return result::failure("Cooked shader passes disagree on parameter block size");
+        program.parameter_block_size = reflection.parameter_block_size;
+        for (std::size_t index = 0; index < reflection.parameters.size(); ++index)
+        {
+            const auto& parameter = reflection.parameters[index];
+            const auto offset = static_cast<std::size_t>(parameter.offset);
+            const auto size = static_cast<std::size_t>(parameter.size);
+            if (offset > program.parameter_block_size || size > program.parameter_block_size - offset)
+                return result::failure("Cooked shader parameter exceeds its reflected block");
+            if (parameter.default_value.size() > size)
+                return result::failure("Cooked shader parameter default exceeds its declared size");
+            if (!program.passes.empty())
+            {
+                const auto& first = program.passes.front().compiled.reflection.parameters[index];
+                if (parameter.default_value != first.default_value)
+                    return result::failure("Cooked shader passes disagree on material parameter defaults");
+            }
+        }
         program.passes.push_back({.pass = binding.pass,
                                   .permutation = binding.permutation,
                                   .compiled = package.compiled,
@@ -202,9 +223,6 @@ realize_cooked_material_program(const cooked_material_metadata& material,
     for (const auto& parameter : program.passes.front().compiled.reflection.parameters)
     {
         if (parameter.default_value.empty()) continue;
-        if (parameter.offset > program.parameter_defaults.size() ||
-            parameter.default_value.size() > program.parameter_defaults.size() - parameter.offset)
-            return result::failure("Cooked shader parameter defaults exceed the reflected block");
         std::copy(parameter.default_value.begin(), parameter.default_value.end(),
                   program.parameter_defaults.begin() + parameter.offset);
     }
