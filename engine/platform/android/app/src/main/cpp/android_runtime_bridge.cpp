@@ -184,7 +184,7 @@ android_runtime_bridge::~android_runtime_bridge()
     jobs_.shutdown(arc::jobs::job_shutdown_mode::drain);
 }
 
-bool android_runtime_bridge::boot()
+bool android_runtime_bridge::boot(std::string_view project_guid)
 {
     if (catalog_) return true;
     if (!assets_.available() || writable_storage_.empty() || !writable_storage_.is_absolute())
@@ -232,6 +232,7 @@ bool android_runtime_bridge::boot()
     request.expected.renderer = "vulkan";
     request.expected.configuration = ARC_ANDROID_BUILD_CONFIGURATION;
     request.expected.target_id = "android-arm64-vulkan";
+    request.expected.project_guid = std::string(project_guid);
 
     auto discovered = arc::project::discover_runtime_boot(std::move(request));
     if (!discovered)
