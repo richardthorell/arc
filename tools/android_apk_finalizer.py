@@ -304,9 +304,28 @@ def verify_apk(apk: Path, assets_root: Path, document: dict, settings: dict,
     expect(bool(minimum) and bool(target) and int(minimum.group(1)) == settings["minimumSdk"] and
            int(target.group(1)) == settings["targetSdk"], "APK SDK limits differ from project settings")
     label, launch = LABEL_LINE.search(result.stdout), LAUNCH_LINE.search(result.stdout)
-    expect(bool(label) and label.group(1) == settings["displayName"] and
-           bool(launch) and launch.group(1) == "android.app.NativeActivity",
-           "APK label or launch activity differs from project settings")
+    correct_label = bool(label) and label.group(1) == settings["displayName"]
+    correct_activity = bool(launch) and launch.group(1) == "android.app.NativeActivity"
+    if not correct_label or not correct_activity:
+        # Some versions of aapt omit launchable-activity for NativeActivity
+        # apps using hasCode=false. Inspect the compiled binary manifest
+        # instead of trusting a summary-only heuristic or dropping validation.
+        tree = subprocess.run([str(aapt), "dump", "xmltree", str(apk), "AndroidManifest.xml"],
+                              capture_output=True, text=True, check=False)
+        expect(tree.returncode == 0,
+               f"Cannot inspect Android compiled activity/label: {tree.stderr.strip()}")
+        label_literal = re.escape(settings["displayName"])
+        correct_label = correct_label or bool(re.search(
+            r'android:label\([^)]*\)="'+label_literal+r'"', tree.stdout
+        ))
+        correct_activity = correct_activity or bool(re.search(
+            r'android:name\([^)]*\)="android\.app\.NativeActivity"', tree.stdout
+        ) and "android.intent.action.MAIN" in tree.stdout and
+            "android.intent.category.LAUNCHER" in tree.stdout)
+    expect(correct_label and correct_activity,
+           "APK label or NativeActivity launch declaration differs from project settings"
+           f" (aapt label={label.group(1) if label else 'absent'},"
+           f" launch={launch.group(1) if launch else 'absent'})")
 
     signed = subprocess.run([str(signer), "verify", "--verbose", str(apk)],
                             capture_output=True, text=True, check=False)
