@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 project({{PROJECT_TOKEN}} LANGUAGES CXX)
 
+# Android builds an independently packaged runtime module against the ARM64
+# host shipped in the SDK. Do not import desktop ARC libraries into NDK.
+if(ANDROID AND ARC_ANDROID_PROJECT_BUILD)
+  include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AndroidRuntime.cmake")
+  return()
+endif()
+
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime Project Scene EditorModuleSDK PlatformWindows Vulkan)
