@@ -379,6 +379,44 @@ int main(int argc, char** argv)
                           {"targetSdk", android.target_sdk}});
         return 0;
     }
+    if ((command == "build" && args.option("--platform") == "android") ||
+        (command == "workflow" && args.values.size() > 1 &&
+         (args.values[1] == "status" || args.values[1] == "logs" || args.values[1] == "cancel")))
+    {
+        const auto descriptor_path = descriptor_from(args);
+        const auto sdk_root = args.option("--sdk-root");
+        if (descriptor_path.empty() || !sdk_root)
+            return fail(json_output, "Android workflow requires --project and --sdk-root", 2);
+        const auto sdk = std::filesystem::absolute(*sdk_root).lexically_normal();
+        const auto script = sdk / "share" / "arc" / "android" / "android_build_workflow.py";
+        if (!std::filesystem::is_regular_file(script))
+            return fail(json_output, "Installed ARC SDK lacks the A5 Android build executor");
+#if defined(_WIN32)
+        const auto python = args.option("--python").value_or("python");
+#else
+        const auto python = args.option("--python").value_or("python3");
+#endif
+        std::vector<std::string> invoke;
+        invoke.push_back(script.string());
+        invoke.push_back(command == "build" ? "execute" : args.values[1]);
+        invoke.push_back("--project");
+        invoke.push_back(descriptor_path.string());
+        invoke.push_back("--sdk-root");
+        invoke.push_back(sdk.string());
+        invoke.push_back("--project-tool");
+        invoke.push_back(std::filesystem::absolute(argv[0]).lexically_normal().string());
+        for (const auto* key : {"--profile", "--target", "--cooker", "--output",
+                                "--runtime-config", "--gradle", "--run-id"})
+        {
+            if (const auto value = args.option(key))
+            {
+                invoke.push_back(key);
+                invoke.push_back(*value);
+            }
+        }
+        if (json_output) invoke.push_back("--json");
+        return run_process(python, invoke, std::filesystem::current_path());
+    }
     if (command == "configure") return configure_or_build(args, false, json_output);
     if (command == "build") return configure_or_build(args, true, json_output);
     if (command == "package" && args.values.size() > 1 && args.values[1] == "android-apk")
@@ -422,6 +460,11 @@ int main(int argc, char** argv)
         {
             invoke.push_back("--gradle");
             invoke.push_back(*gradle);
+        }
+        if (const auto workspace = args.option("--workspace-root"))
+        {
+            invoke.push_back("--workspace-root");
+            invoke.push_back(std::filesystem::absolute(*workspace).lexically_normal().string());
         }
         if (json_output) invoke.push_back("--json");
         return run_process(python, invoke, std::filesystem::current_path());
