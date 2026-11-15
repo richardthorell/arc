@@ -11,6 +11,13 @@ plugins {
 // ARC SDK, without reading the engine source tree or invoking CMake.
 val sdkRootArgument = providers.gradleProperty("arcSdkRoot").orNull
 val engineRootArgument = providers.gradleProperty("arcEngineRoot").orNull
+val projectRootArgument = providers.gradleProperty("arcProjectRoot").orNull
+require(projectRootArgument == null || projectRootArgument.isNotBlank()) {
+    "arcProjectRoot must not be empty"
+}
+require(projectRootArgument == null || sdkRootArgument != null) {
+    "arcProjectRoot requires a selected installed ARC SDK via -ParcSdkRoot"
+}
 require(sdkRootArgument == null || sdkRootArgument.isNotBlank()) { "arcSdkRoot must not be empty" }
 require(engineRootArgument == null || engineRootArgument.isNotBlank()) { "arcEngineRoot must not be empty" }
 require(sdkRootArgument == null || engineRootArgument == null) {
@@ -26,6 +33,7 @@ fun absoluteDirectory(argument: String, name: String): File {
 }
 
 val sdkRoot = sdkRootArgument?.let { absoluteDirectory(it, "arcSdkRoot") }
+val projectRoot = projectRootArgument?.let { absoluteDirectory(it, "arcProjectRoot") }
 val engineRoot = if (sdkRoot == null) {
     val root = engineRootArgument?.let { absoluteDirectory(it, "arcEngineRoot") }
         ?: File(rootProject.projectDir, "../../..").canonicalFile
@@ -134,11 +142,15 @@ android {
         }
         manifestPlaceholders["arcApplicationLabel"] = projectSettings?.get("displayName") ?: "ARC Native Host"
 
-        if (sdkRoot == null) {
-            externalNativeBuild {
-                cmake {
+        externalNativeBuild {
+            cmake {
+                if (sdkRoot == null) {
                     cppFlags += "-std=c++20"
                     arguments += "-DARC_ANDROID_ENGINE_ROOT=" + engineRoot!!.absolutePath
+                } else if (projectRoot != null) {
+                    cppFlags += "-std=c++20"
+                    arguments += "-DARC_ANDROID_SDK_ROOT=" + sdkRoot.absolutePath
+                    arguments += "-DARC_ANDROID_PROJECT_ROOT=" + projectRoot.absolutePath
                 }
             }
         }
@@ -162,16 +174,18 @@ android {
         noCompress += listOf("arcpak", "arccookmanifest")
     }
 
-    if (sdkRoot == null) {
+    if (sdkRoot == null || projectRoot != null) {
         externalNativeBuild {
             cmake {
-                path = file("src/main/cpp/CMakeLists.txt")
+                path = file(
+                    if (projectRoot != null) "src/main/cpp/project_module/CMakeLists.txt"
+                    else "src/main/cpp/CMakeLists.txt"
+                )
                 version = "3.22.1"
             }
         }
     } else {
-        // The exported launcher contains only Gradle scripts, the Android
-        // manifest and prebuilt JNI libraries. No engine checkout is needed.
+        // A1 host-only mode: no project native code or CMake invocation.
         sourceSets {
             getByName("debug") {
                 jniLibs.srcDir(File(hostRoot, "debug/jniLibs"))
