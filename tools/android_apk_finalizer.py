@@ -122,6 +122,20 @@ def project_settings(project_root: Path, explicit: Path | None, tool: str | None
 def validate_inputs(project_root: Path, sdk_root: Path, assets_root: Path,
                     settings: dict) -> tuple[dict, dict, dict, dict]:
     descriptor = project_descriptor(project_root)
+    platform = descriptor.get("platformSettings")
+    android = platform.get("android") if isinstance(platform, dict) else None
+    package = descriptor.get("package")
+    expect(isinstance(android, dict) and isinstance(package, dict),
+           "ARC project descriptor requires Android project settings")
+    for settings_key, source_key in (
+        ("applicationId", "applicationId"), ("versionName", "versionName"),
+        ("versionCode", "versionCode"), ("minimumSdk", "minimumSdk"),
+        ("targetSdk", "targetSdk"),
+    ):
+        expect(settings[settings_key] == android.get(source_key),
+               f"Android settings export disagrees with .arcproject: {settings_key}")
+    expect(settings["displayName"] == package.get("applicationName"),
+           "Android display name differs from project packaging settings")
     sdk = read_json(sdk_root / "arc-installation.json")
     expect(sdk.get("format") == "arc-installation" and isinstance(sdk.get("engineVersion"), str),
            "Selected ARC SDK is missing installation identity")
