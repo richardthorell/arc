@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArcProjectAssetReference, ArcProjectDescriptor } from '../../../common/projectTypes';
 import {
   validateProjectSettingChanges,
+  visibleProjectSettingsCategories,
   type ProjectSettingsSnapshot,
   type ProjectSettingsField,
   type ProjectSettingsCategory,
@@ -45,7 +46,14 @@ const withinCategory = (categories: ProjectSettingsCategory[], candidate: string
 
 export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<State>();
-  const [category, setCategory] = useState('general');
+  const [selectedCategory, setCategory] = useState('general');
+  const categories = state
+    ? visibleProjectSettingsCategories(
+        state.snapshot.catalog.categories,
+        (state.draft.targetPlatforms ?? []) as ArcProjectDescriptor['targetPlatforms'],
+      )
+    : [];
+  const category = categories.some((entry) => entry.id === selectedCategory) ? selectedCategory : 'platforms';
   const [search, setSearch] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -258,7 +266,9 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         ? `${field.label} ${field.id} ${field.description ?? ''} ${state.snapshot.catalog.categories.find((entry) => entry.id === field.category)?.label ?? ''}`
             .toLowerCase()
             .includes(search.toLowerCase().trim())
-        : withinCategory(state.snapshot.catalog.categories, field.category, category),
+        : category === 'platforms'
+          ? field.category === category
+          : withinCategory(state.snapshot.catalog.categories, field.category, category),
     ) ?? [];
   return (
     <UiDialogSettings
@@ -268,8 +278,8 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
       sidebar={
         state && (
           <UiSettingsNavigation
-            nodes={navigationNodes(state.snapshot.catalog.categories)}
-            defaultExpandedIds={['general-root', 'platforms', 'android', 'distribution']}
+            nodes={navigationNodes(categories)}
+            defaultExpandedIds={['general-root', 'platforms', 'distribution']}
             selectedId={category}
             query={search}
             onQueryChange={setSearch}
@@ -305,6 +315,25 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className={`settings-fields project-settings-content${!state && !errors._read ? ' is-loading' : ''}`}>
+        {state && (
+          <h2 className="project-settings-page-title">
+            {search.trim() ? 'Search results' : categories.find((entry) => entry.id === category)?.label}
+          </h2>
+        )}
+        {categories.find((entry) => entry.id === category)?.platform && !search.trim() && (
+          <UiSettingsCard
+            title="Enabled targets"
+            subtitle="Project configuration, not proof of local build or deployment availability."
+          >
+            <ul>
+              {(state?.draft.targetPlatforms as ArcProjectDescriptor['targetPlatforms'])
+                .filter((target) => target.enabled && target.id.startsWith(`${category}-`))
+                .map((target) => (
+                  <li key={target.id}>{target.id}</li>
+                ))}
+            </ul>
+          </UiSettingsCard>
+        )}
         {Object.entries(errors)
           .filter(([key]) => key.startsWith('_'))
           .map(([key, error]) => (
@@ -339,12 +368,12 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
               <p role="status">{entry.description}</p>
             </UiSettingsCard>
           ))}
-        {state?.snapshot.capabilitiesPending && ['targets', 'build'].includes(category) && (
+        {state?.snapshot.capabilitiesPending && ['platforms', 'build'].includes(category) && (
           <p role="status">Loading supported target options…</p>
         )}
         {state?.snapshot.capabilitiesError && <p role="alert">{state.snapshot.capabilitiesError}</p>}
         {state && !state.snapshot.writable && <p role="status">This project is read-only.</p>}
-        {category === 'targets' && (
+        {category === 'platforms' && (
           <UiSettingsCard
             title="Local tool availability"
             subtitle="Configured in Editor Preferences. These indicators do not imply packaging or launch support."
@@ -367,11 +396,14 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             if (!entries.length) return null;
             return (
               <UiSettingsCard title={entry.label} key={entry.id}>
-                {entries.map((field) => (
+                {entries.map((field, index) => (
                   <div
                     key={field.id}
                     className={`settings-field-row${['scenes', 'targets', 'profiles'].includes(field.control) ? ' project-settings-collection-field' : ''}`}
                   >
+                    {field.section && field.section !== entries[index - 1]?.section && (
+                      <h3 className="project-settings-section-title">{field.section}</h3>
+                    )}
                     <span className="settings-field-description">
                       <strong title={field.label}>{field.label}</strong>
                       <small title={field.description}>{field.description}</small>

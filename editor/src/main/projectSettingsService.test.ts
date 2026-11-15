@@ -27,6 +27,7 @@ function fixture() {
     engineVersion: '0.1.0',
     buildConfigurations: ['Shipping'],
     extension: { untouched: 42 },
+    distributionVariants: [{ id: 'preserved-channel', targetId: 'android-arm64-vulkan', extension: { future: true } }],
     package: {
       applicationName: 'Game',
       companyName: '',
@@ -122,6 +123,7 @@ describe('Project Settings persistence', () => {
       guid: 'project',
       name: 'Renamed',
       extension: { untouched: 42 },
+      distributionVariants: value.raw.distributionVariants,
       package: { companyName: 'Studio', extension: 'retained' },
     });
     const validation = value.query.mock.calls.find(([, args]) => args[0] === 'validate')!;

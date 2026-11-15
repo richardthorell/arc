@@ -2,7 +2,11 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, fireEvent, render, screen, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { projectSettingsCatalog, type ProjectSettingsSnapshot } from '../../../common/projectSettingsTypes';
+import {
+  projectSettingsCatalog,
+  visibleProjectSettingsCategories,
+  type ProjectSettingsSnapshot,
+} from '../../../common/projectSettingsTypes';
 import { ProjectSettingsDialog } from './ProjectSettingsDialog';
 
 let snapshot: ProjectSettingsSnapshot;
@@ -76,7 +80,7 @@ it('keeps missing scene GUID bindings visible and unchanged when editing another
 it('renders catalog categories and applies only edited fields with captured authority', async () => {
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   const name = await screen.findByRole('textbox', { name: 'Project name' });
-  expect(screen.getByRole('treeitem', { name: 'Identity & Metadata' })).toBeInTheDocument();
+  expect(screen.getByRole('treeitem', { name: 'Overview' })).toBeInTheDocument();
   expect(screen.getByRole('treeitem', { name: 'Android' })).toBeInTheDocument();
   fireEvent.change(name, { target: { value: 'Updated' } });
   expect(apply).not.toHaveBeenCalled();
@@ -113,17 +117,14 @@ it('renders an additional catalog field without dialog-specific code and searche
   expect(screen.queryByRole('textbox', { name: 'Project name' })).not.toBeInTheDocument();
 });
 
-it('separates Android settings and exposes planned pages without editable placeholder settings', async () => {
+it('combines Android settings in one pane without planned or store navigation', async () => {
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   await screen.findByRole('textbox', { name: 'Project name' });
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Application' }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Android' }));
   expect(screen.getByRole('textbox', { name: 'Android application ID' })).toBeInTheDocument();
-  expect(screen.queryByRole('spinbutton', { name: 'Android minimum SDK' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Compatibility & Display' }));
   expect(screen.getByRole('spinbutton', { name: 'Android minimum SDK' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Physics (Planned)' }));
-  expect(screen.getByText(/Project-level physics authoring is planned/)).toBeInTheDocument();
-  expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+  expect(screen.queryByRole('treeitem', { name: /Planned|Google Play|Steam|Galaxy/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('treeitem', { name: 'Application' })).not.toBeInTheDocument();
   expect(apply).not.toHaveBeenCalled();
 });
 
@@ -131,7 +132,7 @@ it('displays existing project paths read-only without introducing relocation wri
   snapshot.values['paths.content'] = 'GameContent';
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   await screen.findByRole('textbox', { name: 'Project name' });
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Project Paths' }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Advanced' }));
   expect(screen.getByText('GameContent')).toBeInTheDocument();
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
@@ -177,12 +178,14 @@ it('retains drafts and shows native validation errors', async () => {
 it('edits targets and profiles without implicitly deleting disabled-target profiles', async () => {
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   await screen.findByRole('textbox', { name: 'Project name' });
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Cooking' }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Cooking & Packaging' }));
   fireEvent.click(screen.getByRole('button', { name: 'Add profile' }));
+  fireEvent.click(screen.getByText('profile', { selector: 'summary strong' }));
   expect(screen.getByRole('textbox', { name: 'Profile 1 ID' })).toHaveValue('profile');
   fireEvent.click(screen.getByRole('button', { name: 'Duplicate profile' }));
+  fireEvent.click(screen.getByText('profile-copy', { selector: 'summary strong' }));
   expect(screen.getByRole('textbox', { name: 'Profile 2 ID' })).toHaveValue('profile-copy');
-  fireEvent.click(screen.getByRole('treeitem', { name: 'Supported Platforms' }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Platforms' }));
   fireEvent.click(screen.getByRole('switch', { name: 'windows-x64-vulkan' }));
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(apply).toHaveBeenCalled());
@@ -193,4 +196,46 @@ it('disables authoring for a read-only project', async () => {
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   expect(await screen.findByRole('textbox', { name: 'Project name' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+});
+
+it('limits navigation to two levels and groups multiple enabled targets by platform', () => {
+  const categories = visibleProjectSettingsCategories(projectSettingsCatalog.categories, [
+    { id: 'windows-x64-vulkan', enabled: true },
+    { id: 'windows-x64-headless', enabled: true },
+    { id: 'android-arm64-vulkan', enabled: false },
+  ]);
+  expect(categories.filter((entry) => !entry.parentId).length).toBeGreaterThan(5);
+  for (const entry of categories) {
+    if (entry.parentId) expect(categories.find((parent) => parent.id === entry.parentId)?.parentId).toBeUndefined();
+  }
+  expect(categories.filter((entry) => entry.platform === 'windows')).toHaveLength(1);
+  expect(categories.some((entry) => entry.platform === 'android')).toBe(false);
+  expect(categories.some((entry) => entry.id === 'platforms')).toBe(true);
+});
+
+it('updates platform navigation from the draft without discarding disabled-platform settings', async () => {
+  snapshot.values['platformSettings.android.applicationId'] = 'com.example.kept';
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  await screen.findByRole('textbox', { name: 'Project name' });
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Platforms' }));
+  fireEvent.click(screen.getByRole('switch', { name: 'android-arm64-vulkan' }));
+  expect(screen.queryByRole('treeitem', { name: 'Android' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('switch', { name: 'android-arm64-vulkan' }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Android' }));
+  expect(screen.getByRole('textbox', { name: 'Android application ID' })).toHaveValue('com.example.kept');
+  expect(apply).not.toHaveBeenCalled();
+});
+
+it('falls back to the platform overview when the selected platform is disabled externally', async () => {
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  await screen.findByRole('textbox', { name: 'Project name' });
+  fireEvent.click(screen.getByRole('treeitem', { name: 'Android' }));
+  snapshot.revision = 'disabled';
+  snapshot.values.targetPlatforms = [{ id: 'windows-x64-vulkan', enabled: true }];
+  await act(async () => {
+    notify();
+  });
+  expect(screen.queryByRole('treeitem', { name: 'Android' })).not.toBeInTheDocument();
+  expect(screen.getByRole('switch', { name: 'windows-x64-vulkan' })).toBeInTheDocument();
+  expect(screen.getByRole('treeitem', { name: 'Platforms' })).toHaveAttribute('aria-selected', 'true');
 });
