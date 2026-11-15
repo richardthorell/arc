@@ -78,7 +78,7 @@ def export_android_host_sdk(sdk_root: Path, android_source: Path, debug_apk: Pat
     if version != HOST_ENGINE_VERSION:
         raise ValueError(f"Android host {HOST_ENGINE_VERSION} does not match installed ARC SDK {version}")
     libraries = {"debug": _libraries_from_apk(debug_apk), "release": _libraries_from_apk(release_apk)}
-    finalizer_source = android_source.parents[2] / "tools/android_apk_finalizer.py"
+    finalizer_source = Path(__file__).with_name("android_apk_finalizer.py")
     if not finalizer_source.is_file():
         raise ValueError("Android SDK export requires the A4 APK finalizer")
     for relative in GRADLE_FILES:
