@@ -34,8 +34,7 @@ void report_module_log(void*, const char* category, const char* message)
         return false;
     if (!descriptor->project_guid || !*descriptor->project_guid || !descriptor->module_id || !*descriptor->module_id)
         return false;
-    if (descriptor->kind != game_module_kind_v1::runtime || !descriptor->start || !descriptor->stop)
-        return false;
+    if (descriptor->kind != game_module_kind_v1::runtime || !descriptor->start || !descriptor->stop) return false;
     if ((descriptor->component_count && !descriptor->components) ||
         (descriptor->registration_count && !descriptor->registrations))
         return false;
@@ -62,8 +61,8 @@ bool android_project_runtime_module::load(bool required)
             return true;
         }
         const auto* failure = dlerror();
-        const std::string message = std::string("Required project native module could not load: ") +
-                                    (failure ? failure : library_name);
+        std::string message = "Required project native module could not load: ";
+        message += (failure ? failure : library_name);
         arc::diagnostics::error("Android.Project", message);
         return false;
     }
