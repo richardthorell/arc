@@ -143,6 +143,76 @@ session on Android**. A3 stages cooked content, A4 finalizes a project APK and
 device-side startup acceptance remains separately tracked. A2 alone does not
 prove a visible game world, app deployment, or store-ready artifact.
 
+## Distribution A4 — Signed Debug APK finalizer (#403)
+
+**A4 provides an installable, signed, ARM64 Android Debug APK** from the
+existing A1 precompiled native host, A2 project-specific C++ module, and A3
+verified D0 cooked-content stage. It is invoked through ARC's CLI; developers
+do not need to manually run Gradle or copy JNI libraries.
+
+Set the project's Android **Application ID, Display Name, Version Name/Code
+and SDK levels** in its `.arcproject` Project Settings. Those values are
+exported using the existing `arc-project settings export-android` validation
+contract and passed to Gradle. A blank application ID is rejected.
+
+Use the already-cooked Android **Debug** stage prepared by A3, then run:
+
+```sh
+arc-project package android-apk \
+  --project /project/MyGame.arcproject \
+  --sdk-root /absolute/arc/sdk \
+  --assets /project/Build/AndroidDebugAssets \
+  --output /project/Build/Packages/AndroidDebug \
+  --json
+```
+
+Options: `--gradle /path/to/gradle` selects the Gradle executable,
+`--python /path/to/python3` selects Python, and `--settings /path/to/export.json`
+may supply a previously exported settings file. Exported settings are checked
+against the project's Android settings; a missing or mismatched identity fails.
+
+A4 uses an **isolated copied SDK Gradle launcher** to compile the project
+module and assemble a Debug APK. It validates:
+
+- One project GUID, engine/SDK version and Android target across project,
+  compiled native module, settings export, and D0 asset manifest
+- Complete hashed A3 asset inventory; no undeclared/symlinked authoring files
+- Host and project ARM64 ELF libraries in `lib/arm64-v8a`, exact installed
+  SDK host digests, and the project's compiled module identity
+- Every APK `assets/` byte against the D0 inventory, including uncompressed
+  `.arcpak` and `.arccookmanifest` for `AAssetManager`
+- AndroidManifest identity, application label, activity, SDK levels and
+  versions through Android `aapt`
+- Valid Android Debug APK signature through `apksigner verify`
+
+Successful output is published atomically into the new output directory:
+
+```text
+AndroidDebug/
+  com.example.mygame-debug.apk
+  arc-apk-integrity.json
+```
+
+The versioned integrity sidecar inventories **all APK native libraries,
+content hashes, app identity, signature verification and final APK SHA-256**.
+The embedded `assets/arc-distribution.json` remains the existing, unmodified
+D0 content manifest; A4 does **not** mutate or resign Gradle's signed APK.
+A failed build leaves no partially published output. Existing outputs are not
+silently overwritten.
+
+Install and launch the published APK using ADB manually for now:
+
+```sh
+adb install -r /project/Build/Packages/AndroidDebug/com.example.mygame-debug.apk
+adb shell am start -n com.example.mygame/android.app.NativeActivity
+```
+
+**Scope:** A4 supports **Debug ARM64 Vulkan APKs**. Production signing,
+release store variants, AAB packaging and secret management are separate.
+A5 will connect the CLI workflow (configure, compile, cook, package); device
+selection, deployment, Logcat and editor Run integration are subsequent work.
+A successful A4 package is not proof of running on a physical device.
+
 ## Distribution A3 — Cooked-content assets and D0 handoff (#403)
 
 ARC now stages project-specific Android cooked content using the **same D0
