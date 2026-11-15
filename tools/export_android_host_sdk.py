@@ -78,6 +78,9 @@ def export_android_host_sdk(sdk_root: Path, android_source: Path, debug_apk: Pat
     if version != HOST_ENGINE_VERSION:
         raise ValueError(f"Android host {HOST_ENGINE_VERSION} does not match installed ARC SDK {version}")
     libraries = {"debug": _libraries_from_apk(debug_apk), "release": _libraries_from_apk(release_apk)}
+    finalizer_source = Path(__file__).with_name("android_apk_finalizer.py")
+    if not finalizer_source.is_file():
+        raise ValueError("Android SDK export requires the A4 APK finalizer")
     for relative in GRADLE_FILES:
         if not (android_source / relative).is_file():
             raise ValueError(f"Missing Android Gradle launcher file: {relative}")
@@ -94,6 +97,7 @@ def export_android_host_sdk(sdk_root: Path, android_source: Path, debug_apk: Pat
             target = staged / "gradle" / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
+        shutil.copyfile(finalizer_source, staged / "android_apk_finalizer.py")
         configurations: dict[str, list[dict[str, str]]] = {}
         for configuration, entries in libraries.items():
             output = staged / "host" / configuration / "jniLibs" / ABI

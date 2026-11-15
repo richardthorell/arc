@@ -64,8 +64,8 @@ jobs:
       - name: Verify Project Settings Gradle Handoff
         run: python3 tools/test_android_project_settings.py
 
-      - name: Test Android Host SDK Export
-        run: python3 -m unittest tools.tests.test_export_android_host_sdk
+      - name: Test Android Host SDK Export & A4 APK Finalizer
+        run: python3 -m unittest tools.tests.test_export_android_host_sdk tools.tests.test_android_apk_finalizer
 
       - name: Build Release Host for SDK Export
         working-directory: engine/platform/android
@@ -157,6 +157,43 @@ jobs:
             echo "::error::Cross-project Android staged distribution was accepted"
             exit 1
           fi
+
+      - name: A4 Finalize Signed External Game APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/arc-android-host-sdk-fixture"
+          projects="$RUNNER_TEMP/arc-android-native-projects"
+          stage="$RUNNER_TEMP/arc-android-a3-content"
+          settings="$RUNNER_TEMP/arc-android-a4-settings.json"
+          output="$RUNNER_TEMP/arc-android-a4-output"
+          python3 tools/test_android_apk_ci.py prepare \
+            --project-root "$projects/GameAlpha" --settings "$settings"
+          python3 "$sdk/share/arc/android/android_apk_finalizer.py" \
+            --project-root "$projects/GameAlpha" \
+            --sdk-root "$sdk" --assets "$stage" \
+            --settings "$settings" --output "$output" --gradle gradle --json
+          python3 tools/test_android_apk_ci.py verify \
+            --output "$output" --project-root "$projects/GameAlpha"
+          # Do not replace an existing published APK, and never build a
+          # different project's runtime against an unrelated D0 stage.
+          if python3 "$sdk/share/arc/android/android_apk_finalizer.py" \
+            --project-root "$projects/GameAlpha" \
+            --sdk-root "$sdk" --assets "$stage" \
+            --settings "$settings" --output "$output" --json; then
+            echo "::error::A4 overwrote a published APK"
+            exit 1
+          fi
+          if python3 "$sdk/share/arc/android/android_apk_finalizer.py" \
+            --project-root "$projects/GameBeta" \
+            --sdk-root "$sdk" --assets "$stage" \
+            --settings "$settings" \
+            --output "$RUNNER_TEMP/a4-wrong-project" --json; then
+            echo "::error::A4 accepted another project's identity"
+            exit 1
+          fi
+          test ! -e "$RUNNER_TEMP/a4-wrong-project"
+          test ! -e "$RUNNER_TEMP/a4-wrong-project.pending"
 
       - name: Upload Android APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
