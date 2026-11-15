@@ -8,7 +8,16 @@ import {
   type ProjectSettingsCategory,
 } from '../../../common/projectSettingsTypes';
 import type { UiTreeNode } from '../ui';
-import { UiButton, UiDialogSettings, UiSettingsNavigation, UiSettingsCard, UiTextInput, UiToggleButton } from '../ui';
+import {
+  UiButton,
+  UiDialogSettings,
+  UiSettingsNavigation,
+  UiSettingsCard,
+  UiSettingsHeader,
+  UiTextInput,
+  UiToggleButton,
+} from '../ui';
+import generalSettingsHeader from './assets/general-settings-header.webp';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
 import {
   ProjectProfileList,
@@ -316,9 +325,15 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     >
       <div className={`settings-fields project-settings-content${!state && !errors._read ? ' is-loading' : ''}`}>
         {state && (
-          <h2 className="project-settings-page-title">
-            {search.trim() ? 'Search results' : categories.find((entry) => entry.id === category)?.label}
-          </h2>
+          <UiSettingsHeader
+            background={<img alt="" src={generalSettingsHeader} />}
+            title={search.trim() ? 'Search results' : categories.find((entry) => entry.id === category)?.label}
+            subtitle={
+              search.trim()
+                ? 'Find project settings across all categories.'
+                : categories.find((entry) => entry.id === category)?.description
+            }
+          />
         )}
         {categories.find((entry) => entry.id === category)?.platform && !search.trim() && (
           <UiSettingsCard
@@ -355,19 +370,6 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
           </p>
         )}
         {!state && !errors._read && <p role="status">Loading project settings…</p>}
-        {state?.snapshot.catalog.categories
-          .filter(
-            (entry) =>
-              entry.description &&
-              (search.trim()
-                ? `${entry.label} ${entry.description}`.toLowerCase().includes(search.toLowerCase().trim())
-                : entry.id === category),
-          )
-          .map((entry) => (
-            <UiSettingsCard key={entry.id} title={entry.planned ? `${entry.label} — Planned` : entry.label}>
-              <p role="status">{entry.description}</p>
-            </UiSettingsCard>
-          ))}
         {state?.snapshot.capabilitiesPending && ['platforms', 'build'].includes(category) && (
           <p role="status">Loading supported target options…</p>
         )}
@@ -395,7 +397,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             const entries = fields.filter((field) => field.category === entry.id);
             if (!entries.length) return null;
             return (
-              <UiSettingsCard title={entry.label} key={entry.id}>
+              <UiSettingsCard title={entry.label} subtitle={entry.description} key={entry.id}>
                 {entries.map((field, index) => (
                   <div
                     key={field.id}

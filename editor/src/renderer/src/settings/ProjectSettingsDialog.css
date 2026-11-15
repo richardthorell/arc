@@ -19,10 +19,6 @@
   overflow: auto;
   color: var(--arc-text-secondary);
 }
-.project-settings-page-title {
-  margin: 0 0 16px;
-  font-size: 18px;
-}
 .project-settings-section-title {
   grid-column: 1 / -1;
   margin: 8px 0 0;

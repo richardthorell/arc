@@ -213,6 +213,22 @@ it('limits navigation to two levels and groups multiple enabled targets by platf
   expect(categories.some((entry) => entry.id === 'platforms')).toBe(true);
 });
 
+it('uses the shared graphical preferences header and descriptive subtitles on every visible page', async () => {
+  const { container } = render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  await screen.findByRole('textbox', { name: 'Project name' });
+  const pages = visibleProjectSettingsCategories(
+    snapshot.catalog.categories,
+    snapshot.values.targetPlatforms as { id: string; enabled: boolean }[],
+  );
+  for (const page of pages) {
+    fireEvent.click(screen.getByRole('treeitem', { name: page.label }));
+    const header = container.querySelector('.ui-settings-header')!;
+    expect(header.querySelector('h2')).toHaveTextContent(page.label);
+    expect(header.querySelector('p')).toHaveTextContent(page.description!);
+    expect(header.querySelector('img')).toHaveAttribute('src', expect.stringContaining('general-settings-header'));
+  }
+});
+
 it('updates platform navigation from the draft without discarding disabled-platform settings', async () => {
   snapshot.values['platformSettings.android.applicationId'] = 'com.example.kept';
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
