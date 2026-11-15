@@ -142,15 +142,16 @@ android {
         }
         manifestPlaceholders["arcApplicationLabel"] = projectSettings?.get("displayName") ?: "ARC Native Host"
 
-        externalNativeBuild {
-            cmake {
-                if (sdkRoot == null) {
+        if (sdkRoot == null || projectRoot != null) {
+            externalNativeBuild {
+                cmake {
                     cppFlags += "-std=c++20"
-                    arguments += "-DARC_ANDROID_ENGINE_ROOT=" + engineRoot!!.absolutePath
-                } else if (projectRoot != null) {
-                    cppFlags += "-std=c++20"
-                    arguments += "-DARC_ANDROID_SDK_ROOT=" + sdkRoot.absolutePath
-                    arguments += "-DARC_ANDROID_PROJECT_ROOT=" + projectRoot.absolutePath
+                    if (sdkRoot == null) {
+                        arguments += "-DARC_ANDROID_ENGINE_ROOT=" + engineRoot!!.absolutePath
+                    } else {
+                        arguments += "-DARC_ANDROID_SDK_ROOT=" + sdkRoot.absolutePath
+                        arguments += "-DARC_ANDROID_PROJECT_ROOT=" + projectRoot!!.absolutePath
+                    }
                 }
             }
         }
