@@ -1,7 +1,7 @@
 # Project Settings
 
 Open **Project → Project Settings** to edit source-controlled project metadata.
-Navigation has at most two levels: General (Overview and Startup), Platforms
+Navigation has at most two levels: General (Project Information and Startup panels), Platforms
 (enabled operating systems only), Build & Release (Cooking & Packaging),
 Rendering & Quality, Input, Content & Assets, Plugins & Modules, and Advanced.
 Advanced contains read-only paths, descriptor metadata and compiler policy.

@@ -67,7 +67,7 @@ it('keeps missing scene GUID bindings visible and unchanged when editing another
   snapshot.values.defaultScene = { guid: 'missing-scene', expectedType: 'scene', pathHint: 'Content/Old.arcscene' };
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   await screen.findByRole('textbox', { name: 'Project name' });
-  fireEvent.click(screen.getByRole('treeitem', { name: /Startup/ }));
+  fireEvent.click(screen.getByRole('treeitem', { name: 'General' }));
   expect(await screen.findByText(/Scene unavailable: Content\/Old.arcscene/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('treeitem', { name: /General/ }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Project name' }), { target: { value: 'Changed' } });
@@ -80,7 +80,10 @@ it('keeps missing scene GUID bindings visible and unchanged when editing another
 it('renders catalog categories and applies only edited fields with captured authority', async () => {
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   const name = await screen.findByRole('textbox', { name: 'Project name' });
-  expect(screen.getByRole('treeitem', { name: 'Overview' })).toBeInTheDocument();
+  expect(screen.getByRole('treeitem', { name: 'General' })).toBeInTheDocument();
+  expect(screen.queryByRole('treeitem', { name: /Overview|Startup|Project Information/ })).not.toBeInTheDocument();
+  expect(screen.getByText('Project Information', { selector: '.ui-settings-card-header strong' })).toBeInTheDocument();
+  expect(screen.getByText('Startup', { selector: '.ui-settings-card-header strong' })).toBeInTheDocument();
   expect(screen.getByRole('treeitem', { name: 'Android' })).toBeInTheDocument();
   fireEvent.change(name, { target: { value: 'Updated' } });
   expect(apply).not.toHaveBeenCalled();
@@ -221,6 +224,7 @@ it('uses the shared graphical preferences header and descriptive subtitles on ev
     snapshot.values.targetPlatforms as { id: string; enabled: boolean }[],
   );
   for (const page of pages) {
+    if (page.panelOnly) continue;
     fireEvent.click(screen.getByRole('treeitem', { name: page.label }));
     const header = container.querySelector('.ui-settings-header')!;
     expect(header.querySelector('h2')).toHaveTextContent(page.label);

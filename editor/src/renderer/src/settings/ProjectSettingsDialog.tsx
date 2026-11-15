@@ -36,7 +36,7 @@ type State = {
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const navigationNodes = (categories: ProjectSettingsCategory[], parentId?: string): UiTreeNode[] =>
   categories
-    .filter((entry) => entry.parentId === parentId)
+    .filter((entry) => entry.parentId === parentId && !entry.panelOnly)
     .map((entry) => ({
       id: entry.id,
       label: entry.planned ? `${entry.label} (Planned)` : entry.label,
@@ -55,7 +55,7 @@ const withinCategory = (categories: ProjectSettingsCategory[], candidate: string
 
 export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<State>();
-  const [selectedCategory, setCategory] = useState('general');
+  const [selectedCategory, setCategory] = useState('general-root');
   const categories = state
     ? visibleProjectSettingsCategories(
         state.snapshot.catalog.categories,
@@ -288,7 +288,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         state && (
           <UiSettingsNavigation
             nodes={navigationNodes(categories)}
-            defaultExpandedIds={['general-root', 'platforms', 'distribution']}
+            defaultExpandedIds={['platforms', 'distribution']}
             selectedId={category}
             query={search}
             onQueryChange={setSearch}

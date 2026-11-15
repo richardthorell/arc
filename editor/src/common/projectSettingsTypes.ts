@@ -54,6 +54,8 @@ export type ProjectSettingsCategory = {
   description?: string;
   planned?: boolean;
   platform?: string;
+  /** Content panel within its parent page, without a separate sidebar entry. */
+  panelOnly?: boolean;
 };
 export function visibleProjectSettingsCategories(
   categories: ProjectSettingsCategory[],
@@ -72,14 +74,16 @@ export const projectSettingsCatalog = {
     },
     {
       id: 'general',
-      label: 'Overview',
+      label: 'Project Information',
       parentId: 'general-root',
+      panelOnly: true,
       description: 'Manage the project name, application identity and publisher information.',
     },
     {
       id: 'startup',
       label: 'Startup',
       parentId: 'general-root',
+      panelOnly: true,
       description: 'Choose the editor default scene and the ordered runtime startup scenes.',
     },
     {
