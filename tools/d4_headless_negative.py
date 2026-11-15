@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 from pathlib import Path, PurePosixPath
 import shutil
-import subprocess
 import tempfile
 
 from verify_relocated_package import SmokeFailure, smoke, verify_distribution
@@ -26,6 +25,7 @@ def inventory_file(root: Path, manifest: dict, kind: str) -> Path:
 
 def check_expected_failure(root: Path, arguments: list[str], artifacts: Path,
                            expected: str, timeout: float, runtime: bool) -> None:
+    artifacts.mkdir(parents=True, exist_ok=True)
     if runtime:
         verify_distribution(root)
     try:
