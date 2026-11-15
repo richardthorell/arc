@@ -9,6 +9,8 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <exception>
+#include <iterator>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -45,19 +47,7 @@ int fail(bool json_output, std::string_view field, std::string_view message)
 
 project::project_status error(project::project_error_code code, std::string field, std::string message)
 {
-    return project::project_status::failure(
-        {.code = code, .field = std::move(field), .message = std::move(message)});
-}
-
-bool contained(const fs::path& root, const fs::path& child)
-{
-    auto lhs = root.begin();
-    auto rhs = child.begin();
-    while (lhs != root.end() && rhs != child.end())
-    {
-        if (*lhs++ != *rhs++) return false;
-    }
-    return lhs == root.end();
+    return project::project_status::failure({.code = code, .field = std::move(field), .message = std::move(message)});
 }
 
 class android_content_stage_finalizer final : public project::distribution_finalizer
@@ -73,8 +63,7 @@ public:
         const auto& manifest = request.manifest;
         if (manifest.target.platform != "android" || manifest.target.architecture != "arm64" ||
             manifest.target.renderer != "vulkan" || manifest.role != "client" ||
-            manifest.entrypoint.kind != "android-activity" ||
-            manifest.entrypoint.value != "android.app.NativeActivity")
+            manifest.entrypoint.kind != "android-activity" || manifest.entrypoint.value != "android.app.NativeActivity")
             return error(project::project_error_code::unsupported_platform, "target",
                          "Android content staging requires an ARM64 Vulkan NativeActivity client");
 
@@ -148,8 +137,7 @@ public:
         {
             const auto destination = pending / entry.path;
             fs::create_directories(destination.parent_path(), ec);
-            if (!ec)
-                fs::copy_file(request.staging_root / entry.path, destination, fs::copy_options::none, ec);
+            if (!ec) fs::copy_file(request.staging_root / entry.path, destination, fs::copy_options::none, ec);
             if (ec)
             {
                 rollback();
@@ -211,10 +199,12 @@ int run(const std::vector<std::string>& args, bool json_output)
     const auto context = project::resolve_context(descriptor_path, descriptor.value());
     if (!context) return fail(json_output, "project", context.error().message);
 
-    const auto workflow = project::plan_package_workflow(
-        descriptor.value(), context.value(),
-        {.profile = *profile_arg, .action = project::package_workflow_action::package,
-         .role = project::package_workflow_role::runtime, .target_id = *target_arg});
+    project::package_workflow_request selection;
+    selection.profile = *profile_arg;
+    selection.action = project::package_workflow_action::package;
+    selection.role = project::package_workflow_role::runtime;
+    selection.target_id = *target_arg;
+    const auto workflow = project::plan_package_workflow(descriptor.value(), context.value(), selection);
     if (!workflow) return fail(json_output, workflow.error().field, workflow.error().message);
     if (workflow.value().platform != "android" || workflow.value().architecture != "arm64" ||
         workflow.value().renderer != "vulkan")
@@ -224,10 +214,11 @@ int run(const std::vector<std::string>& args, bool json_output)
     const auto cooked = assets::load_cook_manifest(cook_file);
     if (!cooked) return fail(json_output, "cookManifest", cooked.error().message);
     const auto& target = cooked.value().target;
+    auto expected_configuration = assets::cook_configuration::development;
+    if (workflow.value().configuration == "Shipping") expected_configuration = assets::cook_configuration::shipping;
     if (target.platform != assets::cook_platform::android || target.architecture != assets::cook_architecture::arm64 ||
         target.renderer != assets::cook_renderer::vulkan || target.name != workflow.value().profile ||
-        target.configuration != (workflow.value().configuration == "Shipping" ? assets::cook_configuration::shipping
-                                                                              : assets::cook_configuration::development))
+        target.configuration != expected_configuration)
         return fail(json_output, "cookManifest.target",
                     "Cooked ARM64/Vulkan target, profile or configuration differs from Android workflow");
 
@@ -310,12 +301,16 @@ int run(const std::vector<std::string>& args, bool json_output)
     if (!staged) return fail(json_output, staged.error().field, staged.error().message);
 
     if (json_output)
-        std::cout << json{{"succeeded", true},
-                          {"output", output.generic_string()},
-                          {"manifest", (output / "arc-distribution.json").generic_string()},
-                          {"target", workflow.value().target_id},
-                          {"profile", workflow.value().profile},
-                          {"files", staged.value().files.size()}}.dump() << '\n';
+    {
+        json report;
+        report["succeeded"] = true;
+        report["output"] = output.generic_string();
+        report["manifest"] = (output / "arc-distribution.json").generic_string();
+        report["target"] = workflow.value().target_id;
+        report["profile"] = workflow.value().profile;
+        report["files"] = staged.value().files.size();
+        std::cout << report.dump() << '\n';
+    }
     else
         std::cout << "Staged Android cooked distribution assets: " << output << '\n';
     return 0;
