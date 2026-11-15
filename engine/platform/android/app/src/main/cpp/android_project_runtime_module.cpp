@@ -68,7 +68,7 @@ bool android_project_runtime_module::load(bool required)
     }
 
     dlerror();
-    const auto* symbol = dlsym(handle_, "arc_query_game_module_v1");
+    void* symbol = dlsym(handle_, "arc_query_game_module_v1");
     const auto query = reinterpret_cast<arc::project::query_game_module_v1>(symbol);
     const auto* symbol_error = dlerror();
     if (symbol_error || !query)
