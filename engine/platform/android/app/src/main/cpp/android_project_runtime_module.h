@@ -24,8 +24,14 @@ public:
     [[nodiscard]] bool start();
     void shutdown() noexcept;
 
-    [[nodiscard]] bool loaded() const noexcept { return descriptor_ != nullptr; }
-    [[nodiscard]] const std::string& project_guid() const noexcept { return project_guid_; }
+    [[nodiscard]] bool loaded() const noexcept
+    {
+        return descriptor_ != nullptr;
+    }
+    [[nodiscard]] const std::string& project_guid() const noexcept
+    {
+        return project_guid_;
+    }
 
 private:
     void* handle_{};
