@@ -393,13 +393,11 @@ int main(int argc, char** argv)
         const auto script = sdk / "share" / "arc" / "android" / "android_apk_finalizer.py";
         if (!std::filesystem::is_regular_file(script))
             return fail(json_output, "Installed ARC SDK lacks the A4 Android APK finalizer");
-        const std::string python = args.option("--python").value_or(
 #if defined(_WIN32)
-            "python"
+        const auto python = args.option("--python").value_or("python");
 #else
-            "python3"
+        const auto python = args.option("--python").value_or("python3");
 #endif
-        );
         std::vector<std::string> invoke{
             script.string(), "--project-root", descriptor_path.parent_path().string(), "--sdk-root", sdk.string(),
             "--assets", std::filesystem::absolute(*assets_root).lexically_normal().string(),
