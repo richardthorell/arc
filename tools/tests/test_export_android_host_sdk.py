@@ -75,6 +75,14 @@ class AndroidHostSdkExportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate APK member"):
             export_android_host_sdk(self.sdk, self.source, self.debug, self.release)
 
+    def test_mismatched_sdk_version_rejected(self):
+        (self.sdk / "arc-installation.json").write_text(
+            json.dumps({"format": "arc-installation", "engineVersion": "9.0.0"})
+        )
+        with self.assertRaisesRegex(ValueError, "does not match installed ARC SDK"):
+            export_android_host_sdk(self.sdk, self.source, self.debug, self.release)
+        self.assertFalse((self.sdk / "share/arc/android").exists())
+
     def test_missing_installed_sdk_rejected(self):
         (self.sdk / "lib/cmake/ARC/ARCConfig.cmake").unlink()
         with self.assertRaisesRegex(ValueError, "CMake package"):
