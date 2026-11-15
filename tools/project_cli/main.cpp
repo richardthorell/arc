@@ -388,7 +388,7 @@ int main(int argc, char** argv)
         const auto assets_root = args.option("--assets");
         const auto output_root = args.option("--output");
         if (descriptor_path.empty() || !sdk_root || !assets_root || !output_root)
-            return fail(json_output, "Android APK finalization requires --project, --sdk-root, --assets and --output", 2);
+            return fail(json_output, "android-apk requires --project, --sdk-root, --assets and --output", 2);
         const auto sdk = std::filesystem::absolute(*sdk_root).lexically_normal();
         const auto script = sdk / "share" / "arc" / "android" / "android_apk_finalizer.py";
         if (!std::filesystem::is_regular_file(script))
@@ -398,11 +398,16 @@ int main(int argc, char** argv)
 #else
         const auto python = args.option("--python").value_or("python3");
 #endif
-        std::vector<std::string> invoke{
-            script.string(), "--project-root", descriptor_path.parent_path().string(), "--sdk-root", sdk.string(),
-            "--assets", std::filesystem::absolute(*assets_root).lexically_normal().string(),
-            "--output", std::filesystem::absolute(*output_root).lexically_normal().string()
-        };
+        std::vector<std::string> invoke;
+        invoke.push_back(script.string());
+        invoke.push_back("--project-root");
+        invoke.push_back(descriptor_path.parent_path().string());
+        invoke.push_back("--sdk-root");
+        invoke.push_back(sdk.string());
+        invoke.push_back("--assets");
+        invoke.push_back(std::filesystem::absolute(*assets_root).lexically_normal().string());
+        invoke.push_back("--output");
+        invoke.push_back(std::filesystem::absolute(*output_root).lexically_normal().string());
         if (const auto settings = args.option("--settings"))
         {
             invoke.push_back("--settings");
