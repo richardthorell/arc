@@ -194,7 +194,7 @@ class A5WorkflowTests(unittest.TestCase):
             process.poll.return_value = 2
             process.returncode = 2
             with self.assertRaisesRegex(workflow.WorkflowError, "exited 2"):
-                runner.command(["fake-command"])
+                workflow.Executor.command(runner, ["fake-command"])
         self.assertIn("fake-command", runner.log_path.read_text())
 
 
