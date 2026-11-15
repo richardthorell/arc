@@ -206,6 +206,9 @@ export class ProjectSettingsService {
         object[key] = mergeValue(object[key], value);
       }
       if (next.guid !== raw.guid) throw new Error('Project identity cannot change');
+      const previousPackage = raw.package as Record<string, unknown> | undefined;
+      if (Object.hasOwn(request.changes, 'name') && previousPackage?.applicationName === raw.name)
+        (next.package as Record<string, unknown>).applicationName = next.name;
       // Same parent ensures native relative-path validation uses the real project root.
       temporary = path.join(project.projectRoot, `.arc-settings-${randomUUID()}.arcproject`);
       fs.writeFileSync(temporary, JSON.stringify(next, null, 2) + '\n', { flag: 'wx' });

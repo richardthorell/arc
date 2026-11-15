@@ -226,6 +226,9 @@ struct project_descriptor
     package_settings package;                                                             ///< Package policy.
     project_settings_paths settings; ///< Source-controlled setting paths.
     std::optional<android_project_settings> android;
+    std::string description;
+    std::string version{"0.1.0"};
+    std::optional<project_asset_reference> thumbnail;
 };
 
 /** @brief Optional validation policy supplied by an editor or CLI caller. */

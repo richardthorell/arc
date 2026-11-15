@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { projectThumbnail } from './projectThumbnail';
 
 import {
   arcProjectFormat,
@@ -157,6 +158,9 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
     formatVersion: arcProjectFormatVersion,
     guid: source.guid,
     name: source.name.trim(),
+    description: stringValue(raw.description),
+    version: stringValue(raw.version, '0.1.0'),
+    thumbnail: assetReference(raw.thumbnail),
     engineVersion: source.engineVersion,
     paths: {
       source: normalizeProjectRelativePath(stringValue(paths.source, 'Source'), 'paths.source'),
@@ -332,7 +336,10 @@ export class ProjectService {
     return {
       currentEngineVersion: this.currentEngineVersion,
       activeProject: this.activeProject,
-      recentProjects: this.readRecents(),
+      recentProjects: this.readRecents().map((entry) => ({
+        ...entry,
+        thumbnailDataUrl: projectThumbnail(entry.descriptorPath),
+      })),
       installations: this.engineInstallations(),
       templates: this.projectTemplates(),
       hostConnected: this.host.connected,

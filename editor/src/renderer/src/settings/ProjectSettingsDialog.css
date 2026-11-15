@@ -19,6 +19,11 @@
   overflow: auto;
   color: var(--arc-text-secondary);
 }
+.project-settings-section-title {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
 .project-settings-footer,
 .project-settings-collection-row {
   display: flex;
@@ -56,6 +61,16 @@
 }
 .project-settings-profile > label {
   justify-content: space-between;
+}
+.project-settings-profile > summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.project-settings-profile > summary small {
+  margin-left: 12px;
+}
+.project-settings-profile[open] > summary {
+  margin-bottom: 12px;
 }
 .project-settings-content small {
   color: var(--arc-text-secondary);

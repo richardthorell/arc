@@ -6,6 +6,29 @@ import type { ArcProjectCandidate } from '../common/projectTypes';
 import { ProjectSettingsService } from './projectSettingsService';
 
 const roots: string[] = [];
+it('persists project information while retaining custom application names', async () => {
+  const state = fixture();
+  const result = await state.apply({ name: 'Renamed', description: 'First line\nSecond line', version: '1.2.3' });
+  expect(result.succeeded).toBe(true);
+  const saved = JSON.parse(fs.readFileSync(state.descriptorPath, 'utf8'));
+  expect(saved).toMatchObject({
+    name: 'Renamed',
+    description: 'First line\nSecond line',
+    version: '1.2.3',
+    package: { applicationName: 'Renamed' },
+  });
+  saved.package.applicationName = 'Custom application';
+  fs.writeFileSync(state.descriptorPath, JSON.stringify(saved));
+  expect((await state.apply({ name: 'Another name' })).succeeded).toBe(true);
+  expect(JSON.parse(fs.readFileSync(state.descriptorPath, 'utf8')).package.applicationName).toBe('Custom application');
+});
+
+it('rejects invalid project versions without changing the descriptor', async () => {
+  const state = fixture();
+  const before = fs.readFileSync(state.descriptorPath, 'utf8');
+  expect((await state.apply({ version: '1.2', description: 'Must not persist' })).succeeded).toBe(false);
+  expect(fs.readFileSync(state.descriptorPath, 'utf8')).toBe(before);
+});
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
@@ -27,6 +50,7 @@ function fixture() {
     engineVersion: '0.1.0',
     buildConfigurations: ['Shipping'],
     extension: { untouched: 42 },
+    distributionVariants: [{ id: 'preserved-channel', targetId: 'android-arm64-vulkan', extension: { future: true } }],
     package: {
       applicationName: 'Game',
       companyName: '',
@@ -122,6 +146,7 @@ describe('Project Settings persistence', () => {
       guid: 'project',
       name: 'Renamed',
       extension: { untouched: 42 },
+      distributionVariants: value.raw.distributionVariants,
       package: { companyName: 'Studio', extension: 'retained' },
     });
     const validation = value.query.mock.calls.find(([, args]) => args[0] === 'validate')!;

@@ -17,6 +17,9 @@ const profile = z
   .passthrough();
 export const projectSettingSchemas = {
   name: text.min(1),
+  description: z.string().max(4096),
+  version: text.regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, 'Use major.minor.patch, for example 1.0.0'),
+  thumbnail: scene.extend({ expectedType: z.literal('texture'), pathHint: z.string().min(1).max(2048) }).nullable(),
   'package.applicationName': text.min(1),
   'package.companyName': text,
   'package.output': z.string().min(1).max(2048),
@@ -43,7 +46,9 @@ export type ProjectSettingsField = {
   category: string;
   label: string;
   description?: string;
-  control: 'text' | 'number' | 'boolean' | 'readonly' | 'scene' | 'scenes' | 'targets' | 'profiles';
+  section?: string;
+  control:
+    'text' | 'multiline' | 'image' | 'number' | 'boolean' | 'readonly' | 'scene' | 'scenes' | 'targets' | 'profiles';
   defaultValue?: unknown;
 };
 export type ProjectSettingsCategory = {
@@ -52,124 +57,153 @@ export type ProjectSettingsCategory = {
   parentId?: string;
   description?: string;
   planned?: boolean;
+  platform?: string;
+  /** Content panel within its parent page, without a separate sidebar entry. */
+  panelOnly?: boolean;
 };
+export function visibleProjectSettingsCategories(
+  categories: ProjectSettingsCategory[],
+  targets: { id: string; enabled: boolean }[],
+): ProjectSettingsCategory[] {
+  const enabled = new Set(targets.filter((target) => target.enabled).map((target) => target.id.split('-')[0]));
+  return categories.filter((category) => !category.planned && (!category.platform || enabled.has(category.platform)));
+}
 export const projectSettingsCatalog = {
   version: 1,
   categories: [
-    { id: 'general-root', label: 'General' },
-    { id: 'general', label: 'Identity & Metadata', parentId: 'general-root' },
-    { id: 'startup', label: 'Startup & Scenes', parentId: 'general-root' },
     {
-      id: 'paths',
-      label: 'Project Paths',
-      parentId: 'general-root',
-      description: 'Read-only. Relocating established roots requires a separate migration.',
+      id: 'general-root',
+      label: 'General',
+      description: 'Define your project identity and the scenes used at startup.',
     },
-    { id: 'platforms', label: 'Platforms' },
-    { id: 'targets', label: 'Supported Platforms', parentId: 'platforms' },
+    {
+      id: 'general',
+      label: 'Project Information',
+      parentId: 'general-root',
+      panelOnly: true,
+      description: 'Manage the project name, application identity and publisher information.',
+    },
+    {
+      id: 'startup',
+      label: 'Startup',
+      parentId: 'general-root',
+      panelOnly: true,
+      description: 'Choose the editor default scene and the ordered runtime startup scenes.',
+    },
+    {
+      id: 'platforms',
+      label: 'Platforms',
+      description: 'Enable project targets and inspect local tool availability separately from project configuration.',
+    },
     {
       id: 'windows',
       label: 'Windows',
       parentId: 'platforms',
-      planned: true,
-      description:
-        'Window and distribution overrides need a validated project contract and finalizer integration. Existing Windows build workflows remain available.',
-    },
-    { id: 'android', label: 'Android', parentId: 'platforms' },
-    { id: 'android-application', label: 'Application', parentId: 'android' },
-    {
-      id: 'android-compatibility',
-      label: 'Compatibility & Display',
-      parentId: 'android',
-      description:
-        'SDK identity is supported. Orientation, screen behavior and cutout policies are planned; compile SDK and NDK are owned by the toolchain.',
+      platform: 'windows',
+      description: 'Inspect the Windows architectures, renderers and runtime targets enabled for this project.',
     },
     {
-      id: 'android-publishing',
-      label: 'Publishing & Signing',
-      parentId: 'android',
-      planned: true,
-      description:
-        'Release signing and publishing integration is planned. Never store private keys, passwords or tokens in project settings.',
-    },
-    {
-      id: 'other-platforms',
-      label: 'Other Platforms',
+      id: 'android',
+      label: 'Android',
       parentId: 'platforms',
-      planned: true,
-      description:
-        'Apple, Web and console application settings require their platform backends and finalizers. Available headless targets are listed under Supported Platforms.',
+      platform: 'android',
+      description: 'Configure Android application identity, versions and SDK compatibility.',
     },
-    { id: 'distribution', label: 'Build & Distribution' },
     {
-      id: 'build-profiles',
-      label: 'Build Profiles',
-      parentId: 'distribution',
-      planned: true,
-      description:
-        'Named build profiles and inheritance are separate from existing cook profiles. This page will use the shared workflow contract, not a second configuration system.',
+      id: 'linux',
+      label: 'Linux',
+      parentId: 'platforms',
+      platform: 'linux',
+      description: 'Inspect the Linux architectures, renderers and runtime targets enabled for this project.',
     },
-    { id: 'compile', label: 'Compile & Diagnostics', parentId: 'distribution' },
-    { id: 'build', label: 'Cooking', parentId: 'distribution' },
-    { id: 'packaging', label: 'Packaging', parentId: 'distribution' },
+    {
+      id: 'distribution',
+      label: 'Build & Release',
+      description: 'Prepare project content and configure the output used by build and packaging workflows.',
+    },
+    {
+      id: 'build',
+      label: 'Cooking & Packaging',
+      parentId: 'distribution',
+      description: 'Edit cook profiles, texture outputs, package location and region chunking.',
+    },
     {
       id: 'rendering',
       label: 'Rendering & Quality',
-      description:
-        'Read-only descriptor defaults. Detailed quality and device-profile authoring belongs to the existing renderer configuration; editing it here is not yet integrated.',
+      description: 'Read-only defaults and the authoritative renderer configuration reference.',
     },
-    {
-      id: 'input',
-      label: 'Input',
-      description: 'The input configuration remains authoritative. Detailed mapping editor integration is planned.',
-    },
-    {
-      id: 'physics',
-      label: 'Physics',
-      planned: true,
-      description:
-        'Project-level physics authoring is planned and requires subsystem validation and runtime integration.',
-    },
-    {
-      id: 'audio',
-      label: 'Audio',
-      planned: true,
-      description:
-        'Project-level audio authoring is planned and requires subsystem validation and runtime integration.',
-    },
-    {
-      id: 'runtime',
-      label: 'Runtime',
-      planned: true,
-      description:
-        'Lifecycle, timing, diagnostics, content delivery and dedicated-server policies need shared runtime contracts before they become editable here.',
-    },
+    { id: 'input', label: 'Input', description: 'The input configuration remains authoritative.' },
     {
       id: 'content',
       label: 'Content & Assets',
-      description:
-        'Content roots are read-only. Import policy and content delivery settings require their existing authoring services.',
+      description: 'Asset roots are read-only; relocation requires a migration.',
     },
+    { id: 'modules', label: 'Plugins & Modules', description: 'Read-only declarations and dependencies.' },
     {
-      id: 'modules',
-      label: 'Plugins & Modules',
-      description: 'Read-only declarations. Dependency-aware module and plugin editing is planned.',
+      id: 'advanced',
+      label: 'Advanced',
+      description:
+        'Read-only project paths, compatibility and compiler policy. No workstation settings are stored here.',
     },
   ] satisfies ProjectSettingsCategory[],
   fields: [
-    { id: 'name', category: 'general', label: 'Project name', control: 'text' },
-    { id: 'package.applicationName', category: 'general', label: 'Application display name', control: 'text' },
-    { id: 'package.companyName', category: 'general', label: 'Company name', control: 'text', defaultValue: '' },
-    { id: 'guid', category: 'general', label: 'Project GUID', control: 'readonly' },
-    { id: 'formatVersion', category: 'general', label: 'Project descriptor version', control: 'readonly' },
-    { id: 'engineVersion', category: 'general', label: 'Engine version', control: 'readonly' },
-    { id: 'descriptorPath', category: 'general', label: 'Descriptor location', control: 'readonly' },
-    { id: 'defaultScene', category: 'startup', label: 'Editor default scene', control: 'scene', defaultValue: null },
-    { id: 'startupScenes', category: 'startup', label: 'Runtime startup scenes', control: 'scenes', defaultValue: [] },
-    { id: 'targetPlatforms', category: 'targets', label: 'Project targets', control: 'targets' },
+    {
+      id: 'name',
+      category: 'general',
+      label: 'Project name',
+      control: 'text',
+      description: 'Used to identify the project in ARC. Also serves as the default application name for builds.',
+    },
+    { id: 'description', category: 'general', label: 'Description', control: 'multiline', defaultValue: '' },
+    {
+      id: 'package.companyName',
+      category: 'general',
+      label: 'Studio / Company',
+      control: 'text',
+      defaultValue: '',
+      description: 'Default developer or publisher name used in application metadata.',
+    },
+    {
+      id: 'version',
+      category: 'general',
+      label: 'Project version',
+      control: 'text',
+      defaultValue: '0.1.0',
+      description: 'Default version for builds and releases. Can be overridden per distribution variant.',
+    },
+    {
+      id: 'thumbnail',
+      category: 'general',
+      label: 'Project thumbnail',
+      control: 'image',
+      defaultValue: null,
+      description: 'Image displayed for this project in the project browser.',
+    },
+    { id: 'guid', category: 'advanced', label: 'Project GUID', control: 'readonly' },
+    { id: 'formatVersion', category: 'advanced', label: 'Project descriptor version', control: 'readonly' },
+    { id: 'engineVersion', category: 'advanced', label: 'Engine version', control: 'readonly' },
+    { id: 'descriptorPath', category: 'advanced', label: 'Descriptor location', control: 'readonly' },
+    {
+      id: 'defaultScene',
+      category: 'startup',
+      label: 'Editor default scene',
+      control: 'scene',
+      defaultValue: null,
+      description: 'Scene opened automatically when loading this project in the editor.',
+    },
+    {
+      id: 'startupScenes',
+      category: 'startup',
+      label: 'Runtime startup scenes',
+      control: 'scenes',
+      defaultValue: [],
+      description: 'Scenes loaded when the application starts, in the order listed.',
+    },
+    { id: 'targetPlatforms', category: 'platforms', label: 'Project targets', control: 'targets' },
     {
       id: 'platformSettings.android.applicationId',
-      category: 'android-application',
+      category: 'android',
+      section: 'Application',
       label: 'Android application ID',
       description: 'For example com.company.game. Required for project APK packaging; not the ARC project GUID.',
       control: 'text',
@@ -177,28 +211,32 @@ export const projectSettingsCatalog = {
     },
     {
       id: 'platformSettings.android.versionName',
-      category: 'android-application',
+      category: 'android',
+      section: 'Application',
       label: 'Android version name',
       control: 'text',
       defaultValue: '1.0',
     },
     {
       id: 'platformSettings.android.versionCode',
-      category: 'android-application',
+      category: 'android',
+      section: 'Application',
       label: 'Android version code',
       control: 'number',
       defaultValue: 1,
     },
     {
       id: 'platformSettings.android.minimumSdk',
-      category: 'android-compatibility',
+      category: 'android',
+      section: 'Compatibility',
       label: 'Android minimum SDK',
       control: 'number',
       defaultValue: 26,
     },
     {
       id: 'platformSettings.android.targetSdk',
-      category: 'android-compatibility',
+      category: 'android',
+      section: 'Compatibility',
       label: 'Android target SDK',
       control: 'number',
       defaultValue: 28,
@@ -206,7 +244,7 @@ export const projectSettingsCatalog = {
     { id: 'cookProfiles', category: 'build', label: 'Cook profiles', control: 'profiles', defaultValue: [] },
     {
       id: 'package.output',
-      category: 'packaging',
+      category: 'build',
       label: 'Package output directory',
       description: 'Relative to the project, inside its Build directory.',
       control: 'text',
@@ -221,13 +259,13 @@ export const projectSettingsCatalog = {
     },
     ...['source', 'content', 'config', 'plugins', 'build', 'intermediate', 'saved'].map((name) => ({
       id: `paths.${name}`,
-      category: 'paths',
+      category: 'advanced',
       label: `${name[0].toUpperCase()}${name.slice(1)} root`,
       control: 'readonly' as const,
     })),
     { id: 'assetRoots', category: 'content', label: 'Asset roots', control: 'readonly' },
-    { id: 'toolchain', category: 'compile', label: 'Toolchain policy', control: 'readonly' },
-    { id: 'buildConfigurations', category: 'compile', label: 'Build configurations', control: 'readonly' },
+    { id: 'toolchain', category: 'advanced', label: 'Toolchain policy', control: 'readonly' },
+    { id: 'buildConfigurations', category: 'advanced', label: 'Build configurations', control: 'readonly' },
     { id: 'renderer.backend', category: 'rendering', label: 'Renderer backend', control: 'readonly' },
     { id: 'renderer.api', category: 'rendering', label: 'Graphics API requirement', control: 'readonly' },
     { id: 'renderer.quality', category: 'rendering', label: 'Quality default', control: 'readonly' },

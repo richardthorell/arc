@@ -72,6 +72,12 @@
 }
 
 .project-browser-logo,
+.project-card-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
 .project-card-icon {
   display: grid;
   place-items: center;

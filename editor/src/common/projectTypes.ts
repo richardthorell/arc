@@ -23,6 +23,9 @@ export type ArcProjectAssetReference = {
 };
 
 export type ArcProjectDescriptor = {
+  description?: string;
+  version?: string;
+  thumbnail?: ArcProjectAssetReference | null;
   format: typeof arcProjectFormat;
   formatVersion: number;
   guid: string;
@@ -91,6 +94,7 @@ export type ArcProjectTemplate = {
 };
 
 export type ArcRecentProject = {
+  thumbnailDataUrl?: string;
   descriptorPath: string;
   projectRoot: string;
   guid: string;

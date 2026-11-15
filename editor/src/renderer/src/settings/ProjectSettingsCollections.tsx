@@ -157,7 +157,13 @@ export function ProjectProfileList({
           onChange(value.map((item, i) => (i === index ? { ...item, ...patch } : item)));
         const target = `${profile.platform}-${profile.architecture === 'x86_64' ? 'x64' : profile.architecture}-${profile.renderer === 'none' ? 'headless' : profile.renderer}`;
         return (
-          <div key={index} className="project-settings-profile">
+          <details key={index} className="project-settings-profile">
+            <summary>
+              <strong>{profile.id}</strong>
+              <small>
+                {target} · {profile.configuration} · {profile.textures.outputs.join(', ')}
+              </small>
+            </summary>
             <label>
               Profile ID
               <UiTextInput
@@ -234,7 +240,7 @@ export function ProjectProfileList({
               </UiButton>
               <UiButton onClick={() => onChange(value.filter((_, i) => i !== index))}>Remove profile</UiButton>
             </div>
-          </div>
+          </details>
         );
       })}
       <UiButton

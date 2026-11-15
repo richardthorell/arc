@@ -57,6 +57,10 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     arc::project::project_descriptor descriptor;
     descriptor.guid = "12345678-1234-4234-8234-123456789abc";
     descriptor.name = "Game";
+    descriptor.description = "A project description\nwith multiple lines";
+    descriptor.version = "2.3.4";
+    descriptor.thumbnail = arc::project::project_asset_reference{
+        .guid = "12345678-1234-4234-8234-123456789abc", .expected_type = "texture", .path_hint = "Content/Preview.png"};
     descriptor.engine_version = "0.1.0";
     descriptor.modules.push_back(
         {.id = "Game.runtime",
@@ -73,6 +77,10 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     const auto loaded = arc::project::load_descriptor(path);
     REQUIRE(loaded);
     CHECK(loaded.value().name == "Game");
+    CHECK(loaded.value().description == descriptor.description);
+    CHECK(loaded.value().version == "2.3.4");
+    REQUIRE(loaded.value().thumbnail);
+    CHECK(loaded.value().thumbnail->path_hint == "Content/Preview.png");
     REQUIRE(loaded.value().android);
     CHECK(loaded.value().android->application_id == "com.example.game");
     CHECK(loaded.value().android->version_name == "2.0");
@@ -88,6 +96,21 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     REQUIRE(context);
     CHECK(context.value().asset_cache_root == temporary.path() / "Intermediate" / "Cache");
     CHECK(context.value().recovery_root == temporary.path() / "Saved" / "Recovery");
+}
+
+TEST_CASE("project information rejects malformed release versions")
+{
+    temporary_directory temporary;
+    arc::project::project_descriptor descriptor;
+    descriptor.guid = "12345678-1234-4234-8234-123456789abc";
+    descriptor.name = "Game";
+    descriptor.engine_version = "0.1.0";
+    for (const auto version : {"1.2", "1.2.3.4", "01.2.3", "1.x.3", ""})
+    {
+        descriptor.version = version;
+        CHECK_FALSE(arc::project::save_descriptor(temporary.path() / "Game.arcproject", descriptor));
+        CHECK_FALSE(std::filesystem::exists(temporary.path() / "Game.arcproject"));
+    }
 }
 
 TEST_CASE("project validation rejects missing typed module dependencies")
