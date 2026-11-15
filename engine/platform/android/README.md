@@ -143,6 +143,84 @@ session on Android**. A3 stages cooked content, A4 finalizes a project APK and
 device-side startup acceptance remains separately tracked. A2 alone does not
 prove a visible game world, app deployment, or store-ready artifact.
 
+## Distribution A5 — One-command Android build and status (#403)
+
+A5 executes the same `project_workflow_plan` used by ARC's editor workflow
+planner. It bridges the A1–A4 platform adapters without creating a second
+build-policy system. The project must have an **Android Debug ASTC cook profile**
+and configured Android Project Settings (including application ID), plus
+authored startup scenes. Newly created Blank 3D projects include the Debug
+cook profile `android-arm64-vulkan-debug`; the original Shipping profile
+remains for later production signing.
+
+With an installed ARC SDK containing its Android host export and the host-side
+`arc-cook` executable, run:
+
+```sh
+arc-project build --platform android \
+  --project /project/MyGame.arcproject \
+  --sdk-root /absolute/arc/sdk \
+  --profile android-arm64-vulkan-debug \
+  --target android-arm64-vulkan --json
+```
+
+The profile and target flags default to the values above in A5. Optional
+`--cooker /path/to/arc-cook`, `--gradle /path/to/gradle`,
+`--python /path/to/python3`, `--runtime-config /path/to/config.json`,
+`--run-id safe-id`, and `--output /path/to/new/output` are supported.
+
+A5 executes stages **in the shared plan order**:
+
+1. **Validate** the project, selected Debug/ASTC profile, SDK, target,
+   startup scenes and Android settings via the existing ARC CLI/planner.
+2. **Configure** the installed SDK Gradle launcher in one private workspace.
+3. **Compile** the A2 C++ Android runtime using Gradle's NDK native target.
+4. **Cook** and package authored startup scene dependencies via the existing
+   host `arc-cook`, then verify the resulting `.arccookmanifest` and chunks.
+5. **Package**: call the A3 shared D0 content assembler and A4 signed Debug
+   APK finalizer. A4 reuses the compiled Gradle workspace so native code
+   is not unnecessarily recompiled from scratch.
+
+The default runtime configuration is `Config/runtime.json`, when authored.
+Otherwise A5 generates a small project-identity/tick-rate JSON in the private
+workspace. Source project files are not modified. Only one ASTC variant is
+currently supported by this path.
+
+**Output:** each invocation receives a unique run ID and an independent
+output under the shared plan's `packageOutput/<runId>/`. The finalizer
+atomically publishes the verified APK and `arc-apk-integrity.json`. Existing
+outputs are never overwritten. Build logs and an atomic status document
+survive successful and failed builds at:
+
+```text
+<Project>/Saved/Builds/android/<runId>/
+  status.json
+  build.log
+```
+
+Use another terminal to inspect or request cancellation of the currently
+running process:
+
+```sh
+arc-project workflow status --project /project/MyGame.arcproject \
+  --sdk-root /absolute/arc/sdk --run-id <runId> --json
+arc-project workflow logs --project /project/MyGame.arcproject \
+  --sdk-root /absolute/arc/sdk --run-id <runId>
+arc-project workflow cancel --project /project/MyGame.arcproject \
+  --sdk-root /absolute/arc/sdk --run-id <runId>
+```
+
+Cancel requests are checked by the active executor; the currently running
+child process is terminated and the ephemeral work directory is cleaned.
+A5 is a **synchronous CLI command**, not a background service. Without the
+original build process, a status/log record remains but no workflow is
+running or will resume automatically.
+
+**Limits:** this workflow currently produces **signed Debug ARM64/Vulkan APKs**.
+It does not launch on hardware or collect Logcat; ADB discovery/deploy/run
+and editor Build-button integration follow in #403/#410/#411. Production
+release signing, store flavors and AAB packaging remain later work.
+
 ## Distribution A4 — Signed Debug APK finalizer (#403)
 
 **A4 provides an installable, signed, ARM64 Android Debug APK** from the
