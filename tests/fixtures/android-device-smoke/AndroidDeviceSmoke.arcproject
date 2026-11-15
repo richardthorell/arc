@@ -16,7 +16,10 @@
   "assetRoots": [
     "Content"
   ],
-  "modules": [],
+  "modules": [
+    {"id":"smoke.runtime","kind":"runtime","target":"AndroidDeviceSmokeRuntime",
+     "sourceRoot":"Source/AndroidDeviceSmokeRuntime","enabled":true,"dependencies":[]}
+  ],
   "plugins": [],
   "defaultScene": {
     "guid": "b80a0000-0000-4000-8000-000000000005",

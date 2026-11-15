@@ -1,6 +1,7 @@
 import groovy.json.JsonSlurper
 import java.io.File
 import java.security.MessageDigest
+import java.nio.file.Files
 
 plugins {
     id("com.android.application")
@@ -127,6 +128,131 @@ val projectSettings: Map<*, *>? = projectSettingsPath?.let {
     value
 }
 
+
+// A3: consume only a fully assembled and hashed D0 content stage. There is no
+// implicit working-tree assets fallback for project-bound APKs.
+val distributionAssetsArgument = providers.gradleProperty("arcDistributionAssets").orNull
+require(distributionAssetsArgument == null || distributionAssetsArgument.isNotBlank()) {
+    "arcDistributionAssets must not be empty"
+}
+require(distributionAssetsArgument == null || (projectRoot != null && sdkRoot != null)) {
+    "arcDistributionAssets requires both arcProjectRoot and arcSdkRoot"
+}
+val distributionAssetsRoot = distributionAssetsArgument?.let { absoluteDirectory(it, "arcDistributionAssets") }
+val distributionTargetConfiguration: String? = distributionAssetsRoot?.let { root ->
+    val distributionFile = File(root, "arc-distribution.json")
+    require(distributionFile.isFile && distributionFile.length() in 1..16777216) {
+        "Android distribution stage has no valid arc-distribution.json"
+    }
+    val distribution = JsonSlurper().parse(distributionFile) as? Map<*, *>
+        ?: error("Invalid Android D0 manifest")
+    require(distribution["format"] == "arc.distribution" &&
+            (distribution["formatVersion"] as? Number)?.toInt() == 1) {
+        "Android distribution stage has unsupported format"
+    }
+    val target = distribution["target"] as? Map<*, *> ?: error("Missing Android D0 target")
+    require(target["platform"] == "android" && target["architecture"] == "arm64" &&
+            target["renderer"] == "vulkan" && target["id"] == "android-arm64-vulkan") {
+        "Android D0 target must be android-arm64-vulkan"
+    }
+    val configuration = target["configuration"] as? String
+    require(configuration in listOf("Debug", "Shipping")) {
+        "Android D0 stage requires a Debug or Shipping configuration"
+    }
+    require(distribution["role"] == "client" && distribution["finalizer"] == "android-gradle") {
+        "Android D0 stage must be a client android-gradle distribution"
+    }
+    val entrypoint = distribution["entrypoint"] as? Map<*, *> ?: error("Missing Android activity entrypoint")
+    require(entrypoint["kind"] == "android-activity" && entrypoint["value"] == "android.app.NativeActivity") {
+        "Android D0 stage has the wrong NativeActivity entrypoint"
+    }
+    val installed = JsonSlurper().parse(File(sdkRoot!!, "arc-installation.json")) as? Map<*, *>
+        ?: error("Invalid installed ARC SDK")
+    require(distribution["engineVersion"] == installed["engineVersion"] &&
+            distribution["sdkVersion"] == installed["engineVersion"]) {
+        "Android D0 stage engine/SDK versions do not match selected native SDK"
+    }
+    val projectDescriptors = projectRoot!!.listFiles()
+        ?.filter { it.isFile && it.name.endsWith(".arcproject") } ?: emptyList()
+    require(projectDescriptors.size == 1) { "Android project root must contain one .arcproject descriptor" }
+    val descriptor = JsonSlurper().parse(projectDescriptors.single()) as? Map<*, *>
+        ?: error("Invalid ARC project descriptor")
+    require(distribution["projectGuid"] == descriptor["guid"]) {
+        "Android staged project GUID differs from compiled native project"
+    }
+    val scenes = distribution["startupScenes"] as? List<*>
+    require(!scenes.isNullOrEmpty() && scenes.all { it is String && it.isNotBlank() }) {
+        "Android D0 stage must declare startup scenes"
+    }
+    val configPath = distribution["runtimeConfig"] as? String ?: error("Missing runtime configuration")
+    val content = distribution["content"] as? Map<*, *> ?: error("Missing staged content")
+    val cookManifests = content["cookManifests"] as? List<*>
+    require(!cookManifests.isNullOrEmpty() && cookManifests.all {
+        it is String && it.startsWith("Content/") && it.endsWith(".arccookmanifest")
+    }) { "Android D0 stage requires cooked-content manifests" }
+
+    val files = distribution["files"] as? List<*> ?: error("Missing Android asset inventory")
+    require(files.isNotEmpty()) { "Android D0 stage has no assets" }
+    val declared = mutableSetOf<String>()
+    val kinds = mutableMapOf<String, String>()
+    for (item in files) {
+        val record = item as? Map<*, *> ?: error("Invalid Android asset inventory entry")
+        val relative = record["path"] as? String ?: error("Missing staged asset path")
+        val parts = relative.split("/")
+        require(parts.size >= 2 && parts.all { it.isNotEmpty() && it != "." && it != ".." } &&
+                !relative.contains('\\') && !relative.contains(':') &&
+                (parts.first() == "Content" || parts.first() == "Config")) {
+            "Unsafe Android staged asset path: " + relative
+        }
+        require(declared.add(relative.lowercase())) { "Duplicate Android staged asset path: " + relative }
+        val kind = record["kind"] as? String ?: error("Missing staged asset kind")
+        require(kind == if (parts.first() == "Config") "configuration" else "content") {
+            "Incorrect staged Android asset kind: " + relative
+        }
+        val expectedSize = record["size"] as? Number ?: error("Missing staged asset size")
+        val expectedSha = record["sha256"] as? String ?: error("Missing staged asset hash")
+        require(expectedSize.toLong() >= 0 && expectedSha.matches(Regex("[0-9a-f]{64}"))) {
+            "Invalid Android asset inventory metadata: " + relative
+        }
+        val candidate = File(root, relative)
+        require(candidate.isFile && !Files.isSymbolicLink(candidate.toPath()) &&
+                candidate.length() == expectedSize.toLong()) {
+            "Missing, symbolic or incorrect-size Android asset: " + relative
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        candidate.inputStream().use { stream ->
+            val bytes = ByteArray(64 * 1024)
+            while (true) {
+                val count = stream.read(bytes)
+                if (count < 0) break
+                digest.update(bytes, 0, count)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        require(actual == expectedSha) { "Android asset SHA-256 mismatch: " + relative }
+        kinds[relative] = kind
+    }
+    require(kinds[configPath] == "configuration" &&
+            cookManifests.all { kinds[it] == "content" }) {
+        "Android runtime config or cooked-content manifests missing from inventory"
+    }
+    // A3 stages precisely the hashed D0 file set. Reject accidental authoring
+    // sources and stale chunks, including symlinks that could escape staging.
+    val present = mutableSetOf<String>()
+    Files.walk(root.toPath()).use { paths ->
+        paths.forEach { file ->
+            if (file == root.toPath()) return@forEach
+            require(!Files.isSymbolicLink(file)) { "Android stage cannot contain symlinks" }
+            if (Files.isRegularFile(file)) {
+                val relative = root.toPath().relativize(file).toString().replace('\\', '/')
+                if (relative != "arc-distribution.json") present.add(relative.lowercase())
+            }
+        }
+    }
+    require(present == declared) { "Android stage has untracked or missing cooked assets" }
+    configuration
+}
+
 android {
     namespace = "org.arcengine.host"
     compileSdk = 35
@@ -175,6 +301,10 @@ android {
         noCompress += listOf("arcpak", "arccookmanifest")
     }
 
+    if (distributionAssetsRoot != null) {
+        sourceSets.getByName("main").assets.srcDir(distributionAssetsRoot)
+    }
+
     if (sdkRoot == null || projectRoot != null) {
         externalNativeBuild {
             cmake {
@@ -216,5 +346,19 @@ tasks.register("verifyArcProjectSettings") {
 tasks.register("verifyArcAndroidHostMode") {
     doLast {
         check(if (sdkRoot != null) hostRoot!!.resolve("host.json").isFile else engineRoot!!.isDirectory)
+    }
+}
+
+// Validate the final selected variant, not merely whether a D0 stage exists.
+// Host Debug expects Debug cooked content; host Release expects Shipping.
+tasks.matching { it.name == "mergeDebugAssets" || it.name == "mergeReleaseAssets" }.configureEach {
+    doFirst {
+        if (distributionAssetsRoot != null) {
+            val expected = if (name == "mergeDebugAssets") "Debug" else "Shipping"
+            require(distributionTargetConfiguration == expected) {
+                "Android D0 stage configuration " + distributionTargetConfiguration +
+                    " is incompatible with Gradle " + name + " (expected " + expected + ")"
+            }
+        }
     }
 }

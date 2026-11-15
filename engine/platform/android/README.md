@@ -143,6 +143,70 @@ session on Android**. A3 stages cooked content, A4 finalizes a project APK and
 device-side startup acceptance remains separately tracked. A2 alone does not
 prove a visible game world, app deployment, or store-ready artifact.
 
+## Distribution A3 — Cooked-content assets and D0 handoff (#403)
+
+ARC now stages project-specific Android cooked content using the **same D0
+distribution manifest and shared assembler** used by the other platform
+packagers. A3 prepares the exact APK **asset** payload, not a signed APK.
+
+The project must declare an enabled Android ARM64/Vulkan cook target and an
+enabled runtime module, plus at least one startup scene that actually exists
+in its cooked package. The selected profile determines the build configuration
+(Debug or Shipping). Android device content uses its Android-specific
+representations, including ASTC textures; Windows-cooked artifacts are rejected.
+
+From a prepared project, cook and verify the selected profile:
+
+```sh
+arc-cook cook --project /project --profile android-arm64-vulkan \
+  --root Content/Scenes/Startup.arcscene --output /project/Build/Cooked/android --json
+arc-cook package --project /project --profile android-arm64-vulkan \
+  --root Content/Scenes/Startup.arcscene --output /project/Build/Cooked/android --json
+arc-cook verify --project /project --profile android-arm64-vulkan \
+  --output /project/Build/Cooked/android --json
+
+arc-project package android-content \
+  --project /project/MyGame.arcproject \
+  --profile android-arm64-vulkan --target android-arm64-vulkan \
+  --cook-manifest /project/Build/Cooked/android/android-arm64-vulkan.arccookmanifest \
+  --runtime-config /project/Config/runtime.json \
+  --output /project/Build/AndroidStagedAssets --json
+```
+
+The last command verifies the exact project/profile/cooked target, checks
+the compiled startup-scene GUIDs and readability, stages the runtime
+configuration, cook manifest and referenced `.arcpak` chunks, hashes them into
+`arc-distribution.json` with `android-activity` entrypoint, and publishes the
+complete directory atomically. It refuses to overwrite existing staging output
+and never includes source assets or Windows binaries.
+
+For the A2 installed-SDK Gradle launcher, explicitly attach that stage:
+
+```sh
+cd /absolute/arc/sdk/share/arc/android/gradle
+gradle --no-daemon -ParcSdkRoot=/absolute/arc/sdk \
+  -ParcProjectRoot=/project \
+  -ParcDistributionAssets=/project/Build/AndroidStagedAssets \
+  :app:assembleRelease
+```
+
+The cooker profile above is Shipping, so it must be paired with Gradle
+`assembleRelease`. For a Debug APK, define an Android Debug cook profile in
+`.arcproject`, cook/package/stage that profile and use `assembleDebug`.
+Mixing Debug and Shipping is rejected rather than silently booting with
+incompatible assets.
+
+Gradle checks the full D0 metadata, matching installed SDK and project GUID,
+every hashed asset file, and whether undeclared or symbolic files exist.
+Content is packaged under `assets/`; `.arcpak` and `.arccookmanifest` remain
+uncompressed for Android `AAssetManager` ranged reads.
+
+**Boundary:** A3 assumes an already-cooked project and produces an asset
+stage. A4 combines that stage with verified project/host JNI libraries and
+project Android settings into an installable APK. A5 wires cooking/staging/
+assembly into the shared `arc-project build` workflow; ADB deploy/run is later.
+A3 alone does not prove a complete running game on a device.
+
 ## A2 lifecycle behavior
 
 The NativeActivity callback maps START/STOP, RESUME/PAUSE, focus, native-window

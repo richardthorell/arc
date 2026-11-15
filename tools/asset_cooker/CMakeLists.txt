@@ -45,6 +45,7 @@ if(BUILD_TESTING)
         NAME arc-android-device-smoke
         COMMAND "${CMAKE_COMMAND}"
             -DARC_COOK=$<TARGET_FILE:arc-cook>
+            -DARC_PROJECT_TOOL=$<TARGET_FILE:arc-project-cli>
             -DARC_DEVICE_SMOKE_VERIFY=$<TARGET_FILE:arc-android-device-smoke-verify>
             -DARC_SOURCE_ROOT=${CMAKE_SOURCE_DIR}
             -DARC_TEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/android-device-smoke
