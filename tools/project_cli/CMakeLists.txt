@@ -1,4 +1,4 @@
-add_executable(arc-project-cli main.cpp package_command.cpp workflow_command.cpp runtime_build_manifest.cpp)
+add_executable(arc-project-cli main.cpp package_command.cpp android_content_command.cpp workflow_command.cpp runtime_build_manifest.cpp)
 arc_configure_first_party_target(arc-project-cli)
 target_compile_features(arc-project-cli PRIVATE cxx_std_20)
 target_link_libraries(arc-project-cli PRIVATE arc-project arc-third-party-json)
