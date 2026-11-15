@@ -116,6 +116,48 @@ jobs:
             --alpha "$RUNNER_TEMP/GameAlpha-debug.apk" \
             --beta "$RUNNER_TEMP/GameBeta-debug.apk"
 
+      - name: Verify Android A3 Staged Content in APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/arc-android-host-sdk-fixture"
+          projects="$RUNNER_TEMP/arc-android-native-projects"
+          stage="$RUNNER_TEMP/arc-android-a3-content"
+          python3 tools/test_android_distribution_assets.py prepare \
+            --project "$projects/GameAlpha" --sdk "$sdk" --output "$stage"
+          (
+            cd "$sdk/share/arc/android/gradle"
+            gradle --no-daemon "-ParcSdkRoot=$sdk" \
+              "-ParcProjectRoot=$projects/GameAlpha" \
+              "-ParcDistributionAssets=$stage" \
+              :app:assembleDebug --stacktrace
+          )
+          python3 tools/test_android_distribution_assets.py verify \
+            --apk "$sdk/share/arc/android/gradle/app/build/outputs/apk/debug/app-debug.apk" \
+            --stage "$stage"
+          # The Gradle importer must not silently consume a corrupt or
+          # different project's content stage.
+          cp -a "$stage" "$stage-corrupt"
+          printf 'tampered' >> "$stage-corrupt/Content/startup.arcpak"
+          if (
+            cd "$sdk/share/arc/android/gradle"
+            gradle --no-daemon "-ParcSdkRoot=$sdk" \
+              "-ParcProjectRoot=$projects/GameAlpha" \
+              "-ParcDistributionAssets=$stage-corrupt" :app:help
+          ); then
+            echo "::error::Corrupt Android staged asset was accepted"
+            exit 1
+          fi
+          if (
+            cd "$sdk/share/arc/android/gradle"
+            gradle --no-daemon "-ParcSdkRoot=$sdk" \
+              "-ParcProjectRoot=$projects/GameBeta" \
+              "-ParcDistributionAssets=$stage" :app:help
+          ); then
+            echo "::error::Cross-project Android staged distribution was accepted"
+            exit 1
+          fi
+
       - name: Upload Android APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
