@@ -431,19 +431,24 @@ export function MainToolbar({
     }
 
     let disposed = false;
-    void window.arc?.projects
-      ?.snapshot()
-      .then((snapshot) => {
-        if (disposed) return;
-        setProjectTargetPlatforms(
-          configuredTargetPlatformsForProject(snapshot?.activeProject?.descriptor, hostPlatform),
-        );
-      })
-      .catch(() => {
-        if (!disposed) setProjectTargetPlatforms([hostPlatform]);
-      });
+    const refreshProjectTargets = () => {
+      void window.arc?.projects
+        ?.snapshot()
+        .then((snapshot) => {
+          if (disposed) return;
+          setProjectTargetPlatforms(
+            configuredTargetPlatformsForProject(snapshot?.activeProject?.descriptor, hostPlatform),
+          );
+        })
+        .catch(() => {
+          if (!disposed) setProjectTargetPlatforms([hostPlatform]);
+        });
+    };
+    refreshProjectTargets();
+    const unsubscribeProjectSettings = window.arc?.settings?.project?.onChanged?.(refreshProjectTargets);
     return () => {
       disposed = true;
+      unsubscribeProjectSettings?.();
     };
   }, [configuredTargetPlatforms, hostPlatform]);
 

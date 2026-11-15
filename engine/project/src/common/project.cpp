@@ -282,6 +282,26 @@ project_descriptor parse_descriptor(const json& source, std::uint32_t expected_v
     result.package.company_name = package.value("companyName", "");
     result.package.output = normal_relative_path(package, "output", "Build/Packages");
     result.package.region_chunks = package.value("regionChunks", true);
+    const auto platforms = source.value("platformSettings", json::object());
+    if (platforms.contains("android"))
+    {
+        const auto& android = platforms.at("android");
+        const auto integer = [&](const char* key, std::int32_t fallback)
+        {
+            if (!android.contains(key)) return fallback;
+            if (!android.at(key).is_number_integer())
+                throw std::runtime_error(std::string("Android integer required: ") + key);
+            const auto value = android.at(key).get<std::int64_t>();
+            if (value < 0 || value > 2100000000)
+                throw std::runtime_error(std::string("Android integer out of range: ") + key);
+            return static_cast<std::int32_t>(value);
+        };
+        result.android = android_project_settings{.application_id = android.value("applicationId", ""),
+                                                  .version_name = android.value("versionName", "1.0"),
+                                                  .version_code = integer("versionCode", 1),
+                                                  .minimum_sdk = integer("minimumSdk", 26),
+                                                  .target_sdk = integer("targetSdk", 28)};
+    }
 
     const auto& settings = source.value("settings", json::object());
     result.settings.editor = normal_relative_path(settings, "editor", "Config/Editor.json");
@@ -333,47 +353,57 @@ json descriptor_json(const project_descriptor& value)
     json roots = json::array();
     for (const auto& root : value.asset_roots)
         roots.push_back(root.generic_string());
-    return {{"format", project_format},
-            {"formatVersion", project_format_version},
-            {"guid", value.guid},
-            {"name", value.name},
-            {"engineVersion", value.engine_version},
-            {"paths",
-             {{"source", value.paths.source.generic_string()},
-              {"content", value.paths.content.generic_string()},
-              {"config", value.paths.config.generic_string()},
-              {"plugins", value.paths.plugins.generic_string()},
-              {"saved", value.paths.saved.generic_string()},
-              {"intermediate", value.paths.intermediate.generic_string()},
-              {"build", value.paths.build.generic_string()}}},
-            {"assetRoots", std::move(roots)},
-            {"modules", std::move(modules)},
-            {"plugins", std::move(plugins)},
-            {"defaultScene", value.default_scene ? asset_reference_json(*value.default_scene) : json(nullptr)},
-            {"startupScenes", std::move(startup)},
-            {"targetPlatforms", std::move(targets)},
-            {"toolchain",
-             {{"compiler", value.toolchain.compiler},
-              {"minimumVersion", value.toolchain.minimum_compiler_version},
-              {"generator", value.toolchain.generator},
-              {"architecture", value.toolchain.architecture},
-              {"cppStandard", value.toolchain.cpp_standard}}},
-            {"buildConfigurations", value.build_configurations},
-            {"renderer",
-             {{"backend", to_string(value.renderer.backend)},
-              {"api", value.renderer.api},
-              {"quality", value.renderer.quality},
-              {"antiAliasing", value.renderer.anti_aliasing}}},
-            {"cookProfiles", std::move(cook_profiles)},
-            {"package",
-             {{"applicationName", value.package.application_name},
-              {"companyName", value.package.company_name},
-              {"output", value.package.output.generic_string()},
-              {"regionChunks", value.package.region_chunks}}},
-            {"settings",
-             {{"editor", value.settings.editor.generic_string()},
-              {"renderer", value.settings.renderer.generic_string()},
-              {"input", value.settings.input.generic_string()}}}};
+    json document{{"format", project_format},
+                  {"formatVersion", project_format_version},
+                  {"guid", value.guid},
+                  {"name", value.name},
+                  {"engineVersion", value.engine_version},
+                  {"paths",
+                   {{"source", value.paths.source.generic_string()},
+                    {"content", value.paths.content.generic_string()},
+                    {"config", value.paths.config.generic_string()},
+                    {"plugins", value.paths.plugins.generic_string()},
+                    {"saved", value.paths.saved.generic_string()},
+                    {"intermediate", value.paths.intermediate.generic_string()},
+                    {"build", value.paths.build.generic_string()}}},
+                  {"assetRoots", std::move(roots)},
+                  {"modules", std::move(modules)},
+                  {"plugins", std::move(plugins)},
+                  {"defaultScene", value.default_scene ? asset_reference_json(*value.default_scene) : json(nullptr)},
+                  {"startupScenes", std::move(startup)},
+                  {"targetPlatforms", std::move(targets)},
+                  {"toolchain",
+                   {{"compiler", value.toolchain.compiler},
+                    {"minimumVersion", value.toolchain.minimum_compiler_version},
+                    {"generator", value.toolchain.generator},
+                    {"architecture", value.toolchain.architecture},
+                    {"cppStandard", value.toolchain.cpp_standard}}},
+                  {"buildConfigurations", value.build_configurations},
+                  {"renderer",
+                   {{"backend", to_string(value.renderer.backend)},
+                    {"api", value.renderer.api},
+                    {"quality", value.renderer.quality},
+                    {"antiAliasing", value.renderer.anti_aliasing}}},
+                  {"cookProfiles", std::move(cook_profiles)},
+                  {"package",
+                   {{"applicationName", value.package.application_name},
+                    {"companyName", value.package.company_name},
+                    {"output", value.package.output.generic_string()},
+                    {"regionChunks", value.package.region_chunks}}},
+                  {"settings",
+                   {{"editor", value.settings.editor.generic_string()},
+                    {"renderer", value.settings.renderer.generic_string()},
+                    {"input", value.settings.input.generic_string()}}}};
+    if (value.android)
+    {
+        const auto& android = *value.android;
+        document["platformSettings"]["android"] = {{"applicationId", android.application_id},
+                                                   {"versionName", android.version_name},
+                                                   {"versionCode", android.version_code},
+                                                   {"minimumSdk", android.minimum_sdk},
+                                                   {"targetSdk", android.target_sdk}};
+    }
+    return document;
 }
 
 project_status write_json_atomic(const std::filesystem::path& target, const json& value)
@@ -570,6 +600,11 @@ std::string probe_tool_version(const std::filesystem::path& executable, const st
 }
 } // namespace
 
+std::vector<std::string> supported_project_targets()
+{
+    return {"windows-x64-vulkan", "windows-x64-headless", "linux-x64-headless", "android-arm64-vulkan"};
+}
+
 descriptor_result load_descriptor(const std::filesystem::path& descriptor_path)
 {
     try
@@ -604,6 +639,38 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
     if (!is_guid(descriptor.guid))
         return validation_result::failure(
             make_error(project_error_code::invalid_descriptor, descriptor_path, "project GUID is malformed", "guid"));
+    if (descriptor.android)
+    {
+        const auto& android = *descriptor.android;
+        const auto valid_id = [](std::string_view id)
+        {
+            if (id.empty()) return true; // Unconfigured authoring project; export requires an ID.
+            bool start = true;
+            bool dot = false;
+            for (const char c : id)
+            {
+                if (c == '.')
+                {
+                    if (start) return false;
+                    start = true;
+                    dot = true;
+                    continue;
+                }
+                const bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+                if (!(letter || (!start && ((c >= '0' && c <= '9') || c == '_')))) return false;
+                start = false;
+            }
+            return dot && !start && id.size() <= 255;
+        };
+        if (!valid_id(android.application_id) || android.version_name.empty() || android.version_name.size() > 128 ||
+            android.version_code < 1 || android.version_code > 2100000000 || android.minimum_sdk < 26 ||
+            android.target_sdk < android.minimum_sdk || android.target_sdk > 35)
+            return validation_result::failure(
+                make_error(project_error_code::invalid_descriptor, descriptor_path,
+                           "Android requires a dotted application ID, positive version code, version name, and 26 <= "
+                           "minimum SDK <= target SDK <= 35",
+                           "platformSettings.android"));
+    }
     if (descriptor.name.empty() || descriptor.engine_version.empty())
         return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
                                                      "project name and engine version are required"));
@@ -672,8 +739,8 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
         return validation_result::failure(make_error(project_error_code::unsupported_platform, descriptor_path,
                                                      "at least one target platform must be enabled",
                                                      "targetPlatforms"));
-    const std::set<std::string_view> supported_platforms{"windows-x64-vulkan", "windows-x64-headless",
-                                                         "linux-x64-headless", "android-arm64-vulkan"};
+    const auto supported = supported_project_targets();
+    const std::set<std::string> supported_platforms(supported.begin(), supported.end());
     for (const auto& platform : descriptor.target_platforms)
         if (platform.enabled && !supported_platforms.contains(platform.id))
             return validation_result::failure(make_error(project_error_code::unsupported_platform, descriptor_path,
@@ -700,6 +767,16 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
     constexpr std::array<std::string_view, 3> texture_qualities{"balanced", "quality", "size"};
     for (const auto& profile : descriptor.cook_profiles)
     {
+        const auto target_id = profile.platform + "-" +
+                               (profile.architecture == "x86_64" ? "x64" : profile.architecture) + "-" +
+                               (profile.renderer == "none" ? "headless" : profile.renderer);
+        if (std::none_of(descriptor.target_platforms.begin(), descriptor.target_platforms.end(),
+                         [&](const auto& target) { return target.id == target_id; }) ||
+            std::find(descriptor.build_configurations.begin(), descriptor.build_configurations.end(),
+                      profile.configuration) == descriptor.build_configurations.end())
+            return validation_result::failure(
+                make_error(project_error_code::invalid_descriptor, descriptor_path,
+                           "Cook profiles must reference a declared target and build configuration", "cookProfiles"));
         if (!is_identifier(profile.id) || profile.platform.empty() || !cook_profile_ids.insert(profile.id).second)
             return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
                                                          "cook profile IDs must be unique and platforms non-empty",
@@ -948,6 +1025,17 @@ project_status upgrade_descriptor(const std::filesystem::path& descriptor_path, 
                      .api = iterator.value().value("api", "1.2"),
                      .textures = {.outputs = {iterator.value().value("textureFamily", "bc")}, .quality = "balanced"},
                      .configuration = iterator.value().value("configuration", "Shipping")});
+        }
+        // Legacy cook profiles could name targets not present in the host-only target list.
+        // Preserve them as explicitly disabled authoring targets rather than dropping profiles.
+        for (const auto& profile : descriptor.cook_profiles)
+        {
+            const auto architecture = profile.architecture == "x86_64" ? "x64" : profile.architecture;
+            const auto target = profile.platform + "-" + architecture + "-" +
+                                (profile.renderer == "none" ? "headless" : profile.renderer);
+            if (std::none_of(descriptor.target_platforms.begin(), descriptor.target_platforms.end(),
+                             [&](const auto& entry) { return entry.id == target; }))
+                descriptor.target_platforms.push_back({.id = target, .enabled = false});
         }
         const auto backup = descriptor_path.string() + ".v1.bak";
         std::filesystem::copy_file(descriptor_path, backup, std::filesystem::copy_options::overwrite_existing);

@@ -73,6 +73,15 @@ export type ArcProjectDescriptor = {
   }>;
   package: { applicationName: string; companyName: string; output: string; regionChunks: boolean };
   settings: { editor: string; renderer: string; input: string };
+  platformSettings?: {
+    android?: {
+      applicationId: string;
+      versionName: string;
+      versionCode: number;
+      minimumSdk: number;
+      targetSdk: number;
+    };
+  };
 };
 
 export type ArcProjectTemplate = {

@@ -195,6 +195,17 @@ struct project_settings_paths
     std::filesystem::path input{"Config/Input.json"};       ///< Input setting document.
 };
 
+struct android_project_settings
+{
+    std::string application_id;
+    std::string version_name{"1.0"};
+    std::int32_t version_code{1};
+    std::int32_t minimum_sdk{26};
+    std::int32_t target_sdk{28};
+};
+
+[[nodiscard]] std::vector<std::string> supported_project_targets();
+
 /** @brief Complete in-memory representation of a version-3 ARC project. */
 struct project_descriptor
 {
@@ -214,6 +225,7 @@ struct project_descriptor
     std::vector<cook_profile_descriptor> cook_profiles;                                   ///< Inline cook profiles.
     package_settings package;                                                             ///< Package policy.
     project_settings_paths settings; ///< Source-controlled setting paths.
+    std::optional<android_project_settings> android;
 };
 
 /** @brief Optional validation policy supplied by an editor or CLI caller. */
