@@ -136,8 +136,7 @@ extern "C" void android_main(android_app* app)
     // unloaded when Android destroys and recreates a native window.
     arc::platform::android::android_runtime_bridge runtime(package_assets,
                                                            app->activity ? app->activity->internalDataPath : nullptr);
-    const bool booted = module_ready && runtime.boot(project_module.project_guid()) &&
-                        project_module.start();
+    const bool booted = module_ready && runtime.boot(project_module.project_guid()) && project_module.start();
     if (!booted) arc::diagnostics::warn("Android", "Host remains alive; packaged startup did not complete");
 
     arc::diagnostics::info("Android", "Native host started (A3 shared boot)");
