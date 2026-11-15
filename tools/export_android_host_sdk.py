@@ -17,7 +17,9 @@ import tempfile
 from zipfile import ZipFile
 
 ABI = "arm64-v8a"
-MAX_LIBRARY_BYTES = 128 * 1024 * 1024
+MAX_LIBRARY_BYTES = 512 * 1024 * 1024
+# The current native host CMake target pins both engine and SDK to 0.1.0.
+HOST_ENGINE_VERSION = "0.1.0"
 GRADLE_FILES = (
     "build.gradle.kts",
     "settings.gradle.kts",
@@ -72,6 +74,8 @@ def export_android_host_sdk(sdk_root: Path, android_source: Path, debug_apk: Pat
     sdk_root = sdk_root.resolve(strict=True)
     android_source = android_source.resolve(strict=True)
     version = _read_sdk_version(sdk_root)
+    if version != HOST_ENGINE_VERSION:
+        raise ValueError(f"Android host {HOST_ENGINE_VERSION} does not match installed ARC SDK {version}")
     libraries = {"debug": _libraries_from_apk(debug_apk), "release": _libraries_from_apk(release_apk)}
     for relative in GRADLE_FILES:
         if not (android_source / relative).is_file():
