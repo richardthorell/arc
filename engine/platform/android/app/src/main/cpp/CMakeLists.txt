@@ -56,11 +56,11 @@ add_library(arc_android_host SHARED
     android_package_assets.cpp android_package_assets_ndk.cpp
     android_apk_provider.cpp android_runtime_bridge.cpp
     android_vulkan_surface.cpp android_vulkan_presenter.cpp
-    android_simd_compile_check.cpp)
+    android_simd_compile_check.cpp android_project_runtime_module.cpp)
 target_compile_features(arc_android_host PRIVATE cxx_std_20)
 target_compile_definitions(arc_android_host PRIVATE VK_USE_PLATFORM_ANDROID_KHR=1)
 target_link_libraries(arc_android_host PRIVATE
-    arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics arc-render-vulkan arc-scene android log)
+    arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics arc-render-vulkan arc-scene android log dl)
 target_compile_definitions(arc_android_host PRIVATE
     ARC_ANDROID_ENGINE_VERSION="0.1.0"
     ARC_ANDROID_SDK_VERSION="0.1.0"

@@ -94,6 +94,28 @@ jobs:
             "$sdk/share/arc/android/gradle/app/build/outputs/apk/debug/app-debug.apk" \
             --abi arm64-v8a
 
+      - name: Build Two External ARC Android Project Runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/arc-android-host-sdk-fixture"
+          projects="$RUNNER_TEMP/arc-android-native-projects"
+          python3 tools/test_android_project_native.py prepare \
+            --repo . --sdk "$sdk" --output "$projects"
+          for project in GameAlpha GameBeta; do
+            (
+              cd "$sdk/share/arc/android/gradle"
+              gradle --no-daemon "-ParcSdkRoot=$sdk" \
+                "-ParcProjectRoot=$projects/$project" \
+                :app:assembleDebug --stacktrace
+            )
+            cp "$sdk/share/arc/android/gradle/app/build/outputs/apk/debug/app-debug.apk" \
+              "$RUNNER_TEMP/$project-debug.apk"
+          done
+          python3 tools/test_android_project_native.py verify \
+            --alpha "$RUNNER_TEMP/GameAlpha-debug.apk" \
+            --beta "$RUNNER_TEMP/GameBeta-debug.apk"
+
       - name: Upload Android APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

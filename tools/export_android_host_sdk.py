@@ -26,6 +26,7 @@ GRADLE_FILES = (
     "gradle.properties",
     "app/build.gradle.kts",
     "app/src/main/AndroidManifest.xml",
+    "app/src/main/cpp/project_module/CMakeLists.txt",
 )
 
 

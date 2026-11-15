@@ -1,6 +1,7 @@
 #include "android_lifecycle.h"
 #include "android_log_sink.h"
 #include "android_package_assets.h"
+#include "android_project_runtime_module.h"
 #include "android_runtime_bridge.h"
 #include "android_vulkan_window.h"
 #include "android_vulkan_presenter.h"
@@ -124,12 +125,19 @@ extern "C" void android_main(android_app* app)
     if (package_assets.available())
         arc::diagnostics::info("Android", "APK asset manager available (no extraction to writable storage)");
 
-    // Keep the VFS, job scheduler and validated launch alive across window
-    // destruction/recreation. Only the Android process owns this lifetime.
+    // A staged game must contain its project-native module. The plain host
+    // fixture without cooked content remains useful for Vulkan/NDK smoke.
+    std::uint64_t manifest_size = 0;
+    const bool packaged_game = package_assets.file_size("arc-distribution.json", manifest_size);
+    arc::platform::android::android_project_runtime_module project_module;
+    const bool module_ready = project_module.load(packaged_game);
+
+    // Keep the project module loaded for the full runtime process. It is not
+    // unloaded when Android destroys and recreates a native window.
     arc::platform::android::android_runtime_bridge runtime(package_assets,
                                                            app->activity ? app->activity->internalDataPath : nullptr);
-    const bool booted = runtime.boot();
-    if (!booted) arc::diagnostics::warn("Android", "Host remains alive; no staged distribution was loaded");
+    const bool booted = module_ready && runtime.boot(project_module.project_guid()) && project_module.start();
+    if (!booted) arc::diagnostics::warn("Android", "Host remains alive; packaged startup did not complete");
 
     arc::diagnostics::info("Android", "Native host started (A3 shared boot)");
 
@@ -151,6 +159,7 @@ extern "C" void android_main(android_app* app)
 
     host.presenter.shutdown();
     host.lifecycle.apply(lifecycle_event::destroy);
+    project_module.shutdown();
     app->onAppCmd = nullptr;
     app->userData = nullptr;
     arc::diagnostics::info("Android", "Native host stopped");
