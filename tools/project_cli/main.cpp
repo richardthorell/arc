@@ -1,4 +1,5 @@
 #include <arc/project/project.h>
+#include "android_content_command.h"
 #include "package_command.h"
 #include "workflow_command.h"
 
@@ -380,6 +381,8 @@ int main(int argc, char** argv)
     }
     if (command == "configure") return configure_or_build(args, false, json_output);
     if (command == "build") return configure_or_build(args, true, json_output);
+    if (command == "package" && args.values.size() > 1 && args.values[1] == "android-content")
+        return handle_android_content_command(args.values, json_output);
     if (command == "package") return handle_package_command(args.values, json_output);
     if (command == "workflow") return handle_workflow_command(args.values);
     if (command == "ide")
