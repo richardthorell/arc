@@ -48,7 +48,7 @@ include("${_sdk}/lib/cmake/ARC/ARCProjectReflection.cmake")
 
 # The project owns its native build target and source list. Do not guess which
 # C++ sources to compile, or run the host platform's desktop module build.
-add_subdirectory("${ARC_ANDROID_PROJECT_ROOT}" "${CMAKE_BINARY_DIR}/arc-project" EXCLUDE_FROM_ALL)
+add_subdirectory("${ARC_ANDROID_PROJECT_ROOT}" "${CMAKE_BINARY_DIR}/arc-project")
 if(NOT TARGET arc_android_project_runtime)
     message(FATAL_ERROR "Project must define the arc_android_project_runtime shared library for Android")
 endif()
