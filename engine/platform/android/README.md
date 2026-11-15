@@ -104,6 +104,45 @@ Project-specific native linkage is A2, cooked distribution is A3 and the
 Android finalizer is A4. This A1 package alone is **not** proof of a
 deployable ARC game or on-device scene rendering.
 
+## Distribution A2 — Project-specific native runtime modules (#403)
+
+An installed ARC SDK can now compile an external game's C++ runtime as
+`libarc_project_runtime.so` while retaining the prebuilt A1 Android host. Pass
+both explicit absolute paths to the exported Gradle launcher:
+
+```sh
+cd /absolute/arc/sdk/share/arc/android/gradle
+gradle --no-daemon :app:assembleDebug \
+  -ParcSdkRoot=/absolute/arc/sdk \
+  -ParcProjectRoot=/absolute/path/to/MyGame
+```
+
+The project root must contain exactly one compatible `.arcproject` descriptor.
+The project owns its CMake source list and the `arc_android_project_runtime`
+shared-library target; the Android launcher invokes that project CMake target,
+not a guessed list of source files. New Blank 3D projects include the Android
+CMake integration and a runtime-module entrypoint. Existing projects can add
+this target using the same contracts.
+
+Native modules use ARC's existing `arc_query_game_module_v1` ABI rather than a
+separate Android registration format. The Android host loads the module from
+its app-native library namespace, checks ABI/version/runtime kind and project
+identity, and preserves the module across NativeActivity surface recreation.
+For packaged launches, missing or invalid modules fail closed; the standalone
+host fixture can still run without a project module.
+
+**Compatibility:** the prebuilt Android host must be exported again from an
+SDK/engine build that includes A2's module loader. The project C++ code
+compiles against the exact SDK version and NDK-supported ARM64 host libraries.
+The Gradle host-only workflow from A1 remains supported without requiring a
+project.
+
+A2 builds and validates *native project code*. The project's registered runtime
+callbacks are initialized but **not yet attached to a full shared D1 gameplay
+session on Android**. A3 stages cooked content, A4 finalizes a project APK and
+device-side startup acceptance remains separately tracked. A2 alone does not
+prove a visible game world, app deployment, or store-ready artifact.
+
 ## A2 lifecycle behavior
 
 The NativeActivity callback maps START/STOP, RESUME/PAUSE, focus, native-window
