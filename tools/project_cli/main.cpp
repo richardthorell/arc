@@ -381,6 +381,48 @@ int main(int argc, char** argv)
     }
     if (command == "configure") return configure_or_build(args, false, json_output);
     if (command == "build") return configure_or_build(args, true, json_output);
+    if (command == "package" && args.values.size() > 1 && args.values[1] == "android-apk")
+    {
+        const auto descriptor_path = descriptor_from(args);
+        const auto sdk_root = args.option("--sdk-root");
+        const auto assets_root = args.option("--assets");
+        const auto output_root = args.option("--output");
+        if (descriptor_path.empty() || !sdk_root || !assets_root || !output_root)
+            return fail(json_output, "Android APK finalization requires --project, --sdk-root, --assets and --output", 2);
+        const auto sdk = std::filesystem::absolute(*sdk_root).lexically_normal();
+        const auto script = sdk / "share" / "arc" / "android" / "android_apk_finalizer.py";
+        if (!std::filesystem::is_regular_file(script))
+            return fail(json_output, "Installed ARC SDK lacks the A4 Android APK finalizer");
+        const std::string python = args.option("--python").value_or(
+#if defined(_WIN32)
+            "python"
+#else
+            "python3"
+#endif
+        );
+        std::vector<std::string> invoke{
+            script.string(), "--project-root", descriptor_path.parent_path().string(), "--sdk-root", sdk.string(),
+            "--assets", std::filesystem::absolute(*assets_root).lexically_normal().string(),
+            "--output", std::filesystem::absolute(*output_root).lexically_normal().string()
+        };
+        if (const auto settings = args.option("--settings"))
+        {
+            invoke.push_back("--settings");
+            invoke.push_back(std::filesystem::absolute(*settings).lexically_normal().string());
+        }
+        else
+        {
+            invoke.push_back("--project-tool");
+            invoke.push_back(argv[0]);
+        }
+        if (const auto gradle = args.option("--gradle"))
+        {
+            invoke.push_back("--gradle");
+            invoke.push_back(*gradle);
+        }
+        if (json_output) invoke.push_back("--json");
+        return run_process(python, invoke, std::filesystem::current_path());
+    }
     if (command == "package" && args.values.size() > 1 && args.values[1] == "android-content")
         return handle_android_content_command(args.values, json_output);
     if (command == "package") return handle_package_command(args.values, json_output);
