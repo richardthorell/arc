@@ -51,6 +51,59 @@ The native library is named `libarc_android_host.so`, and its
 explicitly rejects non-Android toolchains rather than pretending a desktop
 build is an Android APK.
 
+
+## A1 — source-tree and installed SDK Gradle host modes (#403)
+
+The Android Gradle project supports two explicit native-host sources:
+
+- **Source mode** (default, including CI): builds ARC modules and
+  `libarc_android_host.so` with the pinned NDK from the ARC engine checkout.
+  For a copied Gradle launcher, specify `-ParcEngineRoot=/absolute/arc/source`.
+  The root must include the real engine modules and ARC CMake build policy.
+- **Installed SDK mode**: `-ParcSdkRoot=/absolute/arc/sdk` packages the already
+  compiled Android host JNI libraries and does **not** invoke CMake or read
+  ARC engine sources. A missing/mismatched SDK host fails configuration rather
+  than falling back to the checkout.
+
+The installed SDK needs its usual `arc-installation.json` and
+`lib/cmake/ARC/ARCConfig.cmake`, plus the Android host export at
+`share/arc/android/`. To create that export, first build **both** Android
+variants from the source checkout (JDK 17, Gradle 8.9, AGP 8.7.3, API 35,
+CMake 3.22.1 and NDK r30):
+
+```sh
+cd engine/platform/android
+gradle --no-daemon :app:assembleDebug :app:assembleRelease
+cd ../../..
+python3 tools/export_android_host_sdk.py \
+  --sdk-root /absolute/arc/sdk \
+  --android-source engine/platform/android \
+  --debug-apk engine/platform/android/app/build/outputs/apk/debug/app-debug.apk \
+  --release-apk engine/platform/android/app/build/outputs/apk/release/app-release-unsigned.apk
+```
+
+The exporter reads the **existing installed SDK** version, verifies the ARM64
+ELF host libraries extracted from both APKs, records SHA-256 hashes and
+atomically publishes a standalone Gradle launcher and JNI libraries. It
+refuses to overwrite an existing export. A fresh SDK install or an explicitly
+removed previous Android host export is required to upgrade it.
+
+Use only the installed SDK to assemble an APK; no engine checkout is needed:
+
+```sh
+cd /absolute/arc/sdk/share/arc/android/gradle
+gradle --no-daemon -ParcSdkRoot=/absolute/arc/sdk :app:assembleDebug
+# For a project-bound Android app, also provide:
+# -ParcProjectSettings=/absolute/path/to/validated-android-export.json
+```
+
+The `arcSdkRoot` and `arcEngineRoot` properties cannot be combined. The
+Android host export contains a Debug and an unsigned Release host binary
+(`arm64-v8a`); it does not bundle project C++ code or cooked assets.
+Project-specific native linkage is A2, cooked distribution is A3 and the
+Android finalizer is A4. This A1 package alone is **not** proof of a
+deployable ARC game or on-device scene rendering.
+
 ## A2 lifecycle behavior
 
 The NativeActivity callback maps START/STOP, RESUME/PAUSE, focus, native-window
