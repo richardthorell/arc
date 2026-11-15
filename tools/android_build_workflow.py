@@ -25,6 +25,7 @@ import uuid
 STAGES = ["validate", "configure", "compile", "cook", "package"]
 RUN_ID = re.compile(r"[A-Za-z0-9-]{1,64}\Z")
 TARGET = "android-arm64-vulkan"
+DEFAULT_PROFILE = "android-arm64-vulkan-debug"
 
 
 class WorkflowError(RuntimeError):
@@ -413,7 +414,7 @@ def main() -> int:
     parser.add_argument("--sdk-root")
     parser.add_argument("--project-tool", default="arc-project")
     parser.add_argument("--cooker")
-    parser.add_argument("--profile", default=TARGET)
+    parser.add_argument("--profile", default=DEFAULT_PROFILE)
     parser.add_argument("--target", default=TARGET)
     parser.add_argument("--output")
     parser.add_argument("--runtime-config")
