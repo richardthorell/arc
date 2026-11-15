@@ -220,6 +220,33 @@ class FinalizerTests(unittest.TestCase):
                                {apk.HOST_NAME: apk.sha(self.host)},
                                Path("/mock/aapt"), Path("/mock/apksigner"))
 
+    def test_native_activity_uses_compiled_manifest_when_badging_omits_launch(self):
+        test_apk = self.root / "native-activity.apk"
+        self.make_apk(test_apk)
+
+        def inspect(command, **kwargs):
+            if command[0] == "/mock/aapt" and command[1:3] == ["dump", "badging"]:
+                return mock.Mock(returncode=0, stderr="", stdout=(
+                    "package: name='com.example.alpha' versionCode='12' versionName='2.3'\n"
+                    "sdkVersion:'26'\ntargetSdkVersion:'35'\n"
+                ))
+            if command[0] == "/mock/aapt" and command[1:3] == ["dump", "xmltree"]:
+                return mock.Mock(returncode=0, stderr="", stdout=(
+                    'E: application\n'
+                    '  A: android:label(0x01010001)="GameAlpha" (Raw: "GameAlpha")\n'
+                    '  E: activity\n'
+                    '    A: android:name(0x01010003)="android.app.NativeActivity"\n'
+                    '    A: android:name(0x01010003)="android.intent.action.MAIN"\n'
+                    '    A: android:name(0x01010003)="android.intent.category.LAUNCHER"\n'
+                ))
+            return self.tool_result(command, **kwargs)
+
+        with mock.patch.object(apk.subprocess, "run", side_effect=inspect):
+            result = apk.verify_apk(test_apk, self.assets, self.d0, self.settings,
+                                    {apk.HOST_NAME: apk.sha(self.host)},
+                                    Path("/mock/aapt"), Path("/mock/apksigner"))
+        self.assertTrue(result["signatureVerified"])
+
     def test_failed_assembly_does_not_publish(self):
         output = self.root / "Packages/fail"
         with mock.patch.object(apk, "android_tools",
