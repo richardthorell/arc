@@ -312,9 +312,11 @@ def finalize(project_root: Path, sdk_root: Path, assets_root: Path, output: Path
     output = output.absolute()
     expect(not output.exists() and not Path(str(output) + ".pending").exists(),
            "Android APK output or reserved pending directory already exists")
-    for root in (project_root, sdk_root, assets_root):
+    for root in (sdk_root, assets_root):
         expect(not output.is_relative_to(root) and not root.is_relative_to(output),
-               "APK output must not overlap project, SDK or staged content roots")
+               "APK output must not overlap SDK or staged content roots")
+    expect(output != project_root and not project_root.is_relative_to(output),
+           "APK output must not replace the project root")
 
     settings = project_settings(project_root, settings_path, tool)
     descriptor, document, _, expected_host = validate_inputs(project_root, sdk_root, assets_root, settings)
