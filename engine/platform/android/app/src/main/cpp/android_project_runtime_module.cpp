@@ -62,13 +62,15 @@ bool android_project_runtime_module::load(bool required)
             return true;
         }
         const auto* failure = dlerror();
-        arc::diagnostics::error("Android.Project", std::string("Required project native module could not load: ") +
-                                                    (failure ? failure : library_name));
+        const std::string message = std::string("Required project native module could not load: ") +
+                                    (failure ? failure : library_name);
+        arc::diagnostics::error("Android.Project", message);
         return false;
     }
 
     dlerror();
-    const auto query = reinterpret_cast<arc::project::query_game_module_v1>(dlsym(handle_, "arc_query_game_module_v1"));
+    const auto* symbol = dlsym(handle_, "arc_query_game_module_v1");
+    const auto query = reinterpret_cast<arc::project::query_game_module_v1>(symbol);
     const auto* symbol_error = dlerror();
     if (symbol_error || !query)
     {
