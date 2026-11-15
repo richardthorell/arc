@@ -20,9 +20,19 @@ set_target_properties(arc_native_app_glue PROPERTIES POSITION_INDEPENDENT_CODE O
 
 # Link the real ARC runtime bootstrap implementation, not an Android copy.
 # Configure only the core dependency graph needed by the VFS and D1 boot.
-get_filename_component(ARC_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../../../.." ABSOLUTE)
-if(NOT EXISTS "${ARC_REPO_ROOT}/engine/project/src/common/runtime_boot.cpp")
-    message(FATAL_ERROR "Full ARC engine source is required for Android A3: ${ARC_REPO_ROOT}")
+# Gradle passes a validated absolute source root. Keep the checkout-relative
+# fallback for direct native CMake diagnostics and existing development scripts.
+if(DEFINED ARC_ANDROID_ENGINE_ROOT AND NOT ARC_ANDROID_ENGINE_ROOT STREQUAL "")
+    if(NOT IS_ABSOLUTE "${ARC_ANDROID_ENGINE_ROOT}")
+        message(FATAL_ERROR "ARC_ANDROID_ENGINE_ROOT must be an absolute path")
+    endif()
+    get_filename_component(ARC_REPO_ROOT "${ARC_ANDROID_ENGINE_ROOT}" REALPATH)
+else()
+    get_filename_component(ARC_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../../../../../.." ABSOLUTE)
+endif()
+if(NOT EXISTS "${ARC_REPO_ROOT}/engine/project/src/common/runtime_boot.cpp" OR
+   NOT EXISTS "${ARC_REPO_ROOT}/cmake/ArcBuildPolicy.cmake")
+    message(FATAL_ERROR "Full ARC engine source is required for the Android source build: ${ARC_REPO_ROOT}")
 endif()
 
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
