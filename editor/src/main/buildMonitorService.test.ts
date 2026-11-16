@@ -111,7 +111,15 @@ describe('BuildMonitorService BM1 event stream', () => {
       state: 'failed',
       durationMs: 5000,
       errorCount: 1,
-      stages: [{ id: 'command-001:command', name: 'Compile', state: 'failed', durationMs: 5000, completedAt: '2026-11-16T12:00:05.000Z' }],
+      stages: [
+        {
+          id: 'command-001:command',
+          name: 'Compile',
+          state: 'failed',
+          durationMs: 5000,
+          completedAt: '2026-11-16T12:00:05.000Z',
+        },
+      ],
     });
     expect(snapshot.activeRunId).toBeNull();
     expect(snapshot.events.map((event) => event.kind)).toEqual([
