@@ -23,6 +23,9 @@ export type ArcProjectAssetReference = {
 };
 
 export type ArcProjectDescriptor = {
+  description?: string;
+  version?: string;
+  thumbnail?: string | null;
   format: typeof arcProjectFormat;
   formatVersion: number;
   guid: string;
@@ -49,6 +52,8 @@ export type ArcProjectDescriptor = {
   }>;
   defaultScene: ArcProjectAssetReference | null;
   startupScenes: ArcProjectAssetReference[];
+  serverStartupScene?: ArcProjectAssetReference | null;
+  includedScenes?: ArcProjectAssetReference[];
   targetPlatforms: Array<{ id: string; enabled: boolean }>;
   toolchain: {
     compiler: string;
@@ -91,6 +96,7 @@ export type ArcProjectTemplate = {
 };
 
 export type ArcRecentProject = {
+  thumbnailDataUrl?: string;
   descriptorPath: string;
   projectRoot: string;
   guid: string;

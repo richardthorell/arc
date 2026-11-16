@@ -57,6 +57,14 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     arc::project::project_descriptor descriptor;
     descriptor.guid = "12345678-1234-4234-8234-123456789abc";
     descriptor.name = "Game";
+    descriptor.description = "A project description\nwith multiple lines";
+    descriptor.version = "2.3.4";
+    descriptor.thumbnail = "Config/ProjectThumbnail.webp";
+    descriptor.server_startup_scene =
+        arc::project::project_asset_reference{.guid = "12345678-1234-4234-8234-123456789abd",
+                                              .expected_type = "scene",
+                                              .path_hint = "Content/Server.arcscene"};
+    descriptor.included_scenes.push_back(*descriptor.server_startup_scene);
     descriptor.engine_version = "0.1.0";
     descriptor.modules.push_back(
         {.id = "Game.runtime",
@@ -73,6 +81,14 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     const auto loaded = arc::project::load_descriptor(path);
     REQUIRE(loaded);
     CHECK(loaded.value().name == "Game");
+    CHECK(loaded.value().description == descriptor.description);
+    CHECK(loaded.value().version == "2.3.4");
+    REQUIRE(loaded.value().thumbnail);
+    CHECK(*loaded.value().thumbnail == "Config/ProjectThumbnail.webp");
+    REQUIRE(loaded.value().server_startup_scene);
+    CHECK(loaded.value().server_startup_scene->path_hint == "Content/Server.arcscene");
+    REQUIRE(loaded.value().included_scenes.size() == 1);
+    CHECK(loaded.value().included_scenes.front().guid == descriptor.server_startup_scene->guid);
     REQUIRE(loaded.value().android);
     CHECK(loaded.value().android->application_id == "com.example.game");
     CHECK(loaded.value().android->version_name == "2.0");
@@ -88,6 +104,34 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     REQUIRE(context);
     CHECK(context.value().asset_cache_root == temporary.path() / "Intermediate" / "Cache");
     CHECK(context.value().recovery_root == temporary.path() / "Saved" / "Recovery");
+}
+
+TEST_CASE("project information rejects malformed release versions")
+{
+    temporary_directory temporary;
+    arc::project::project_descriptor descriptor;
+    descriptor.guid = "12345678-1234-4234-8234-123456789abc";
+    descriptor.name = "Game";
+    descriptor.engine_version = "0.1.0";
+    for (const auto version : {"1.2", "1.2.3.4", "01.2.3", "1.x.3", ""})
+    {
+        descriptor.version = version;
+        CHECK_FALSE(arc::project::save_descriptor(temporary.path() / "Game.arcproject", descriptor));
+        CHECK_FALSE(std::filesystem::exists(temporary.path() / "Game.arcproject"));
+    }
+}
+
+TEST_CASE("runtime startup uses a single game scene and an optional server override")
+{
+    arc::project::project_descriptor descriptor;
+    CHECK(arc::project::resolve_startup_scene(descriptor) == nullptr);
+    descriptor.startup_scenes = {{.guid = "game"}, {.guid = "legacy-extra"}};
+    CHECK(arc::project::resolve_startup_scene(descriptor)->guid == "game");
+    CHECK(arc::project::resolve_startup_scene(descriptor, true)->guid == "game");
+    descriptor.server_startup_scene = arc::project::project_asset_reference{.guid = "server"};
+    CHECK(arc::project::resolve_startup_scene(descriptor, true)->guid == "server");
+    CHECK(arc::project::resolve_startup_scene(descriptor)->guid == "game");
+    CHECK(descriptor.startup_scenes.size() == 2);
 }
 
 TEST_CASE("project validation rejects missing typed module dependencies")

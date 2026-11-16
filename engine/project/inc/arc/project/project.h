@@ -217,16 +217,26 @@ struct project_descriptor
     std::vector<project_module_descriptor> modules;            ///< Project-native modules.
     std::vector<project_plugin_descriptor> plugins;            ///< Exact plugin requirements.
     std::optional<project_asset_reference> default_scene;      ///< Scene opened by the editor.
-    std::vector<project_asset_reference> startup_scenes;       ///< Runtime startup-scene order.
-    std::vector<target_platform_descriptor> target_platforms;  ///< Enabled target platforms.
-    toolchain_requirements toolchain;                          ///< Required build tools.
+    std::vector<project_asset_reference>
+        startup_scenes; ///< First entry starts the game; legacy extras remain cook roots.
+    std::vector<target_platform_descriptor> target_platforms;                             ///< Enabled target platforms.
+    toolchain_requirements toolchain;                                                     ///< Required build tools.
     std::vector<std::string> build_configurations{"Debug", "RelWithDebInfo", "Shipping"}; ///< Supported configurations.
     project_renderer_settings renderer;                                                   ///< Renderer selection.
     std::vector<cook_profile_descriptor> cook_profiles;                                   ///< Inline cook profiles.
     package_settings package;                                                             ///< Package policy.
     project_settings_paths settings; ///< Source-controlled setting paths.
     std::optional<android_project_settings> android;
+    std::string description;
+    std::string version{"0.1.0"};
+    std::optional<std::string> thumbnail;
+    std::optional<project_asset_reference> server_startup_scene;
+    std::vector<project_asset_reference> included_scenes;
 };
+
+/** Initial scene for a client or dedicated server; servers inherit the game scene by default. */
+[[nodiscard]] const project_asset_reference* resolve_startup_scene(const project_descriptor& descriptor,
+                                                                   bool dedicated_server = false) noexcept;
 
 /** @brief Optional validation policy supplied by an editor or CLI caller. */
 struct project_validation_options

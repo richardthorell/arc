@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ExternalLink, Image, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, FileBox, Image, Plus, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { buildAssetCreation } from '../content/assetCreation';
@@ -43,6 +43,8 @@ export type AssetPickerProps = {
   assetCompatibility?: (asset: AssetPickerItem) => string | null;
   onChange: (value: string, asset?: AssetPickerItem) => void;
   showLabel?: boolean;
+  compact?: boolean;
+  emptyLabel?: string;
   triggerMode?: 'default' | 'add';
 };
 
@@ -242,6 +244,8 @@ export function AssetPicker({
   assetCompatibility,
   onChange,
   showLabel = true,
+  compact = false,
+  emptyLabel = 'None',
   triggerMode = 'default',
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
@@ -295,33 +299,41 @@ export function AssetPicker({
         <button
           aria-expanded={open}
           aria-label={triggerMode === 'add' ? `Add ${label}` : `Choose ${label} asset`}
-          className={`asset-reference-main${triggerMode === 'add' ? ' asset-reference-add' : ''}`}
+          className={`asset-reference-main${compact ? ' asset-reference-compact' : ''}${triggerMode === 'add' ? ' asset-reference-add' : ''}`}
           onClick={() => setOpen((current) => !current)}
           ref={anchorRef}
           type="button"
         >
           {triggerMode === 'add' ? (
-            <Plus size={14} />
+            <>
+              <Plus size={14} />
+              {compact && <span>{label}</span>}
+            </>
           ) : (
             <>
-              <AssetThumbnail
-                asset={selected}
-                path={mixed ? '' : selected?.path || value}
-                provider={thumbnailProvider}
-              />
+              {compact && <FileBox size={16} aria-hidden="true" />}
+              {!compact && (
+                <AssetThumbnail
+                  asset={selected}
+                  path={mixed ? '' : selected?.path || value}
+                  provider={thumbnailProvider}
+                />
+              )}
               <span className="asset-reference-copy">
-                <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : 'None'}</strong>
-                <small>
-                  {mixed
-                    ? 'Choose an asset to replace all values'
-                    : selected
-                      ? sourceLabelOf(selected, assetTypeLabel)
-                      : value
-                        ? assetTypeLabel
-                        : `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
-                </small>
+                <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : emptyLabel}</strong>
+                {!compact && (
+                  <small>
+                    {mixed
+                      ? 'Choose an asset to replace all values'
+                      : selected
+                        ? sourceLabelOf(selected, assetTypeLabel)
+                        : value
+                          ? assetTypeLabel
+                          : `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
+                  </small>
+                )}
               </span>
-              <ChevronDown size={13} />
+              {compact ? <Search size={14} aria-hidden="true" /> : <ChevronDown size={13} />}
             </>
           )}
         </button>
@@ -354,6 +366,7 @@ export function AssetPicker({
       </div>
       {open && (
         <AssetPickerPopover
+          compact={compact}
           anchorRef={anchorRef}
           assets={candidates}
           assetTypeLabel={assetTypeLabel}
@@ -527,6 +540,7 @@ export function AssetPreview({
 }
 
 function AssetPickerPopover({
+  compact,
   anchorRef,
   assets,
   assetTypeLabel,
@@ -542,6 +556,7 @@ function AssetPickerPopover({
   onSelect,
   valueFor,
 }: {
+  compact?: boolean;
   anchorRef: React.RefObject<HTMLElement | null>;
   assets: ReadonlyArray<AssetPickerItem>;
   assetTypeLabel: string;
@@ -558,7 +573,12 @@ function AssetPickerPopover({
   valueFor: (asset: AssetPickerItem) => string;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: 8, top: 8 });
+  const [position, setPosition] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  }>({ left: 8, top: 8, maxHeight: 420 });
   const [createMode, setCreateMode] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createError, setCreateError] = useState('');
@@ -568,12 +588,40 @@ function AssetPickerPopover({
   );
 
   useLayoutEffect(() => {
-    const anchor = anchorRef.current?.getBoundingClientRect();
-    if (!anchor) return;
-    const width = 344;
-    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
-    const below = anchor.bottom + 5;
-    setPosition({ left, top: below + 420 > window.innerHeight ? Math.max(8, anchor.top - 425) : below });
+    const updatePosition = () => {
+      const anchor = anchorRef.current?.getBoundingClientRect();
+      const popup = popoverRef.current?.getBoundingClientRect();
+      if (!anchor || !popup) return;
+      const below = Math.max(0, window.innerHeight - anchor.bottom - 13);
+      const above = Math.max(0, anchor.top - 13);
+      const openAbove = popup.height > below && above > below;
+      // Anchor the actual popup edge, not an assumed maximum-height rectangle.
+      const next = {
+        left: Math.max(8, Math.min(anchor.left, window.innerWidth - popup.width - 8)),
+        top: openAbove ? undefined : anchor.bottom + 5,
+        bottom: openAbove ? window.innerHeight - anchor.top + 5 : undefined,
+        maxHeight: Math.min(420, openAbove ? above : below),
+      };
+      setPosition((previous) =>
+        previous.left === next.left &&
+        previous.top === next.top &&
+        previous.bottom === next.bottom &&
+        previous.maxHeight === next.maxHeight
+          ? previous
+          : next,
+      );
+    };
+    updatePosition();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(updatePosition);
+    if (popoverRef.current) observer?.observe(popoverRef.current);
+    if (anchorRef.current) observer?.observe(anchorRef.current);
+    window.addEventListener('resize', updatePosition);
+    document.addEventListener('scroll', updatePosition, true);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updatePosition);
+      document.removeEventListener('scroll', updatePosition, true);
+    };
   }, [anchorRef]);
 
   useEffect(() => {
@@ -621,6 +669,8 @@ function AssetPickerPopover({
       style={{
         left: position.left,
         top: position.top,
+        bottom: position.bottom,
+        maxHeight: position.maxHeight,
         ...(createMode ? { gridTemplateRows: '31px minmax(0, 1fr)' } : {}),
       }}
     >
@@ -643,7 +693,7 @@ function AssetPickerPopover({
           />
         </label>
       )}
-      <div className="asset-picker-grid">
+      <div className={`asset-picker-grid${compact ? ' asset-picker-compact-list' : ''}`}>
         {createMode ? (
           <form
             onSubmit={(event) => {
@@ -729,7 +779,7 @@ function AssetPickerPopover({
                   title={incompatibility ?? undefined}
                   type="button"
                 >
-                  <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
+                  {!compact && <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />}
                   <strong>{displayNameOf(asset)}</strong>
                   <small>{incompatibility ?? `${sourceLabelOf(asset, assetTypeLabel)} · ${asset.status}`}</small>
                 </button>

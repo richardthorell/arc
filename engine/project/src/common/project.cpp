@@ -183,6 +183,22 @@ project_asset_reference parse_asset_reference(const json& value)
     return result;
 }
 
+bool valid_project_version(std::string_view version)
+{
+    std::size_t start = 0;
+    for (int part = 0; part < 3; ++part)
+    {
+        const auto end = version.find('.', start);
+        const auto component = version.substr(start, end == std::string_view::npos ? end : end - start);
+        if (component.empty() || component.size() > 16 || (component.size() > 1 && component.front() == '0') ||
+            !std::all_of(component.begin(), component.end(), [](char ch) { return ch >= '0' && ch <= '9'; }) ||
+            ((part == 2) != (end == std::string_view::npos)))
+            return false;
+        start = end + 1;
+    }
+    return true;
+}
+
 project_descriptor parse_descriptor(const json& source, std::uint32_t expected_version)
 {
     if (source.value("format", "") != project_format) throw std::runtime_error("unexpected project format");
@@ -192,6 +208,16 @@ project_descriptor parse_descriptor(const json& source, std::uint32_t expected_v
     project_descriptor result;
     result.guid = source.value("guid", "");
     result.name = source.value("name", "");
+    result.description = source.value("description", "");
+    result.version = source.value("version", "0.1.0");
+    if (result.description.size() > 16384) throw std::runtime_error("project description is too long");
+    if (!valid_project_version(result.version)) throw std::runtime_error("project version must use major.minor.patch");
+    if (source.contains("thumbnail") && !source["thumbnail"].is_null())
+    {
+        // Older editor previews used an asset reference; leave those unconfigured.
+        if (source["thumbnail"].is_string())
+            result.thumbnail = normal_relative_path(json{{"path", source["thumbnail"]}}, "path").generic_string();
+    }
     result.engine_version = source.value("engineVersion", "");
     if (!is_guid(result.guid)) throw std::runtime_error("project GUID is malformed");
     if (result.name.empty()) throw std::runtime_error("project name is required");
@@ -237,6 +263,10 @@ project_descriptor parse_descriptor(const json& source, std::uint32_t expected_v
         result.default_scene = parse_asset_reference(source["defaultScene"]);
     for (const auto& entry : source.value("startupScenes", json::array()))
         result.startup_scenes.push_back(parse_asset_reference(entry));
+    if (source.contains("serverStartupScene") && !source["serverStartupScene"].is_null())
+        result.server_startup_scene = parse_asset_reference(source["serverStartupScene"]);
+    for (const auto& entry : source.value("includedScenes", json::array()))
+        result.included_scenes.push_back(parse_asset_reference(entry));
     for (const auto& entry : source.value("targetPlatforms", json::array()))
         result.target_platforms.push_back({.id = entry.value("id", ""), .enabled = entry.value("enabled", true)});
 
@@ -296,11 +326,12 @@ project_descriptor parse_descriptor(const json& source, std::uint32_t expected_v
                 throw std::runtime_error(std::string("Android integer out of range: ") + key);
             return static_cast<std::int32_t>(value);
         };
-        result.android = android_project_settings{.application_id = android.value("applicationId", ""),
-                                                  .version_name = android.value("versionName", "1.0"),
-                                                  .version_code = integer("versionCode", 1),
-                                                  .minimum_sdk = integer("minimumSdk", 26),
-                                                  .target_sdk = integer("targetSdk", 28)};
+        result.android =
+            android_project_settings{.application_id = android.value("applicationId", ""),
+                                     .version_name = android.value("versionName", source.value("version", "1.0")),
+                                     .version_code = integer("versionCode", 1),
+                                     .minimum_sdk = integer("minimumSdk", 26),
+                                     .target_sdk = integer("targetSdk", 28)};
     }
 
     const auto& settings = source.value("settings", json::object());
@@ -357,6 +388,9 @@ json descriptor_json(const project_descriptor& value)
                   {"formatVersion", project_format_version},
                   {"guid", value.guid},
                   {"name", value.name},
+                  {"description", value.description},
+                  {"version", value.version},
+                  {"thumbnail", value.thumbnail ? json(*value.thumbnail) : json(nullptr)},
                   {"engineVersion", value.engine_version},
                   {"paths",
                    {{"source", value.paths.source.generic_string()},
@@ -371,6 +405,16 @@ json descriptor_json(const project_descriptor& value)
                   {"plugins", std::move(plugins)},
                   {"defaultScene", value.default_scene ? asset_reference_json(*value.default_scene) : json(nullptr)},
                   {"startupScenes", std::move(startup)},
+                  {"serverStartupScene",
+                   value.server_startup_scene ? asset_reference_json(*value.server_startup_scene) : json(nullptr)},
+                  {"includedScenes",
+                   [&]
+                   {
+                       auto scenes = json::array();
+                       for (const auto& scene : value.included_scenes)
+                           scenes.push_back(asset_reference_json(scene));
+                       return scenes;
+                   }()},
                   {"targetPlatforms", std::move(targets)},
                   {"toolchain",
                    {{"compiler", value.toolchain.compiler},
@@ -625,6 +669,13 @@ descriptor_result load_descriptor(const std::filesystem::path& descriptor_path)
     }
 }
 
+const project_asset_reference* resolve_startup_scene(const project_descriptor& descriptor,
+                                                     bool dedicated_server) noexcept
+{
+    if (dedicated_server && descriptor.server_startup_scene) return &*descriptor.server_startup_scene;
+    return descriptor.startup_scenes.empty() ? nullptr : &descriptor.startup_scenes.front();
+}
+
 project_status save_descriptor(const std::filesystem::path& descriptor_path, const project_descriptor& descriptor)
 {
     const auto validation = validate_descriptor(descriptor_path, descriptor);
@@ -636,6 +687,12 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
                                       const project_descriptor& descriptor, const project_validation_options& options)
 {
     project_validation_result result;
+    if (!valid_project_version(descriptor.version))
+        return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
+                                                     "project version must use major.minor.patch", "version"));
+    if (descriptor.description.size() > 16384)
+        return validation_result::failure(make_error(project_error_code::invalid_descriptor, descriptor_path,
+                                                     "project description is too long", "description"));
     if (!is_guid(descriptor.guid))
         return validation_result::failure(
             make_error(project_error_code::invalid_descriptor, descriptor_path, "project GUID is malformed", "guid"));
@@ -863,6 +920,11 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
             if (const auto error = validate_scene_reference(*descriptor.default_scene))
                 return validation_result::failure(*error);
         for (const auto& scene : descriptor.startup_scenes)
+            if (const auto error = validate_scene_reference(scene)) return validation_result::failure(*error);
+        if (descriptor.server_startup_scene)
+            if (const auto error = validate_scene_reference(*descriptor.server_startup_scene))
+                return validation_result::failure(*error);
+        for (const auto& scene : descriptor.included_scenes)
             if (const auto error = validate_scene_reference(scene)) return validation_result::failure(*error);
         for (const auto& module : descriptor.modules)
         {

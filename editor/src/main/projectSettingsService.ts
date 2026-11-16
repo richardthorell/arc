@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ArcProjectCandidate } from '../common/projectTypes';
+import { projectThumbnail } from './projectThumbnail';
 import {
   projectSettingsCatalog,
   projectSettingsCapabilitiesSchema,
@@ -15,6 +16,15 @@ import {
 } from '../common/projectSettingsTypes';
 
 const executeFile = promisify(execFile);
+function mergeSceneReferences(first: unknown[], second: unknown[]): unknown[] {
+  const references = new Map<string, unknown>();
+  for (const entry of [...first, ...second]) {
+    const reference = entry as { guid?: string; pathHint?: string };
+    const key = reference.guid || reference.pathHint || JSON.stringify(entry);
+    references.set(key, references.has(key) ? mergeValue(entry, references.get(key)) : entry);
+  }
+  return [...references.values()];
+}
 async function nativeQuery(tool: string, args: string[]): Promise<unknown> {
   try {
     const result = await executeFile(tool, [...args, '--json'], {
@@ -82,6 +92,7 @@ export class ProjectSettingsService {
     private readonly workflowBusy: () => boolean,
     private readonly publish: (raw: Record<string, unknown>, expected: ArcProjectCandidate) => void,
     private readonly query = nativeQuery,
+    private readonly validateThumbnail: (bytes: Buffer) => boolean = () => false,
   ) {}
   isBusy(): boolean {
     return this.applying;
@@ -94,7 +105,9 @@ export class ProjectSettingsService {
       this.observed = project;
       ++this.epoch;
     }
-    return createHash('sha256').update(`${this.epoch}\n${project.descriptorPath}\n${bytes}`).digest('hex');
+    return createHash('sha256')
+      .update(`${this.epoch}\n${project.descriptorPath}\n${bytes}\n${projectThumbnail(project.descriptorPath) ?? ''}`)
+      .digest('hex');
   }
   async read(): Promise<ProjectSettingsSnapshot> {
     const project = this.active();
@@ -146,7 +159,15 @@ export class ProjectSettingsService {
         field.id === 'descriptorPath'
           ? project.descriptorPath
           : (projectSettingValue(raw, field.id) ?? ('defaultValue' in field ? field.defaultValue : ''));
+    if (typeof values.thumbnail !== 'string') values.thumbnail = null;
+    const legacyScenes = Array.isArray(raw.startupScenes) ? raw.startupScenes : [];
+    values.startupScene = legacyScenes[0] ?? null;
+    values.includedScenes = mergeSceneReferences(
+      Array.isArray(raw.includedScenes) ? raw.includedScenes : [],
+      legacyScenes.slice(1),
+    );
     return {
+      thumbnailPreview: projectThumbnail(project.descriptorPath),
       catalog: this.describe(),
       projectGuid: project.descriptor.guid,
       revision: this.revision(project, bytes),
@@ -162,6 +183,7 @@ export class ProjectSettingsService {
     if (this.applying) return { succeeded: false, errors: { _form: 'Project Settings are already being applied' } };
     this.applying = true;
     let temporary: string | undefined;
+    let imageTemporary: string | undefined;
     try {
       if (
         !request ||
@@ -169,7 +191,7 @@ export class ProjectSettingsService {
         !request.changes ||
         typeof request.changes !== 'object' ||
         Array.isArray(request.changes) ||
-        JSON.stringify(request).length > 256 * 1024
+        JSON.stringify(request.changes).length > 256 * 1024
       )
         throw new Error('Unsupported or invalid Project Settings request');
       const errors = validateProjectSettingChanges(request.changes);
@@ -194,8 +216,28 @@ export class ProjectSettingsService {
         if (this.workflowBusy()) throw new Error('Wait for the active build/cook workflow before applying settings');
       };
       assertCurrent();
+      const imagePath = path.join(project.projectRoot, 'Config', 'ProjectThumbnail.webp');
+      let image: Buffer | undefined;
+      if (request.thumbnailUpload !== undefined) {
+        if (
+          request.changes.thumbnail !== 'Config/ProjectThumbnail.webp' ||
+          typeof request.thumbnailUpload !== 'string' ||
+          request.thumbnailUpload.length > 7 * 1024 * 1024 ||
+          !request.thumbnailUpload.startsWith('data:image/webp;base64,')
+        )
+          throw new Error('Invalid thumbnail upload');
+        image = Buffer.from(request.thumbnailUpload.slice('data:image/webp;base64,'.length), 'base64');
+        if (
+          image.length > 5 * 1024 * 1024 ||
+          image.toString('ascii', 0, 4) !== 'RIFF' ||
+          image.toString('ascii', 8, 12) !== 'WEBP' ||
+          !this.validateThumbnail(image)
+        )
+          throw new Error('Thumbnail must be a 1280 × 720 WebP image under 5 MB');
+      }
       const next = JSON.parse(bytes) as Record<string, unknown>;
       for (const [id, value] of Object.entries(request.changes)) {
+        if (id === 'startupScene') continue;
         const keys = id.split('.');
         let object = next;
         for (const key of keys.slice(0, -1)) {
@@ -205,7 +247,22 @@ export class ProjectSettingsService {
         const key = keys.at(-1)!;
         object[key] = mergeValue(object[key], value);
       }
+      // Preserve legacy additional startup scenes as build inclusions, never discard their GUIDs.
+      const legacyScenes = Array.isArray(next.startupScenes) ? next.startupScenes : [];
+      if (!Object.hasOwn(request.changes, 'includedScenes'))
+        next.includedScenes = mergeSceneReferences(
+          Array.isArray(raw.includedScenes) ? raw.includedScenes : [],
+          legacyScenes.slice(1),
+        );
+      next.startupScenes = Object.hasOwn(request.changes, 'startupScene')
+        ? request.changes.startupScene
+          ? [request.changes.startupScene]
+          : []
+        : legacyScenes.slice(0, 1);
       if (next.guid !== raw.guid) throw new Error('Project identity cannot change');
+      const previousPackage = raw.package as Record<string, unknown> | undefined;
+      if (Object.hasOwn(request.changes, 'name') && previousPackage?.applicationName === raw.name)
+        (next.package as Record<string, unknown>).applicationName = next.name;
       // Same parent ensures native relative-path validation uses the real project root.
       temporary = path.join(project.projectRoot, `.arc-settings-${randomUUID()}.arcproject`);
       fs.writeFileSync(temporary, JSON.stringify(next, null, 2) + '\n', { flag: 'wx' });
@@ -213,7 +270,35 @@ export class ProjectSettingsService {
       if (!(validated as { succeeded?: boolean })?.succeeded) throw new Error('Native project validation failed');
       assertCurrent();
       // No async boundary between final authority check and publication.
-      fs.renameSync(temporary, project.descriptorPath);
+      const changesImage =
+        image !== undefined || (request.changes.thumbnail === null && raw.thumbnail === 'Config/ProjectThumbnail.webp');
+      let previousImage: Buffer | undefined;
+      if (changesImage) {
+        const directory = path.dirname(imagePath);
+        if (fs.existsSync(directory) && fs.lstatSync(directory).isSymbolicLink())
+          throw new Error('Linked Config directory is not supported');
+        if (fs.existsSync(imagePath)) {
+          if (fs.lstatSync(imagePath).isSymbolicLink() || fs.statSync(imagePath).size > 5 * 1024 * 1024)
+            throw new Error('Unsafe existing thumbnail');
+          previousImage = fs.readFileSync(imagePath);
+        }
+        if (image) {
+          fs.mkdirSync(directory, { recursive: true });
+          imageTemporary = path.join(directory, `.thumbnail-${randomUUID()}.webp`);
+          fs.writeFileSync(imageTemporary, image, { flag: 'wx' });
+          fs.renameSync(imageTemporary, imagePath);
+          imageTemporary = undefined;
+        } else if (previousImage) fs.unlinkSync(imagePath);
+      }
+      try {
+        fs.renameSync(temporary, project.descriptorPath);
+      } catch (error) {
+        if (changesImage) {
+          if (previousImage) fs.writeFileSync(imagePath, previousImage);
+          else if (image) fs.rmSync(imagePath, { force: true });
+        }
+        throw error;
+      }
       temporary = undefined;
       this.publish(next, project);
       return { succeeded: true, snapshot: this.snapshotFor(this.active()!, metadata.capabilities) };
@@ -221,6 +306,7 @@ export class ProjectSettingsService {
       return { succeeded: false, errors: { _form: error instanceof Error ? error.message : String(error) } };
     } finally {
       if (temporary) fs.rmSync(temporary, { force: true });
+      if (imageTemporary) fs.rmSync(imageTemporary, { force: true });
       this.applying = false;
     }
   }

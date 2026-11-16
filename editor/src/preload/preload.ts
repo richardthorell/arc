@@ -428,6 +428,7 @@ const arcApi = {
   },
   settings: {
     project: {
+      browseThumbnail: (): Promise<string | null> => ipcRenderer.invoke('projectSettings:browseThumbnail'),
       describe: (): Promise<ProjectSettingsSnapshot['catalog']> => ipcRenderer.invoke('projectSettings:describe'),
       read: (): Promise<ProjectSettingsSnapshot> => ipcRenderer.invoke('projectSettings:read'),
       apply: (request: ProjectSettingsApplyRequest): Promise<ProjectSettingsApplyResult> =>

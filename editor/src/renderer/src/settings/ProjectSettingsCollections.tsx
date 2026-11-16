@@ -9,19 +9,30 @@ export function ProjectSceneSetting({
   assets,
   onChange,
   label,
+  emptyLabel,
+  showLabel = false,
+  add = false,
 }: {
   value: ArcProjectAssetReference | null;
   assets: AssetPickerItem[];
   onChange: (value: ArcProjectAssetReference | null) => void;
   label: string;
+  emptyLabel?: string;
+  showLabel?: boolean;
+  add?: boolean;
 }) {
   const missing = value && !assets.some((asset) => asset.guid === value.guid);
   return (
-    <div>
+    <div className={add ? 'project-settings-scene-add' : 'project-settings-scene-reference'}>
       <AssetPicker
         assets={assets}
         value={value?.guid ?? ''}
         label={label}
+        showLabel={showLabel}
+        compact
+        triggerMode={add ? 'add' : 'default'}
+        assetTypeLabel="Scene"
+        emptyLabel={emptyLabel}
         assetKinds={['scene']}
         referenceMode="guid"
         allowEmpty
@@ -52,30 +63,20 @@ export function ProjectSceneList({
   return (
     <div className="project-settings-collection">
       {value.map((scene, index) => (
-        <div key={`${scene.guid}-${index}`} className="project-settings-collection-row">
+        <div key={`${scene.guid}-${index}`} className="project-settings-collection-row project-settings-scene-row">
           <ProjectSceneSetting
-            label={`Startup scene ${index + 1}`}
+            label={`Included scene ${index + 1}`}
             value={scene}
             assets={assets}
             onChange={(next) =>
               onChange(next ? value.map((item, i) => (i === index ? next : item)) : value.filter((_, i) => i !== index))
             }
           />
-          <UiButton
-            disabled={!index}
-            onClick={() => {
-              const next = [...value];
-              [next[index - 1], next[index]] = [next[index], next[index - 1]];
-              onChange(next);
-            }}
-          >
-            Move up
-          </UiButton>
-          <UiButton onClick={() => onChange(value.filter((_, i) => i !== index))}>Remove scene</UiButton>
         </div>
       ))}
       <ProjectSceneSetting
-        label="Add startup scene"
+        label="Include scene"
+        add
         value={null}
         assets={assets}
         onChange={(scene) => {
@@ -157,7 +158,13 @@ export function ProjectProfileList({
           onChange(value.map((item, i) => (i === index ? { ...item, ...patch } : item)));
         const target = `${profile.platform}-${profile.architecture === 'x86_64' ? 'x64' : profile.architecture}-${profile.renderer === 'none' ? 'headless' : profile.renderer}`;
         return (
-          <div key={index} className="project-settings-profile">
+          <details key={index} className="project-settings-profile">
+            <summary>
+              <strong>{profile.id}</strong>
+              <small>
+                {target} · {profile.configuration} · {profile.textures.outputs.join(', ')}
+              </small>
+            </summary>
             <label>
               Profile ID
               <UiTextInput
@@ -234,7 +241,7 @@ export function ProjectProfileList({
               </UiButton>
               <UiButton onClick={() => onChange(value.filter((_, i) => i !== index))}>Remove profile</UiButton>
             </div>
-          </div>
+          </details>
         );
       })}
       <UiButton

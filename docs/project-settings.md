@@ -1,10 +1,11 @@
 # Project Settings
 
 Open **Project → Project Settings** to edit source-controlled project metadata.
-The navigation follows the ARC Project Settings specification: General (identity,
-startup and paths), Platforms, Build & Distribution, Rendering & Quality, Input,
-Runtime, Content & Assets, and Plugins & Modules. Physics, Audio and unsupported
-platform/workflow configuration are explicitly marked Planned.
+Navigation has at most two levels: General (Project Information and Startup panels), Platforms
+(enabled operating systems only), Build & Release (Cooking & Packaging),
+Rendering & Quality, Input, Content & Assets, Plugins & Modules, and Advanced.
+Advanced contains read-only paths, descriptor metadata and compiler policy.
+Unavailable subsystems and empty Planned pages are omitted.
 Ordinary fields are rendered from the shared versioned catalog; scene, target,
 and profile collections use reusable editors. Native project metadata supplies
 supported target and texture options.
@@ -18,6 +19,19 @@ and subsystem editors need their own native contracts and integration before
 becoming editable. Existing Android keys remain `platformSettings.android`;
 the spec's proposed `platforms.android` spelling is not a second storage model.
 Apply/Cancel and the existing Android defaults remain unchanged.
+
+Platforms is always available as the target enablement overview. Enabled technical
+targets are grouped by operating system: multiple Windows targets produce one
+Windows child, not separate architecture/renderer pages. Disabling a platform
+hides its child without deleting any settings or profiles. Android Application
+and Compatibility are inline sections on one page. Search covers all fields,
+including settings for disabled platforms. Cook profiles use expandable summaries.
+
+Distribution variants are intentionally deferred: stores/channels are not targets
+or sidebar entries. A future shared native provider registry and variant resolver
+must precede variant editing, Build Profile bindings, and packaging integration.
+This UI-only navigation slice adds no variant schema, fake store controls, or
+changes to native validation and persistence.
 
 Changes stay in the dialog until **Apply**. Cancel/close asks before discarding a
 draft. Apply validates the complete candidate descriptor using `arc-project`,
@@ -38,6 +52,28 @@ Disabling a target keeps its profiles; profiles must reference declared targets
 and configurations. Package output must remain inside the project Build root.
 
 ## Android handoff
+
+Startup exposes one compact game scene picker and an optional dedicated-server
+override when a headless target is enabled. Servers without an override inherit
+the game scene. The game picker writes the first `startupScenes` entry; desktop
+and Android packaging both use the native single-scene resolver. Existing
+additional entries remain cook roots and move to `includedScenes` on Apply,
+preserving their references and extension metadata. Included scenes are edited
+under Cooking & Packaging and are not automatically loaded. Cancel never migrates
+the descriptor. Existing `defaultScene` editor-startup data is retained for
+compatibility, but is no longer exposed in Project Settings.
+
+General contains Project Information and Startup panels. Project Information
+includes a three-line description, Studio / Company, a `major.minor.patch`
+project version, and a file-based project thumbnail (not a runtime asset).
+Project GUID, engine version and descriptor details are under Advanced.
+Browse accepts PNG, JPEG and WebP files up to 5 MB. The draft image is center-cropped
+to 16:9 and converted to 1280×720 WebP. Only Apply publishes it to
+`Config/ProjectThumbnail.webp` and stores that relative path in `.arcproject`.
+Cancel discards the in-memory draft. Remove clears the reference and managed image
+on Apply. The project browser reads the image directly without an asset database;
+unavailable images retain the default project icon. Existing custom application
+names are preserved even though the separate display-name control is no longer shown.
 
 Android identity is stored under `platformSettings.android` in `.arcproject`:
 `applicationId`, `versionName`, `versionCode`, `minimumSdk`, and `targetSdk`.

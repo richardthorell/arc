@@ -349,7 +349,11 @@ export function ProjectBrowser({ onOpened }: ProjectBrowserProps) {
                       type="button"
                     >
                       <span className="project-card-icon">
-                        <Box size={30} strokeWidth={1.7} />
+                        {recent.thumbnailDataUrl ? (
+                          <img src={recent.thumbnailDataUrl} alt="" className="project-card-thumbnail" />
+                        ) : (
+                          <Box size={30} strokeWidth={1.7} />
+                        )}
                       </span>
                       <span className="project-card-copy">
                         <strong>{recent.name}</strong>

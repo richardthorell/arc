@@ -2,13 +2,26 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArcProjectAssetReference, ArcProjectDescriptor } from '../../../common/projectTypes';
 import {
   validateProjectSettingChanges,
+  visibleProjectSettingsCategories,
   type ProjectSettingsSnapshot,
   type ProjectSettingsField,
   type ProjectSettingsCategory,
 } from '../../../common/projectSettingsTypes';
 import type { UiTreeNode } from '../ui';
-import { UiButton, UiDialogSettings, UiSettingsNavigation, UiSettingsCard, UiTextInput, UiToggleButton } from '../ui';
+import {
+  UiButton,
+  UiDialogSettings,
+  UiSettingsNavigation,
+  UiSettingsCard,
+  UiSettingsHeader,
+  UiTextInput,
+  UiToggleButton,
+} from '../ui';
+import generalSettingsHeader from './assets/general-settings-header.webp';
 import type { AssetPickerItem } from '../inspector/AssetPicker';
+import { UiFileImagePicker } from '../ui/UiFileImagePicker';
+import { Info, Play } from 'lucide-react';
+import { UiTextArea } from '../ui';
 import {
   ProjectProfileList,
   ProjectSceneList,
@@ -17,6 +30,7 @@ import {
 } from './ProjectSettingsCollections';
 import './SettingsDialog.css';
 import './ProjectSettingsDialog.css';
+import { cachedProjectSettings, cacheProjectSettings, refreshProjectSettings } from './projectSettingsCache';
 
 type State = {
   snapshot: ProjectSettingsSnapshot;
@@ -26,7 +40,7 @@ type State = {
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const navigationNodes = (categories: ProjectSettingsCategory[], parentId?: string): UiTreeNode[] =>
   categories
-    .filter((entry) => entry.parentId === parentId)
+    .filter((entry) => entry.parentId === parentId && !entry.panelOnly)
     .map((entry) => ({
       id: entry.id,
       label: entry.planned ? `${entry.label} (Planned)` : entry.label,
@@ -44,8 +58,22 @@ const withinCategory = (categories: ProjectSettingsCategory[], candidate: string
 };
 
 export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
-  const [state, setState] = useState<State>();
-  const [category, setCategory] = useState('general');
+  const [state, setState] = useState<State | undefined>(() => {
+    const snapshot = cachedProjectSettings();
+    return snapshot ? { snapshot, draft: structuredClone(snapshot.values) } : undefined;
+  });
+  const [selectedCategory, setCategory] = useState('general-root');
+  const categories = state
+    ? visibleProjectSettingsCategories(
+        state.snapshot.catalog.categories,
+        (state.draft.targetPlatforms ?? []) as ArcProjectDescriptor['targetPlatforms'],
+      )
+    : [];
+  const category = categories.some((entry) => entry.id === selectedCategory)
+    ? selectedCategory
+    : state
+      ? 'platforms'
+      : 'general-root';
   const [search, setSearch] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -61,9 +89,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     reading.current = true;
     const token = generation.current;
     try {
-      const api = window.arc?.settings?.project;
-      if (!api) throw new Error('Project Settings requires an updated editor host');
-      const snapshot = await api.read();
+      const snapshot = await refreshProjectSettings();
       if (!mounted.current || token !== generation.current) return;
       setState((previous) => {
         if (previous?.snapshot.revision === snapshot.revision) return { ...previous, snapshot };
@@ -111,7 +137,9 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             (response?.payload?.assets ?? [])
               .filter(
                 (asset) =>
-                  asset.guid && asset.path.endsWith('.arcscene') && (!asset.scope || asset.scope === 'project'),
+                  asset.guid &&
+                  /\.(arcscene|png|jpe?g|webp)$/i.test(asset.path) &&
+                  (!asset.scope || asset.scope === 'project'),
               )
               .map((asset) => ({
                 id: asset.guid,
@@ -119,7 +147,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
                 name: asset.path.split('/').at(-1) ?? asset.path,
                 path: asset.path,
                 sourcePath: asset.sourcePath,
-                kind: 'scene',
+                kind: asset.path.endsWith('.arcscene') ? 'scene' : 'texture',
                 status: 'ready',
               })),
           );
@@ -165,8 +193,12 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const apply = async () => {
     if (!state || applying.current || state.replacement) return;
     const changes = Object.fromEntries(
-      Object.entries(state.draft).filter(([key, value]) => !equal(value, state.snapshot.values[key])),
+      Object.entries(state.draft).filter(
+        ([key, value]) => key !== '_thumbnailUpload' && !equal(value, state.snapshot.values[key]),
+      ),
     );
+    const thumbnailUpload = state.draft._thumbnailUpload as string | undefined;
+    if (thumbnailUpload) changes.thumbnail = 'Config/ProjectThumbnail.webp';
     const invalid = validateProjectSettingChanges(changes);
     setErrors(invalid);
     if (Object.keys(invalid).length) return;
@@ -179,11 +211,13 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         projectGuid: state.snapshot.projectGuid,
         revision: state.snapshot.revision,
         changes,
+        ...(thumbnailUpload ? { thumbnailUpload } : {}),
       });
       if (!mounted.current) return;
-      if (result.succeeded && result.snapshot)
+      if (result.succeeded && result.snapshot) {
+        cacheProjectSettings(result.snapshot);
         setState({ snapshot: result.snapshot, draft: structuredClone(result.snapshot.values) });
-      else setErrors(result.errors ?? { _form: 'Settings were not applied' });
+      } else setErrors(result.errors ?? { _form: 'Settings were not applied' });
     } catch (error) {
       if (mounted.current) setErrors({ _form: String(error) });
     } finally {
@@ -196,6 +230,36 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     const value = state.draft[field.id];
     const update = (next: unknown) => change(field.id, next);
     switch (field.control) {
+      case 'multiline':
+        return (
+          <UiTextArea
+            aria-label={field.label}
+            className="settings-value-control ui-text-input project-description-input"
+            rows={3}
+            value={String(value ?? '')}
+            onChange={(event) => update(event.target.value)}
+          />
+        );
+      case 'image': {
+        return (
+          <UiFileImagePicker
+            key={state.snapshot.projectGuid + state.snapshot.revision}
+            preview={(state.draft._thumbnailUpload as string) || (value ? state.snapshot.thumbnailPreview : undefined)}
+            hasValue={Boolean(value)}
+            browse={() => window.arc.settings.project.browseThumbnail()}
+            onChange={(image) =>
+              setState((previous) => {
+                if (!previous) return previous;
+                const draft = { ...previous.draft, thumbnail: image ? 'Config/ProjectThumbnail.webp' : null };
+                if (image) Object.assign(draft, { _thumbnailUpload: image });
+                else delete (draft as Record<string, unknown>)._thumbnailUpload;
+                return { ...previous, draft };
+              })
+            }
+            onError={(message) => setErrors((previous) => ({ ...previous, thumbnail: message }))}
+          />
+        );
+      }
       case 'readonly':
         return (
           <output className="project-settings-readonly">
@@ -217,6 +281,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             value={value as ArcProjectAssetReference | null}
             assets={assets}
             label={field.label}
+            emptyLabel={field.emptyLabel}
             onChange={update}
           />
         );
@@ -253,23 +318,33 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     }
   };
   const fields =
-    state?.snapshot.catalog.fields.filter((field) =>
-      search.trim()
-        ? `${field.label} ${field.id} ${field.description ?? ''} ${state.snapshot.catalog.categories.find((entry) => entry.id === field.category)?.label ?? ''}`
-            .toLowerCase()
-            .includes(search.toLowerCase().trim())
-        : withinCategory(state.snapshot.catalog.categories, field.category, category),
-    ) ?? [];
+    state?.snapshot.catalog.fields
+      .filter(
+        (field) =>
+          !field.requiresServerTarget ||
+          (Array.isArray(state.draft.targetPlatforms) &&
+            (state.draft.targetPlatforms as ArcProjectDescriptor['targetPlatforms']).some(
+              (target) => target.enabled && target.id.endsWith('-headless'),
+            )),
+      )
+      .filter((field) =>
+        search.trim()
+          ? `${field.label} ${field.id} ${field.description ?? ''} ${state.snapshot.catalog.categories.find((entry) => entry.id === field.category)?.label ?? ''}`
+              .toLowerCase()
+              .includes(search.toLowerCase().trim())
+          : category === 'platforms'
+            ? field.category === category
+            : withinCategory(state.snapshot.catalog.categories, field.category, category),
+      ) ?? [];
   return (
     <UiDialogSettings
       onClose={close}
-      subtitle="Settings shared by this project"
       title="Project Settings"
       sidebar={
         state && (
           <UiSettingsNavigation
-            nodes={navigationNodes(state.snapshot.catalog.categories)}
-            defaultExpandedIds={['general-root', 'platforms', 'android', 'distribution']}
+            nodes={navigationNodes(categories)}
+            defaultExpandedIds={['platforms', 'distribution']}
             selectedId={category}
             query={search}
             onQueryChange={setSearch}
@@ -305,6 +380,31 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className={`settings-fields project-settings-content${!state && !errors._read ? ' is-loading' : ''}`}>
+        {state && (
+          <UiSettingsHeader
+            background={<img alt="" src={generalSettingsHeader} />}
+            title={search.trim() ? 'Search results' : categories.find((entry) => entry.id === category)?.label}
+            subtitle={
+              search.trim()
+                ? 'Find project settings across all categories.'
+                : categories.find((entry) => entry.id === category)?.description
+            }
+          />
+        )}
+        {categories.find((entry) => entry.id === category)?.platform && !search.trim() && (
+          <UiSettingsCard
+            title="Enabled targets"
+            subtitle="Project configuration, not proof of local build or deployment availability."
+          >
+            <ul>
+              {(state?.draft.targetPlatforms as ArcProjectDescriptor['targetPlatforms'])
+                .filter((target) => target.enabled && target.id.startsWith(`${category}-`))
+                .map((target) => (
+                  <li key={target.id}>{target.id}</li>
+                ))}
+            </ul>
+          </UiSettingsCard>
+        )}
         {Object.entries(errors)
           .filter(([key]) => key.startsWith('_'))
           .map(([key, error]) => (
@@ -326,25 +426,12 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
           </p>
         )}
         {!state && !errors._read && <p role="status">Loading project settings…</p>}
-        {state?.snapshot.catalog.categories
-          .filter(
-            (entry) =>
-              entry.description &&
-              (search.trim()
-                ? `${entry.label} ${entry.description}`.toLowerCase().includes(search.toLowerCase().trim())
-                : entry.id === category),
-          )
-          .map((entry) => (
-            <UiSettingsCard key={entry.id} title={entry.planned ? `${entry.label} — Planned` : entry.label}>
-              <p role="status">{entry.description}</p>
-            </UiSettingsCard>
-          ))}
-        {state?.snapshot.capabilitiesPending && ['targets', 'build'].includes(category) && (
+        {state?.snapshot.capabilitiesPending && ['platforms', 'build'].includes(category) && (
           <p role="status">Loading supported target options…</p>
         )}
         {state?.snapshot.capabilitiesError && <p role="alert">{state.snapshot.capabilitiesError}</p>}
         {state && !state.snapshot.writable && <p role="status">This project is read-only.</p>}
-        {category === 'targets' && (
+        {state && category === 'platforms' && (
           <UiSettingsCard
             title="Local tool availability"
             subtitle="Configured in Editor Preferences. These indicators do not imply packaging or launch support."
@@ -366,15 +453,25 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             const entries = fields.filter((field) => field.category === entry.id);
             if (!entries.length) return null;
             return (
-              <UiSettingsCard title={entry.label} key={entry.id}>
-                {entries.map((field) => (
+              <UiSettingsCard
+                title={entry.label}
+                subtitle={['general', 'startup'].includes(entry.id) ? undefined : entry.description}
+                icon={
+                  entry.id === 'general' ? <Info size={18} /> : entry.id === 'startup' ? <Play size={18} /> : undefined
+                }
+                key={entry.id}
+              >
+                {entries.map((field, index) => (
                   <div
                     key={field.id}
                     className={`settings-field-row${['scenes', 'targets', 'profiles'].includes(field.control) ? ' project-settings-collection-field' : ''}`}
                   >
+                    {field.section && field.section !== entries[index - 1]?.section && (
+                      <h3 className="project-settings-section-title">{field.section}</h3>
+                    )}
                     <span className="settings-field-description">
                       <strong title={field.label}>{field.label}</strong>
-                      <small title={field.description}>{field.description}</small>
+                      {field.description && <small title={field.description}>{field.description}</small>}
                       {errors[field.id] && <span role="alert">{errors[field.id]}</span>}
                     </span>
                     {['targets', 'profiles'].includes(field.control) ? (
