@@ -88,8 +88,10 @@ export class ProjectWorkflowRunner {
       if (!capability.available) throw new Error(`${stage}: ${capability.reason ?? 'Stage unavailable'}`);
     }
     const controller = new AbortController();
+    const runStart = performance.now();
     const run: WorkflowRun = {
       id: randomUUID(),
+      startedAt: new Date().toISOString(),
       plan,
       authority,
       state: 'running',
@@ -107,18 +109,24 @@ export class ProjectWorkflowRunner {
       },
     };
     const entered: WorkflowStageAdapter[] = [];
+    let activeStageClock: number | undefined;
     this.active = { controller, run };
     this.emit(run);
     try {
       for (const stage of run.stages) {
         context.assertCurrent();
+        activeStageClock = performance.now();
         stage.state = 'running';
+        stage.startedAt = new Date().toISOString();
         this.emit(run);
         context.assertCurrent();
         const adapter = this.adapters[stage.stage]!;
         entered.push(adapter);
         await adapter.execute(context);
         context.assertCurrent();
+        stage.completedAt = new Date().toISOString();
+        stage.durationMs = Math.max(0, performance.now() - activeStageClock!);
+        activeStageClock = undefined;
         stage.state = 'succeeded';
         this.emit(run);
       }
@@ -129,7 +137,12 @@ export class ProjectWorkflowRunner {
       run.state = controller.signal.aborted ? 'cancelled' : 'failed';
       run.error = error instanceof Error ? error.message : String(error);
       const running = run.stages.find((stage) => stage.state === 'running');
-      if (running) running.state = run.state;
+      if (running) {
+        running.completedAt = new Date().toISOString();
+        if (activeStageClock !== undefined)
+          running.durationMs = Math.max(0, performance.now() - activeStageClock);
+        running.state = run.state;
+      }
       for (const adapter of entered.reverse()) {
         try {
           await adapter.rollback(context);
@@ -138,6 +151,8 @@ export class ProjectWorkflowRunner {
         }
       }
     } finally {
+      run.completedAt = new Date().toISOString();
+      run.durationMs = Math.max(0, performance.now() - runStart);
       this.active = undefined;
       this.emit(run);
     }

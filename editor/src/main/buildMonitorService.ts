@@ -9,7 +9,7 @@ import type {
   BuildMonitorStageState,
   BuildMonitorSnapshot,
 } from '../common/buildMonitorTypes';
-import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
+import type { WorkflowExecutionSnapshot, WorkflowStageProgress } from '../common/projectWorkflowTypes';
 
 const MAX_RUNS = 24;
 const MAX_EVENTS = 512;
@@ -112,15 +112,29 @@ export class BuildMonitorService {
     return this.value.runs.find((run) => run.id === id);
   }
 
-  private updateStage(run: BuildMonitorRun, stage: BuildMonitorStage, state: BuildMonitorStageState): void {
-    if (stage.state === state) return;
+  private updateStage(
+    run: BuildMonitorRun,
+    stage: BuildMonitorStage,
+    state: BuildMonitorStageState,
+    measured?: WorkflowStageProgress,
+  ): void {
+    // Recover the runner's timestamps even if a transient event was missed.
+    // The legacy command path still observes the main-process clock.
     const timestamp = this.now();
+    const startedAt = measured?.startedAt ?? (state === 'running' ? (stage.startedAt ?? timestamp) : stage.startedAt);
+    const completedAt = measured?.completedAt ?? (terminal(state) ? (stage.completedAt ?? timestamp) : stage.completedAt);
+    const durationMs = measured?.durationMs ??
+      (completedAt && startedAt ? elapsed(startedAt, completedAt) : stage.durationMs);
+    if (
+      stage.state === state &&
+      stage.startedAt === startedAt &&
+      stage.completedAt === completedAt &&
+      stage.durationMs === durationMs
+    ) return;
     stage.state = state;
-    if (state === 'running') stage.startedAt = timestamp;
-    if (terminal(state)) {
-      stage.completedAt = timestamp;
-      if (stage.startedAt) stage.durationMs = elapsed(stage.startedAt, timestamp);
-    }
+    stage.startedAt = startedAt;
+    stage.completedAt = completedAt;
+    stage.durationMs = durationMs;
     this.history.saveRun(run);
     this.event({ kind: 'stage-changed', runId: run.id, stageId: stage.id, stage: structuredClone(stage) });
   }
@@ -204,8 +218,8 @@ export class BuildMonitorService {
         targetId: workflow.plan.targetId,
         platform: workflow.plan.platform,
         state: 'running',
-        startedAt: this.now(),
-        stages: workflow.stages.map((stage) => ({
+        startedAt: workflow.startedAt ?? this.now(),
+        stages: workflow.stages.map((stage) => ({ 
           id: `${workflow.id}:${stage.stage}`,
           name: stage.stage,
           state: 'pending',
@@ -218,7 +232,7 @@ export class BuildMonitorService {
     // Workflow stages come from the native planner and runner, never a UI guess.
     for (const source of workflow.stages) {
       const stage = run.stages.find((entry) => entry.name === source.stage);
-      if (stage) this.updateStage(run, stage, source.state);
+      if (stage) this.updateStage(run, stage, source.state, source);
     }
 
     const output = snapshot.latestOutput;
@@ -234,7 +248,7 @@ export class BuildMonitorService {
     if (terminal(workflow.state)) {
       run.error = workflow.error;
       run.artifacts = structuredClone(workflow.artifacts);
-      this.complete(run, workflow.state);
+      this.complete(run, workflow.state, workflow.completedAt, workflow.durationMs);
     }
   }
 }

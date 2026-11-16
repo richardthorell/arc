@@ -67,12 +67,26 @@ export type WorkflowArtifact = {
   profile: string;
 };
 export type WorkflowCapability = { available: boolean; reason?: string };
+export type WorkflowStageProgress = {
+  stage: WorkflowStage;
+  state: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  /** Times are produced by the runner at stage boundaries, never inferred by the renderer. */
+  startedAt?: string;
+  completedAt?: string;
+  /** Monotonic duration measured at execution time. */
+  durationMs?: number;
+};
+
 export type WorkflowRun = {
   id: string;
+  /** The runner owns the wall-clock boundaries and monotonic duration. */
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
   plan: WorkflowPlan;
   authority: WorkflowAuthority;
   state: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled';
-  stages: { stage: WorkflowStage; state: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' }[];
+  stages: WorkflowStageProgress[];
   artifacts: WorkflowArtifact[];
   error?: string;
 };
