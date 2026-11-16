@@ -91,11 +91,12 @@ export function createWindowsBuildWorkflow(
   runProcess: (request: WorkflowProcessRequest) => Promise<string> = runWorkflowProcess,
   onOutput?: (text: string) => void,
   host = process.platform,
+  onRawOutput?: (text: string, stream: 'stdout' | 'stderr') => void,
 ): {
   adapters: Partial<Record<'validate' | 'configure' | 'compile' | 'cook' | 'package', WorkflowStageAdapter>>;
   publication: WorkflowPublication;
 } {
-  const cook = createCookWorkflowAdapter(cooker, runProcess, onOutput);
+  const cook = createCookWorkflowAdapter(cooker, runProcess, onOutput, onRawOutput);
   let codeDirectory = '';
   let buildManifest = '';
   let generation = '';
@@ -109,6 +110,7 @@ export function createWindowsBuildWorkflow(
       cwd: context.authority.projectRoot,
       signal: context.signal,
       onOutput,
+      onRawOutput,
       outputMode: executable === environment?.cmake ? 'log' : 'protocol',
     });
     context.assertCurrent();

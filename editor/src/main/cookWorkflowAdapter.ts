@@ -32,6 +32,7 @@ export function createCookWorkflowAdapter(
   cooker: string,
   runProcess: (request: WorkflowProcessRequest) => Promise<string> = runWorkflowProcess,
   onOutput?: (text: string) => void,
+  onRawOutput?: (text: string, stream: 'stdout' | 'stderr') => void,
 ): { adapter: WorkflowStageAdapter; publication: WorkflowPublication; prepared: () => WorkflowArtifact[] } {
   let generation: string | undefined;
   let artifacts: WorkflowArtifact[] = [];
@@ -79,6 +80,7 @@ export function createCookWorkflowAdapter(
           cwd: projectRoot,
           signal: context.signal,
           onOutput,
+          onRawOutput,
         });
         context.assertCurrent();
         const completions = text.split(/\r?\n/u).flatMap((line) => {
@@ -116,6 +118,7 @@ export function createCookWorkflowAdapter(
             cwd: projectRoot,
             signal: context.signal,
             onOutput,
+            onRawOutput,
           });
           context.assertCurrent();
           artifacts.push({

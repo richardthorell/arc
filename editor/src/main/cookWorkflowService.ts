@@ -46,6 +46,12 @@ export class CookWorkflowService {
     private readonly publish: (snapshot: WorkflowExecutionSnapshot) => void,
     private readonly cooker: (tool: string) => string = resolveWorkflowCooker,
     private readonly buildEnvironment: () => WindowsBuildEnvironment | undefined = () => undefined,
+    private readonly onRawOutput: (
+      project: ArcProjectCandidate,
+      runId: string,
+      stream: 'stdout' | 'stderr',
+      text: string,
+    ) => void = () => {},
   ) {}
 
   isBusy(): boolean {
@@ -209,7 +215,16 @@ export class CookWorkflowService {
         this.value.output = this.value.output.slice(-64);
         this.emit();
       };
-      const adapter = createCookWorkflowAdapter(cooker, undefined, onOutput);
+      const onRaw = (text: string, stream: 'stdout' | 'stderr') => {
+        const id = this.value.run?.id;
+        if (!id) return;
+        try {
+          this.onRawOutput(project, id, stream, text);
+        } catch {
+          // History storage never interrupts the workflow.
+        }
+      };
+      const adapter = createCookWorkflowAdapter(cooker, undefined, onOutput, onRaw);
       const build =
         request.action === 'build'
           ? createWindowsBuildWorkflow(
@@ -220,6 +235,8 @@ export class CookWorkflowService {
               runtimeConfig!,
               undefined,
               onOutput,
+              process.platform,
+              onRaw,
             )
           : undefined;
       this.runner = new ProjectWorkflowRunner(

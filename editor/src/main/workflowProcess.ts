@@ -7,6 +7,8 @@ export type WorkflowProcessRequest = {
   cwd: string;
   signal: AbortSignal;
   onOutput?: (text: string) => void;
+  /** Untruncated stdout/stderr chunks for persistent build history. */
+  onRawOutput?: (text: string, stream: 'stdout' | 'stderr') => void;
   timeoutMs?: number;
   /** Text-only compiler logs keep a bounded tail; protocol responses must remain complete. */
   outputMode?: 'protocol' | 'log';
@@ -65,6 +67,11 @@ export async function runWorkflowProcess(request: WorkflowProcessRequest): Promi
     const timeout = setTimeout(() => stop('Workflow command timed out'), request.timeoutMs ?? 30 * 60_000);
     const consume = (data: Buffer, isError: boolean) => {
       const text = data.toString('utf8');
+      try {
+        request.onRawOutput?.(text, isError ? 'stderr' : 'stdout');
+      } catch {
+        // Log persistence does not affect execution.
+      }
       if (isError) stderr = (stderr + text).slice(-64 * 1024);
       else {
         stdout += text;
