@@ -95,8 +95,8 @@ export function BuildOutputPanel({
         <button
           className="build-dashboard-expand"
           type="button"
-          aria-label="Expand build dashboard"
-          title="Expand build dashboard"
+          aria-label="Open build monitor"
+          title="Open build monitor"
           onClick={() => setDashboardOpen(true)}
         >
           <Maximize2 size={14} />
@@ -128,6 +128,7 @@ export function BuildOutputPanel({
           snapshot={snapshot}
           onClose={() => setDashboardOpen(false)}
           onOpenDiagnostic={onOpenDiagnostic}
+          onCancel={() => onExecute({ action: 'cancel' })}
         />
       )}
     </section>
