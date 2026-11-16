@@ -125,6 +125,7 @@ describe('Build Monitor BM3', () => {
     expect(screen.getByText('configure')).toBeInTheDocument();
     expect(screen.getByText('compile')).toBeInTheDocument();
     expect(screen.getByText('package')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel build' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /cook · Debug/ }));
     await waitFor(() => expect(api.historyDetails).toHaveBeenCalledWith('older-run'));

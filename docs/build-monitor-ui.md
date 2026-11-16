@@ -16,8 +16,8 @@ BM3 replaces the session-only command statistics dialog with a **Build Monitor**
 - Initial selection prefers the active run, then the latest persisted run. Both current and previous builds are selectable.
 - The history panel is per-project and never mixes runs across projects.
 - Changing history selection clears the prior run's diagnostic/output content. The previous run stays selected when another live build event arrives.
-- The log view holds at most 1,200 chunks/1,600 events in memory; earlier chunks remain in `Saved/BuildHistory` and can be reread by selecting the run again. Search intentionally covers only loaded chunks, not an invented whole-archive index.
-- The compact Build Output panel, configure/build/rebuild/clean buttons, and legacy diagnostics are unchanged. The expand button opens the new monitor; command builds can be cancelled there. Workflow cancellation continues through its existing dialog.
+- The log view holds at most 1,200 chunks/1,600 events in memory; earlier chunks remain in `Saved/BuildHistory` and can be reread with **Read from start**. Search intentionally covers only loaded chunks, not an invented whole-archive index.
+- The compact Build Output panel, configure/build/rebuild/clean buttons, and legacy diagnostics are unchanged. The expand button opens the new monitor; both command builds and active project workflows can be cancelled there, using their existing cancellation APIs.
 - No persistent dashboard preferences or build commands are added in BM3.
 
 ## Validation
