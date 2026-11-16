@@ -100,6 +100,22 @@ describe('BuildService command history', () => {
     expect(snapshot.history?.[0]).toMatchObject({ kind: 'build', result: 'failed' });
   });
 
+  it('does not splice partial CMake stdout and CLI stderr into one diagnostic', async () => {
+    const { service, process } = setup();
+    const request = service.execute({ action: 'build' });
+
+    process.stdout.emit('data', Buffer.from('CMake Error at CMakeLists.txt:9'));
+    process.stderr.emit('data', Buffer.from('arc-project: CMake configuration failed\n'));
+    process.stdout.emit('data', Buffer.from(' (find_package):\n'));
+    process.emit('close', 1);
+    await expect(request).rejects.toThrow('code 1');
+
+    const messages = service.snapshot().diagnostics.map((item) => item.message);
+    expect(messages.some((message) => message.includes('CMake Error at CMakeLists.txt'))).toBe(true);
+    expect(messages.some((message) => message.includes('arc-project: CMake configuration failed'))).toBe(true);
+    expect(messages.some((message) => message.includes('arc-project:') && message.includes('find_package'))).toBe(false);
+  });
+
   it('shows a useful diagnostic if the tool exits nonzero without any output', async () => {
     const { service, process } = setup();
     const request = service.execute({ action: 'build' });
