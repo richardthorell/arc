@@ -170,18 +170,21 @@ describe('BuildHistoryStore (BM2)', () => {
     const project = createProject();
     const monitor = new BuildMonitorService();
     monitor.attachProject(project);
-    monitor.observeCommand({
-      revision: 1,
-      state: 'building',
-      configuration: 'Debug',
-      runId: 'run-live',
-      startedAt: '2026-11-16T12:00:00.000Z',
-      diagnostics: [{ sequence: 1, severity: 'error', message: 'compiler error' }],
-      buildRequired: false,
-      reloadRequired: false,
-      restartRequired: false,
-      history: [],
-    }, 'game-a');
+    monitor.observeCommand(
+      {
+        revision: 1,
+        state: 'building',
+        configuration: 'Debug',
+        runId: 'run-live',
+        startedAt: '2026-11-16T12:00:00.000Z',
+        diagnostics: [{ sequence: 1, severity: 'error', message: 'compiler error' }],
+        buildRequired: false,
+        reloadRequired: false,
+        restartRequired: false,
+        history: [],
+      },
+      'game-a',
+    );
     monitor.appendRaw(project, 'run-live', 'stdout', 'complete stdout');
     const finished = monitor.snapshot().runs[0];
     expect(finished.state).toBe('running');

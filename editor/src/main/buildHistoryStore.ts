@@ -2,7 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import type { BuildHistoryChunk, BuildHistoryDetail, BuildHistoryPage, BuildRawLogChunk } from '../common/buildHistoryTypes';
+import type {
+  BuildHistoryChunk,
+  BuildHistoryDetail,
+  BuildHistoryPage,
+  BuildRawLogChunk,
+} from '../common/buildHistoryTypes';
 import type { BuildMonitorEvent, BuildMonitorRun } from '../common/buildMonitorTypes';
 import type { ArcProjectCandidate } from '../common/projectTypes';
 
@@ -114,13 +119,17 @@ export class BuildHistoryStore {
       if (fs.existsSync(indexFile)) {
         if (fs.statSync(indexFile).size > 4 * 1024 * 1024) throw new Error('Build history index too large');
         const index = JSON.parse(fs.readFileSync(indexFile, 'utf8')) as {
-          version?: number; projectGuid?: string; runs?: BuildMonitorRun[];
+          version?: number;
+          projectGuid?: string;
+          runs?: BuildMonitorRun[];
         };
         if (index.version !== HISTORY_VERSION || index.projectGuid !== this.projectGuid || !Array.isArray(index.runs))
           throw new Error('Build history index belongs to another project or version');
-        this.runs = index.runs.filter(
-          (run) => run && safeId(run.id) && run.projectGuid === this.projectGuid && typeof run.startedAt === 'string',
-        ).slice(0, MAX_RUNS);
+        this.runs = index.runs
+          .filter(
+            (run) => run && safeId(run.id) && run.projectGuid === this.projectGuid && typeof run.startedAt === 'string',
+          )
+          .slice(0, MAX_RUNS);
       }
       let interrupted = false;
       for (const run of this.runs) {
@@ -207,7 +216,7 @@ export class BuildHistoryStore {
   appendRaw(runId: string, stream: 'stdout' | 'stderr', text: string, timestamp: string): void {
     if (!text) return;
     // Bound individual JSONL records, not the total log. Never discard the prefix.
-    for (let start = 0; start < text.length; ) {
+    for (let start = 0; start < text.length;) {
       let end = Math.min(text.length, start + CHUNK_CHARS);
       if (end < text.length && /[\uD800-\uDBFF]/u.test(text[end - 1])) end--;
       this.append('logs', runId, { timestamp, stream, text: text.slice(start, end) } satisfies BuildRawLogChunk);
@@ -217,7 +226,8 @@ export class BuildHistoryStore {
 
   list(offset = 0, limit = 50): BuildHistoryPage {
     if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Invalid build history offset');
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE) throw new Error('Invalid history page size');
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PAGE_SIZE)
+      throw new Error('Invalid history page size');
     return {
       projectGuid: this.projectGuid,
       total: this.runs.length,

@@ -42,7 +42,10 @@ describe('workflow subprocess', () => {
     const raw: Record<'stdout' | 'stderr', string[]> = { stdout: [], stderr: [] };
     const result = await runWorkflowProcess({
       executable: process.execPath,
-      args: ['-e', 'process.stdout.write("x".repeat(2 * 1024 * 1024)); process.stderr.write("warning: check output\\n")'],
+      args: [
+        '-e',
+        'process.stdout.write("x".repeat(2 * 1024 * 1024)); process.stderr.write("warning: check output\\n")',
+      ],
       cwd: process.cwd(),
       signal: new AbortController().signal,
       outputMode: 'log',
