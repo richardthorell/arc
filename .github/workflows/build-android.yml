@@ -195,6 +195,9 @@ jobs:
           test ! -e "$RUNNER_TEMP/a4-wrong-project"
           test ! -e "$RUNNER_TEMP/a4-wrong-project.pending"
 
+      - name: Set Up Slang 2026.14.1 for A6 Cooked Materials
+        uses: ./.github/actions/setup-slang
+
       - name: Build A6 Host ARC CLI and Asset Cooker
         shell: bash
         run: |
