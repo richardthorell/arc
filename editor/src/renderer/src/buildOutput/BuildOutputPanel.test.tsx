@@ -99,5 +99,4 @@ describe('BuildOutputPanel', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Build monitor' })).not.toBeInTheDocument();
   });
-
 });
