@@ -59,8 +59,7 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     descriptor.name = "Game";
     descriptor.description = "A project description\nwith multiple lines";
     descriptor.version = "2.3.4";
-    descriptor.thumbnail = arc::project::project_asset_reference{
-        .guid = "12345678-1234-4234-8234-123456789abc", .expected_type = "texture", .path_hint = "Content/Preview.png"};
+    descriptor.thumbnail = "Config/ProjectThumbnail.webp";
     descriptor.engine_version = "0.1.0";
     descriptor.modules.push_back(
         {.id = "Game.runtime",
@@ -80,7 +79,7 @@ TEST_CASE("version three project descriptors round trip texture profiles and pro
     CHECK(loaded.value().description == descriptor.description);
     CHECK(loaded.value().version == "2.3.4");
     REQUIRE(loaded.value().thumbnail);
-    CHECK(loaded.value().thumbnail->path_hint == "Content/Preview.png");
+    CHECK(*loaded.value().thumbnail == "Config/ProjectThumbnail.webp");
     REQUIRE(loaded.value().android);
     CHECK(loaded.value().android->application_id == "com.example.game");
     CHECK(loaded.value().android->version_name == "2.0");

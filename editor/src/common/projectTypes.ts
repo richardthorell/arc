@@ -25,7 +25,7 @@ export type ArcProjectAssetReference = {
 export type ArcProjectDescriptor = {
   description?: string;
   version?: string;
-  thumbnail?: ArcProjectAssetReference | null;
+  thumbnail?: string | null;
   format: typeof arcProjectFormat;
   formatVersion: number;
   guid: string;

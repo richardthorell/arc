@@ -214,10 +214,9 @@ project_descriptor parse_descriptor(const json& source, std::uint32_t expected_v
     if (!valid_project_version(result.version)) throw std::runtime_error("project version must use major.minor.patch");
     if (source.contains("thumbnail") && !source["thumbnail"].is_null())
     {
-        result.thumbnail = parse_asset_reference(source["thumbnail"]);
-        if (result.thumbnail->guid.empty() || result.thumbnail->expected_type != "texture" ||
-            result.thumbnail->path_hint.empty())
-            throw std::runtime_error("project thumbnail requires a texture GUID and relative path hint");
+        // Older editor previews used an asset reference; leave those unconfigured.
+        if (source["thumbnail"].is_string())
+            result.thumbnail = normal_relative_path(json{{"path", source["thumbnail"]}}, "path").generic_string();
     }
     result.engine_version = source.value("engineVersion", "");
     if (!is_guid(result.guid)) throw std::runtime_error("project GUID is malformed");
@@ -387,7 +386,7 @@ json descriptor_json(const project_descriptor& value)
                   {"name", value.name},
                   {"description", value.description},
                   {"version", value.version},
-                  {"thumbnail", value.thumbnail ? asset_reference_json(*value.thumbnail) : json(nullptr)},
+                  {"thumbnail", value.thumbnail ? json(*value.thumbnail) : json(nullptr)},
                   {"engineVersion", value.engine_version},
                   {"paths",
                    {{"source", value.paths.source.generic_string()},

@@ -72,9 +72,7 @@ it('shows project information controls and keeps engine identity in Advanced', a
   expect(screen.getByText('Project thumbnail')).toBeInTheDocument();
   expect(screen.queryByText('Application display name')).not.toBeInTheDocument();
   expect(screen.queryByText('Project GUID')).not.toBeInTheDocument();
-  expect(
-    screen.getByText('Used to identify the project in ARC. Also serves as the default application name for builds.'),
-  ).toBeInTheDocument();
+  expect(screen.getByText('Project identity and default application name.')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('treeitem', { name: 'Advanced' }));
   expect(screen.getByText('Project GUID')).toBeInTheDocument();
   expect(screen.getByText('Engine version')).toBeInTheDocument();

@@ -18,7 +18,9 @@ import {
   UiToggleButton,
 } from '../ui';
 import generalSettingsHeader from './assets/general-settings-header.webp';
-import { AssetPicker, type AssetPickerItem } from '../inspector/AssetPicker';
+import type { AssetPickerItem } from '../inspector/AssetPicker';
+import { UiFileImagePicker } from '../ui/UiFileImagePicker';
+import { Info, Play } from 'lucide-react';
 import { UiTextArea } from '../ui';
 import {
   ProjectProfileList,
@@ -185,8 +187,12 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const apply = async () => {
     if (!state || applying.current || state.replacement) return;
     const changes = Object.fromEntries(
-      Object.entries(state.draft).filter(([key, value]) => !equal(value, state.snapshot.values[key])),
+      Object.entries(state.draft).filter(
+        ([key, value]) => key !== '_thumbnailUpload' && !equal(value, state.snapshot.values[key]),
+      ),
     );
+    const thumbnailUpload = state.draft._thumbnailUpload as string | undefined;
+    if (thumbnailUpload) changes.thumbnail = 'Config/ProjectThumbnail.webp';
     const invalid = validateProjectSettingChanges(changes);
     setErrors(invalid);
     if (Object.keys(invalid).length) return;
@@ -199,6 +205,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         projectGuid: state.snapshot.projectGuid,
         revision: state.snapshot.revision,
         changes,
+        ...(thumbnailUpload ? { thumbnailUpload } : {}),
       });
       if (!mounted.current) return;
       if (result.succeeded && result.snapshot)
@@ -220,26 +227,29 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         return (
           <UiTextArea
             aria-label={field.label}
-            className="settings-value-control"
+            className="settings-value-control ui-text-input project-description-input"
             rows={3}
             value={String(value ?? '')}
             onChange={(event) => update(event.target.value)}
           />
         );
       case 'image': {
-        const reference = value as ArcProjectAssetReference | null;
         return (
-          <AssetPicker
-            label={field.label}
-            showLabel={false}
-            assets={assets}
-            assetKinds={['texture']}
-            referenceMode="guid"
-            allowEmpty
-            value={reference?.guid ?? ''}
-            onChange={(guid, asset) =>
-              update(guid ? { guid, expectedType: 'texture', pathHint: asset?.sourcePath ?? asset?.path ?? '' } : null)
+          <UiFileImagePicker
+            key={state.snapshot.projectGuid + state.snapshot.revision}
+            preview={(state.draft._thumbnailUpload as string) || (value ? state.snapshot.thumbnailPreview : undefined)}
+            hasValue={Boolean(value)}
+            browse={() => window.arc.settings.project.browseThumbnail()}
+            onChange={(image) =>
+              setState((previous) => {
+                if (!previous) return previous;
+                const draft = { ...previous.draft, thumbnail: image ? 'Config/ProjectThumbnail.webp' : null };
+                if (image) Object.assign(draft, { _thumbnailUpload: image });
+                else delete (draft as Record<string, unknown>)._thumbnailUpload;
+                return { ...previous, draft };
+              })
             }
+            onError={(message) => setErrors((previous) => ({ ...previous, thumbnail: message }))}
           />
         );
       }
@@ -427,7 +437,14 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             const entries = fields.filter((field) => field.category === entry.id);
             if (!entries.length) return null;
             return (
-              <UiSettingsCard title={entry.label} subtitle={entry.description} key={entry.id}>
+              <UiSettingsCard
+                title={entry.label}
+                subtitle={['general', 'startup'].includes(entry.id) ? undefined : entry.description}
+                icon={
+                  entry.id === 'general' ? <Info size={18} /> : entry.id === 'startup' ? <Play size={18} /> : undefined
+                }
+                key={entry.id}
+              >
                 {entries.map((field, index) => (
                   <div
                     key={field.id}

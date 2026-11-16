@@ -160,7 +160,7 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
     name: source.name.trim(),
     description: stringValue(raw.description),
     version: stringValue(raw.version, '0.1.0'),
-    thumbnail: assetReference(raw.thumbnail),
+    thumbnail: typeof raw.thumbnail === 'string' ? raw.thumbnail : null,
     engineVersion: source.engineVersion,
     paths: {
       source: normalizeProjectRelativePath(stringValue(paths.source, 'Source'), 'paths.source'),

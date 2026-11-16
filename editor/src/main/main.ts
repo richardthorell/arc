@@ -1,5 +1,16 @@
 import { forgetWindowViewportEntries } from './sharedViewportLifecycle';
-import { app, BrowserWindow, dialog, ipcMain, Menu, powerMonitor, screen, sharedTexture, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  powerMonitor,
+  screen,
+  sharedTexture,
+  shell,
+} from 'electron';
 import type { WebFrameMain } from 'electron';
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
@@ -20,6 +31,7 @@ import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { ProjectSettingsService } from './projectSettingsService';
+import { webpDimensions } from './projectThumbnail';
 import type { ProjectSettingsApplyRequest } from '../common/projectSettingsTypes';
 import { resolveWindowsBuildEnvironment } from './windowsBuildWorkflow';
 import type { ArcBuildRequest } from '../common/buildTypes';
@@ -1152,6 +1164,11 @@ void app.whenReady().then(async () => {
       buildService?.watchProject();
       sendToActiveRenderer('projectSettings:changed');
     },
+    undefined,
+    (bytes) => {
+      const size = webpDimensions(bytes);
+      return size?.width === 1280 && size.height === 720;
+    },
   );
   settingsService = new SettingsService(
     path.join(app.getPath('userData'), 'editor-settings.v1.json'),
@@ -1255,6 +1272,25 @@ void app.whenReady().then(async () => {
   ipcMain.handle('project:snapshot', () => projectService?.snapshot() ?? null);
   ipcMain.handle('projectSettings:describe', () => projectSettingsService?.describe());
   ipcMain.handle('projectSettings:read', () => projectSettingsService?.read());
+  ipcMain.handle('projectSettings:browseThumbnail', async () => {
+    const project = projectService?.active();
+    if (!project?.writable) throw new Error('Open a writable project first');
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Project image', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    if (projectService?.active() !== project) throw new Error('Project changed while choosing an image');
+    const file = result.filePaths[0];
+    if (!/\.(png|jpe?g|webp)$/i.test(file) || !fs.statSync(file).isFile() || fs.statSync(file).size > 5 * 1024 * 1024)
+      throw new Error('Choose a PNG, JPEG or WebP image up to 5 MB');
+    const bytes = fs.readFileSync(file);
+    const extension = path.extname(file).toLowerCase();
+    const size = extension === '.webp' ? webpDimensions(bytes) : nativeImage.createFromBuffer(bytes).getSize();
+    if (!size || size.width <= 0 || size.height <= 0 || size.width * size.height > 64 * 1024 * 1024)
+      throw new Error('Invalid or oversized image dimensions');
+    return `data:image/${extension === '.png' ? 'png' : extension === '.webp' ? 'webp' : 'jpeg'};base64,${bytes.toString('base64')}`;
+  });
   ipcMain.handle('projectSettings:apply', (_event, request: ProjectSettingsApplyRequest) =>
     projectSettingsService?.apply(request),
   );

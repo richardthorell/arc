@@ -55,10 +55,14 @@ and configurations. Package output must remain inside the project Build root.
 
 General contains Project Information and Startup panels. Project Information
 includes a three-line description, Studio / Company, a `major.minor.patch`
-project version, and a GUID-backed thumbnail selected from project image assets.
+project version, and a file-based project thumbnail (not a runtime asset).
 Project GUID, engine version and descriptor details are under Advanced.
-The project browser previews PNG, JPEG and WebP thumbnails up to 1 MiB; unavailable
-or mismatched assets retain the default project icon. Existing custom application
+Browse accepts PNG, JPEG and WebP files up to 5 MB. The draft image is center-cropped
+to 16:9 and converted to 1280×720 WebP. Only Apply publishes it to
+`Config/ProjectThumbnail.webp` and stores that relative path in `.arcproject`.
+Cancel discards the in-memory draft. Remove clears the reference and managed image
+on Apply. The project browser reads the image directly without an asset database;
+unavailable images retain the default project icon. Existing custom application
 names are preserved even though the separate display-name control is no longer shown.
 
 Android identity is stored under `platformSettings.android` in `.arcproject`:

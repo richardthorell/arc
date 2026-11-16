@@ -19,7 +19,7 @@ export const projectSettingSchemas = {
   name: text.min(1),
   description: z.string().max(4096),
   version: text.regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, 'Use major.minor.patch, for example 1.0.0'),
-  thumbnail: scene.extend({ expectedType: z.literal('texture'), pathHint: z.string().min(1).max(2048) }).nullable(),
+  thumbnail: z.literal('Config/ProjectThumbnail.webp').nullable(),
   'package.applicationName': text.min(1),
   'package.companyName': text,
   'package.output': z.string().min(1).max(2048),
@@ -152,7 +152,7 @@ export const projectSettingsCatalog = {
       category: 'general',
       label: 'Project name',
       control: 'text',
-      description: 'Used to identify the project in ARC. Also serves as the default application name for builds.',
+      description: 'Project identity and default application name.',
     },
     { id: 'description', category: 'general', label: 'Description', control: 'multiline', defaultValue: '' },
     {
@@ -161,7 +161,7 @@ export const projectSettingsCatalog = {
       label: 'Studio / Company',
       control: 'text',
       defaultValue: '',
-      description: 'Default developer or publisher name used in application metadata.',
+      description: 'Developer or publisher in application metadata.',
     },
     {
       id: 'version',
@@ -169,7 +169,7 @@ export const projectSettingsCatalog = {
       label: 'Project version',
       control: 'text',
       defaultValue: '0.1.0',
-      description: 'Default version for builds and releases. Can be overridden per distribution variant.',
+      description: 'Default release version; variants may override it.',
     },
     {
       id: 'thumbnail',
@@ -177,7 +177,7 @@ export const projectSettingsCatalog = {
       label: 'Project thumbnail',
       control: 'image',
       defaultValue: null,
-      description: 'Image displayed for this project in the project browser.',
+      description: 'Project browser image. PNG, JPEG or WebP, up to 5 MB.',
     },
     { id: 'guid', category: 'advanced', label: 'Project GUID', control: 'readonly' },
     { id: 'formatVersion', category: 'advanced', label: 'Project descriptor version', control: 'readonly' },
@@ -189,7 +189,7 @@ export const projectSettingsCatalog = {
       label: 'Editor default scene',
       control: 'scene',
       defaultValue: null,
-      description: 'Scene opened automatically when loading this project in the editor.',
+      description: 'Scene opened when the project loads.',
     },
     {
       id: 'startupScenes',
@@ -197,7 +197,7 @@ export const projectSettingsCatalog = {
       label: 'Runtime startup scenes',
       control: 'scenes',
       defaultValue: [],
-      description: 'Scenes loaded when the application starts, in the order listed.',
+      description: 'Scenes loaded at startup, in this order.',
     },
     { id: 'targetPlatforms', category: 'platforms', label: 'Project targets', control: 'targets' },
     {
@@ -284,6 +284,7 @@ export const projectSettingsCapabilitiesSchema = z.object({
   androidCompileSdk: z.number(),
 });
 export type ProjectSettingsSnapshot = {
+  thumbnailPreview?: string;
   catalog: { version: number; categories: ProjectSettingsCategory[]; fields: ProjectSettingsField[] };
   projectGuid: string;
   revision: string;
@@ -295,6 +296,7 @@ export type ProjectSettingsSnapshot = {
   capabilitiesError?: string;
 };
 export type ProjectSettingsApplyRequest = {
+  thumbnailUpload?: string;
   catalogVersion: number;
   projectGuid: string;
   revision: string;

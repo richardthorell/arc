@@ -91,6 +91,7 @@ function fixture() {
     workflowBusy,
     publish,
     query,
+    () => true,
   );
   const apply = async (changes: Record<string, unknown>) => {
     const before = await service.read();
@@ -114,6 +115,71 @@ function fixture() {
   };
 }
 describe('Project Settings persistence', () => {
+  it('publishes a draft thumbnail only on Apply and removes it explicitly', async () => {
+    const state = fixture();
+    const thumbnail = path.join(state.root, 'Config', 'ProjectThumbnail.webp');
+    const image = Buffer.from('RIFF0000WEBPdraft');
+    const before = await state.service.read();
+    expect(fs.existsSync(thumbnail)).toBe(false);
+    const result = await state.service.apply({
+      catalogVersion: 1,
+      projectGuid: before.projectGuid,
+      revision: before.revision,
+      changes: { thumbnail: 'Config/ProjectThumbnail.webp' },
+      thumbnailUpload: `data:image/webp;base64,${image.toString('base64')}`,
+    });
+    expect(result.succeeded).toBe(true);
+    expect(fs.readFileSync(thumbnail)).toEqual(image);
+    expect(JSON.parse(fs.readFileSync(state.descriptorPath, 'utf8')).thumbnail).toBe('Config/ProjectThumbnail.webp');
+    expect((await state.apply({ thumbnail: null })).succeeded).toBe(true);
+    expect(fs.existsSync(thumbnail)).toBe(false);
+  });
+
+  it('keeps the existing image and descriptor when validation fails', async () => {
+    const state = fixture();
+    const thumbnail = path.join(state.root, 'Config', 'ProjectThumbnail.webp');
+    fs.mkdirSync(path.dirname(thumbnail));
+    fs.writeFileSync(thumbnail, 'previous');
+    const before = await state.service.read();
+    state.query.mockResolvedValueOnce({ succeeded: false });
+    const result = await state.service.apply({
+      catalogVersion: 1,
+      projectGuid: before.projectGuid,
+      revision: before.revision,
+      changes: { thumbnail: 'Config/ProjectThumbnail.webp' },
+      thumbnailUpload: `data:image/webp;base64,${Buffer.from('RIFF0000WEBPdraft').toString('base64')}`,
+    });
+    expect(result.succeeded).toBe(false);
+    expect(fs.readFileSync(thumbnail, 'utf8')).toBe('previous');
+    expect(JSON.parse(fs.readFileSync(state.descriptorPath, 'utf8')).thumbnail).toBeUndefined();
+  });
+
+  it('rolls back the thumbnail if descriptor publication fails', async () => {
+    const state = fixture();
+    const thumbnail = path.join(state.root, 'Config', 'ProjectThumbnail.webp');
+    fs.mkdirSync(path.dirname(thumbnail));
+    fs.writeFileSync(thumbnail, 'previous');
+    const before = await state.service.read();
+    const rename = fs.renameSync;
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (to === state.descriptorPath) throw new Error('Publication failed');
+      rename(from, to);
+    });
+    try {
+      const result = await state.service.apply({
+        catalogVersion: 1,
+        projectGuid: before.projectGuid,
+        revision: before.revision,
+        changes: { thumbnail: 'Config/ProjectThumbnail.webp' },
+        thumbnailUpload: `data:image/webp;base64,${Buffer.from('RIFF0000WEBPdraft').toString('base64')}`,
+      });
+      expect(result.succeeded).toBe(false);
+      expect(fs.readFileSync(thumbnail, 'utf8')).toBe('previous');
+      expect(JSON.parse(fs.readFileSync(state.descriptorPath, 'utf8')).thumbnail).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
   it('returns settings without waiting for native option discovery', async () => {
     const value = fixture();
     let complete!: (value: unknown) => void;

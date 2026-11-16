@@ -228,7 +228,7 @@ struct project_descriptor
     std::optional<android_project_settings> android;
     std::string description;
     std::string version{"0.1.0"};
-    std::optional<project_asset_reference> thumbnail;
+    std::optional<std::string> thumbnail;
 };
 
 /** @brief Optional validation policy supplied by an editor or CLI caller. */
