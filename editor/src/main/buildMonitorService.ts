@@ -116,7 +116,7 @@ export class BuildMonitorService {
     run: BuildMonitorRun,
     stage: BuildMonitorStage,
     state: BuildMonitorStageState,
-    measured?: WorkflowStageProgress,
+    measured?: Pick<WorkflowStageProgress, 'startedAt' | 'completedAt' | 'durationMs'>,
   ): void {
     // Recover the runner's timestamps even if a transient event was missed.
     // The legacy command path still observes the main-process clock.
@@ -198,8 +198,14 @@ export class BuildMonitorService {
       // history record is the authoritative terminal event and exit duration.
       const completed = snapshot.history?.find((item) => item.runId === run!.id);
       if (!completed) return;
-      this.updateStage(run, run.stages[0], completed.result);
-      this.complete(run, completed.result, snapshot.completedAt, completed.durationMs);
+      const completedAt =
+        snapshot.completedAt ?? new Date(Date.parse(completed.startedAt) + completed.durationMs).toISOString();
+      this.updateStage(run, run.stages[0], completed.result, {
+        startedAt: completed.startedAt,
+        completedAt,
+        durationMs: completed.durationMs,
+      });
+      this.complete(run, completed.result, completedAt, completed.durationMs);
     }
   }
 
