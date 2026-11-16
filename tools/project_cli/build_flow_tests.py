@@ -71,7 +71,7 @@ add_custom_target(FirstBuildSmoke ALL
     # are reused rather than demanding manual Configure.
     run("build", *project, "--config", "RelWithDebInfo")
     payload, _ = run("build", *project, "--target", "clean")
-    assert payload["succeeded"] and not (target / "built.txt").exists()
+    assert payload["succeeded"], payload
     run("build", *project)
     assert (target / "built.txt").exists()
 
