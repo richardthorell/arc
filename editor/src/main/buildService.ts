@@ -218,11 +218,12 @@ export class BuildService {
       const child = spawn(tool, effective, { cwd: project.projectRoot, shell: false, windowsHide: true });
       this.process = child;
       let failedToStart = false;
-      let pending = '';
-      const consume = (data: Buffer, severity: ArcBuildDiagnostic['severity']) => {
-        pending += data.toString('utf8');
-        const lines = pending.split(/\r?\n/);
-        pending = lines.pop() ?? '';
+      // CMake output and the CLI's failure summary can arrive on different
+      // pipes. Keep independent partial lines to avoid joining two errors.
+      const pending = { info: '', error: '' };
+      const consume = (data: Buffer, severity: 'info' | 'error') => {
+        const lines = (pending[severity] + data.toString('utf8')).split(/\r?\n/);
+        pending[severity] = lines.pop() ?? '';
         for (const line of lines) if (line.trim()) this.parseLine(line, severity);
       };
       child.stdout.on('data', (data: Buffer) => consume(data, 'info'));
@@ -237,7 +238,8 @@ export class BuildService {
       });
       child.on('close', (code) => {
         if (failedToStart) return;
-        if (pending.trim()) this.parseLine(pending, code === 0 ? 'info' : 'error');
+        if (pending.info.trim()) this.parseLine(pending.info, code === 0 ? 'info' : 'error');
+        if (pending.error.trim()) this.parseLine(pending.error, 'error');
         this.process = null;
         if (this.cancelledProcesses.delete(child)) {
           this.recordRun(kind, configuration, startedMs, 'cancelled');
