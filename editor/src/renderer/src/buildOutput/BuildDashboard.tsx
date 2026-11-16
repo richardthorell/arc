@@ -135,7 +135,7 @@ export function BuildDashboard({
     }
     const request = ++overviewRequest.current;
     try {
-      const [nextMonitor, nextHistory] = await Promise.all([api.monitorSnapshot(), api.history()]);
+      const [nextMonitor, nextHistory] = await Promise.all([api.monitorSnapshot(), api.history(0, 100)]);
       if (request !== overviewRequest.current) return;
       const changedProject = projectRef.current !== undefined && projectRef.current !== nextHistory.projectGuid;
       projectRef.current = nextHistory.projectGuid;
