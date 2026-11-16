@@ -6,7 +6,7 @@ BM3 replaces the session-only command statistics dialog with a **Build Monitor**
 
 - **Left — Build history:** The currently running build is pinned above the project's persisted previous runs. Selecting an earlier run does **not** interrupt or switch the active build.
 - **Main summary:** Action, configuration, platform/profile/target, real elapsed or completed duration, error/warning counts and measured stage completion. No fabricated percent-complete estimate.
-- **Stages:** Displays the existing planner's stage statuses and measured durations. It is **not** a CMake target dependency graph; graph and target-level timings are scheduled for BM4/BM5.
+- **Stages:** Displays the existing planner's stage statuses and measured durations. It is **not** a CMake target dependency graph; graph and target-level timings are scheduled for BM4/BM5. Raw process chunks do not yet carry a target/stage ID, so this UI does not pretend to filter full logs by dependency node.
 - **Bottom — Output & diagnostics:** Resizable panel with full stdout/stderr archive reading, search of *loaded* chunks, stream filtering and clickable file diagnostics. Logs are paged from disk in 100-record steps using BM2's byte cursors.
 - **Live updates:** BM1 stage events refresh the summary; the selected running build polls additional archived output while keeping UI memory bounded.
 - **Errors:** History storage/read failures are displayed in the monitor and do not affect compilation.
