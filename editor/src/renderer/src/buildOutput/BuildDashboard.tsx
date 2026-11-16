@@ -116,6 +116,7 @@ export function BuildDashboard({
   const [loading, setLoading] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [detailEpoch, setDetailEpoch] = useState(0);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<'output' | 'diagnostics'>('output');
   const [severity, setSeverity] = useState<'all' | 'error' | 'warning'>('all');
@@ -211,7 +212,7 @@ export function BuildDashboard({
     return () => {
       cancelled = true;
     };
-  }, [api, selectedRunId, history?.projectGuid]);
+  }, [api, selectedRunId, history?.projectGuid, detailEpoch]);
 
   const loadNext = useCallback(async () => {
     const current = detailRef.current;
@@ -250,6 +251,26 @@ export function BuildDashboard({
     return () => clearInterval(interval);
   }, [active, loadNext]);
 
+  useEffect(() => {
+    if (selectedRunId && selected && selected.state !== 'running') void loadNext();
+  }, [selectedRunId, selected?.state, loadNext]);
+
+  const cancelSelected = async () => {
+    if (!selected || !active) return;
+    if (selected.source === 'command') {
+      onCancel?.();
+      return;
+    }
+    if (!api) return;
+    try {
+      const workflow = await api.workflowSnapshot();
+      if (!workflow?.requestId || workflow.run?.id !== selected.id) throw new Error('Active workflow changed');
+      await api.cancelWorkflow(workflow.requestId);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
   const visibleTime = selected
     ? (selected.durationMs ?? (active ? Math.max(0, elapsed - Date.parse(selected.startedAt)) : undefined))
     : undefined;
@@ -283,8 +304,8 @@ export function BuildDashboard({
             </div>
           </div>
           <div className="build-monitor-actions">
-            {active && selected?.source === 'command' && onCancel && (
-              <button type="button" onClick={onCancel} className="build-monitor-cancel">
+            {active && (selected?.source === 'workflow' || onCancel) && (
+              <button type="button" onClick={() => void cancelSelected()} className="build-monitor-cancel">
                 <Ban size={14} /> Cancel build
               </button>
             )}
@@ -536,6 +557,9 @@ export function BuildDashboard({
                         ? `${detail.hiddenLogChunks} earlier chunks removed from memory · reopen run to read from start`
                         : 'Full output remains in project build history'}
                     </span>
+                    {Boolean(detail?.hiddenLogChunks) && (
+                      <button type="button" onClick={() => setDetailEpoch((value) => value + 1)}>Read from start</button>
+                    )}
                     {(detail?.moreLogs || detail?.moreEvents) && (
                       <button type="button" disabled={loadingMore} onClick={() => void loadNext()}>
                         {loadingMore ? 'Loading…' : 'Load more'}
