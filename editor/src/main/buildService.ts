@@ -333,8 +333,8 @@ export class BuildService {
     const match = diagnosticPattern.exec(line);
     // CMake and Ninja errors often lack a file:line diagnostic. Preserve
     // their severity instead of presenting a CMake error as informational.
-    const errorLine = /\b(?:cmake error|fatal error|error\s*:|error\s+[A-Z]+\d+\s*:|ninja:\s*error)\b/i.test(line);
-    const warningLine = /\b(?:cmake warning|warning\s*:|warning\s+[A-Z]+\d+\s*:)\b/i.test(line);
+    const errorLine = /\b(?:cmake error|fatal error|error(?:\s+[A-Z]+\d+)?\s*:|ninja:\s*error)/i.test(line);
+    const warningLine = /\b(?:cmake warning|warning(?:\s+[A-Z]+\d+)?\s*:)/i.test(line);
     const severity = errorLine || /error/i.test(match?.[6] ?? '')
       ? 'error'
       : warningLine || /warning/i.test(match?.[6] ?? '')
