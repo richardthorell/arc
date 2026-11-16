@@ -76,6 +76,47 @@ describe('BuildService command history', () => {
     });
   });
 
+  it('preserves CMake configuration diagnostics with error severity on stdout', async () => {
+    const { service, process } = setup();
+    const request = service.execute({ action: 'build' });
+
+    process.stdout.emit(
+      'data',
+      Buffer.from(
+        'CMake Error at CMakeLists.txt:9 (find_package):\n' +
+          '  Could not find a package configuration file provided by "ARC".\n' +
+          'arc-project: CMake configuration failed for /project/Build/default; pass --sdk.\n',
+      ),
+    );
+    process.emit('close', 1);
+    await expect(request).rejects.toThrow('code 1');
+
+    const snapshot = service.snapshot();
+    expect(snapshot.state).toBe('failed');
+    expect(snapshot.diagnostics.some((value) => value.severity === 'error' && value.message.includes('CMake'))).toBe(
+      true,
+    );
+    expect(snapshot.diagnostics.some((value) => value.message.includes('Could not find a package'))).toBe(true);
+    expect(snapshot.history?.[0]).toMatchObject({ kind: 'build', result: 'failed' });
+  });
+
+  it('shows a useful diagnostic if the tool exits nonzero without any output', async () => {
+    const { service, process } = setup();
+    const request = service.execute({ action: 'build' });
+
+    process.emit('close', 1);
+    await expect(request).rejects.toThrow('code 1');
+
+    const snapshot = service.snapshot();
+    expect(snapshot.diagnostics).toEqual([
+      expect.objectContaining({
+        severity: 'error',
+        message: expect.stringContaining('Check the CMake output and ARC SDK configuration'),
+      }),
+    ]);
+    expect(snapshot.history?.[0].errorCount).toBe(1);
+  });
+
   it('preserves cancellation when the child subsequently closes', async () => {
     const { service, process } = setup();
     const request = service.execute({ action: 'configure' });
