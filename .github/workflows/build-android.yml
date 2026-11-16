@@ -19,7 +19,7 @@ jobs:
   build:
     name: NDK r30 / Clang · Debug — Assemble APK
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 65
     steps:
       - name: Checkout Repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -194,6 +194,47 @@ jobs:
           fi
           test ! -e "$RUNNER_TEMP/a4-wrong-project"
           test ! -e "$RUNNER_TEMP/a4-wrong-project.pending"
+
+      - name: Build A6 Host ARC CLI and Asset Cooker
+        shell: bash
+        run: |
+          set -euo pipefail
+          build="$RUNNER_TEMP/arc-a6-host-build"
+          sdk="$RUNNER_TEMP/arc-android-host-sdk-fixture"
+          cmake -S . -B "$build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DARC_BUILD_EDITOR=OFF \
+            -DARC_BUILD_RENDER_VULKAN=OFF \
+            -DARC_BUILD_SAMPLES=OFF \
+            -DARC_BUILD_HIGH_LEVEL_TESTS=OFF \
+            -DBUILD_TESTING=OFF
+          cmake --build "$build" --target arc-project-cli arc-cook --parallel 4
+          mkdir -p "$sdk/bin"
+          install -m 755 "$build/tools/project_cli/arc-project" "$sdk/bin/arc-project"
+          install -m 755 "$build/tools/asset_cooker/arc-cook" "$sdk/bin/arc-cook"
+          "$sdk/bin/arc-cook" --help
+          test -f "$sdk/share/arc/android/android_build_workflow.py"
+          test -f "$sdk/share/arc/android/android_apk_finalizer.py"
+
+      - name: A6 Full External Project Build and APK Acceptance
+        shell: bash
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          sdk="$RUNNER_TEMP/arc-android-host-sdk-fixture"
+          python3 tools/test_android_a6_external_game.py \
+            --repo "$GITHUB_WORKSPACE" --sdk "$sdk" \
+            --project-tool "$sdk/bin/arc-project" \
+            --cooker "$sdk/bin/arc-cook" \
+            --output "$RUNNER_TEMP/arc-a6-output"
+
+      - name: Publish A6 Signed External Game APKs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-android-a6-external-games-debug
+          path: ${{ runner.temp }}/arc-a6-output/Packages
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload Android APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
