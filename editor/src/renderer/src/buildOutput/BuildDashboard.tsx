@@ -165,6 +165,7 @@ export function BuildDashboard({
   }, [onClose]);
 
   useEffect(() => {
+    const requestRef = overviewRequest;
     let update: ReturnType<typeof setTimeout> | undefined;
     const scheduleRefresh = () => {
       if (update) return;
@@ -180,7 +181,7 @@ export function BuildDashboard({
     });
     void refresh();
     return () => {
-      overviewRequest.current++;
+      requestRef.current++;
       if (update) clearTimeout(update);
       unsubscribe?.();
     };
