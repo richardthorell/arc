@@ -90,6 +90,7 @@ describe('BuildMonitorService BM1 event stream', () => {
     expect(snapshot.runs[0]).toMatchObject({
       id: 'command-001',
       source: 'command',
+      action: 'build',
       state: 'failed',
       durationMs: 5000,
       errorCount: 1,
@@ -104,6 +105,7 @@ describe('BuildMonitorService BM1 event stream', () => {
       'run-completed',
     ]);
     expect(snapshot.events.map((event) => event.sequence)).toEqual([1, 2, 3, 4, 5]);
+    expect(snapshot.events[2]).toMatchObject({ runId: 'command-001', stageId: 'command-001:command' });
     expect(observed).toHaveBeenCalledTimes(5);
   });
 
