@@ -67,6 +67,29 @@ with tempfile.TemporaryDirectory(prefix="arc project settings ") as temporary:
     assert result["assets"] == str(content_stage)
     assert result["output"] == str(root / "AndroidBuild")
     assert result["python"], "A4 native CLI must pass itself as the settings exporter"
+    # A5 dispatches the same executable to the installed Python executor.
+    runner = sdk / "share" / "arc" / "android" / "android_build_workflow.py"
+    runner.write_text(
+        "import json,sys\n"
+        "args=sys.argv[1:]\n"
+        "def val(key): return args[args.index(key)+1]\n"
+        "print(json.dumps({'succeeded':True,'action':args[0],"
+        "'project':val('--project'),'sdk':val('--sdk-root'),"
+        "'tool':val('--project-tool')}))\n",
+        encoding="utf-8",
+    )
+    routed = run("build", "--platform", "android", "--project", str(descriptor),
+                 "--sdk-root", str(sdk), "--python", sys.executable)
+    assert routed["action"] == "execute"
+    assert routed["project"] == str(descriptor)
+    assert routed["sdk"] == str(sdk)
+    assert routed["tool"]
+    for operation in ("status", "logs", "cancel"):
+        routed = run("workflow", operation, "--project", str(descriptor),
+                     "--sdk-root", str(sdk), "--run-id", "a5-test-run",
+                     "--python", sys.executable)
+        assert routed["action"] == operation
+
     run("package", "android-apk", "--project", str(descriptor),
         "--sdk-root", str(root / "NotInstalled"), "--assets", str(content_stage),
         "--output", str(root / "AndroidBuild"), "--python", sys.executable,

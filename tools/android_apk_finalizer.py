@@ -10,6 +10,8 @@ Release signing, AAB and Play distribution are deliberately separate work.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 import argparse
 import hashlib
 import json
@@ -337,7 +339,8 @@ def verify_apk(apk: Path, assets_root: Path, document: dict, settings: dict,
 
 
 def finalize(project_root: Path, sdk_root: Path, assets_root: Path, output: Path,
-             tool: str | None, settings_path: Path | None, gradle: str) -> dict:
+             tool: str | None, settings_path: Path | None, gradle: str,
+             workspace: Path | None = None) -> dict:
     project_root = exact_directory(project_root, "project root")
     sdk_root = exact_directory(sdk_root, "ARC SDK root")
     assets_root = exact_directory(assets_root, "A3 distribution asset root")
@@ -361,12 +364,31 @@ def finalize(project_root: Path, sdk_root: Path, assets_root: Path, output: Path
     expect(bool(gradle), "Gradle executable is required")
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    # A4 owns an isolated Gradle workspace. No stale project build or SDK files
-    # can become implicit inputs; failed builds never publish an output APK.
-    with tempfile.TemporaryDirectory(prefix=".arc-apk-", dir=output.parent) as temporary:
+    # A4 normally owns an isolated workspace. A5 may supply the freshly
+    # created, private workspace from its configure/compile phases so Gradle
+    # can reuse native compilation without rebuilding the game module.
+    if workspace is not None:
+        workspace = exact_directory(workspace, "A5 Gradle workspace")
+        expect(workspace != output and not workspace.is_relative_to(output) and
+               not output.is_relative_to(workspace), "A5 workspace and APK output cannot overlap")
+    scope = nullcontext(str(workspace)) if workspace is not None else tempfile.TemporaryDirectory(
+        prefix=".arc-apk-", dir=output.parent
+    )
+    with scope as temporary:
         scratch = Path(temporary)
         gradle_root = scratch / "gradle"
-        shutil.copytree(launcher, gradle_root, ignore=shutil.ignore_patterns(".gradle", "build", ".cxx"))
+        if workspace is None:
+            shutil.copytree(launcher, gradle_root, ignore=shutil.ignore_patterns(".gradle", "build", ".cxx"))
+        else:
+            expect((gradle_root / "app/build.gradle.kts").is_file(),
+                   "A5 Gradle workspace was not configured")
+            # The runner constructs the workspace from the selected SDK.
+            # Never accept a stale or unrelated launcher by accident.
+            expect((gradle_root / "settings.gradle.kts").read_bytes() ==
+                   (launcher / "settings.gradle.kts").read_bytes() and
+                   (gradle_root / "app/build.gradle.kts").read_bytes() ==
+                   (launcher / "app/build.gradle.kts").read_bytes(),
+                   "A5 Gradle launcher differs from the selected installed ARC SDK")
         settings_file = scratch / "android-project-settings.json"
         settings_file.write_text(json.dumps(settings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         command = [gradle, "--no-daemon", "--project-dir", str(gradle_root),
@@ -425,11 +447,12 @@ def main() -> int:
     parser.add_argument("--project-tool", help="ARC CLI for validated Android settings export")
     parser.add_argument("--settings", type=Path, help="Existing validated ARC settings export")
     parser.add_argument("--gradle", default="gradle")
+    parser.add_argument("--workspace-root", type=Path, help="Private A5 Gradle workspace for incremental assembly")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     try:
         result = finalize(args.project_root, args.sdk_root, args.assets, args.output,
-                          args.project_tool, args.settings, args.gradle)
+                          args.project_tool, args.settings, args.gradle, args.workspace_root)
     except (FinalizationError, ValueError, OSError, BadZipFile, subprocess.SubprocessError) as exc:
         if args.json:
             print(json.dumps({"succeeded": False, "error": str(exc)}))
