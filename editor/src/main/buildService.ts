@@ -245,12 +245,14 @@ export class BuildService {
           reject(new Error('Project build cancelled'));
           return;
         }
-        if (code !== 0 && !this.snapshotValue.diagnostics.some((diagnostic) => diagnostic.severity === 'error'))
-          this.append(
-            'error',
-            `${kind === 'configure' ? 'Configure' : kind === 'clean' ? 'Clean' : 'Build'} failed (exit ${String(code)}). Check the CMake output and ARC SDK configuration.`,
-            'compiler',
-          );
+        if (code !== 0) {
+          const hasReportedError = this.snapshotValue.diagnostics.some((diagnostic) => diagnostic.severity === 'error');
+          if (!hasReportedError) {
+            const operation = kind === 'configure' ? 'Configure' : kind === 'clean' ? 'Clean' : 'Build';
+            const message = `${operation} failed (exit ${String(code)}). Check the CMake output and ARC SDK configuration.`;
+            this.append('error', message, 'compiler');
+          }
+        }
         this.recordRun(kind, configuration, startedMs, code === 0 ? 'succeeded' : 'failed');
         if (code === 0) {
           this.update({ state: 'succeeded', buildRequired: false, completedAt: new Date().toISOString() });
