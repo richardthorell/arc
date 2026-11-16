@@ -64,6 +64,7 @@ export class BuildService {
       publishWorkflow,
       undefined,
       buildEnvironment,
+      this.onRawOutput,
     );
   }
 

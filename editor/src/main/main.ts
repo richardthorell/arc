@@ -1148,20 +1148,26 @@ void app.whenReady().then(async () => {
     host: hostClient,
   });
   const buildMonitor = new BuildMonitorService((event) => sendToActiveRenderer('buildMonitor:event', event));
+  const buildMonitorProject = () => {
+    const project = projectService?.active() ?? null;
+    buildMonitor.attachProject(project);
+    return project?.descriptor.guid ?? null;
+  };
   buildService = new BuildService(
     () => projectService?.active() ?? null,
     () => projectService?.projectTool() ?? '',
     hostClient,
     (snapshot) => {
-      buildMonitor.observeCommand(snapshot, projectService?.active()?.descriptor.guid ?? null);
+      buildMonitor.observeCommand(snapshot, buildMonitorProject());
       sendToActiveRenderer('build:state', snapshot);
     },
     (snapshot) => {
-      buildMonitor.observeWorkflow(snapshot, projectService?.active()?.descriptor.guid ?? null);
+      buildMonitor.observeWorkflow(snapshot, buildMonitorProject());
       sendToActiveRenderer('workflow:state', snapshot);
     },
     () => resolveWindowsBuildEnvironment(projectService?.projectTool() ?? '', settingsService?.snapshot() ?? null),
     () => projectSettingsService?.isBusy() ?? false,
+    (project, runId, stream, text) => buildMonitor.appendRaw(project, runId, stream, text),
   );
   projectSettingsService = new ProjectSettingsService(
     () => projectService?.active() ?? null,
@@ -1432,7 +1438,18 @@ void app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('build:snapshot', () => buildService?.snapshot() ?? null);
-  ipcMain.handle('buildMonitor:snapshot', () => buildMonitor.snapshot());
+  ipcMain.handle('buildMonitor:snapshot', () => {
+    buildMonitorProject();
+    return buildMonitor.snapshot();
+  });
+  ipcMain.handle('buildMonitor:history', (_event, offset?: number, limit?: number) => {
+    buildMonitorProject();
+    return buildMonitor.historyPage(offset, limit);
+  });
+  ipcMain.handle('buildMonitor:historyDetails', (_event, id: string, logCursor?: number, eventCursor?: number) => {
+    buildMonitorProject();
+    return buildMonitor.historyDetails(id, logCursor, eventCursor);
+  });
   ipcMain.handle('workflow:cookOptions', () => buildService?.workflows.options() ?? null);
   ipcMain.handle('workflow:execute', (_event, request: WorkflowRequest, authority?: string) => {
     if (!buildService) throw new Error('Build service unavailable');

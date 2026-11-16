@@ -21,6 +21,7 @@ import type {
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
 import type { BuildMonitorEvent, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
+import type { BuildHistoryDetail, BuildHistoryPage } from '../common/buildHistoryTypes';
 import type {
   WorkflowRequest,
   WorkflowPlan,
@@ -477,6 +478,10 @@ const arcApi = {
   },
   build: {
     monitorSnapshot: (): Promise<BuildMonitorSnapshot> => ipcRenderer.invoke('buildMonitor:snapshot'),
+    history: (offset = 0, limit = 50): Promise<BuildHistoryPage> =>
+      ipcRenderer.invoke('buildMonitor:history', offset, limit),
+    historyDetails: (runId: string, logCursor = 0, eventCursor = 0): Promise<BuildHistoryDetail | null> =>
+      ipcRenderer.invoke('buildMonitor:historyDetails', runId, logCursor, eventCursor),
     onMonitorEvent: (callback: (event: BuildMonitorEvent) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, event: BuildMonitorEvent) => callback(event);
       ipcRenderer.on('buildMonitor:event', listener);
