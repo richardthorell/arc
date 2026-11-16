@@ -201,7 +201,12 @@ jobs:
           set -euo pipefail
           build="$RUNNER_TEMP/arc-a6-host-build"
           sdk="$RUNNER_TEMP/arc-android-host-sdk-fixture"
+          # Use the supported Clang 18 toolchain (runner default GCC is not compatible).
+          sudo apt-get update
+          sudo apt-get install -y clang-18 ninja-build
           cmake -S . -B "$build" -G Ninja \
+            -DCMAKE_C_COMPILER=clang-18 \
+            -DCMAKE_CXX_COMPILER=clang++-18 \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DARC_BUILD_EDITOR=OFF \
             -DARC_BUILD_RENDER_VULKAN=OFF \
