@@ -66,6 +66,8 @@ add_custom_target(FirstBuildSmoke ALL
     assert payload["buildDirectory"] == target.as_posix(), payload
     cache = (target / "CMakeCache.txt").read_text(encoding="utf-8")
     assert "CMAKE_PREFIX_PATH" in cache and str(sdk).replace("\\", "/") in cache
+    assert any(line.startswith("CMAKE_BUILD_TYPE:") and line.endswith("=RelWithDebInfo")
+               for line in cache.splitlines()), "The first build lost its selected configuration"
 
     # Subsequent builds are incremental; the cache and generated build system
     # are reused rather than demanding manual Configure.
