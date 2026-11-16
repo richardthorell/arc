@@ -39,11 +39,29 @@ const workflow = (
         profile: 'windows-shipping',
         targetId: 'windows-x64-vulkan',
         platform: 'windows',
+        destination: 'none',
+        sessionId: '',
+        succeeded: true,
+        version: 1,
+        engineVersion: '0.1.0',
+        architecture: 'x86_64',
+        renderer: 'vulkan',
+        finalizer: 'windows',
+        cookOutput: 'Build/Cooked',
+        packageOutput: 'Build/Packages',
+        stages: ['validate', 'configure'],
+      },
+      authority: {
+        projectGuid: 'project-a',
+        projectRoot: '/project',
+        descriptorPath: '/project/Test.arcproject',
+        projectRevision: 1,
+        sdkIdentity: 'sdk-test',
       },
       stages,
       artifacts: [],
     },
-  }) as WorkflowExecutionSnapshot;
+  });
 
 describe('BuildMonitorService BM1 event stream', () => {
   it('correlates command start, output, diagnostics and completion with one stable ID', () => {
