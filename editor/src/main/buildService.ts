@@ -245,6 +245,12 @@ export class BuildService {
           reject(new Error('Project build cancelled'));
           return;
         }
+        if (code !== 0 && !this.snapshotValue.diagnostics.some((diagnostic) => diagnostic.severity === 'error'))
+          this.append(
+            'error',
+            `${kind === 'configure' ? 'Configure' : kind === 'clean' ? 'Clean' : 'Build'} failed (exit ${String(code)}). Check the CMake output and ARC SDK configuration.`,
+            'compiler',
+          );
         this.recordRun(kind, configuration, startedMs, code === 0 ? 'succeeded' : 'failed');
         if (code === 0) {
           this.update({ state: 'succeeded', buildRequired: false, completedAt: new Date().toISOString() });
@@ -325,10 +331,14 @@ export class BuildService {
 
   private parseLine(line: string, fallback: ArcBuildDiagnostic['severity']): void {
     const match = diagnosticPattern.exec(line);
-    const severity = /warning/i.test(match?.[6] ?? '')
-      ? 'warning'
-      : /error/i.test(match?.[6] ?? '')
-        ? 'error'
+    // CMake and Ninja errors often lack a file:line diagnostic. Preserve
+    // their severity instead of presenting a CMake error as informational.
+    const errorLine = /\b(?:cmake error|fatal error|error\s*:|error\s+[A-Z]+\d+\s*:|ninja:\s*error)\b/i.test(line);
+    const warningLine = /\b(?:cmake warning|warning\s*:|warning\s+[A-Z]+\d+\s*:)\b/i.test(line);
+    const severity = errorLine || /error/i.test(match?.[6] ?? '')
+      ? 'error'
+      : warningLine || /warning/i.test(match?.[6] ?? '')
+        ? 'warning'
         : fallback;
     this.snapshotValue.diagnostics.push({
       sequence: ++this.sequence,
