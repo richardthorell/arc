@@ -8,12 +8,19 @@ import {
   type ProjectSettingsSnapshot,
 } from '../../../common/projectSettingsTypes';
 import { ProjectSettingsDialog } from './ProjectSettingsDialog';
+import {
+  cacheProjectSettings,
+  cachedProjectSettings,
+  clearProjectSettingsCache,
+  refreshProjectSettings,
+} from './projectSettingsCache';
 
 let snapshot: ProjectSettingsSnapshot;
 let notify: () => void;
 const read = vi.fn();
 const apply = vi.fn();
 beforeEach(() => {
+  clearProjectSettingsCache();
   snapshot = {
     catalog: structuredClone(projectSettingsCatalog),
     projectGuid: 'project',
@@ -60,7 +67,38 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  clearProjectSettingsCache();
   vi.unstubAllGlobals();
+});
+
+it('opens immediately from the project snapshot while refreshing in the background', () => {
+  cacheProjectSettings(snapshot);
+  read.mockImplementation(() => new Promise(() => {}));
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  expect(screen.getByRole('textbox', { name: 'Project name' })).toHaveValue('Game');
+  expect(screen.queryByText('Loading project settings…')).not.toBeInTheDocument();
+  expect(screen.queryByText('Local tool availability')).not.toBeInTheDocument();
+});
+
+it('does not show platform tool information during an uncached read', () => {
+  read.mockImplementation(() => new Promise(() => {}));
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  expect(screen.queryByText('Local tool availability')).not.toBeInTheDocument();
+});
+
+it('does not restore a previous project cache after a late read', async () => {
+  let resolve!: (value: ProjectSettingsSnapshot) => void;
+  read.mockImplementation(
+    () =>
+      new Promise<ProjectSettingsSnapshot>((done) => {
+        resolve = done;
+      }),
+  );
+  const pending = refreshProjectSettings();
+  clearProjectSettingsCache();
+  resolve(snapshot);
+  await expect(pending).rejects.toThrow('Project changed');
+  expect(cachedProjectSettings()).toBeUndefined();
 });
 
 it('shows project information controls and keeps engine identity in Advanced', async () => {
@@ -103,6 +141,7 @@ it('shows a compact game picker and exposes server inheritance only for enabled 
   expect(screen.queryByText('Settings shared by this project')).not.toBeInTheDocument();
   view.unmount();
   snapshot.values.targetPlatforms = [{ id: 'linux-x64-headless', enabled: true }];
+  snapshot.revision = '2';
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   expect(await screen.findByText('Use game startup scene')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Choose Server startup scene asset' })).toBeInTheDocument();

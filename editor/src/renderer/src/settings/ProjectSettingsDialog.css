@@ -121,3 +121,14 @@
   gap: 8px;
   margin-top: 8px;
 }
+.project-settings-scene-reference {
+  width: 100%;
+  min-width: 0;
+}
+.project-settings-scene-row {
+  max-width: 520px;
+}
+.project-settings-scene-add {
+  justify-self: start;
+  margin-top: 4px;
+}

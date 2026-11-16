@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ExternalLink, Image, Plus, Search, X } from 'lucide-react';
+import { ChevronDown, ExternalLink, FileBox, Image, Plus, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { buildAssetCreation } from '../content/assetCreation';
@@ -305,9 +305,13 @@ export function AssetPicker({
           type="button"
         >
           {triggerMode === 'add' ? (
-            <Plus size={14} />
+            <>
+              <Plus size={14} />
+              {compact && <span>{label}</span>}
+            </>
           ) : (
             <>
+              {compact && <FileBox size={16} aria-hidden="true" />}
               {!compact && (
                 <AssetThumbnail
                   asset={selected}
@@ -329,7 +333,7 @@ export function AssetPicker({
                   </small>
                 )}
               </span>
-              <ChevronDown size={13} />
+              {compact ? <Search size={14} aria-hidden="true" /> : <ChevronDown size={13} />}
             </>
           )}
         </button>
@@ -569,7 +573,12 @@ function AssetPickerPopover({
   valueFor: (asset: AssetPickerItem) => string;
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ left: 8, top: 8 });
+  const [position, setPosition] = useState<{
+    left: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  }>({ left: 8, top: 8, maxHeight: 420 });
   const [createMode, setCreateMode] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createError, setCreateError] = useState('');
@@ -579,12 +588,40 @@ function AssetPickerPopover({
   );
 
   useLayoutEffect(() => {
-    const anchor = anchorRef.current?.getBoundingClientRect();
-    if (!anchor) return;
-    const width = 344;
-    const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
-    const below = anchor.bottom + 5;
-    setPosition({ left, top: below + 420 > window.innerHeight ? Math.max(8, anchor.top - 425) : below });
+    const updatePosition = () => {
+      const anchor = anchorRef.current?.getBoundingClientRect();
+      const popup = popoverRef.current?.getBoundingClientRect();
+      if (!anchor || !popup) return;
+      const below = Math.max(0, window.innerHeight - anchor.bottom - 13);
+      const above = Math.max(0, anchor.top - 13);
+      const openAbove = popup.height > below && above > below;
+      // Anchor the actual popup edge, not an assumed maximum-height rectangle.
+      const next = {
+        left: Math.max(8, Math.min(anchor.left, window.innerWidth - popup.width - 8)),
+        top: openAbove ? undefined : anchor.bottom + 5,
+        bottom: openAbove ? window.innerHeight - anchor.top + 5 : undefined,
+        maxHeight: Math.min(420, openAbove ? above : below),
+      };
+      setPosition((previous) =>
+        previous.left === next.left &&
+        previous.top === next.top &&
+        previous.bottom === next.bottom &&
+        previous.maxHeight === next.maxHeight
+          ? previous
+          : next,
+      );
+    };
+    updatePosition();
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(updatePosition);
+    if (popoverRef.current) observer?.observe(popoverRef.current);
+    if (anchorRef.current) observer?.observe(anchorRef.current);
+    window.addEventListener('resize', updatePosition);
+    document.addEventListener('scroll', updatePosition, true);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updatePosition);
+      document.removeEventListener('scroll', updatePosition, true);
+    };
   }, [anchorRef]);
 
   useEffect(() => {
@@ -632,6 +669,8 @@ function AssetPickerPopover({
       style={{
         left: position.left,
         top: position.top,
+        bottom: position.bottom,
+        maxHeight: position.maxHeight,
         ...(createMode ? { gridTemplateRows: '31px minmax(0, 1fr)' } : {}),
       }}
     >

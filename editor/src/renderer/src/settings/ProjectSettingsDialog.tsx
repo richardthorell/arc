@@ -30,6 +30,7 @@ import {
 } from './ProjectSettingsCollections';
 import './SettingsDialog.css';
 import './ProjectSettingsDialog.css';
+import { cachedProjectSettings, cacheProjectSettings, refreshProjectSettings } from './projectSettingsCache';
 
 type State = {
   snapshot: ProjectSettingsSnapshot;
@@ -57,7 +58,10 @@ const withinCategory = (categories: ProjectSettingsCategory[], candidate: string
 };
 
 export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
-  const [state, setState] = useState<State>();
+  const [state, setState] = useState<State | undefined>(() => {
+    const snapshot = cachedProjectSettings();
+    return snapshot ? { snapshot, draft: structuredClone(snapshot.values) } : undefined;
+  });
   const [selectedCategory, setCategory] = useState('general-root');
   const categories = state
     ? visibleProjectSettingsCategories(
@@ -65,7 +69,11 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         (state.draft.targetPlatforms ?? []) as ArcProjectDescriptor['targetPlatforms'],
       )
     : [];
-  const category = categories.some((entry) => entry.id === selectedCategory) ? selectedCategory : 'platforms';
+  const category = categories.some((entry) => entry.id === selectedCategory)
+    ? selectedCategory
+    : state
+      ? 'platforms'
+      : 'general-root';
   const [search, setSearch] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -81,9 +89,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     reading.current = true;
     const token = generation.current;
     try {
-      const api = window.arc?.settings?.project;
-      if (!api) throw new Error('Project Settings requires an updated editor host');
-      const snapshot = await api.read();
+      const snapshot = await refreshProjectSettings();
       if (!mounted.current || token !== generation.current) return;
       setState((previous) => {
         if (previous?.snapshot.revision === snapshot.revision) return { ...previous, snapshot };
@@ -208,9 +214,10 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         ...(thumbnailUpload ? { thumbnailUpload } : {}),
       });
       if (!mounted.current) return;
-      if (result.succeeded && result.snapshot)
+      if (result.succeeded && result.snapshot) {
+        cacheProjectSettings(result.snapshot);
         setState({ snapshot: result.snapshot, draft: structuredClone(result.snapshot.values) });
-      else setErrors(result.errors ?? { _form: 'Settings were not applied' });
+      } else setErrors(result.errors ?? { _form: 'Settings were not applied' });
     } catch (error) {
       if (mounted.current) setErrors({ _form: String(error) });
     } finally {
@@ -424,7 +431,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         )}
         {state?.snapshot.capabilitiesError && <p role="alert">{state.snapshot.capabilitiesError}</p>}
         {state && !state.snapshot.writable && <p role="status">This project is read-only.</p>}
-        {category === 'platforms' && (
+        {state && category === 'platforms' && (
           <UiSettingsCard
             title="Local tool availability"
             subtitle="Configured in Editor Preferences. These indicators do not imply packaging or launch support."

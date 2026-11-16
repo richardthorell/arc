@@ -11,6 +11,7 @@ export function ProjectSceneSetting({
   label,
   emptyLabel,
   showLabel = false,
+  add = false,
 }: {
   value: ArcProjectAssetReference | null;
   assets: AssetPickerItem[];
@@ -18,16 +19,19 @@ export function ProjectSceneSetting({
   label: string;
   emptyLabel?: string;
   showLabel?: boolean;
+  add?: boolean;
 }) {
   const missing = value && !assets.some((asset) => asset.guid === value.guid);
   return (
-    <div>
+    <div className={add ? 'project-settings-scene-add' : 'project-settings-scene-reference'}>
       <AssetPicker
         assets={assets}
         value={value?.guid ?? ''}
         label={label}
         showLabel={showLabel}
         compact
+        triggerMode={add ? 'add' : 'default'}
+        assetTypeLabel="Scene"
         emptyLabel={emptyLabel}
         assetKinds={['scene']}
         referenceMode="guid"
@@ -59,32 +63,20 @@ export function ProjectSceneList({
   return (
     <div className="project-settings-collection">
       {value.map((scene, index) => (
-        <div key={`${scene.guid}-${index}`} className="project-settings-collection-row">
+        <div key={`${scene.guid}-${index}`} className="project-settings-collection-row project-settings-scene-row">
           <ProjectSceneSetting
             label={`Included scene ${index + 1}`}
-            showLabel
             value={scene}
             assets={assets}
             onChange={(next) =>
               onChange(next ? value.map((item, i) => (i === index ? next : item)) : value.filter((_, i) => i !== index))
             }
           />
-          <UiButton
-            disabled={!index}
-            onClick={() => {
-              const next = [...value];
-              [next[index - 1], next[index]] = [next[index], next[index - 1]];
-              onChange(next);
-            }}
-          >
-            Move up
-          </UiButton>
-          <UiButton onClick={() => onChange(value.filter((_, i) => i !== index))}>Remove scene</UiButton>
         </div>
       ))}
       <ProjectSceneSetting
-        label="Add included scene"
-        showLabel
+        label="Include scene"
+        add
         value={null}
         assets={assets}
         onChange={(scene) => {

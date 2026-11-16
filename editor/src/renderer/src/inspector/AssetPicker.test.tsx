@@ -40,6 +40,44 @@ beforeEach(() => {
 });
 
 describe('AssetPicker', () => {
+  it('anchors short popups to the field and follows scrolling and resizing', () => {
+    let anchorTop = window.innerHeight - 100;
+    const rectangles = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const popup = this.classList.contains('asset-picker-popover');
+      const top = popup ? 0 : anchorTop;
+      const height = popup ? 180 : 30;
+      return {
+        left: 100,
+        right: 444,
+        top,
+        bottom: top + height,
+        width: 344,
+        height,
+        x: 100,
+        y: top,
+        toJSON: () => ({}),
+      };
+    });
+    try {
+      render(<AssetPicker assets={[]} assetKinds={['scene']} label="Scene" value="" compact onChange={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Choose Scene asset' }));
+      const popup = screen.getByRole('dialog', { name: 'Scene asset picker' });
+      expect(popup.style.bottom).toBe('105px');
+      expect(popup.style.top).toBe('');
+      anchorTop -= 20;
+      fireEvent.scroll(document);
+      expect(popup.style.bottom).toBe('125px');
+      anchorTop = 100;
+      fireEvent.resize(window);
+      expect(popup.style.top).toBe('135px');
+      expect(popup.style.bottom).toBe('');
+    } finally {
+      rectangles.mockRestore();
+    }
+  });
+
   it('accepts Content Browser material drag payloads on material slots', () => {
     const onChange = vi.fn();
     render(

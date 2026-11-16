@@ -4,6 +4,7 @@ import { Workbench } from './app/Workbench';
 import { CloseDialog, type CloseDialogChoice } from './dialogs/CloseDialog';
 import { ProjectBrowser } from './project/ProjectBrowser';
 import { UiLabWindow } from './uiLab/UiLabWindow';
+import { clearProjectSettingsCache, refreshProjectSettings } from './settings/projectSettingsCache';
 
 const isUiLabMode = () =>
   import.meta.env.VITE_ARC_UI_LAB === '1' || new URLSearchParams(window.location.search).get('mode') === 'ui-lab';
@@ -15,8 +16,18 @@ function EditorApplication() {
   const [closeRequest, setCloseRequest] = useState<CloseRequest | null>(null);
 
   useEffect(() => {
-    void window.arc.projects.snapshot().then((snapshot) => setProject(snapshot?.activeProject ?? null));
-    return window.arc.nativeWindow.onCloseRequested((request) => setCloseRequest(request));
+    let disposed = false;
+    clearProjectSettingsCache();
+    void window.arc.projects.snapshot().then(async (snapshot) => {
+      if (snapshot?.activeProject) await refreshProjectSettings().catch(() => {});
+      if (!disposed) setProject(snapshot?.activeProject ?? null);
+    });
+    const unsubscribe = window.arc.nativeWindow.onCloseRequested((request) => setCloseRequest(request));
+    return () => {
+      disposed = true;
+      clearProjectSettingsCache();
+      unsubscribe();
+    };
   }, []);
 
   const resolveClose = (choice: CloseDialogChoice) => {
@@ -26,8 +37,26 @@ function EditorApplication() {
 
   let content;
   if (project === undefined) content = <div className="application-loading">Starting ARC Editor…</div>;
-  else if (!project) content = <ProjectBrowser onOpened={setProject} />;
-  else content = <Workbench onProjectClosed={() => setProject(null)} />;
+  else if (!project)
+    content = (
+      <ProjectBrowser
+        onOpened={(opened) => {
+          clearProjectSettingsCache();
+          void refreshProjectSettings()
+            .catch(() => {})
+            .then(() => setProject(opened));
+        }}
+      />
+    );
+  else
+    content = (
+      <Workbench
+        onProjectClosed={() => {
+          clearProjectSettingsCache();
+          setProject(null);
+        }}
+      />
+    );
 
   return (
     <>
