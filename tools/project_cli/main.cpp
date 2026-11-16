@@ -287,8 +287,11 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
     // makes the editor's Rebuild action work for a freshly created project.
     if (build && !configured && args.option("--target") == "clean")
     {
-        print_json(json_output,
-                   {{"succeeded", true}, {"buildDirectory", build_directory.generic_string()}, {"nothingToClean", true}});
+        json response;
+        response["succeeded"] = true;
+        response["buildDirectory"] = build_directory.generic_string();
+        response["nothingToClean"] = true;
+        print_json(json_output, response);
         if (!json_output) std::cout << "No configured project build to clean\n";
         return 0;
     }
@@ -332,9 +335,11 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
         {
             const std::string hint =
                 "Configure CMake and the matching ARC SDK, or pass --sdk <installed ARC SDK root>.";
-            return fail(json_output, "CMake configuration failed for " + build_directory.string() +
-                                         " (exit " + std::to_string(code) + "). " + hint,
-                        code < 0 ? 1 : code);
+            std::string description = "CMake configuration failed for ";
+            description += build_directory.string();
+            description += " (exit " + std::to_string(code) + "). ";
+            description += hint;
+            return fail(json_output, description, code < 0 ? 1 : code);
         }
         return 0;
     };
@@ -357,9 +362,13 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
         std::string output;
         const int code = run_process(cmake, command, context.value().root, &output, json_output);
         if (code != 0)
-            return fail(json_output, "CMake build failed in " + build_directory.string() + " for " + configuration +
-                                         " (exit " + std::to_string(code) + "). Review the CMake output above.",
-                        code < 0 ? 1 : code);
+        {
+            std::string description = "CMake build failed in ";
+            description += build_directory.string();
+            description += " for " + configuration;
+            description += " (exit " + std::to_string(code) + "). Review the CMake output above.";
+            return fail(json_output, description, code < 0 ? 1 : code);
+        }
         const auto module_manifest = build_directory / ("arc-modules-" + configuration + ".json");
         if (std::filesystem::is_regular_file(module_manifest))
         {
