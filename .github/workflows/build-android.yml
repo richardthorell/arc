@@ -233,6 +233,17 @@ jobs:
             --cooker "$sdk/bin/arc-cook" \
             --output "$RUNNER_TEMP/arc-a6-output"
 
+      - name: Upload A6 Build Diagnostics on Failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: arc-android-a6-build-diagnostics
+          path: |
+            ${{ runner.temp }}/arc-a6-output/Projects/**/Saved/Builds/android/**/status.json
+            ${{ runner.temp }}/arc-a6-output/Projects/**/Saved/Builds/android/**/build.log
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Publish A6 Signed External Game APKs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
