@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -77,6 +78,7 @@ export class BuildService {
     const project = this.activeProject();
     this.update({
       history: [],
+      runId: undefined,
       state: 'idle',
       diagnostics: [],
       buildRequired: false,
@@ -204,13 +206,15 @@ export class BuildService {
     if (!project) throw new Error('No project is open');
     const effective = arguments_;
     const startedMs = Date.now();
+    const runId = randomUUID();
     const kind: ArcBuildRun['kind'] =
       effective[0] === 'ide' ? 'ide' : state === 'cleaning' ? 'clean' : state === 'configuring' ? 'configure' : 'build';
     const configuration = this.snapshotValue.configuration;
     this.snapshotValue.diagnostics = [];
     this.update({
       state,
-      startedAt: new Date().toISOString(),
+      runId,
+      startedAt: new Date(startedMs).toISOString(),
       completedAt: undefined,
       command: `${tool} ${effective.join(' ')}`,
     });
@@ -266,6 +270,7 @@ export class BuildService {
     const diagnostics = this.snapshotValue.diagnostics;
     const run: ArcBuildRun = {
       id: ++this.nextRunId,
+      runId: this.snapshotValue.runId,
       kind,
       configuration,
       startedAt: new Date(startedMs).toISOString(),

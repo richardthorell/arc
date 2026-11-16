@@ -20,6 +20,7 @@ import type {
 } from '../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
+import type { BuildMonitorEvent, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
 import type {
   WorkflowRequest,
   WorkflowPlan,
@@ -475,6 +476,12 @@ const arcApi = {
       ipcRenderer.invoke('extensions:executeCommand', id, arguments_),
   },
   build: {
+    monitorSnapshot: (): Promise<BuildMonitorSnapshot> => ipcRenderer.invoke('buildMonitor:snapshot'),
+    onMonitorEvent: (callback: (event: BuildMonitorEvent) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, event: BuildMonitorEvent) => callback(event);
+      ipcRenderer.on('buildMonitor:event', listener);
+      return () => ipcRenderer.removeListener('buildMonitor:event', listener);
+    },
     cookOptions: (): Promise<CookWorkflowOptions | null> => ipcRenderer.invoke('workflow:cookOptions'),
     executeWorkflow: (request: WorkflowRequest, authority?: string): Promise<WorkflowRun> =>
       ipcRenderer.invoke('workflow:execute', request, authority),

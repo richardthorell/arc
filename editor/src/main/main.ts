@@ -30,6 +30,7 @@ import { AndroidTargetService } from './androidTargetService';
 import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
+import { BuildMonitorService } from './buildMonitorService';
 import { ProjectSettingsService } from './projectSettingsService';
 import { webpDimensions } from './projectThumbnail';
 import type { ProjectSettingsApplyRequest } from '../common/projectSettingsTypes';
@@ -1146,12 +1147,19 @@ void app.whenReady().then(async () => {
     builtinAssetsRoot: resolveBuiltinAssetsRoot() ?? '',
     host: hostClient,
   });
+  const buildMonitor = new BuildMonitorService((event) => sendToActiveRenderer('buildMonitor:event', event));
   buildService = new BuildService(
     () => projectService?.active() ?? null,
     () => projectService?.projectTool() ?? '',
     hostClient,
-    (snapshot) => sendToActiveRenderer('build:state', snapshot),
-    (snapshot) => sendToActiveRenderer('workflow:state', snapshot),
+    (snapshot) => {
+      buildMonitor.observeCommand(snapshot, projectService?.active()?.descriptor.guid ?? null);
+      sendToActiveRenderer('build:state', snapshot);
+    },
+    (snapshot) => {
+      buildMonitor.observeWorkflow(snapshot, projectService?.active()?.descriptor.guid ?? null);
+      sendToActiveRenderer('workflow:state', snapshot);
+    },
     () => resolveWindowsBuildEnvironment(projectService?.projectTool() ?? '', settingsService?.snapshot() ?? null),
     () => projectSettingsService?.isBusy() ?? false,
   );
@@ -1424,6 +1432,7 @@ void app.whenReady().then(async () => {
     }
   });
   ipcMain.handle('build:snapshot', () => buildService?.snapshot() ?? null);
+  ipcMain.handle('buildMonitor:snapshot', () => buildMonitor.snapshot());
   ipcMain.handle('workflow:cookOptions', () => buildService?.workflows.options() ?? null);
   ipcMain.handle('workflow:execute', (_event, request: WorkflowRequest, authority?: string) => {
     if (!buildService) throw new Error('Build service unavailable');

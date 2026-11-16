@@ -19,6 +19,9 @@ const elapsed = (start: string, end: string): number =>
  * Does not infer CMake target dependencies or completion percentages. Those need
  * tool-level instrumentation (BM4/BM5). Logs and runs are bounded until BM2.
  */
+type UnstampedEvent<T> = T extends BuildMonitorEvent ? Omit<T, 'sequence' | 'timestamp'> : never;
+type BuildMonitorEventInput = UnstampedEvent<BuildMonitorEvent>;
+
 export class BuildMonitorService {
   private value: BuildMonitorSnapshot = {
     revision: 1, projectGuid: null, activeRunId: null, runs: [], events: [],
@@ -50,7 +53,7 @@ export class BuildMonitorService {
     this.outputCursor.clear();
   }
 
-  private event(event: Omit<BuildMonitorEvent, 'sequence' | 'timestamp'>): void {
+  private event(event: BuildMonitorEventInput): void {
     const next = { ...event, sequence: ++this.sequence, timestamp: this.now() } as BuildMonitorEvent;
     this.value.events = [...this.value.events.slice(-(MAX_EVENTS - 1)), structuredClone(next)];
     this.value.revision++;
