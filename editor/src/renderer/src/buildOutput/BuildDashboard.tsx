@@ -559,7 +559,9 @@ export function BuildDashboard({
                         : 'Full output remains in project build history'}
                     </span>
                     {Boolean(detail?.hiddenLogChunks) && (
-                      <button type="button" onClick={() => setDetailEpoch((value) => value + 1)}>Read from start</button>
+                      <button type="button" onClick={() => setDetailEpoch((value) => value + 1)}>
+                        Read from start
+                      </button>
                     )}
                     {(detail?.moreLogs || detail?.moreEvents) && (
                       <button type="button" disabled={loadingMore} onClick={() => void loadNext()}>

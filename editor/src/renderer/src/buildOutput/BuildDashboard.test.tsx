@@ -185,15 +185,13 @@ describe('Build Monitor BM3', () => {
   it('reports a storage error without crashing and shows an empty state', async () => {
     mockApi({
       monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, runs: [], activeRunId: null }),
-      history: vi
-        .fn()
-        .mockResolvedValue({
-          projectGuid: 'test-project',
-          total: 0,
-          offset: 0,
-          runs: [],
-          storageError: 'History unavailable',
-        }),
+      history: vi.fn().mockResolvedValue({
+        projectGuid: 'test-project',
+        total: 0,
+        offset: 0,
+        runs: [],
+        storageError: 'History unavailable',
+      }),
     });
     render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
     expect(await screen.findByRole('alert')).toHaveTextContent('History unavailable');
