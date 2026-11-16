@@ -1,5 +1,11 @@
 import type { ArcBuildSnapshot } from '../common/buildTypes';
-import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorStage, BuildMonitorStageState, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
+import type {
+  BuildMonitorEvent,
+  BuildMonitorRun,
+  BuildMonitorStage,
+  BuildMonitorStageState,
+  BuildMonitorSnapshot,
+} from '../common/buildMonitorTypes';
 import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
 
 const MAX_RUNS = 24;
@@ -11,8 +17,7 @@ const commandStages: Record<string, string> = {
 };
 const terminal = (state: string): state is 'succeeded' | 'failed' | 'cancelled' =>
   state === 'succeeded' || state === 'failed' || state === 'cancelled';
-const elapsed = (start: string, end: string): number =>
-  Math.max(0, Date.parse(end) - Date.parse(start));
+const elapsed = (start: string, end: string): number => Math.max(0, Date.parse(end) - Date.parse(start));
 
 /**
  * Normalizes existing command and project-workflow snapshots into one event stream.
@@ -24,7 +29,11 @@ type BuildMonitorEventInput = UnstampedEvent<BuildMonitorEvent>;
 
 export class BuildMonitorService {
   private value: BuildMonitorSnapshot = {
-    revision: 1, projectGuid: null, activeRunId: null, runs: [], events: [],
+    revision: 1,
+    projectGuid: null,
+    activeRunId: null,
+    runs: [],
+    events: [],
   };
   private sequence = 0;
   private diagnosticCursor = new Map<string, number>();

@@ -115,17 +115,19 @@ describe('BuildMonitorService BM1 event stream', () => {
     monitor.observeCommand(
       command({
         state: 'cancelled',
-        history: [{
-          id: 1,
-          runId: 'command-001',
-          kind: 'build',
-          startedAt: '2026-11-16T12:00:00.000Z',
-          durationMs: 100,
-          configuration: 'RelWithDebInfo',
-          result: 'cancelled',
-          errorCount: 0,
-          warningCount: 0,
-        }],
+        history: [
+          {
+            id: 1,
+            runId: 'command-001',
+            kind: 'build',
+            startedAt: '2026-11-16T12:00:00.000Z',
+            durationMs: 100,
+            configuration: 'RelWithDebInfo',
+            result: 'cancelled',
+            errorCount: 0,
+            warningCount: 0,
+          },
+        ],
       }),
       'project-a',
     );
@@ -143,24 +145,36 @@ describe('BuildMonitorService BM1 event stream', () => {
       'project-a',
     );
     monitor.observeWorkflow(
-      workflow('running', [
-        { stage: 'validate', state: 'succeeded' },
-        { stage: 'configure', state: 'running' },
-      ], { sequence: 1, text: 'Configured target' }),
+      workflow(
+        'running',
+        [
+          { stage: 'validate', state: 'succeeded' },
+          { stage: 'configure', state: 'running' },
+        ],
+        { sequence: 1, text: 'Configured target' },
+      ),
       'project-a',
     );
     monitor.observeWorkflow(
-      workflow('running', [
-        { stage: 'validate', state: 'succeeded' },
-        { stage: 'configure', state: 'running' },
-      ], { sequence: 1, text: 'Configured target' }),
+      workflow(
+        'running',
+        [
+          { stage: 'validate', state: 'succeeded' },
+          { stage: 'configure', state: 'running' },
+        ],
+        { sequence: 1, text: 'Configured target' },
+      ),
       'project-a',
     );
     monitor.observeWorkflow(
-      workflow('succeeded', [
-        { stage: 'validate', state: 'succeeded' },
-        { stage: 'configure', state: 'succeeded' },
-      ], { sequence: 2, text: 'Build complete' }),
+      workflow(
+        'succeeded',
+        [
+          { stage: 'validate', state: 'succeeded' },
+          { stage: 'configure', state: 'succeeded' },
+        ],
+        { sequence: 2, text: 'Build complete' },
+      ),
       'project-a',
     );
 
@@ -178,9 +192,11 @@ describe('BuildMonitorService BM1 event stream', () => {
       ['workflow-001:validate', 'succeeded'],
       ['workflow-001:configure', 'succeeded'],
     ]);
-    expect(snapshot.events.filter((event) => event.kind === 'output').map((event) => (
-      event.kind === 'output' ? event.text : ''
-    ))).toEqual(['Configured target', 'Build complete']);
+    expect(
+      snapshot.events
+        .filter((event) => event.kind === 'output')
+        .map((event) => (event.kind === 'output' ? event.text : '')),
+    ).toEqual(['Configured target', 'Build complete']);
     expect(snapshot.events.filter((event) => event.kind === 'run-completed')).toHaveLength(1);
   });
 
@@ -201,7 +217,9 @@ describe('BuildMonitorService BM1 event stream', () => {
   });
 
   it('does not break builds if an observer throws', () => {
-    const monitor = new BuildMonitorService(() => { throw new Error('renderer closed'); });
+    const monitor = new BuildMonitorService(() => {
+      throw new Error('renderer closed');
+    });
     expect(() => monitor.observeCommand(command(), 'project-a')).not.toThrow();
     expect(monitor.snapshot().runs).toHaveLength(1);
   });
