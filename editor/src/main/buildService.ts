@@ -218,11 +218,12 @@ export class BuildService {
       const child = spawn(tool, effective, { cwd: project.projectRoot, shell: false, windowsHide: true });
       this.process = child;
       let failedToStart = false;
-      let pending = '';
-      const consume = (data: Buffer, severity: ArcBuildDiagnostic['severity']) => {
-        pending += data.toString('utf8');
-        const lines = pending.split(/\r?\n/);
-        pending = lines.pop() ?? '';
+      // CMake output and the CLI's failure summary can arrive on different
+      // pipes. Keep independent partial lines to avoid joining two errors.
+      const pending = { info: '', error: '' };
+      const consume = (data: Buffer, severity: 'info' | 'error') => {
+        const lines = (pending[severity] + data.toString('utf8')).split(/\r?\n/);
+        pending[severity] = lines.pop() ?? '';
         for (const line of lines) if (line.trim()) this.parseLine(line, severity);
       };
       child.stdout.on('data', (data: Buffer) => consume(data, 'info'));
@@ -237,13 +238,22 @@ export class BuildService {
       });
       child.on('close', (code) => {
         if (failedToStart) return;
-        if (pending.trim()) this.parseLine(pending, code === 0 ? 'info' : 'error');
+        if (pending.info.trim()) this.parseLine(pending.info, code === 0 ? 'info' : 'error');
+        if (pending.error.trim()) this.parseLine(pending.error, 'error');
         this.process = null;
         if (this.cancelledProcesses.delete(child)) {
           this.recordRun(kind, configuration, startedMs, 'cancelled');
           this.update({ state: 'cancelled', completedAt: new Date().toISOString() });
           reject(new Error('Project build cancelled'));
           return;
+        }
+        if (code !== 0) {
+          const hasError = this.snapshotValue.diagnostics.some((item) => item.severity === 'error');
+          if (!hasError) {
+            const operation = kind === 'configure' ? 'Configure' : kind === 'clean' ? 'Clean' : 'Build';
+            const message = `${operation} failed (exit ${String(code)}). See CMake output and ARC SDK settings.`;
+            this.append('error', message, 'compiler');
+          }
         }
         this.recordRun(kind, configuration, startedMs, code === 0 ? 'succeeded' : 'failed');
         if (code === 0) {
@@ -325,11 +335,13 @@ export class BuildService {
 
   private parseLine(line: string, fallback: ArcBuildDiagnostic['severity']): void {
     const match = diagnosticPattern.exec(line);
-    const severity = /warning/i.test(match?.[6] ?? '')
-      ? 'warning'
-      : /error/i.test(match?.[6] ?? '')
-        ? 'error'
-        : fallback;
+    // CMake and Ninja errors often lack a file:line diagnostic. Preserve
+    // their severity instead of presenting a CMake error as informational.
+    const errorLine = /\b(?:cmake error|fatal error|error(?:\s+[A-Z]+\d+)?\s*:|ninja:\s*error)/i.test(line);
+    const warningLine = /\b(?:cmake warning|warning(?:\s+[A-Z]+\d+)?\s*:)/i.test(line);
+    let severity: ArcBuildDiagnostic['severity'] = fallback;
+    if (warningLine || /warning/i.test(match?.[6] ?? '')) severity = 'warning';
+    if (errorLine || /error/i.test(match?.[6] ?? '')) severity = 'error';
     this.snapshotValue.diagnostics.push({
       sequence: ++this.sequence,
       severity,
