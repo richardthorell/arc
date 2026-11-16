@@ -87,11 +87,16 @@ export class BuildMonitorService {
     this.event({ kind: 'stage-changed', runId: run.id, stage: structuredClone(stage) });
   }
 
-  private complete(run: BuildMonitorRun, result: 'succeeded' | 'failed' | 'cancelled', endedAt?: string): void {
+  private complete(
+    run: BuildMonitorRun,
+    result: 'succeeded' | 'failed' | 'cancelled',
+    endedAt?: string,
+    durationMs?: number,
+  ): void {
     if (terminal(run.state)) return;
     run.state = result;
     run.completedAt = endedAt ?? this.now();
-    run.durationMs = elapsed(run.startedAt, run.completedAt);
+    run.durationMs = durationMs ?? elapsed(run.startedAt, run.completedAt);
     if (this.value.activeRunId === run.id) this.value.activeRunId = null;
     this.event({ kind: 'run-completed', runId: run.id, run: structuredClone(run) });
   }
@@ -139,8 +144,7 @@ export class BuildMonitorService {
       const completed = snapshot.history?.find((item) => item.runId === run!.id);
       if (!completed) return;
       this.updateStage(run, run.stages[0], completed.result);
-      this.complete(run, completed.result, snapshot.completedAt);
-      run.durationMs = completed.durationMs;
+      this.complete(run, completed.result, snapshot.completedAt, completed.durationMs);
     }
   }
 
