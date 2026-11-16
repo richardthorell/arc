@@ -14,6 +14,10 @@ if(BUILD_TESTING)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/project_settings_tests.py"
             $<TARGET_FILE:arc-project-cli> "${CMAKE_SOURCE_DIR}/templates" "${PROJECT_VERSION}")
     set_tests_properties(arc-project-settings PROPERTIES TIMEOUT 30)
+    add_test(NAME arc-project-first-build
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build_flow_tests.py"
+            $<TARGET_FILE:arc-project-cli> "${CMAKE_SOURCE_DIR}/templates" "${PROJECT_VERSION}" "${CMAKE_COMMAND}")
+    set_tests_properties(arc-project-first-build PROPERTIES TIMEOUT 120)
     add_test(NAME arc-project-runtime-build-manifest
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/runtime_build_tests.py"
             $<TARGET_FILE:arc-project-cli> "${CMAKE_SOURCE_DIR}/templates" "${PROJECT_VERSION}"
