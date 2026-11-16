@@ -263,6 +263,10 @@ project_descriptor parse_descriptor(const json& source, std::uint32_t expected_v
         result.default_scene = parse_asset_reference(source["defaultScene"]);
     for (const auto& entry : source.value("startupScenes", json::array()))
         result.startup_scenes.push_back(parse_asset_reference(entry));
+    if (source.contains("serverStartupScene") && !source["serverStartupScene"].is_null())
+        result.server_startup_scene = parse_asset_reference(source["serverStartupScene"]);
+    for (const auto& entry : source.value("includedScenes", json::array()))
+        result.included_scenes.push_back(parse_asset_reference(entry));
     for (const auto& entry : source.value("targetPlatforms", json::array()))
         result.target_platforms.push_back({.id = entry.value("id", ""), .enabled = entry.value("enabled", true)});
 
@@ -401,6 +405,16 @@ json descriptor_json(const project_descriptor& value)
                   {"plugins", std::move(plugins)},
                   {"defaultScene", value.default_scene ? asset_reference_json(*value.default_scene) : json(nullptr)},
                   {"startupScenes", std::move(startup)},
+                  {"serverStartupScene",
+                   value.server_startup_scene ? asset_reference_json(*value.server_startup_scene) : json(nullptr)},
+                  {"includedScenes",
+                   [&]
+                   {
+                       auto scenes = json::array();
+                       for (const auto& scene : value.included_scenes)
+                           scenes.push_back(asset_reference_json(scene));
+                       return scenes;
+                   }()},
                   {"targetPlatforms", std::move(targets)},
                   {"toolchain",
                    {{"compiler", value.toolchain.compiler},
@@ -655,6 +669,13 @@ descriptor_result load_descriptor(const std::filesystem::path& descriptor_path)
     }
 }
 
+const project_asset_reference* resolve_startup_scene(const project_descriptor& descriptor,
+                                                     bool dedicated_server) noexcept
+{
+    if (dedicated_server && descriptor.server_startup_scene) return &*descriptor.server_startup_scene;
+    return descriptor.startup_scenes.empty() ? nullptr : &descriptor.startup_scenes.front();
+}
+
 project_status save_descriptor(const std::filesystem::path& descriptor_path, const project_descriptor& descriptor)
 {
     const auto validation = validate_descriptor(descriptor_path, descriptor);
@@ -899,6 +920,11 @@ validation_result validate_descriptor(const std::filesystem::path& descriptor_pa
             if (const auto error = validate_scene_reference(*descriptor.default_scene))
                 return validation_result::failure(*error);
         for (const auto& scene : descriptor.startup_scenes)
+            if (const auto error = validate_scene_reference(scene)) return validation_result::failure(*error);
+        if (descriptor.server_startup_scene)
+            if (const auto error = validate_scene_reference(*descriptor.server_startup_scene))
+                return validation_result::failure(*error);
+        for (const auto& scene : descriptor.included_scenes)
             if (const auto error = validate_scene_reference(scene)) return validation_result::failure(*error);
         for (const auto& module : descriptor.modules)
         {

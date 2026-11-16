@@ -222,7 +222,8 @@ int run(const std::vector<std::string>& args, bool json_output)
         return fail(json_output, "cookManifest.target",
                     "Cooked ARM64/Vulkan target, profile or configuration differs from Android workflow");
 
-    if (descriptor.value().startup_scenes.empty())
+    const auto* startup_scene = project::resolve_startup_scene(descriptor.value());
+    if (!startup_scene)
         return fail(json_output, "startupScenes", "Android client must declare at least one startup scene");
 
     // Verify the package is structurally mountable before selecting its chunks.
@@ -251,8 +252,9 @@ int run(const std::vector<std::string>& args, bool json_output)
         if (artifact.type == assets::asset_types::scene && artifact.schema == assets::artifact_schemas::scene)
             cooked_scenes.insert(artifact.asset);
 
-    for (const auto& scene : descriptor.value().startup_scenes)
+    if (startup_scene)
     {
+        const auto& scene = *startup_scene;
         const auto guid = assets::parse_asset_guid(scene.guid);
         if (!guid || !cooked_scenes.contains(*guid))
             return fail(json_output, "startupScenes",

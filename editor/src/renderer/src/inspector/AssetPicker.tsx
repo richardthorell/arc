@@ -43,6 +43,8 @@ export type AssetPickerProps = {
   assetCompatibility?: (asset: AssetPickerItem) => string | null;
   onChange: (value: string, asset?: AssetPickerItem) => void;
   showLabel?: boolean;
+  compact?: boolean;
+  emptyLabel?: string;
   triggerMode?: 'default' | 'add';
 };
 
@@ -242,6 +244,8 @@ export function AssetPicker({
   assetCompatibility,
   onChange,
   showLabel = true,
+  compact = false,
+  emptyLabel = 'None',
   triggerMode = 'default',
 }: AssetPickerProps) {
   const [open, setOpen] = useState(false);
@@ -295,7 +299,7 @@ export function AssetPicker({
         <button
           aria-expanded={open}
           aria-label={triggerMode === 'add' ? `Add ${label}` : `Choose ${label} asset`}
-          className={`asset-reference-main${triggerMode === 'add' ? ' asset-reference-add' : ''}`}
+          className={`asset-reference-main${compact ? ' asset-reference-compact' : ''}${triggerMode === 'add' ? ' asset-reference-add' : ''}`}
           onClick={() => setOpen((current) => !current)}
           ref={anchorRef}
           type="button"
@@ -304,22 +308,26 @@ export function AssetPicker({
             <Plus size={14} />
           ) : (
             <>
-              <AssetThumbnail
-                asset={selected}
-                path={mixed ? '' : selected?.path || value}
-                provider={thumbnailProvider}
-              />
+              {!compact && (
+                <AssetThumbnail
+                  asset={selected}
+                  path={mixed ? '' : selected?.path || value}
+                  provider={thumbnailProvider}
+                />
+              )}
               <span className="asset-reference-copy">
-                <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : 'None'}</strong>
-                <small>
-                  {mixed
-                    ? 'Choose an asset to replace all values'
-                    : selected
-                      ? sourceLabelOf(selected, assetTypeLabel)
-                      : value
-                        ? assetTypeLabel
-                        : `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
-                </small>
+                <strong>{mixed ? 'Mixed' : value ? displayNameOf(selected, value) : emptyLabel}</strong>
+                {!compact && (
+                  <small>
+                    {mixed
+                      ? 'Choose an asset to replace all values'
+                      : selected
+                        ? sourceLabelOf(selected, assetTypeLabel)
+                        : value
+                          ? assetTypeLabel
+                          : `No ${assetTypeLabel.toLocaleLowerCase()} assigned`}
+                  </small>
+                )}
               </span>
               <ChevronDown size={13} />
             </>
@@ -354,6 +362,7 @@ export function AssetPicker({
       </div>
       {open && (
         <AssetPickerPopover
+          compact={compact}
           anchorRef={anchorRef}
           assets={candidates}
           assetTypeLabel={assetTypeLabel}
@@ -527,6 +536,7 @@ export function AssetPreview({
 }
 
 function AssetPickerPopover({
+  compact,
   anchorRef,
   assets,
   assetTypeLabel,
@@ -542,6 +552,7 @@ function AssetPickerPopover({
   onSelect,
   valueFor,
 }: {
+  compact?: boolean;
   anchorRef: React.RefObject<HTMLElement | null>;
   assets: ReadonlyArray<AssetPickerItem>;
   assetTypeLabel: string;
@@ -643,7 +654,7 @@ function AssetPickerPopover({
           />
         </label>
       )}
-      <div className="asset-picker-grid">
+      <div className={`asset-picker-grid${compact ? ' asset-picker-compact-list' : ''}`}>
         {createMode ? (
           <form
             onSubmit={(event) => {
@@ -729,7 +740,7 @@ function AssetPickerPopover({
                   title={incompatibility ?? undefined}
                   type="button"
                 >
-                  <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />
+                  {!compact && <AssetThumbnail asset={asset} path={asset.path} provider={thumbnailProvider} />}
                   <strong>{displayNameOf(asset)}</strong>
                   <small>{incompatibility ?? `${sourceLabelOf(asset, assetTypeLabel)} · ${asset.status}`}</small>
                 </button>

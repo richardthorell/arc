@@ -115,6 +115,24 @@ function fixture() {
   };
 }
 describe('Project Settings persistence', () => {
+  it('migrates extra startup references to cook inclusion without changing editor startup or dropping metadata', async () => {
+    const state = fixture();
+    const first = { guid: 'first', expectedType: 'scene', pathHint: 'Content/First.arcscene' };
+    const extra = { guid: 'extra', expectedType: 'scene', pathHint: 'Content/Extra.arcscene', extension: 42 };
+    fs.writeFileSync(
+      state.descriptorPath,
+      JSON.stringify({ ...state.raw, defaultScene: first, startupScenes: [first, extra] }),
+    );
+    const read = await state.service.read();
+    expect(read.values.startupScene).toEqual(first);
+    expect(read.values.includedScenes).toEqual([extra]);
+    expect((await state.apply({ startupScene: null })).succeeded).toBe(true);
+    const saved = JSON.parse(fs.readFileSync(state.descriptorPath, 'utf8'));
+    expect(saved.startupScenes).toEqual([]);
+    expect(saved.includedScenes).toEqual([extra]);
+    expect(saved.defaultScene).toEqual(first);
+    expect(saved.startupScene).toBeUndefined();
+  });
   it('publishes a draft thumbnail only on Apply and removes it explicitly', async () => {
     const state = fixture();
     const thumbnail = path.join(state.root, 'Config', 'ProjectThumbnail.webp');

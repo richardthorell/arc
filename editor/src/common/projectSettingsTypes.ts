@@ -26,6 +26,9 @@ export const projectSettingSchemas = {
   'package.regionChunks': z.boolean(),
   defaultScene: scene.nullable(),
   startupScenes: z.array(scene).max(64),
+  startupScene: scene.nullable(),
+  serverStartupScene: scene.nullable(),
+  includedScenes: z.array(scene).max(64),
   targetPlatforms: z
     .array(z.object({ id: text.min(1), enabled: z.boolean() }).passthrough())
     .min(1)
@@ -46,6 +49,8 @@ export type ProjectSettingsField = {
   category: string;
   label: string;
   description?: string;
+  requiresServerTarget?: boolean;
+  emptyLabel?: string;
   section?: string;
   control:
     'text' | 'multiline' | 'image' | 'number' | 'boolean' | 'readonly' | 'scene' | 'scenes' | 'targets' | 'profiles';
@@ -184,20 +189,30 @@ export const projectSettingsCatalog = {
     { id: 'engineVersion', category: 'advanced', label: 'Engine version', control: 'readonly' },
     { id: 'descriptorPath', category: 'advanced', label: 'Descriptor location', control: 'readonly' },
     {
-      id: 'defaultScene',
+      id: 'startupScene',
       category: 'startup',
-      label: 'Editor default scene',
+      label: 'Startup scene',
       control: 'scene',
       defaultValue: null,
-      description: 'Scene opened when the project loads.',
+      description: 'Initial scene loaded when the game starts.',
     },
     {
-      id: 'startupScenes',
+      id: 'serverStartupScene',
       category: 'startup',
-      label: 'Runtime startup scenes',
+      label: 'Server startup scene',
+      control: 'scene',
+      defaultValue: null,
+      requiresServerTarget: true,
+      emptyLabel: 'Use game startup scene',
+      description: 'Initial scene for dedicated servers.',
+    },
+    {
+      id: 'includedScenes',
+      category: 'build',
+      label: 'Included scenes',
       control: 'scenes',
       defaultValue: [],
-      description: 'Scenes loaded at startup, in this order.',
+      description: 'Additional scenes included in cooked builds; not loaded at startup.',
     },
     { id: 'targetPlatforms', category: 'platforms', label: 'Project targets', control: 'targets' },
     {

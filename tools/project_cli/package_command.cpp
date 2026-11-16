@@ -149,15 +149,17 @@ int handle_package_command(const std::vector<std::string>& args, bool json_outpu
     const auto cook_destination = "Content/" + cook_path.filename().generic_string();
     manifest.cook_manifests = {cook_destination};
 
-    if (!server && descriptor.value().startup_scenes.empty())
+    const auto* startup_scene = project::resolve_startup_scene(descriptor.value(), server);
+    if (!server && !startup_scene)
         return fail(json_output, "startupScenes", "Client project must declare startup scenes");
 
     std::set<assets::asset_guid> cooked_scenes;
     for (const auto& artifact : cooked.value().artifacts)
         if (artifact.type == assets::asset_types::scene) cooked_scenes.insert(artifact.asset);
 
-    for (const auto& scene : descriptor.value().startup_scenes)
+    if (startup_scene)
     {
+        const auto& scene = *startup_scene;
         const auto parsed = assets::parse_asset_guid(scene.guid);
         if (!parsed || !cooked_scenes.contains(*parsed))
             return fail(json_output, "startupScenes",

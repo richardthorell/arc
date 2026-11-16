@@ -52,6 +52,8 @@ export type ArcProjectDescriptor = {
   }>;
   defaultScene: ArcProjectAssetReference | null;
   startupScenes: ArcProjectAssetReference[];
+  serverStartupScene?: ArcProjectAssetReference | null;
+  includedScenes?: ArcProjectAssetReference[];
   targetPlatforms: Array<{ id: string; enabled: boolean }>;
   toolchain: {
     compiler: string;

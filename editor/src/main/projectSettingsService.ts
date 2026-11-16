@@ -16,6 +16,15 @@ import {
 } from '../common/projectSettingsTypes';
 
 const executeFile = promisify(execFile);
+function mergeSceneReferences(first: unknown[], second: unknown[]): unknown[] {
+  const references = new Map<string, unknown>();
+  for (const entry of [...first, ...second]) {
+    const reference = entry as { guid?: string; pathHint?: string };
+    const key = reference.guid || reference.pathHint || JSON.stringify(entry);
+    references.set(key, references.has(key) ? mergeValue(entry, references.get(key)) : entry);
+  }
+  return [...references.values()];
+}
 async function nativeQuery(tool: string, args: string[]): Promise<unknown> {
   try {
     const result = await executeFile(tool, [...args, '--json'], {
@@ -151,6 +160,12 @@ export class ProjectSettingsService {
           ? project.descriptorPath
           : (projectSettingValue(raw, field.id) ?? ('defaultValue' in field ? field.defaultValue : ''));
     if (typeof values.thumbnail !== 'string') values.thumbnail = null;
+    const legacyScenes = Array.isArray(raw.startupScenes) ? raw.startupScenes : [];
+    values.startupScene = legacyScenes[0] ?? null;
+    values.includedScenes = mergeSceneReferences(
+      Array.isArray(raw.includedScenes) ? raw.includedScenes : [],
+      legacyScenes.slice(1),
+    );
     return {
       thumbnailPreview: projectThumbnail(project.descriptorPath),
       catalog: this.describe(),
@@ -222,6 +237,7 @@ export class ProjectSettingsService {
       }
       const next = JSON.parse(bytes) as Record<string, unknown>;
       for (const [id, value] of Object.entries(request.changes)) {
+        if (id === 'startupScene') continue;
         const keys = id.split('.');
         let object = next;
         for (const key of keys.slice(0, -1)) {
@@ -231,6 +247,18 @@ export class ProjectSettingsService {
         const key = keys.at(-1)!;
         object[key] = mergeValue(object[key], value);
       }
+      // Preserve legacy additional startup scenes as build inclusions, never discard their GUIDs.
+      const legacyScenes = Array.isArray(next.startupScenes) ? next.startupScenes : [];
+      if (!Object.hasOwn(request.changes, 'includedScenes'))
+        next.includedScenes = mergeSceneReferences(
+          Array.isArray(raw.includedScenes) ? raw.includedScenes : [],
+          legacyScenes.slice(1),
+        );
+      next.startupScenes = Object.hasOwn(request.changes, 'startupScene')
+        ? request.changes.startupScene
+          ? [request.changes.startupScene]
+          : []
+        : legacyScenes.slice(0, 1);
       if (next.guid !== raw.guid) throw new Error('Project identity cannot change');
       const previousPackage = raw.package as Record<string, unknown> | undefined;
       if (Object.hasOwn(request.changes, 'name') && previousPackage?.applicationName === raw.name)

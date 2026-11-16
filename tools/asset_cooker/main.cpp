@@ -731,6 +731,12 @@ std::vector<asset_guid> resolve_roots(asset_manager& assets, const command_line&
                                                                       : descriptor.default_scene->guid);
         for (const auto& scene : descriptor.startup_scenes)
             authored.push_back(scene.guid.empty() ? scene.path_hint : scene.guid);
+        if (descriptor.server_startup_scene)
+            authored.push_back(descriptor.server_startup_scene->guid.empty()
+                                   ? descriptor.server_startup_scene->path_hint
+                                   : descriptor.server_startup_scene->guid);
+        for (const auto& scene : descriptor.included_scenes)
+            authored.push_back(scene.guid.empty() ? scene.path_hint : scene.guid);
     }
     std::vector<asset_guid> result;
     for (const auto& root : authored)
@@ -958,7 +964,8 @@ int main(int argc, char** argv)
         // the D0 package and D1 runtime still validate and mount it normally.
         // Do not silently accept missing cook roots for graphical clients.
         const bool empty_headless = command.roots.empty() && descriptor.value().startup_scenes.empty() &&
-                                    !variants.empty() &&
+                                    !descriptor.value().server_startup_scene &&
+                                    descriptor.value().included_scenes.empty() && !variants.empty() &&
                                     std::all_of(variants.begin(), variants.end(), [](const cook_variant& variant)
                                                 { return variant.target.renderer == cook_renderer::none; });
         if (!empty_headless || (command.command != "package" && command.command != "cook"))

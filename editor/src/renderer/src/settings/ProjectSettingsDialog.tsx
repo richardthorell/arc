@@ -274,6 +274,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
             value={value as ArcProjectAssetReference | null}
             assets={assets}
             label={field.label}
+            emptyLabel={field.emptyLabel}
             onChange={update}
           />
         );
@@ -310,19 +311,27 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     }
   };
   const fields =
-    state?.snapshot.catalog.fields.filter((field) =>
-      search.trim()
-        ? `${field.label} ${field.id} ${field.description ?? ''} ${state.snapshot.catalog.categories.find((entry) => entry.id === field.category)?.label ?? ''}`
-            .toLowerCase()
-            .includes(search.toLowerCase().trim())
-        : category === 'platforms'
-          ? field.category === category
-          : withinCategory(state.snapshot.catalog.categories, field.category, category),
-    ) ?? [];
+    state?.snapshot.catalog.fields
+      .filter(
+        (field) =>
+          !field.requiresServerTarget ||
+          (Array.isArray(state.draft.targetPlatforms) &&
+            (state.draft.targetPlatforms as ArcProjectDescriptor['targetPlatforms']).some(
+              (target) => target.enabled && target.id.endsWith('-headless'),
+            )),
+      )
+      .filter((field) =>
+        search.trim()
+          ? `${field.label} ${field.id} ${field.description ?? ''} ${state.snapshot.catalog.categories.find((entry) => entry.id === field.category)?.label ?? ''}`
+              .toLowerCase()
+              .includes(search.toLowerCase().trim())
+          : category === 'platforms'
+            ? field.category === category
+            : withinCategory(state.snapshot.catalog.categories, field.category, category),
+      ) ?? [];
   return (
     <UiDialogSettings
       onClose={close}
-      subtitle="Settings shared by this project"
       title="Project Settings"
       sidebar={
         state && (

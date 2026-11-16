@@ -9,11 +9,15 @@ export function ProjectSceneSetting({
   assets,
   onChange,
   label,
+  emptyLabel,
+  showLabel = false,
 }: {
   value: ArcProjectAssetReference | null;
   assets: AssetPickerItem[];
   onChange: (value: ArcProjectAssetReference | null) => void;
   label: string;
+  emptyLabel?: string;
+  showLabel?: boolean;
 }) {
   const missing = value && !assets.some((asset) => asset.guid === value.guid);
   return (
@@ -22,6 +26,9 @@ export function ProjectSceneSetting({
         assets={assets}
         value={value?.guid ?? ''}
         label={label}
+        showLabel={showLabel}
+        compact
+        emptyLabel={emptyLabel}
         assetKinds={['scene']}
         referenceMode="guid"
         allowEmpty
@@ -54,7 +61,8 @@ export function ProjectSceneList({
       {value.map((scene, index) => (
         <div key={`${scene.guid}-${index}`} className="project-settings-collection-row">
           <ProjectSceneSetting
-            label={`Startup scene ${index + 1}`}
+            label={`Included scene ${index + 1}`}
+            showLabel
             value={scene}
             assets={assets}
             onChange={(next) =>
@@ -75,7 +83,8 @@ export function ProjectSceneList({
         </div>
       ))}
       <ProjectSceneSetting
-        label="Add startup scene"
+        label="Add included scene"
+        showLabel
         value={null}
         assets={assets}
         onChange={(scene) => {

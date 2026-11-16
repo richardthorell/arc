@@ -79,7 +79,7 @@ it('shows project information controls and keeps engine identity in Advanced', a
 });
 
 it('keeps missing scene GUID bindings visible and unchanged when editing another setting', async () => {
-  snapshot.values.defaultScene = { guid: 'missing-scene', expectedType: 'scene', pathHint: 'Content/Old.arcscene' };
+  snapshot.values.startupScene = { guid: 'missing-scene', expectedType: 'scene', pathHint: 'Content/Old.arcscene' };
   render(<ProjectSettingsDialog onClose={vi.fn()} />);
   await screen.findByRole('textbox', { name: 'Project name' });
   fireEvent.click(screen.getByRole('treeitem', { name: 'General' }));
@@ -89,7 +89,23 @@ it('keeps missing scene GUID bindings visible and unchanged when editing another
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
   await waitFor(() => expect(apply).toHaveBeenCalled());
   expect(apply.mock.calls[0][0].changes).toEqual({ name: 'Changed' });
-  expect(snapshot.values.defaultScene).toMatchObject({ guid: 'missing-scene', pathHint: 'Content/Old.arcscene' });
+  expect(snapshot.values.startupScene).toMatchObject({ guid: 'missing-scene', pathHint: 'Content/Old.arcscene' });
+});
+
+it('shows a compact game picker and exposes server inheritance only for enabled server targets', async () => {
+  const view = render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  const picker = await screen.findByRole('button', { name: 'Choose Startup scene asset' });
+  expect(picker.querySelector('.asset-thumbnail')).toBeNull();
+  expect(screen.getAllByText('Startup scene')).toHaveLength(1);
+  expect(screen.queryByText('Editor default scene')).not.toBeInTheDocument();
+  expect(screen.queryByText('Runtime startup scenes')).not.toBeInTheDocument();
+  expect(screen.queryByText('Server startup scene')).not.toBeInTheDocument();
+  expect(screen.queryByText('Settings shared by this project')).not.toBeInTheDocument();
+  view.unmount();
+  snapshot.values.targetPlatforms = [{ id: 'linux-x64-headless', enabled: true }];
+  render(<ProjectSettingsDialog onClose={vi.fn()} />);
+  expect(await screen.findByText('Use game startup scene')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Choose Server startup scene asset' })).toBeInTheDocument();
 });
 
 it('renders catalog categories and applies only edited fields with captured authority', async () => {

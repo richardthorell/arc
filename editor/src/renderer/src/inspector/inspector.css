@@ -1292,3 +1292,16 @@
   padding-inline: 7px;
   font-size: 10px;
 }
+.asset-reference-main.asset-reference-compact {
+  min-height: var(--arc-control-height);
+  height: var(--arc-control-height);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 0 var(--arc-space-5);
+}
+.asset-picker-grid.asset-picker-compact-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+.asset-picker-compact-list > button {
+  justify-items: start;
+  text-align: left;
+}

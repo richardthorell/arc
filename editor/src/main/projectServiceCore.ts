@@ -196,6 +196,13 @@ const parseDescriptor = (value: unknown): ArcProjectDescriptor => {
       : [],
     defaultScene: assetReference(raw.defaultScene) ?? startupScenes[0] ?? null,
     startupScenes,
+    serverStartupScene: assetReference(raw.serverStartupScene),
+    includedScenes: Array.isArray(raw.includedScenes)
+      ? raw.includedScenes.flatMap((entry) => {
+          const scene = assetReference(entry);
+          return scene ? [scene] : [];
+        })
+      : [],
     targetPlatforms: Array.isArray(raw.targetPlatforms)
       ? raw.targetPlatforms.map((entry) => {
           const platform = objectValue(entry);

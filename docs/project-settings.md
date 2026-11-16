@@ -53,6 +53,16 @@ and configurations. Package output must remain inside the project Build root.
 
 ## Android handoff
 
+Startup exposes one compact game scene picker and an optional dedicated-server
+override when a headless target is enabled. Servers without an override inherit
+the game scene. The game picker writes the first `startupScenes` entry; desktop
+and Android packaging both use the native single-scene resolver. Existing
+additional entries remain cook roots and move to `includedScenes` on Apply,
+preserving their references and extension metadata. Included scenes are edited
+under Cooking & Packaging and are not automatically loaded. Cancel never migrates
+the descriptor. Existing `defaultScene` editor-startup data is retained for
+compatibility, but is no longer exposed in Project Settings.
+
 General contains Project Information and Startup panels. Project Information
 includes a three-line description, Studio / Company, a `major.minor.patch`
 project version, and a file-based project thumbnail (not a runtime asset).
