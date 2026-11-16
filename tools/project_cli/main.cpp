@@ -406,8 +406,8 @@ int main(int argc, char** argv)
         invoke.push_back("--project-tool");
         const auto executable = std::filesystem::absolute(argv[0]).lexically_normal();
         invoke.push_back(std::filesystem::is_regular_file(executable) ? executable.string() : argv[0]);
-        for (const auto* key : {"--profile", "--target", "--cooker", "--output",
-                                "--runtime-config", "--gradle", "--run-id"})
+        for (const auto* key :
+             {"--profile", "--target", "--cooker", "--output", "--runtime-config", "--gradle", "--run-id"})
         {
             if (const auto value = args.option(key))
             {
