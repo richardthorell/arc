@@ -113,7 +113,9 @@ describe('BuildService command history', () => {
     const messages = service.snapshot().diagnostics.map((item) => item.message);
     expect(messages.some((message) => message.includes('CMake Error at CMakeLists.txt'))).toBe(true);
     expect(messages.some((message) => message.includes('arc-project: CMake configuration failed'))).toBe(true);
-    expect(messages.some((message) => message.includes('arc-project:') && message.includes('find_package'))).toBe(false);
+    expect(messages.some((message) => message.includes('arc-project:') && message.includes('find_package'))).toBe(
+      false,
+    );
   });
 
   it('shows a useful diagnostic if the tool exits nonzero without any output', async () => {
