@@ -35,7 +35,7 @@ export type BuildMonitorRun = {
   artifacts?: WorkflowArtifact[];
 };
 
-type EventBase = { sequence: number; runId: string; timestamp: string };
+type EventBase = { sequence: number; runId: string; stageId?: string; timestamp: string };
 export type BuildMonitorEvent =
   | (EventBase & { kind: 'run-started'; run: BuildMonitorRun })
   | (EventBase & { kind: 'stage-changed'; stage: BuildMonitorStage })

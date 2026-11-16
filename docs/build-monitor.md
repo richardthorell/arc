@@ -6,7 +6,7 @@ BM1 introduces a **shared observation contract** for editor build commands and t
 - A legacy CMake/tool command gets a stable UUID in `ArcBuildSnapshot.runId` (also recorded in its completed history entry). Each invocation is one monitor run with a single command stage. Rebuild currently creates separate command runs for clean/configure/compile.
 - Project workflows reuse the existing `WorkflowRun.id` and native-plan stage names. Stage status changes are observed, not inferred from console text.
 - `BuildMonitorRun` captures source, action, configuration, optional platform/profile/target identity, stage timings, result, and artifact information when supplied.
-- `BuildMonitorEvent` emits `run-started`, `stage-changed`, `output`, `diagnostic`, and `run-completed`, each with a run ID, monotonic event sequence, and timestamp. Output chunks for workflows have a separate monotonic cursor, so repeated bounded snapshots do not duplicate them.
+- `BuildMonitorEvent` emits `run-started`, `stage-changed`, `output`, `diagnostic`, and `run-completed`, each with a run ID, optional active-stage ID, monotonic event sequence, and timestamp. Output chunks for workflows have a separate monotonic cursor, so repeated bounded snapshots do not duplicate them.
 - `window.arc.build.monitorSnapshot()` returns the current project-scoped run/event snapshot. `window.arc.build.onMonitorEvent(callback)` subscribes to live events and returns an unsubscribe function. The old `build:state` and `workflow:state` channels are retained.
 - A project change clears the in-memory run/event data. A stale workflow for a different project GUID is ignored.
 

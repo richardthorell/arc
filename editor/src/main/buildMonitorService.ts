@@ -84,7 +84,7 @@ export class BuildMonitorService {
       stage.completedAt = timestamp;
       if (stage.startedAt) stage.durationMs = elapsed(stage.startedAt, timestamp);
     }
-    this.event({ kind: 'stage-changed', runId: run.id, stage: structuredClone(stage) });
+    this.event({ kind: 'stage-changed', runId: run.id, stageId: stage.id, stage: structuredClone(stage) });
   }
 
   private complete(
@@ -115,7 +115,7 @@ export class BuildMonitorService {
         id: snapshot.runId,
         source: 'command',
         projectGuid,
-        action: stageName.toLowerCase(),
+        action: snapshot.state === 'building' ? 'build' : snapshot.state === 'cleaning' ? 'clean' : 'configure',
         configuration: snapshot.configuration,
         state: 'running',
         startedAt,
@@ -130,8 +130,8 @@ export class BuildMonitorService {
       if (diagnostic.sequence <= cursor) continue;
       this.event(
         diagnostic.severity === 'info'
-          ? { kind: 'output', runId: run.id, text: diagnostic.message }
-          : { kind: 'diagnostic', runId: run.id, diagnostic: structuredClone(diagnostic) },
+          ? { kind: 'output', runId: run.id, stageId: run.stages[0].id, text: diagnostic.message }
+          : { kind: 'diagnostic', runId: run.id, stageId: run.stages[0].id, diagnostic: structuredClone(diagnostic) },
       );
     }
     this.diagnosticCursor.set(run.id, Math.max(cursor, ...snapshot.diagnostics.map((item) => item.sequence), 0));
@@ -185,7 +185,12 @@ export class BuildMonitorService {
     const output = snapshot.latestOutput;
     if (output && output.sequence > (this.outputCursor.get(run.id) ?? 0)) {
       this.outputCursor.set(run.id, output.sequence);
-      this.event({ kind: 'output', runId: run.id, text: output.text });
+      this.event({
+        kind: 'output',
+        runId: run.id,
+        stageId: run.stages.find((stage) => stage.state === 'running')?.id,
+        text: output.text,
+      });
     }
     if (terminal(workflow.state)) {
       run.error = workflow.error;
