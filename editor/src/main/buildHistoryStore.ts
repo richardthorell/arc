@@ -207,7 +207,8 @@ export class BuildHistoryStore {
       const filename = this.file(kind, id);
       safeFile(filename);
       // O_NOFOLLOW prevents a swapped symlink from redirecting a log write.
-      const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | (fs.constants.O_NOFOLLOW ?? 0);
+      const flags =
+        fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | (fs.constants.O_NOFOLLOW ?? 0);
       const fd = fs.openSync(filename, flags, 0o600);
       try {
         fs.writeSync(fd, JSON.stringify(data) + '\n');
