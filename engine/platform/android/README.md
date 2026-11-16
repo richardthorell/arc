@@ -143,6 +143,45 @@ session on Android**. A3 stages cooked content, A4 finalizes a project APK and
 device-side startup acceptance remains separately tracked. A2 alone does not
 prove a visible game world, app deployment, or store-ready artifact.
 
+## A6 — Full external Android project build acceptance (#403)
+
+A6 completes the **build/package proof** for the A1–A5 Android toolchain:
+CI runs the public `arc-project build --platform android` command against two
+fresh, independent Blank 3D games **outside the engine checkout**.
+
+The acceptance path uses **real host** `arc-project` and `arc-cook` executables,
+an installed Android SDK host export, the real startup-scene/model/material/
+texture fixture, and the same NDK/Gradle launcher shipped by the SDK.
+There are no mocked commands or synthetic cooked manifests in A6.
+
+Each run:
+- Creates a new project using `arc-project create` and sets an application ID,
+  version, Debug ASTC profile and a real authored startup scene.
+- Executes all **validate → configure → compile → cook → package** stages
+  through A5's CLI, producing an independently signed Debug APK and sidecar.
+- Checks the persisted A5 stage record, log and terminal event; verifies the
+  source project is unchanged after the build.
+- Re-opens the APK and checks D0 startup-scene identity, all SHA-256 hashes,
+  uncompressed `.arcpak` chunks, ARM64 ELF host/runtime binaries, A2 module
+  GUID, A4 sidecar and installed SDK native host identity.
+- Extracts the **actual cooked package from the signed APK** and runs the
+  real `arc-cook verify` reader against it.
+- Compares both games to prove distinct project GUIDs, runtime module hashes
+  and APK/distribution identities (no cross-project cache contamination).
+- Runs a third build with an intentionally broken required scene dependency.
+  The native build must succeed, the cooker must reject the scene, and A5 must
+  leave **no published APK or partial staging artifacts**.
+
+The Android CI job uploads the two complete Debug APKs and their
+`arc-apk-integrity.json` reports as the
+`arc-android-a6-external-games-debug` artifact.
+
+**Acceptance boundary:** A6 proves an externally authored game can be built
+and packaged into a correctly signed ARM64 APK without launching the editor.
+It **does not prove on-device boot, rendered frames, user interaction or
+Logcat**. Those remain device-level acceptance tasks. Production release
+signing, store variants and AAB remain separate.
+
 ## Distribution A5 — One-command Android build and status (#403)
 
 A5 executes the same `project_workflow_plan` used by ARC's editor workflow
