@@ -65,7 +65,19 @@ add_custom_target(FirstBuildSmoke ALL
     assert (target / "built.txt").is_file(), (payload, stderr)
     assert payload["buildDirectory"] == target.as_posix(), payload
     cache = (target / "CMakeCache.txt").read_text(encoding="utf-8")
-    assert "CMAKE_PREFIX_PATH" in cache and str(sdk).replace("\\", "/") in cache
+    # CMake may preserve native backslashes when caching a -D path on
+    # Windows, while paths generated elsewhere use forward slashes. Compare
+    # the resolved SDK directories, not their textual separators.
+    prefix_entries = [
+        line.partition("=")[2]
+        for line in cache.splitlines()
+        if line.startswith("CMAKE_PREFIX_PATH:")
+    ]
+    assert len(prefix_entries) == 1, "Missing CMAKE_PREFIX_PATH in CMakeCache.txt"
+    configured_sdk = Path(prefix_entries[0].replace("\\", "/")).resolve()
+    assert configured_sdk == sdk.resolve(), (
+        f"Configured SDK differs from requested SDK: {configured_sdk!s} != {sdk!s}"
+    )
     assert any(line.startswith("CMAKE_BUILD_TYPE:") and line.endswith("=RelWithDebInfo")
                for line in cache.splitlines()), "The first build lost its selected configuration"
 
