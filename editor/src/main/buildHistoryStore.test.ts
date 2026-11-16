@@ -166,6 +166,20 @@ describe('BuildHistoryStore (BM2)', () => {
     expect(fs.readdirSync(outside)).toEqual([]);
   });
 
+  it('rejects a dangling log-file symlink instead of following it outside history', () => {
+    if (process.platform === 'win32') return;
+    const project = createProject();
+    const store = new BuildHistoryStore();
+    store.activate(project);
+    store.saveRun(run('linked-log'));
+    const destination = path.join(project.projectRoot, 'unwanted-external-log.txt');
+    const link = path.join(project.projectRoot, 'Saved', 'BuildHistory', 'logs', 'linked-log.jsonl');
+    fs.symlinkSync(destination, link);
+    store.appendRaw('linked-log', 'stdout', 'do not write', '2026-11-16T12:00:00.000Z');
+    expect(fs.existsSync(destination)).toBe(false);
+    expect(store.list().storageError).toContain('Unsafe build history file');
+  });
+
   it('archives normalized event stream and raw chunks through BuildMonitorService', () => {
     const project = createProject();
     const monitor = new BuildMonitorService();
