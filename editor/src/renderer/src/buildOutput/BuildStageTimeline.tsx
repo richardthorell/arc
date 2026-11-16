@@ -51,9 +51,10 @@ export function measuredStageTimeline(
     if (end === null || !Number.isFinite(end) || end < start) continue;
     const startMs = Math.max(0, start - origin);
     // A monotonic stage duration is more precise than subtracting rounded ISO timestamps.
-    const durationMs = stage.state === 'running' && running
-      ? Math.max(0, nowMs - start)
-      : (stage.durationMs ?? Math.max(0, end - start));
+    const durationMs =
+      stage.state === 'running' && running
+        ? Math.max(0, nowMs - start)
+        : (stage.durationMs ?? Math.max(0, end - start));
     measured.set(stage.id, { startMs, durationMs });
     maxExtent = Math.max(maxExtent, startMs + durationMs);
   }
@@ -63,15 +64,21 @@ export function measuredStageTimeline(
     segments.set(id, {
       ...segment,
       leftPercent: Math.max(0, Math.min(100, (segment.startMs / totalMs) * 100)),
-      widthPercent: Math.max(0, Math.min(100 - (segment.startMs / totalMs) * 100, (segment.durationMs / totalMs) * 100)),
+      widthPercent: Math.max(
+        0,
+        Math.min(100 - (segment.startMs / totalMs) * 100, (segment.durationMs / totalMs) * 100),
+      ),
     });
   }
   return { totalMs, segments };
 }
 
 const stageDuration = (stage: BuildMonitorStage, segment: TimelineSegment | undefined): string =>
-  segment ? formatTimelineDuration(segment.durationMs) :
-  stage.durationMs !== undefined ? formatTimelineDuration(stage.durationMs) : '—';
+  segment
+    ? formatTimelineDuration(segment.durationMs)
+    : stage.durationMs !== undefined
+      ? formatTimelineDuration(stage.durationMs)
+      : '—';
 
 export function BuildStageTimeline({ run, nowMs }: { run: BuildMonitorRun; nowMs: number }) {
   const timeline = measuredStageTimeline(run, nowMs);

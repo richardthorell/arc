@@ -122,15 +122,17 @@ export class BuildMonitorService {
     // The legacy command path still observes the main-process clock.
     const timestamp = this.now();
     const startedAt = measured?.startedAt ?? (state === 'running' ? (stage.startedAt ?? timestamp) : stage.startedAt);
-    const completedAt = measured?.completedAt ?? (terminal(state) ? (stage.completedAt ?? timestamp) : stage.completedAt);
-    const durationMs = measured?.durationMs ??
-      (completedAt && startedAt ? elapsed(startedAt, completedAt) : stage.durationMs);
+    const completedAt =
+      measured?.completedAt ?? (terminal(state) ? (stage.completedAt ?? timestamp) : stage.completedAt);
+    const durationMs =
+      measured?.durationMs ?? (completedAt && startedAt ? elapsed(startedAt, completedAt) : stage.durationMs);
     if (
       stage.state === state &&
       stage.startedAt === startedAt &&
       stage.completedAt === completedAt &&
       stage.durationMs === durationMs
-    ) return;
+    )
+      return;
     stage.state = state;
     stage.startedAt = startedAt;
     stage.completedAt = completedAt;
@@ -219,7 +221,7 @@ export class BuildMonitorService {
         platform: workflow.plan.platform,
         state: 'running',
         startedAt: workflow.startedAt ?? this.now(),
-        stages: workflow.stages.map((stage) => ({ 
+        stages: workflow.stages.map((stage) => ({
           id: `${workflow.id}:${stage.stage}`,
           name: stage.stage,
           state: 'pending',

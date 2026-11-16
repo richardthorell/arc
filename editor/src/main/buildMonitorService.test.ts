@@ -221,14 +221,22 @@ describe('BuildMonitorService BM1 event stream', () => {
 
   it('preserves runner-measured times and durations rather than main-process observation time', () => {
     const mainTime = '2026-11-16T15:00:00.000Z';
-    const monitor = new BuildMonitorService(() => {}, () => mainTime);
+    const monitor = new BuildMonitorService(
+      () => {},
+      () => mainTime,
+    );
     const startedAt = '2026-11-16T12:00:00.000Z';
     const stageStart = '2026-11-16T12:00:01.000Z';
     const stageEnd = '2026-11-16T12:00:02.000Z';
-    const snapshot = workflow('succeeded', [{
-      stage: 'validate', state: 'succeeded',
-      startedAt: stageStart, completedAt: stageEnd, durationMs: 901.25,
-    }]);
+    const snapshot = workflow('succeeded', [
+      {
+        stage: 'validate',
+        state: 'succeeded',
+        startedAt: stageStart,
+        completedAt: stageEnd,
+        durationMs: 901.25,
+      },
+    ]);
     snapshot.run!.startedAt = startedAt;
     snapshot.run!.completedAt = '2026-11-16T12:00:03.000Z';
     snapshot.run!.durationMs = 2801.5;
@@ -238,7 +246,10 @@ describe('BuildMonitorService BM1 event stream', () => {
     expect(result.completedAt).toBe(snapshot.run!.completedAt);
     expect(result.durationMs).toBe(2801.5);
     expect(result.stages[0]).toMatchObject({
-      startedAt: stageStart, completedAt: stageEnd, durationMs: 901.25, state: 'succeeded',
+      startedAt: stageStart,
+      completedAt: stageEnd,
+      durationMs: 901.25,
+      state: 'succeeded',
     });
     expect(result.stages[0].startedAt).not.toBe(mainTime);
     expect(monitor.snapshot().events.filter((event) => event.kind === 'stage-changed')).toHaveLength(1);
@@ -247,8 +258,20 @@ describe('BuildMonitorService BM1 event stream', () => {
   it('recovers a missed stage-start notification from the completed runner snapshot', () => {
     const monitor = new BuildMonitorService();
     const value = workflow('failed', [
-      { stage: 'validate', state: 'succeeded', startedAt: '2026-11-16T12:00:00.000Z', completedAt: '2026-11-16T12:00:01.000Z', durationMs: 1000 },
-      { stage: 'configure', state: 'failed', startedAt: '2026-11-16T12:00:01.000Z', completedAt: '2026-11-16T12:00:04.000Z', durationMs: 3000 },
+      {
+        stage: 'validate',
+        state: 'succeeded',
+        startedAt: '2026-11-16T12:00:00.000Z',
+        completedAt: '2026-11-16T12:00:01.000Z',
+        durationMs: 1000,
+      },
+      {
+        stage: 'configure',
+        state: 'failed',
+        startedAt: '2026-11-16T12:00:01.000Z',
+        completedAt: '2026-11-16T12:00:04.000Z',
+        durationMs: 3000,
+      },
     ]);
     value.run!.startedAt = '2026-11-16T12:00:00.000Z';
     value.run!.completedAt = '2026-11-16T12:00:04.000Z';

@@ -139,8 +139,7 @@ export class ProjectWorkflowRunner {
       const running = run.stages.find((stage) => stage.state === 'running');
       if (running) {
         running.completedAt = new Date().toISOString();
-        if (activeStageClock !== undefined)
-          running.durationMs = Math.max(0, performance.now() - activeStageClock);
+        if (activeStageClock !== undefined) running.durationMs = Math.max(0, performance.now() - activeStageClock);
         running.state = run.state;
       }
       for (const adapter of entered.reverse()) {

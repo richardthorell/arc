@@ -113,9 +113,9 @@ describe('project workflow orchestration', () => {
       expect(Date.parse(stage.completedAt!)).toBeGreaterThanOrEqual(Date.parse(stage.startedAt!));
     }
     // Progress notifications carry the same real start time throughout each stage.
-    const running = notify.mock.calls.map(([snapshot]) => snapshot).filter((snapshot) =>
-      snapshot.stages.some((stage: { state: string }) => stage.state === 'running'),
-    );
+    const running = notify.mock.calls
+      .map(([snapshot]) => snapshot)
+      .filter((snapshot) => snapshot.stages.some((stage: { state: string }) => stage.state === 'running'));
     expect(running.length).toBe(plan().stages.length);
     expect(running[0].stages[0]).toMatchObject({ state: 'running', startedAt: expect.any(String) });
     expect(running[0].stages[0].completedAt).toBeUndefined();
@@ -123,12 +123,17 @@ describe('project workflow orchestration', () => {
 
   it('closes a failing stage at failure time and leaves unstarted stages unmeasured', async () => {
     const { runner, adapters } = setup();
-    adapters.compile!.execute = async () => { throw new Error('compile failed'); };
+    adapters.compile!.execute = async () => {
+      throw new Error('compile failed');
+    };
     const result = await runner.execute(plan(), authority());
     expect(result.state).toBe('failed');
     expect(result.stages[2]).toMatchObject({
-      stage: 'compile', state: 'failed',
-      startedAt: expect.any(String), completedAt: expect.any(String), durationMs: expect.any(Number),
+      stage: 'compile',
+      state: 'failed',
+      startedAt: expect.any(String),
+      completedAt: expect.any(String),
+      durationMs: expect.any(Number),
     });
     expect(result.stages[3]).toMatchObject({ stage: 'cook', state: 'pending' });
     expect(result.stages[3].startedAt).toBeUndefined();
