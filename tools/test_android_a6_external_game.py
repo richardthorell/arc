@@ -73,6 +73,15 @@ def command(argv: list[str], cwd: Path, *, timeout: int = 1200,
         print("Command:", argv, flush=True)
         print("stdout:\n", result.stdout[-6000:], flush=True)
         print("stderr:\n", result.stderr[-6000:], flush=True)
+        # A5 intentionally sends compiler/cooker details into persistent
+        # per-run build.log files. Surface the real failure in CI, rather
+        # than leaving only an exit code from the public build command.
+        records = cwd / "Saved" / "Builds" / "android"
+        if records.is_dir():
+            for log in sorted(records.glob("*/build.log")):
+                data = log.read_text(encoding="utf-8", errors="replace")
+                print(f"A5 build log ({log}), last 16000 chars:\n{data[-16000:]}",
+                      flush=True)
         raise ValueError(f"Unexpected command status {result.returncode} (success expected: {expect_success})")
     return result.returncode, events
 
