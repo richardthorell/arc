@@ -24,7 +24,7 @@ Project changes detach the prior history, and only IDs present in the current pr
 
 ## Raw output capture
 
-`BuildService` forwards each stdout/stderr chunk independently to the history store. `runWorkflowProcess` now provides an optional, untruncated `onRawOutput(text, stream)` callback through its cook and Windows runtime build adapters. Existing `onOutput` continues providing the bounded display tail. BM2's log storage captures both channels *before* in-memory truncation.
+`BuildService` forwards each stdout/stderr chunk independently to the history store. `runWorkflowProcess` now provides an optional, untruncated `onRawOutput(text, stream)` callback through its cook and Windows runtime build adapters. Existing `onOutput` continues providing the bounded display tail. BM2's log storage captures both channels *before* in-memory truncation. The archive preserves the original channel and observation timestamp for each chunk; stdout and stderr produced simultaneously do not have a guaranteed cross-stream ordering.
 
 ## Scope
 
