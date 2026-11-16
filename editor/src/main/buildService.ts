@@ -246,10 +246,10 @@ export class BuildService {
           return;
         }
         if (code !== 0) {
-          const hasReportedError = this.snapshotValue.diagnostics.some((diagnostic) => diagnostic.severity === 'error');
-          if (!hasReportedError) {
+          const hasError = this.snapshotValue.diagnostics.some((item) => item.severity === 'error');
+          if (!hasError) {
             const operation = kind === 'configure' ? 'Configure' : kind === 'clean' ? 'Clean' : 'Build';
-            const message = `${operation} failed (exit ${String(code)}). Check the CMake output and ARC SDK configuration.`;
+            const message = `${operation} failed (exit ${String(code)}). See CMake output and ARC SDK settings.`;
             this.append('error', message, 'compiler');
           }
         }
@@ -337,11 +337,9 @@ export class BuildService {
     // their severity instead of presenting a CMake error as informational.
     const errorLine = /\b(?:cmake error|fatal error|error(?:\s+[A-Z]+\d+)?\s*:|ninja:\s*error)/i.test(line);
     const warningLine = /\b(?:cmake warning|warning(?:\s+[A-Z]+\d+)?\s*:)/i.test(line);
-    const severity = errorLine || /error/i.test(match?.[6] ?? '')
-      ? 'error'
-      : warningLine || /warning/i.test(match?.[6] ?? '')
-        ? 'warning'
-        : fallback;
+    let severity: ArcBuildDiagnostic['severity'] = fallback;
+    if (warningLine || /warning/i.test(match?.[6] ?? '')) severity = 'warning';
+    if (errorLine || /error/i.test(match?.[6] ?? '')) severity = 'error';
     this.snapshotValue.diagnostics.push({
       sequence: ++this.sequence,
       severity,
