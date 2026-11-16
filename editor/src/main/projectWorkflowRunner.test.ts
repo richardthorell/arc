@@ -100,6 +100,42 @@ describe('project workflow orchestration', () => {
     expect(commit).toHaveBeenCalledOnce();
     expect(result.stages.every((stage) => stage.state === 'succeeded')).toBe(true);
   });
+  it('records actual stage boundaries and monotonic durations from the runner', async () => {
+    const { runner, notify } = setup();
+    const result = await runner.execute(plan(), authority());
+    expect(result.startedAt).toEqual(expect.any(String));
+    expect(result.completedAt).toEqual(expect.any(String));
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    for (const stage of result.stages) {
+      expect(stage.startedAt).toEqual(expect.any(String));
+      expect(stage.completedAt).toEqual(expect.any(String));
+      expect(stage.durationMs).toBeGreaterThanOrEqual(0);
+      expect(Date.parse(stage.completedAt!)).toBeGreaterThanOrEqual(Date.parse(stage.startedAt!));
+    }
+    // Progress notifications carry the same real start time throughout each stage.
+    const running = notify.mock.calls.map(([snapshot]) => snapshot).filter((snapshot) =>
+      snapshot.stages.some((stage: { state: string }) => stage.state === 'running'),
+    );
+    expect(running.length).toBe(plan().stages.length);
+    expect(running[0].stages[0]).toMatchObject({ state: 'running', startedAt: expect.any(String) });
+    expect(running[0].stages[0].completedAt).toBeUndefined();
+  });
+
+  it('closes a failing stage at failure time and leaves unstarted stages unmeasured', async () => {
+    const { runner, adapters } = setup();
+    adapters.compile!.execute = async () => { throw new Error('compile failed'); };
+    const result = await runner.execute(plan(), authority());
+    expect(result.state).toBe('failed');
+    expect(result.stages[2]).toMatchObject({
+      stage: 'compile', state: 'failed',
+      startedAt: expect.any(String), completedAt: expect.any(String), durationMs: expect.any(Number),
+    });
+    expect(result.stages[3]).toMatchObject({ stage: 'cook', state: 'pending' });
+    expect(result.stages[3].startedAt).toBeUndefined();
+    expect(result.stages[3].completedAt).toBeUndefined();
+    expect(result.completedAt).toEqual(expect.any(String));
+  });
+
   it('preflights every capability before any work', async () => {
     const { runner, adapters, order, commit } = setup();
     adapters.package!.capability = () => ({ available: false, reason: 'Package adapter unavailable' });
