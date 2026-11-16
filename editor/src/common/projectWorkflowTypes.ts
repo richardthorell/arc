@@ -82,6 +82,8 @@ export type WorkflowExecutionSnapshot = {
   planning: boolean;
   run: WorkflowRun | null;
   output: string[];
+  /** Monotonic cursor for exact output delivery even after the bounded buffer rolls over. */
+  latestOutput?: { sequence: number; text: string };
   error: string | null;
 };
 

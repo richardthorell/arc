@@ -59,6 +59,8 @@ describe('BuildService command history', () => {
       errorCount: 0,
     });
     expect(history[0].durationMs).toBeGreaterThanOrEqual(0);
+    expect(history[0].runId).toEqual(expect.any(String));
+    expect(service.snapshot().runId).toBe(history[0].runId);
   });
 
   it('records compiler errors and failed commands', async () => {

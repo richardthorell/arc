@@ -13,6 +13,8 @@ export type ArcBuildDiagnostic = {
 /** Completed CLI/CMake commands in the current editor session (not estimated compile progress). */
 export type ArcBuildRun = {
   id: number;
+  /** Correlates this completed command with the live monitor stream. */
+  runId?: string;
   kind: 'build' | 'configure' | 'clean' | 'ide';
   configuration: string;
   startedAt: string;
@@ -34,6 +36,8 @@ export type ArcBuildSnapshot = {
   startedAt?: string;
   completedAt?: string;
   command?: string;
+  /** Stable identity for the active or most recently completed command. */
+  runId?: string;
 };
 
 export type ArcBuildRequest = {

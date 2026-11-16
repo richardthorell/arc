@@ -35,6 +35,7 @@ export class CookWorkflowService {
   private runner?: ProjectWorkflowRunner;
   private busy = false;
   private cancelled = false;
+  private outputSequence = 0;
   private authorityEpoch = 0;
   private value: WorkflowExecutionSnapshot = { requestId: null, planning: false, run: null, output: [], error: null };
 
@@ -192,6 +193,7 @@ export class CookWorkflowService {
     this.busy = true;
     this.cancelled = false;
     this.runner = undefined;
+    this.outputSequence = 0;
     this.value = { requestId: randomUUID(), planning: true, run: null, output: [], error: null };
     this.emit();
     try {
@@ -202,6 +204,7 @@ export class CookWorkflowService {
       if (plan.stages.join(',') !== expectedStages) throw new Error('Unexpected native workflow stages');
       const onOutput = (text: string) => {
         this.value.output.push(text);
+        this.value.latestOutput = { sequence: ++this.outputSequence, text };
         // Bounded diagnostics; each process chunk is at most 16 KiB.
         this.value.output = this.value.output.slice(-64);
         this.emit();
