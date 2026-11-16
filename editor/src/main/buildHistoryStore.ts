@@ -41,9 +41,12 @@ function safeDirectory(root: string, target: string): void {
 }
 
 function safeFile(filename: string): void {
-  if (!fs.existsSync(filename)) return;
-  const info = fs.lstatSync(filename);
-  if (info.isSymbolicLink() || !info.isFile()) throw new Error('Unsafe build history file');
+  try {
+    const info = fs.lstatSync(filename);
+    if (info.isSymbolicLink() || !info.isFile()) throw new Error('Unsafe build history file');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
 }
 
 /** Read JSONL in bounded chunks, with byte offsets so a large log never enters renderer memory. */
@@ -203,7 +206,14 @@ export class BuildHistoryStore {
     try {
       const filename = this.file(kind, id);
       safeFile(filename);
-      fs.appendFileSync(filename, JSON.stringify(data) + '\n', { encoding: 'utf8', flag: 'a' });
+      // O_NOFOLLOW prevents a swapped symlink from redirecting a log write.
+      const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | (fs.constants.O_NOFOLLOW ?? 0);
+      const fd = fs.openSync(filename, flags, 0o600);
+      try {
+        fs.writeSync(fd, JSON.stringify(data) + '\n');
+      } finally {
+        fs.closeSync(fd);
+      }
     } catch (error) {
       this.storageError = String(error);
     }
