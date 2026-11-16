@@ -50,6 +50,12 @@ export class BuildService {
     publishWorkflow: (snapshot: WorkflowExecutionSnapshot) => void = () => {},
     buildEnvironment: () => WindowsBuildEnvironment | undefined = () => undefined,
     private readonly settingsBusy: () => boolean = () => false,
+    private readonly onRawOutput: (
+      project: ArcProjectCandidate,
+      runId: string,
+      stream: 'stdout' | 'stderr',
+      text: string,
+    ) => void = () => {},
   ) {
     this.workflows = new CookWorkflowService(
       activeProject,
@@ -58,6 +64,7 @@ export class BuildService {
       publishWorkflow,
       undefined,
       buildEnvironment,
+      this.onRawOutput,
     );
   }
 
@@ -226,6 +233,11 @@ export class BuildService {
       // pipes. Keep independent partial lines to avoid joining two errors.
       const pending = { info: '', error: '' };
       const consume = (data: Buffer, severity: 'info' | 'error') => {
+        try {
+          this.onRawOutput(project, runId, severity === 'info' ? 'stdout' : 'stderr', data.toString('utf8'));
+        } catch {
+          // History storage never interrupts the compiler.
+        }
         const lines = (pending[severity] + data.toString('utf8')).split(/\r?\n/);
         pending[severity] = lines.pop() ?? '';
         for (const line of lines) if (line.trim()) this.parseLine(line, severity);

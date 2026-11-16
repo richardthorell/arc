@@ -1,4 +1,7 @@
 import type { ArcBuildSnapshot } from '../common/buildTypes';
+import type { ArcProjectCandidate } from '../common/projectTypes';
+import type { BuildHistoryPage, BuildHistoryDetail } from '../common/buildHistoryTypes';
+import { BuildHistoryStore } from './buildHistoryStore';
 import type {
   BuildMonitorEvent,
   BuildMonitorRun,
@@ -22,7 +25,8 @@ const elapsed = (start: string, end: string): number => Math.max(0, Date.parse(e
 /**
  * Normalizes existing command and project-workflow snapshots into one event stream.
  * Does not infer CMake target dependencies or completion percentages. Those need
- * tool-level instrumentation (BM4/BM5). Logs and runs are bounded until BM2.
+ * tool-level instrumentation (BM4/BM5). The live buffer remains bounded;
+ * BM2 persists completed runs, structured events and raw process output.
  */
 type UnstampedEvent<T> = T extends BuildMonitorEvent ? Omit<T, 'sequence' | 'timestamp'> : never;
 type BuildMonitorEventInput = UnstampedEvent<BuildMonitorEvent>;
@@ -38,6 +42,7 @@ export class BuildMonitorService {
   private sequence = 0;
   private diagnosticCursor = new Map<string, number>();
   private outputCursor = new Map<string, number>();
+  private readonly history = new BuildHistoryStore();
 
   constructor(
     private readonly publish: (event: BuildMonitorEvent) => void = () => {},
@@ -46,6 +51,27 @@ export class BuildMonitorService {
 
   snapshot(): BuildMonitorSnapshot {
     return structuredClone(this.value);
+  }
+
+  attachProject(project: ArcProjectCandidate | null): void {
+    if (this.history.activate(project)) {
+      // A different project root may share the same GUID; never reuse its live events.
+      this.resetProject(null);
+      this.resetProject(project?.descriptor.guid ?? null);
+    }
+  }
+
+  historyPage(offset = 0, limit = 50): BuildHistoryPage {
+    return this.history.list(offset, limit);
+  }
+
+  historyDetails(runId: string, logCursor = 0, eventCursor = 0): BuildHistoryDetail | null {
+    return this.history.details(runId, logCursor, eventCursor);
+  }
+
+  appendRaw(project: ArcProjectCandidate, runId: string, stream: 'stdout' | 'stderr', text: string): void {
+    if (project.descriptor.guid !== this.value.projectGuid) return;
+    this.history.appendRaw(runId, stream, text, this.now());
   }
 
   resetProject(projectGuid: string | null): void {
@@ -66,6 +92,7 @@ export class BuildMonitorService {
     const next = { ...event, sequence: ++this.sequence, timestamp: this.now() } as BuildMonitorEvent;
     this.value.events = [...this.value.events.slice(-(MAX_EVENTS - 1)), structuredClone(next)];
     this.value.revision++;
+    this.history.saveEvent(next);
     try {
       this.publish(structuredClone(next));
     } catch {
@@ -76,6 +103,7 @@ export class BuildMonitorService {
   private register(run: BuildMonitorRun): BuildMonitorRun {
     this.value.runs = [...this.value.runs.slice(-(MAX_RUNS - 1)), run];
     this.value.activeRunId = run.id;
+    this.history.saveRun(run);
     this.event({ kind: 'run-started', runId: run.id, run: structuredClone(run) });
     return run;
   }
@@ -93,6 +121,7 @@ export class BuildMonitorService {
       stage.completedAt = timestamp;
       if (stage.startedAt) stage.durationMs = elapsed(stage.startedAt, timestamp);
     }
+    this.history.saveRun(run);
     this.event({ kind: 'stage-changed', runId: run.id, stageId: stage.id, stage: structuredClone(stage) });
   }
 
@@ -107,6 +136,7 @@ export class BuildMonitorService {
     run.completedAt = endedAt ?? this.now();
     run.durationMs = durationMs ?? elapsed(run.startedAt, run.completedAt);
     if (this.value.activeRunId === run.id) this.value.activeRunId = null;
+    this.history.saveRun(run);
     this.event({ kind: 'run-completed', runId: run.id, run: structuredClone(run) });
   }
 

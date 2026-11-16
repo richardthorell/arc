@@ -63,6 +63,30 @@ describe('BuildService command history', () => {
     expect(service.snapshot().runId).toBe(history[0].runId);
   });
 
+  it('emits separate, untruncated stdout/stderr chunks to the history observer', async () => {
+    const child = new FakeBuildProcess();
+    vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcessWithoutNullStreams);
+    const raw = vi.fn();
+    const service = new BuildService(
+      () => activeProject,
+      () => process.execPath,
+      { command: vi.fn() },
+      vi.fn(),
+      undefined,
+      undefined,
+      () => false,
+      raw,
+    );
+    const pending = service.execute({ action: 'configure' });
+    const large = 'x'.repeat(256 * 1024);
+    child.stdout.emit('data', Buffer.from(large));
+    child.stderr.emit('data', Buffer.from('failure detail'));
+    child.emit('close', 0);
+    await pending;
+    expect(raw).toHaveBeenCalledWith(activeProject, expect.any(String), 'stdout', large);
+    expect(raw).toHaveBeenCalledWith(activeProject, expect.any(String), 'stderr', 'failure detail');
+  });
+
   it('records compiler errors and failed commands', async () => {
     const { service, process } = setup();
     const request = service.execute({ action: 'configure' });

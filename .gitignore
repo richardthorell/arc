@@ -62,3 +62,6 @@ assets/imported/
 # Project-local asset registry and derived-data cache
 .arc/cache/
 **/.arc/cache/
+
+# Per-project local build run history and diagnostic logs
+**/Saved/BuildHistory/

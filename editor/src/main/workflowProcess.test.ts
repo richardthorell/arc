@@ -38,6 +38,25 @@ describe('workflow subprocess', () => {
     });
     expect(output).toHaveLength(1024 * 1024);
   });
+  it('streams complete stdout and stderr before applying the display output limit', async () => {
+    const raw: Record<'stdout' | 'stderr', string[]> = { stdout: [], stderr: [] };
+    const result = await runWorkflowProcess({
+      executable: process.execPath,
+      args: [
+        '-e',
+        'process.stdout.write("x".repeat(2 * 1024 * 1024)); process.stderr.write("warning: check output\\n")',
+      ],
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      outputMode: 'log',
+      timeoutMs: 5000,
+      onRawOutput: (text, stream) => raw[stream].push(text),
+    });
+    expect(result).toHaveLength(1024 * 1024);
+    expect(raw.stdout.join('')).toHaveLength(2 * 1024 * 1024);
+    expect(raw.stderr.join('')).toContain('warning: check output');
+  });
+
   it('cancels a running owned process', async () => {
     const controller = new AbortController();
     const pending = runWorkflowProcess({
