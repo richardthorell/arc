@@ -111,7 +111,7 @@ describe('BuildService command history', () => {
     expect(snapshot.diagnostics).toEqual([
       expect.objectContaining({
         severity: 'error',
-        message: expect.stringContaining('Check the CMake output and ARC SDK configuration'),
+        message: expect.stringContaining('See CMake output and ARC SDK settings'),
       }),
     ]);
     expect(snapshot.history?.[0].errorCount).toBe(1);
