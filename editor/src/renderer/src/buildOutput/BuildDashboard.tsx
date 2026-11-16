@@ -251,9 +251,10 @@ export function BuildDashboard({
     return () => clearInterval(interval);
   }, [active, loadNext]);
 
+  const selectedState = selected?.state;
   useEffect(() => {
-    if (selectedRunId && selected && selected.state !== 'running') void loadNext();
-  }, [selectedRunId, selected?.state, loadNext]);
+    if (selectedRunId && selectedState && selectedState !== 'running') void loadNext();
+  }, [selectedRunId, selectedState, loadNext]);
 
   const cancelSelected = async () => {
     if (!selected || !active) return;
