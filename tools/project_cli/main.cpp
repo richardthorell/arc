@@ -102,19 +102,60 @@ std::wstring quote_windows(std::string_view value)
 }
 #endif
 
+void relay_process_output(const char* data, std::size_t size, std::string* captured, bool diagnostic_stream)
+{
+    if (captured)
+    {
+        captured->append(data, size);
+        constexpr std::size_t max_capture = 8192;
+        if (captured->size() > max_capture) captured->erase(0, captured->size() - max_capture);
+    }
+    auto& stream = diagnostic_stream ? std::cerr : std::cout;
+    stream.write(data, static_cast<std::streamsize>(size));
+    stream.flush();
+}
+
 int run_process(const std::filesystem::path& executable, const std::vector<std::string>& arguments,
-                const std::filesystem::path& working_directory)
+                const std::filesystem::path& working_directory, std::string* captured = nullptr,
+                bool diagnostic_stream = false)
 {
 #if defined(_WIN32)
     std::wstring command = quote_windows(executable.string());
     for (const auto& argument : arguments)
         command += L" " + quote_windows(argument);
+
+    SECURITY_ATTRIBUTES security{.nLength = sizeof(SECURITY_ATTRIBUTES), .bInheritHandle = TRUE};
+    HANDLE output_read = nullptr;
+    HANDLE output_write = nullptr;
+    if (!CreatePipe(&output_read, &output_write, &security, 0)) return -1;
+    if (!SetHandleInformation(output_read, HANDLE_FLAG_INHERIT, 0))
+    {
+        CloseHandle(output_write);
+        CloseHandle(output_read);
+        return -1;
+    }
+
     STARTUPINFOW startup{.cb = sizeof(STARTUPINFOW)};
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    startup.hStdOutput = output_write;
+    startup.hStdError = output_write;
     PROCESS_INFORMATION process{};
     std::wstring directory = working_directory.wstring();
-    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr,
-                        directory.empty() ? nullptr : directory.c_str(), &startup, &process))
+    const BOOL started = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, 0, nullptr,
+                                        directory.empty() ? nullptr : directory.c_str(), &startup, &process);
+    CloseHandle(output_write);
+    if (!started)
+    {
+        CloseHandle(output_read);
         return -1;
+    }
+
+    char buffer[4096];
+    DWORD count = 0;
+    while (ReadFile(output_read, buffer, sizeof(buffer), &count, nullptr) && count != 0)
+        relay_process_output(buffer, count, captured, diagnostic_stream);
+    CloseHandle(output_read);
     WaitForSingleObject(process.hProcess, INFINITE);
     DWORD exit_code = 1;
     GetExitCodeProcess(process.hProcess, &exit_code);
@@ -122,10 +163,20 @@ int run_process(const std::filesystem::path& executable, const std::vector<std::
     CloseHandle(process.hProcess);
     return static_cast<int>(exit_code);
 #else
+    int output_pipe[2];
+    if (pipe(output_pipe) != 0) return -1;
     const pid_t child = fork();
-    if (child < 0) return -1;
+    if (child < 0)
+    {
+        close(output_pipe[0]);
+        close(output_pipe[1]);
+        return -1;
+    }
     if (child == 0)
     {
+        close(output_pipe[0]);
+        if (dup2(output_pipe[1], STDOUT_FILENO) < 0 || dup2(output_pipe[1], STDERR_FILENO) < 0) _exit(127);
+        close(output_pipe[1]);
         if (!working_directory.empty() && chdir(working_directory.c_str()) != 0) _exit(127);
         std::vector<char*> argv;
         std::string executable_text = executable.string();
@@ -137,6 +188,12 @@ int run_process(const std::filesystem::path& executable, const std::vector<std::
         execvp(executable_text.c_str(), argv.data());
         _exit(127);
     }
+    close(output_pipe[1]);
+    char buffer[4096];
+    ssize_t count = 0;
+    while ((count = read(output_pipe[0], buffer, sizeof(buffer))) > 0)
+        relay_process_output(buffer, static_cast<std::size_t>(count), captured, diagnostic_stream);
+    close(output_pipe[0]);
     int status = 1;
     if (waitpid(child, &status, 0) < 0) return -1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
@@ -220,33 +277,89 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
     if (!descriptor) return fail(json_output, descriptor.error().message);
     const auto context = arc::project::resolve_context(descriptor_path, descriptor.value());
     if (!context) return fail(json_output, context.error().message);
+
     const auto cmake = args.option("--cmake").value_or("cmake");
+    const auto configuration = args.option("--config").value_or("RelWithDebInfo");
     const auto build_directory = context.value().build_root / args.option("--build-dir").value_or("default");
-    std::vector<std::string> command;
-    if (build)
+    const bool configured = std::filesystem::is_regular_file(build_directory / "CMakeCache.txt");
+
+    // A clean on a never-configured project is already satisfied. This also
+    // makes the editor's Rebuild action work for a freshly created project.
+    if (build && !configured && args.option("--target") == "clean")
     {
-        command = {"--build", build_directory.string(), "--config", args.option("--config").value_or("RelWithDebInfo")};
-        if (const auto target = args.option("--target"))
-        {
-            command.push_back("--target");
-            command.push_back(*target);
-        }
+        print_json(json_output,
+                   {{"succeeded", true}, {"buildDirectory", build_directory.generic_string()}, {"nothingToClean", true}});
+        if (!json_output) std::cout << "No configured project build to clean\n";
+        return 0;
     }
-    else
+
+    const auto configure = [&]() -> int
     {
-        command = {"-S", context.value().root.string(), "-B", build_directory.string()};
-        if (const auto sdk = args.option("--sdk")) command.push_back("-DCMAKE_PREFIX_PATH=" + *sdk);
+        std::vector<std::string> command{"-S", context.value().root.string(), "-B", build_directory.string(),
+                                         "-DCMAKE_BUILD_TYPE=" + configuration};
+        auto sdk = args.option("--sdk");
+        if (!sdk)
+        {
+            // Select only an unambiguous installation for the exact engine
+            // version. Never silently use another engine version or SDK.
+            const auto installations =
+                arc::project::discover_installations(arc::project::default_installation_registry_path());
+            if (installations)
+            {
+                std::vector<std::filesystem::path> matches;
+                for (const auto& installed : installations.value())
+                    if (installed.engine_version == descriptor.value().engine_version &&
+                        std::filesystem::is_regular_file(installed.sdk / "lib" / "cmake" / "ARC" / "ARCConfig.cmake"))
+                        if (std::find(matches.begin(), matches.end(), installed.sdk) == matches.end())
+                            matches.push_back(installed.sdk);
+                if (matches.size() == 1) sdk = matches.front().string();
+                if (matches.size() > 1)
+                    return fail(json_output, "Multiple matching ARC SDK installations exist for " +
+                                                 descriptor.value().engine_version +
+                                                 ". Select the intended installation using --sdk <ARC SDK root>.");
+            }
+        }
+        if (sdk) command.push_back("-DCMAKE_PREFIX_PATH=" + *sdk);
         if (const auto generator = args.option("--generator"))
         {
             command.push_back("-G");
             command.push_back(*generator);
         }
+
+        std::string output;
+        const int code = run_process(cmake, command, context.value().root, &output, json_output);
+        if (code != 0)
+        {
+            const std::string hint =
+                "Configure CMake and the matching ARC SDK, or pass --sdk <installed ARC SDK root>.";
+            return fail(json_output, "CMake configuration failed for " + build_directory.string() +
+                                         " (exit " + std::to_string(code) + "). " + hint,
+                        code < 0 ? 1 : code);
+        }
+        return 0;
+    };
+
+    // CMake cannot build a directory before it has generated a cache. The
+    // editor's primary Build action should work on a new project directly.
+    if (!build || !configured)
+    {
+        const int code = configure();
+        if (code != 0) return code;
     }
-    const int code = run_process(cmake, command, context.value().root);
-    if (code != 0) return fail(json_output, "CMake command failed", code < 0 ? 1 : code);
     if (build)
     {
-        const auto configuration = args.option("--config").value_or("RelWithDebInfo");
+        std::vector<std::string> command{"--build", build_directory.string(), "--config", configuration};
+        if (const auto target = args.option("--target"))
+        {
+            command.push_back("--target");
+            command.push_back(*target);
+        }
+        std::string output;
+        const int code = run_process(cmake, command, context.value().root, &output, json_output);
+        if (code != 0)
+            return fail(json_output, "CMake build failed in " + build_directory.string() + " for " + configuration +
+                                         " (exit " + std::to_string(code) + "). Review the CMake output above.",
+                        code < 0 ? 1 : code);
         const auto module_manifest = build_directory / ("arc-modules-" + configuration + ".json");
         if (std::filesystem::is_regular_file(module_manifest))
         {
