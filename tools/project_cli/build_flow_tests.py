@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 
-tool, templates, version, cmake = sys.argv[1:]
+tool, templates, version, cmake = sys.argv[1:5]
 
 
 def run(*arguments, success=True):
@@ -41,6 +41,8 @@ with tempfile.TemporaryDirectory(prefix="arc first build with spaces ") as direc
     build_root = root / "Build"
     project = ["--project", str(descriptor), "--cmake", cmake]
     generator = ["--generator", "Ninja"] if shutil.which("ninja") else []
+    if len(sys.argv) > 5:
+        generator = ["--generator", sys.argv[5]]
 
     # Fresh Clean is a no-op, including for Rebuild's initial clean phase.
     payload, _ = run("build", *project, "--target", "clean")
@@ -101,6 +103,26 @@ message(FATAL_ERROR "Deliberate configure failure from test")
     assert "CMake configuration failed" in payload["error"], payload
     assert "--sdk" in payload["error"] and "configure-fails" in payload["error"]
     assert "Deliberate configure failure from test" in stderr, stderr
+
+    # Failed configuration leaves a cache but no usable native build system.
+    # Repeated Build must retry configuration, not invoke a missing ALL_BUILD
+    # project (MSVC) or build.ninja (Ninja).
+    assert (build_root / "configure-fails" / "CMakeCache.txt").is_file()
+    payload, stderr = run("build", *project, "--build-dir", "configure-fails",
+                          *generator, success=False)
+    assert "CMake configuration failed" in payload["error"], payload
+    assert "Deliberate configure failure from test" in stderr, stderr
+
+    # Correcting the source/dependency must recover the same directory on
+    # Build without manual deletion of the cache or a separate Configure.
+    source.write_text(r'''
+cmake_minimum_required(VERSION 3.20)
+project(FirstBuildSmoke NONE)
+add_custom_target(Recovered ALL
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_BINARY_DIR}/recovered.txt")
+''', encoding="utf-8")
+    run("build", *project, "--build-dir", "configure-fails", *generator)
+    assert (build_root / "configure-fails" / "recovered.txt").is_file()
 
     # A compile error after successful configure must be distinguished from
     # a configure failure and must preserve CMake's actual error output.
