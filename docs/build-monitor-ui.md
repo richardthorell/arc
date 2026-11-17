@@ -1,6 +1,6 @@
 # Build Monitor UI (BM3)
 
-BM3 replaces the session-only command statistics dialog with a **Build Monitor** backed by the merged [BM1 event stream](build-monitor.md) and [BM2 build history](build-history.md).
+BM3 replaces the session-only command statistics dialog with a **Build Monitor** backed by the merged [BM1 event stream](build-monitor.md) and [BM2 build history](build-history.md). BM4 adds a [measured stage timeline](build-monitor-timeline.md) using runner-reported start/end times, while BM5 will address target dependencies.
 
 ## Layout
 

@@ -18,6 +18,7 @@ import {
 import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/buildTypes';
 import type { BuildHistoryDetail, BuildHistoryPage, BuildRawLogChunk } from '../../../common/buildHistoryTypes';
 import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorSnapshot } from '../../../common/buildMonitorTypes';
+import { BuildStageTimeline } from './BuildStageTimeline';
 
 const MAX_DISPLAY_CHUNKS = 1200;
 const MAX_DISPLAY_EVENTS = 1600;
@@ -432,17 +433,9 @@ export function BuildDashboard({
                 <section className="build-monitor-stages" aria-label="Build stages">
                   <div className="build-monitor-section-title">
                     <h4>Build stages</h4>
-                    <span>Measured execution states, not estimated progress</span>
+                    <span>Elapsed time · actual stage timing, not completion estimates</span>
                   </div>
-                  <ol className="build-monitor-stage-list">
-                    {selected.stages.map((stage) => (
-                      <li key={stage.id} className={`is-${stage.state}`}>
-                        <Status state={stage.state === 'pending' ? 'idle' : stage.state} />
-                        <span>{stage.name}</span>
-                        <small>{duration(stage.durationMs)}</small>
-                      </li>
-                    ))}
-                  </ol>
+                  <BuildStageTimeline run={selected} nowMs={elapsed} />
                   {selected.error && (
                     <p role="alert" className="build-monitor-stage-error">
                       {selected.error}
