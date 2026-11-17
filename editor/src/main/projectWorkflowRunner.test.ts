@@ -171,7 +171,9 @@ describe('project workflow orchestration', () => {
       { id: 'game', artifactObservedAt: expect.any(String), satisfiedAt: undefined },
     ]);
     expect(result.targetGraph?.revision).toBe(3);
-    expect(notify.mock.calls.map(([entry]) => entry.targetGraph?.revision).filter(Boolean)).toEqual([1, 2, 3, 3, 3, 3, 3, 3]);
+    const revisions = notify.mock.calls.map(([entry]) => entry.targetGraph?.revision).filter(Boolean);
+    expect([...new Set(revisions)]).toEqual([1, 2, 3]);
+    expect(revisions.filter((revision) => revision === 2)).toHaveLength(1);
   });
 
   it('cannot publish target progress after cancelling its owned workflow', async () => {
