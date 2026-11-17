@@ -19,6 +19,7 @@ import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/build
 import type { BuildHistoryDetail, BuildHistoryPage, BuildRawLogChunk } from '../../../common/buildHistoryTypes';
 import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorSnapshot } from '../../../common/buildMonitorTypes';
 import { BuildStageTimeline } from './BuildStageTimeline';
+import { BuildTargetGraphPanel } from './BuildTargetGraphPanel';
 
 const MAX_DISPLAY_CHUNKS = 1200;
 const MAX_DISPLAY_EVENTS = 1600;
@@ -176,7 +177,7 @@ export function BuildDashboard({
       }, 150);
     };
     const unsubscribe = api?.onMonitorEvent((event) => {
-      if (event.kind === 'run-started' || event.kind === 'stage-changed' || event.kind === 'run-completed') {
+      if (event.kind === 'run-started' || event.kind === 'stage-changed' || event.kind === 'run-completed' || event.kind === 'target-graph-changed') {
         scheduleRefresh();
       }
     });
@@ -442,6 +443,7 @@ export function BuildDashboard({
                     </p>
                   )}
                 </section>
+                <BuildTargetGraphPanel key={selected.id} run={selected} nowMs={elapsed} />
                 <section className="build-monitor-output" aria-label="Build logs and diagnostics">
                   <div className="build-monitor-output-header">
                     <div className="build-monitor-tabs" role="tablist" aria-label="Output category">

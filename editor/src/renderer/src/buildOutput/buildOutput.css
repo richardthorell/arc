@@ -853,3 +853,138 @@
     min-height: 220px;
   }
 }
+
+/* BM5 — CMake File API target graph and explicitly observed native artifact markers. */
+.build-monitor-targets {
+  padding: 16px 18px;
+  border: 1px solid #2c3d49;
+  border-radius: 6px;
+  background: #17242e;
+  min-width: 0;
+}
+
+.build-monitor-targets .build-monitor-section-title h4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.build-monitor-target-note {
+  margin: 0 0 12px;
+  color: #93a8b7;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.build-monitor-target-axis,
+.build-monitor-target-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.75fr) minmax(90px, 1fr) 98px;
+  column-gap: 10px;
+  align-items: center;
+}
+
+.build-monitor-target-axis {
+  margin-bottom: 7px;
+  font-size: 10px;
+  color: #8098aa;
+}
+
+.build-monitor-target-list {
+  display: grid;
+  gap: 4px;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.build-monitor-target-row {
+  min-height: 31px;
+  padding: 3px 6px;
+  background: #1b2b36;
+  border-radius: 3px;
+}
+
+.build-monitor-target-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.build-monitor-target-name > span:not(.build-monitor-target-spacer) {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.build-monitor-target-name button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 19px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: #95aec1;
+  cursor: pointer;
+}
+
+.build-monitor-target-name button:hover {
+  color: #d1eafa;
+}
+
+.build-monitor-target-name small {
+  color: #8296a6;
+  font-size: 10px;
+}
+
+.build-monitor-target-spacer {
+  flex: 0 0 19px;
+}
+
+.build-monitor-target-track {
+  position: relative;
+  height: 17px;
+  background: #111f29;
+  border-radius: 2px;
+}
+
+.build-monitor-target-marker {
+  position: absolute;
+  width: 5px;
+  top: 0;
+  bottom: 0;
+  background: #67b7f4;
+  border-radius: 2px;
+}
+
+.build-monitor-target-result {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  font-size: 10px;
+  color: #91a4b4;
+  white-space: nowrap;
+}
+
+.build-monitor-target-result.is-observed {
+  color: #7bb9e9;
+}
+
+.build-monitor-target-result.is-satisfied {
+  color: #74cba0;
+}
+
+@media (max-width: 850px) {
+  .build-monitor-target-axis,
+  .build-monitor-target-row {
+    grid-template-columns: minmax(110px, 1fr) minmax(70px, 0.6fr) 77px;
+    column-gap: 6px;
+  }
+
+  .build-monitor-target-note {
+    font-size: 10px;
+  }
+}
