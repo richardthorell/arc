@@ -21,7 +21,7 @@ The count of observed artifacts is **not a completion percentage**. The graph do
 
 ## UI
 
-The Build Monitor adds an expandable dependency tree with the requested target at the root, visible graph edges through indentation/expansion, status labels, and an elapsed-time marker for targets whose artifact output was observed. The panel is available for active and archived Windows runtime workflows. Older runs and legacy CMake CLI commands show an explicit unavailable state rather than guessed dependency relationships.
+The Build Monitor adds an expandable dependency tree with the requested target at the root, visible graph edges through indentation/expansion, status labels, and an elapsed-time marker for targets whose artifact output was observed. The panel is available for active and archived Windows runtime workflows. Older runs without native metadata show an explicit unavailable state. BM6 extends the same graph view to the normal editor command builds; see [BM6](build-monitor-command-graphs.md).
 
 ## Validation
 
@@ -29,4 +29,4 @@ Tests exercise native File API reply traversal, exact configuration and root sel
 
 ## Scope / follow-up
 
-**BM5** instruments the structured **Windows runtime workflow** first, the one that directly owns the CMake configure and build directory. The legacy `arc-project build` CLI path and Android/other generators need a separate integration into their own authoritative configured build directories. There is no universal percent-complete measure and no CMake-target *timing* claim until structured generator-native target events exist.
+**BM5** instruments the structured **Windows runtime workflow** first, the one that directly owns the CMake configure and build directory. BM6 adds File API capture to the editor's normal `arc-project` commands. Standalone CLI invocations outside the editor and Android/other generators still need dedicated telemetry integration. There is no universal percent-complete measure and no CMake-target *timing* claim until structured generator-native target events exist.

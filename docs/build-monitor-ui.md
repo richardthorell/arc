@@ -1,6 +1,6 @@
 # Build Monitor UI (BM3)
 
-BM3 replaces the session-only command statistics dialog with a **Build Monitor** backed by the merged [BM1 event stream](build-monitor.md) and [BM2 build history](build-history.md). BM4 adds a [measured stage timeline](build-monitor-timeline.md) using runner-reported start/end times. BM5 adds [CMake target dependencies and native artifact observations](build-monitor-target-graph.md) for structured Windows builds, without inventing target completion percentages.
+BM3 replaces the session-only command statistics dialog with a **Build Monitor** backed by the merged [BM1 event stream](build-monitor.md) and [BM2 build history](build-history.md). BM4 adds a [measured stage timeline](build-monitor-timeline.md) using runner-reported start/end times. BM5 adds [CMake target dependencies and native artifact observations](build-monitor-target-graph.md) for structured Windows builds, without inventing target completion percentages. BM6 extends this to [the editor's normal command builds](build-monitor-command-graphs.md).
 
 ## Layout
 

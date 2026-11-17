@@ -87,7 +87,7 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
         </span>
       </div>
       <p className="build-monitor-target-note">
-        {run.source === 'command' ? 'Editor module subtree' : 'Dependencies'} come from CMake File API ({graph.configuration}). Markers show explicitly reported native
+        {run.source === 'command' ? 'Editor module dependencies' : 'Dependencies'} come from CMake File API ({graph.configuration}). Markers show explicitly reported native
         artifacts, not an estimate of completed targets. Up-to-date targets may emit no output.
       </p>
       <div className="build-monitor-target-axis" aria-hidden="true">
