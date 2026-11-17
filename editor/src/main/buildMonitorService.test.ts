@@ -316,6 +316,30 @@ describe('BuildMonitorService BM1 event stream', () => {
     expect(snapshot.events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(2);
   });
 
+  it('persists command CMake target graphs and deduplicates the native artifact updates', () => {
+    const monitor = new BuildMonitorService();
+    const graph = {
+      revision: 1, configuration: 'Debug', generator: 'Ninja',
+      rootTargetId: 'editor', discoveredAt: '2026-11-17T10:00:00.000Z',
+      truncated: false,
+      nodes: [{ id: 'editor', name: 'MyEditor', type: 'MODULE_LIBRARY', dependencies: [], artifacts: ['MyEditor.so'] }],
+    };
+    const snapshot = command({ configuration: 'Debug', targetGraph: graph });
+    monitor.observeCommand(snapshot, 'project-a');
+    monitor.observeCommand(snapshot, 'project-a');
+    expect(monitor.snapshot().events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(1);
+    monitor.observeCommand(command({
+      ...snapshot,
+      targetGraph: { ...graph, revision: 2, nodes: [{
+        ...graph.nodes[0], artifactObservedAt: '2026-11-17T10:00:05.000Z',
+      }] },
+    }), 'project-a');
+    const run = monitor.snapshot().runs[0];
+    expect(run.source).toBe('command');
+    expect(run.targetGraph?.nodes[0].artifactObservedAt).toBe('2026-11-17T10:00:05.000Z');
+    expect(monitor.snapshot().events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(2);
+  });
+
   it('isolates projects and ignores stale workflow notifications', () => {
     const monitor = new BuildMonitorService();
     monitor.observeCommand(command(), 'project-a');

@@ -79,6 +79,17 @@ describe('CMake File API target graph', () => {
     expect(readCMakeTargetGraph(buildDir, 'Shipping', 'missing')).toBeNull();
   });
 
+  it('accepts the empty configuration name emitted by single-config Ninja generators', () => {
+    const { buildDir, reply } = fixture();
+    const file = path.join(reply, 'codemodel-v2-file.json');
+    const model = JSON.parse(fs.readFileSync(file, 'utf8')) as { configurations: Array<{ name: string }> };
+    model.configurations[0].name = '';
+    fs.writeFileSync(file, JSON.stringify(model));
+    const graph = readCMakeTargetGraph(buildDir, 'RelWithDebInfo', 'arc-runtime-output');
+    expect(graph).toMatchObject({ configuration: 'RelWithDebInfo', generator: 'Visual Studio 17 2022' });
+    expect(graph?.nodes.map((node) => node.name)).toEqual(['arc-runtime-output', 'game', 'arc_core']);
+  });
+
   it('observes only exact File API artifacts, once, across stdout chunk boundaries', () => {
     const { buildDir } = fixture();
     const graph = readCMakeTargetGraph(buildDir, 'Shipping', 'arc-runtime-output')!;
