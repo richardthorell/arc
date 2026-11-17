@@ -7,6 +7,9 @@ import { editorCommandBuildDirectory } from './editorCommandTargetGraph';
 
 const MAX_LOG_BYTES = 8 * 1024 * 1024;
 const MAX_TASKS = 256;
+// BM2 stores run summaries in a bounded JSON index. Keep trace payloads small
+// across 100 historical builds until a dedicated task-trace store exists.
+const MAX_TRACE_BYTES = 24 * 1024;
 const HEADER = '# ninja log v5';
 
 /**
@@ -53,6 +56,7 @@ export function beginNinjaCompileTrace(project: ArcProjectCandidate): (() => Bui
       const lines = data.subarray(0, end).toString('utf8').split('\n');
       const tasks: BuildCompileTask[] = [];
       let truncated = available > MAX_LOG_BYTES;
+      let payloadBytes = 0;
       for (const line of lines) {
         if (!line || line.startsWith('#')) continue;
         const fields = line.trimEnd().split('\t');
@@ -61,10 +65,12 @@ export function beginNinjaCompileTrace(project: ArcProjectCandidate): (() => Bui
         const endMs = Number(fields[1]);
         if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || startMs < 0 || endMs < startMs)
           continue;
-        if (tasks.length >= MAX_TASKS) {
+        const bytes = Buffer.byteLength(fields[3], 'utf8') + 96;
+        if (tasks.length >= MAX_TASKS || payloadBytes + bytes > MAX_TRACE_BYTES) {
           truncated = true;
           break;
         }
+        payloadBytes += bytes;
         tasks.push({ output: fields[3], startMs, endMs, durationMs: endMs - startMs });
       }
       return { source: 'ninja-log', clock: 'ninja-invocation', tasks, truncated };
