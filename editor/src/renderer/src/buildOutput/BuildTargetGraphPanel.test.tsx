@@ -94,14 +94,16 @@ describe('BM5 target dependency graph', () => {
       ...value.targetGraph!,
       revision: 2,
       rootTargetId: 'game',
-      nodes: [{
-        id: 'game',
-        name: 'MyEditor',
-        type: 'MODULE_LIBRARY',
-        dependencies: [],
-        artifacts: ['MyEditor.dll'],
-        artifactObservedAt: '2026-11-16T12:00:08.000Z',
-      }],
+      nodes: [
+        {
+          id: 'game',
+          name: 'MyEditor',
+          type: 'MODULE_LIBRARY',
+          dependencies: [],
+          artifacts: ['MyEditor.dll'],
+          artifactObservedAt: '2026-11-16T12:00:08.000Z',
+        },
+      ],
     };
     render(<BuildTargetGraphPanel run={value} nowMs={Date.parse(start) + 10000} />);
     expect(screen.getByText('MyEditor')).toBeInTheDocument();
