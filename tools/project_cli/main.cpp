@@ -344,9 +344,10 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
         return 0;
     };
 
-    // CMake cannot build a directory before it has generated a cache. The
-    // editor's primary Build action should work on a new project directly.
-    if (!build || !configured)
+    // A cache is written even when configuration/generation fails; it does
+    // not prove that a native build system exists. Reconfigure before each
+    // build so retries recover and explicit SDK/configuration changes apply.
+    // CMake still reuses its cache and incremental compilation outputs.
     {
         const int code = configure();
         if (code != 0) return code;

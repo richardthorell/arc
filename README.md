@@ -155,6 +155,10 @@ arc-project configure --project MyGame/MyGame.arcproject --sdk <ARC>
 arc-project build --project MyGame/MyGame.arcproject --config RelWithDebInfo
 ```
 
+Build reruns CMake configuration before incremental compilation, including after
+a failed configure left a cache behind. If configuration fails, fix the reported
+SDK/toolchain problem and retry Build; deleting the build directory is not required.
+
 External CMake projects can consume the relocatable SDK through the exported package:
 
 ```cmake

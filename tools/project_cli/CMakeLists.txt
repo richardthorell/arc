@@ -18,6 +18,13 @@ if(BUILD_TESTING)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build_flow_tests.py"
             $<TARGET_FILE:arc-project-cli> "${CMAKE_SOURCE_DIR}/templates" "${PROJECT_VERSION}" "${CMAKE_COMMAND}")
     set_tests_properties(arc-project-first-build PROPERTIES TIMEOUT 120)
+    if(CMAKE_GENERATOR MATCHES "^Visual Studio")
+        add_test(NAME arc-project-first-build-msvc
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/build_flow_tests.py"
+                $<TARGET_FILE:arc-project-cli> "${CMAKE_SOURCE_DIR}/templates" "${PROJECT_VERSION}"
+                "${CMAKE_COMMAND}" "${CMAKE_GENERATOR}")
+        set_tests_properties(arc-project-first-build-msvc PROPERTIES TIMEOUT 120)
+    endif()
     add_test(NAME arc-project-runtime-build-manifest
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/runtime_build_tests.py"
             $<TARGET_FILE:arc-project-cli> "${CMAKE_SOURCE_DIR}/templates" "${PROJECT_VERSION}"
