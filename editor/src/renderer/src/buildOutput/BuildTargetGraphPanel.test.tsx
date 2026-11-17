@@ -87,11 +87,38 @@ describe('BM5 target dependency graph', () => {
     expect(screen.queryByText('Output seen')).not.toBeInTheDocument();
   });
 
+  it('labels the editor module subtree for an ordinary CLI build without implying build-all completion', () => {
+    const value = run();
+    value.source = 'command';
+    value.targetGraph = {
+      ...value.targetGraph!,
+      revision: 2,
+      rootTargetId: 'game',
+      nodes: [
+        {
+          id: 'game',
+          name: 'MyEditor',
+          type: 'MODULE_LIBRARY',
+          dependencies: [],
+          artifacts: ['MyEditor.dll'],
+          artifactObservedAt: '2026-11-16T12:00:08.000Z',
+        },
+      ],
+    };
+    render(<BuildTargetGraphPanel run={value} nowMs={Date.parse(start) + 10000} />);
+    expect(screen.getByText('MyEditor')).toBeInTheDocument();
+    expect(screen.getByText(/Editor module dependencies come from CMake File API/)).toBeInTheDocument();
+    expect(screen.getByText('Output seen')).toBeInTheDocument();
+    expect(screen.queryByText('Satisfied')).not.toBeInTheDocument();
+  });
+
   it('states when legacy builds cannot provide a target graph', () => {
     const value = run();
     value.source = 'command';
     value.targetGraph = undefined;
     render(<BuildTargetGraphPanel run={value} nowMs={Date.parse(start)} />);
-    expect(screen.getByText('Target graph is not available for legacy CLI commands.')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Normal Build and Configure can show the editor module dependency subtree/),
+    ).toBeInTheDocument();
   });
 });

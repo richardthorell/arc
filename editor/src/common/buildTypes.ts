@@ -1,3 +1,5 @@
+import type { BuildTargetGraph } from './buildTargetTypes';
+
 export type ArcBuildState = 'idle' | 'configuring' | 'building' | 'cleaning' | 'failed' | 'succeeded' | 'cancelled';
 
 export type ArcBuildDiagnostic = {
@@ -38,6 +40,8 @@ export type ArcBuildSnapshot = {
   command?: string;
   /** Stable identity for the active or most recently completed command. */
   runId?: string;
+  /** Optional CMake File API dependency subtree for this command invocation. */
+  targetGraph?: BuildTargetGraph;
 };
 
 export type ArcBuildRequest = {

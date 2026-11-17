@@ -64,7 +64,12 @@ export function readCMakeTargetGraph(
   const model = replyJson(replyDir, modelFile, MAX_REPLY_SIZE) as {
     configurations?: FileApiConfiguration[];
   };
-  const config = model.configurations?.find((entry) => entry.name.toLowerCase() === configuration.toLowerCase());
+  const config = model.configurations?.find(
+    (entry) =>
+      entry.name.toLowerCase() === configuration.toLowerCase() ||
+      // Single-configuration CMake generators (Ninja/Unix Makefiles) use "".
+      (entry.name === '' && model.configurations?.length === 1),
+  );
   if (!config || !Array.isArray(config.targets) || config.targets.length > MAX_CONFIG_TARGETS) return null;
 
   const byId = new Map<string, FileApiTargetEntry>();
@@ -100,7 +105,7 @@ export function readCMakeTargetGraph(
   return {
     revision: 1,
     generator: index.cmake?.generator?.name ?? 'CMake',
-    configuration: config.name,
+    configuration: config.name || configuration,
     rootTargetId: root.id,
     discoveredAt: new Date().toISOString(),
     nodes,

@@ -1,5 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -63,6 +66,18 @@ describe('BuildService command history', () => {
     expect(service.snapshot().runId).toBe(history[0].runId);
   });
 
+  it('passes the selected configuration to CMake configure instead of using the CLI default', async () => {
+    const { service, process: child } = setup();
+    const pending = service.execute({ action: 'configure', configuration: 'Debug' });
+    expect(spawn).toHaveBeenCalledWith(
+      process.execPath,
+      ['configure', '--project', activeProject.descriptorPath, '--config', 'Debug'],
+      expect.objectContaining({ cwd: activeProject.projectRoot }),
+    );
+    child.emit('close', 0);
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded', configuration: 'Debug' });
+  });
+
   it('emits separate, untruncated stdout/stderr chunks to the history observer', async () => {
     const child = new FakeBuildProcess();
     vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcessWithoutNullStreams);
@@ -85,6 +100,92 @@ describe('BuildService command history', () => {
     await pending;
     expect(raw).toHaveBeenCalledWith(activeProject, expect.any(String), 'stdout', large);
     expect(raw).toHaveBeenCalledWith(activeProject, expect.any(String), 'stderr', 'failure detail');
+  });
+
+  it('publishes the editor module graph during a first normal Build, then preserves it after reload', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-bm6-build-'));
+    try {
+      const project = {
+        ...activeProject,
+        projectRoot: root,
+        descriptorPath: path.join(root, 'Game.arcproject'),
+        descriptor: {
+          ...activeProject.descriptor,
+          guid: 'game-bm6',
+          paths: { source: 'Source', saved: 'Saved', build: 'Build' },
+          modules: [{ id: 'game.editor', kind: 'editor', target: 'MyEditor', enabled: true }],
+        },
+      } as ArcProjectCandidate;
+      const child = new FakeBuildProcess();
+      vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcessWithoutNullStreams);
+      const publish = vi.fn();
+      const host = { command: vi.fn().mockResolvedValue({ succeeded: true }) };
+      const service = new BuildService(
+        () => project,
+        () => process.execPath,
+        host,
+        publish,
+      );
+      const pending = service.execute({ action: 'build', configuration: 'Debug' });
+      const buildDir = path.join(root, 'Build', 'default');
+      expect(fs.existsSync(path.join(buildDir, '.cmake', 'api', 'v1', 'query', 'codemodel-v2'))).toBe(true);
+
+      const replyDir = path.join(buildDir, '.cmake', 'api', 'v1', 'reply');
+      fs.mkdirSync(replyDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(replyDir, 'index-test.json'),
+        JSON.stringify({
+          cmake: { generator: { name: 'Ninja' } },
+          reply: { 'codemodel-v2': { jsonFile: 'codemodel.json' } },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(replyDir, 'codemodel.json'),
+        JSON.stringify({
+          configurations: [{ name: '', targets: [{ id: 'editor', name: 'MyEditor', jsonFile: 'target-editor.json' }] }],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(replyDir, 'target-editor.json'),
+        JSON.stringify({
+          id: 'editor',
+          name: 'MyEditor',
+          type: 'MODULE_LIBRARY',
+          artifacts: [{ path: 'MyEditor.dll' }],
+        }),
+      );
+      const output = path.join(buildDir, 'MyEditor.dll');
+      child.stdout.emit('data', Buffer.from(`MyEditor.vcxproj -> ${output}\n`));
+
+      const saved = path.join(root, 'Saved', 'Editor');
+      fs.mkdirSync(saved, { recursive: true });
+      fs.writeFileSync(
+        path.join(saved, 'active-build.json'),
+        JSON.stringify({
+          moduleManifest: 'Build/default/arc-modules-Debug.json',
+        }),
+      );
+      fs.writeFileSync(
+        path.join(buildDir, 'arc-modules-Debug.json'),
+        JSON.stringify({
+          modules: [{ id: 'game.editor', path: output }],
+        }),
+      );
+
+      child.emit('close', 0);
+      await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
+      expect(service.snapshot().targetGraph).toMatchObject({
+        configuration: 'Debug',
+        rootTargetId: 'editor',
+        revision: 2,
+        nodes: [{ name: 'MyEditor', artifactObservedAt: expect.any(String) }],
+      });
+      expect(service.snapshot().targetGraph?.nodes[0]).not.toHaveProperty('satisfiedAt');
+      expect(publish.mock.calls.some(([entry]) => entry.targetGraph?.revision === 1)).toBe(true);
+      expect(host.command).toHaveBeenCalledOnce();
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('records compiler errors and failed commands', async () => {

@@ -50,7 +50,7 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
         </div>
         <p className="build-monitor-empty">
           {run.source === 'command'
-            ? 'Target graph is not available for legacy CLI commands.'
+            ? 'CMake target metadata is unavailable for this command. Normal Build and Configure can show the editor module dependency subtree.'
             : run.state === 'running'
               ? 'Waiting for CMake configure to report target dependencies…'
               : 'CMake target metadata was not available for this build.'}
@@ -87,8 +87,9 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
         </span>
       </div>
       <p className="build-monitor-target-note">
-        Dependencies come from CMake File API ({graph.configuration}). Markers show explicitly reported native
-        artifacts, not an estimate of completed targets. Up-to-date targets may emit no output.
+        {run.source === 'command' ? 'Editor module dependencies' : 'Dependencies'} come from CMake File API (
+        {graph.configuration}). Markers show explicitly reported native artifacts, not an estimate of completed targets.
+        Up-to-date targets may emit no output.
       </p>
       <div className="build-monitor-target-axis" aria-hidden="true">
         <span>Dependency tree</span>
