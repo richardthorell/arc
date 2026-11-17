@@ -10,6 +10,7 @@ import { queryProjectWorkflowPlan } from './projectWorkflowPlanner';
 import { CookWorkflowService } from './cookWorkflowService';
 import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
 import type { WindowsBuildEnvironment } from './windowsBuildWorkflow';
+import { EditorCommandTargetGraph } from './editorCommandTargetGraph';
 
 type HostBridge = {
   command(
@@ -224,7 +225,16 @@ export class BuildService {
       startedAt: new Date(startedMs).toISOString(),
       completedAt: undefined,
       command: `${tool} ${effective.join(' ')}`,
+      targetGraph: undefined,
     });
+    const epoch = this.projectEpoch;
+    const trackGraph = (state === 'configuring' || state === 'building') && effective[0] !== 'ide'
+      ? EditorCommandTargetGraph.forProject(project, configuration, (graph) => {
+          if (epoch !== this.projectEpoch || this.snapshotValue.runId !== runId) return;
+          this.update({ targetGraph: graph });
+        })
+      : null;
+    trackGraph?.prepare();
     await new Promise<void>((resolve, reject) => {
       const child = spawn(tool, effective, { cwd: project.projectRoot, shell: false, windowsHide: true });
       this.process = child;
@@ -237,6 +247,11 @@ export class BuildService {
           this.onRawOutput(project, runId, severity === 'info' ? 'stdout' : 'stderr', data.toString('utf8'));
         } catch {
           // History storage never interrupts the compiler.
+        }
+        try {
+          trackGraph?.observe(data.toString('utf8'), severity === 'info' ? 'stdout' : 'stderr');
+        } catch {
+          // Build monitoring never interrupts the native CLI.
         }
         const lines = (pending[severity] + data.toString('utf8')).split(/\r?\n/);
         pending[severity] = lines.pop() ?? '';
@@ -254,6 +269,7 @@ export class BuildService {
       });
       child.on('close', (code) => {
         if (failedToStart) return;
+        trackGraph?.finish();
         if (pending.info.trim()) this.parseLine(pending.info, code === 0 ? 'info' : 'error');
         if (pending.error.trim()) this.parseLine(pending.error, 'error');
         this.process = null;

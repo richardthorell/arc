@@ -180,6 +180,14 @@ export class BuildMonitorService {
       });
     }
 
+    // BM6: command builds publish an editor module subtree, not a fabricated
+    // graph for the default CLI "all" target.
+    if (snapshot.targetGraph && run.targetGraph?.revision !== snapshot.targetGraph.revision) {
+      run.targetGraph = structuredClone(snapshot.targetGraph);
+      this.history.saveRun(run);
+      this.event({ kind: 'target-graph-changed', runId: run.id, revision: snapshot.targetGraph.revision });
+    }
+
     const cursor = this.diagnosticCursor.get(run.id) ?? 0;
     for (const diagnostic of snapshot.diagnostics) {
       if (diagnostic.sequence <= cursor) continue;
