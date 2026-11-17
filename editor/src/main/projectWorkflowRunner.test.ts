@@ -141,6 +141,52 @@ describe('project workflow orchestration', () => {
     expect(result.completedAt).toEqual(expect.any(String));
   });
 
+  it('records only native-reported target artifacts and satisfies the requested root after compile', async () => {
+    const { runner, adapters, notify } = setup();
+    const graph = {
+      revision: 1,
+      generator: 'Visual Studio 17 2022',
+      configuration: 'Debug',
+      rootTargetId: 'output',
+      discoveredAt: '2026-11-16T10:00:00.000Z',
+      truncated: false,
+      nodes: [
+        { id: 'output', name: 'arc-runtime-output', type: 'UTILITY', dependencies: ['game'], artifacts: [] },
+        { id: 'game', name: 'game', type: 'EXECUTABLE', dependencies: [], artifacts: ['Debug/game.exe'] },
+      ],
+    };
+    adapters.configure!.execute = async (context) => {
+      context.publishTargetGraph(graph);
+    };
+    adapters.compile!.execute = async (context) => {
+      context.reportTargetArtifact('game');
+      context.reportTargetArtifact('game'); // duplicate must not produce another notification
+      context.reportTargetArtifact('not-a-target');
+      context.reportRequestedTargetSatisfied();
+    };
+    const result = await runner.execute(plan(), authority());
+    expect(result.state).toBe('succeeded');
+    expect(result.targetGraph?.nodes).toMatchObject([
+      { id: 'output', satisfiedAt: expect.any(String), artifactObservedAt: undefined },
+      { id: 'game', artifactObservedAt: expect.any(String), satisfiedAt: undefined },
+    ]);
+    expect(result.targetGraph?.revision).toBe(3);
+    expect(notify.mock.calls.map(([entry]) => entry.targetGraph?.revision).filter(Boolean)).toEqual([1, 2, 3, 3, 3, 3, 3, 3]);
+  });
+
+  it('cannot publish target progress after cancelling its owned workflow', async () => {
+    const { runner, adapters, commit } = setup();
+    adapters.compile!.execute = async (context) => {
+      runner.cancel(context.runId);
+      context.reportRequestedTargetSatisfied();
+      context.reportTargetArtifact('game');
+    };
+    const result = await runner.execute(plan(), authority());
+    expect(result.state).toBe('cancelled');
+    expect(result.targetGraph).toBeUndefined();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
   it('preflights every capability before any work', async () => {
     const { runner, adapters, order, commit } = setup();
     adapters.package!.capability = () => ({ available: false, reason: 'Package adapter unavailable' });

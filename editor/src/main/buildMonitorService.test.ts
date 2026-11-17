@@ -290,6 +290,32 @@ describe('BuildMonitorService BM1 event stream', () => {
     ]);
   });
 
+  it('preserves CMake dependency graphs and emits updates only for native target observations', () => {
+    const monitor = new BuildMonitorService();
+    const run = workflow('running', [
+      { stage: 'validate', state: 'succeeded' },
+      { stage: 'configure', state: 'succeeded' },
+    ]);
+    run.run!.targetGraph = {
+      revision: 1,
+      generator: 'Visual Studio 17 2022',
+      configuration: 'Shipping',
+      rootTargetId: 'root',
+      discoveredAt: '2026-11-16T12:00:00.000Z',
+      truncated: false,
+      nodes: [{ id: 'root', name: 'arc-runtime-output', type: 'UTILITY', dependencies: [], artifacts: [] }],
+    };
+    monitor.observeWorkflow(run, 'project-a');
+    monitor.observeWorkflow(run, 'project-a');
+    expect(monitor.snapshot().events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(1);
+    run.run!.targetGraph.revision = 2;
+    run.run!.targetGraph.nodes[0].satisfiedAt = '2026-11-16T12:00:04.000Z';
+    monitor.observeWorkflow(run, 'project-a');
+    const snapshot = monitor.snapshot();
+    expect(snapshot.runs[0].targetGraph?.nodes[0].satisfiedAt).toBe('2026-11-16T12:00:04.000Z');
+    expect(snapshot.events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(2);
+  });
+
   it('isolates projects and ignores stale workflow notifications', () => {
     const monitor = new BuildMonitorService();
     monitor.observeCommand(command(), 'project-a');
