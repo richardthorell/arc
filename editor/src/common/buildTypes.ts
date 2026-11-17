@@ -1,4 +1,5 @@
 import type { BuildTargetGraph } from './buildTargetTypes';
+import type { BuildCompileTrace } from './buildCompileTypes';
 
 export type ArcBuildState = 'idle' | 'configuring' | 'building' | 'cleaning' | 'failed' | 'succeeded' | 'cancelled';
 
@@ -42,6 +43,8 @@ export type ArcBuildSnapshot = {
   runId?: string;
   /** Optional CMake File API dependency subtree for this command invocation. */
   targetGraph?: BuildTargetGraph;
+  /** Measured native compile tasks, when the generator provides them. */
+  compileTrace?: BuildCompileTrace;
 };
 
 export type ArcBuildRequest = {
