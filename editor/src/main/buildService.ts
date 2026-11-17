@@ -181,14 +181,14 @@ export class BuildService {
         ['build', '--project', project.descriptorPath, '--config', configuration, '--target', 'clean'],
         'cleaning',
       );
-      await this.runTool(['configure', '--project', project.descriptorPath], 'configuring');
+      await this.runTool(['configure', '--project', project.descriptorPath, '--config', configuration], 'configuring');
       await this.runTool(['build', '--project', project.descriptorPath, '--config', configuration], 'building');
       await this.reloadAfterBuild(project);
       return this.snapshot();
     }
     const arguments_ =
       request.action === 'configure'
-        ? ['configure', '--project', project.descriptorPath]
+        ? ['configure', '--project', project.descriptorPath, '--config', configuration]
         : request.action === 'clean'
           ? ['build', '--project', project.descriptorPath, '--config', configuration, '--target', 'clean']
           : ['build', '--project', project.descriptorPath, '--config', configuration];
