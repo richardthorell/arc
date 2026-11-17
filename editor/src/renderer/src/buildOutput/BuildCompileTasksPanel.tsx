@@ -19,9 +19,7 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
         <h4>
           <Activity size={15} aria-hidden="true" /> Native compilation tasks
         </h4>
-        <span>
-          {tasks.length} measured · Ninja
-        </span>
+        <span>{tasks.length} measured · Ninja</span>
       </div>
       <p className="build-monitor-target-note">
         Compiler object outputs measured by Ninja. Bars show actual task overlap on the Ninja invocation clock, not
@@ -60,7 +58,9 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
         <p className="build-monitor-empty">No object compilation was recorded in this Ninja invocation.</p>
       )}
       {trace.truncated && (
-        <p className="build-monitor-target-note">Timing trace limited to 256 tasks, 24 KiB of history data, or 8 MiB of native log data.</p>
+        <p className="build-monitor-target-note">
+          Timing trace limited to 256 tasks, 24 KiB of history data, or 8 MiB of native log data.
+        </p>
       )}
     </section>
   );
