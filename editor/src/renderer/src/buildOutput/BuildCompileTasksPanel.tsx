@@ -60,7 +60,7 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
         <p className="build-monitor-empty">No object compilation was recorded in this Ninja invocation.</p>
       )}
       {trace.truncated && (
-        <p className="build-monitor-target-note">Timing trace limited to 256 tasks or 8 MiB of native log data.</p>
+        <p className="build-monitor-target-note">Timing trace limited to 256 tasks, 24 KiB of history data, or 8 MiB of native log data.</p>
       )}
     </section>
   );
