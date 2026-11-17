@@ -33,8 +33,14 @@ const formatOffset = (milliseconds: number): string =>
 
 export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; nowMs: number }) {
   const graph = run.targetGraph;
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(graph ? [graph.rootTargetId] : []));
-  const rows = useMemo(() => (graph ? graphRows(graph, expanded) : []), [graph, expanded]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [rootCollapsed, setRootCollapsed] = useState(false);
+  const visibleExpanded = useMemo(() => {
+    const result = new Set(expanded);
+    if (graph && !rootCollapsed) result.add(graph.rootTargetId);
+    return result;
+  }, [expanded, rootCollapsed, graph]);
+  const rows = useMemo(() => (graph ? graphRows(graph, visibleExpanded) : []), [graph, visibleExpanded]);
 
   if (!graph) {
     return (
@@ -58,6 +64,10 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
   const start = safeTime(run.startedAt) ?? 0;
   const spanMs = Math.max(1, run.durationMs ?? Math.max(0, nowMs - start));
   const toggle = (id: string) => {
+    if (id === graph.rootTargetId) {
+      setRootCollapsed((previous) => !previous);
+      return;
+    }
     setExpanded((previous) => {
       const next = new Set(previous);
       if (next.has(id)) next.delete(id);
@@ -98,16 +108,16 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
               className="build-monitor-target-row"
               role="treeitem"
               aria-level={Math.min(depth + 1, 32)}
-              aria-expanded={hasChildren ? expanded.has(node.id) : undefined}
+              aria-expanded={hasChildren ? visibleExpanded.has(node.id) : undefined}
             >
               <div className="build-monitor-target-name" style={{ paddingLeft: `${Math.min(depth, 7) * 15}px` }}>
                 {hasChildren ? (
                   <button
                     type="button"
-                    aria-label={`${expanded.has(node.id) ? 'Collapse' : 'Expand'} ${node.name}`}
+                    aria-label={`${visibleExpanded.has(node.id) ? 'Collapse' : 'Expand'} ${node.name}`}
                     onClick={() => toggle(node.id)}
                   >
-                    {expanded.has(node.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    {visibleExpanded.has(node.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
                 ) : (
                   <span className="build-monitor-target-spacer" />
