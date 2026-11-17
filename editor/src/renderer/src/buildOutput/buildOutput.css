@@ -988,3 +988,71 @@
     font-size: 10px;
   }
 }
+
+
+/* BM7.1 — measured Ninja object compilation intervals, not estimates. */
+.build-monitor-compiles .build-monitor-section-title h4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.build-monitor-compile-heading,
+.build-monitor-compile-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(110px, 1fr) 70px;
+  gap: 10px;
+  align-items: center;
+}
+
+.build-monitor-compile-heading {
+  color: #8098aa;
+  font-size: 10px;
+  margin-bottom: 7px;
+}
+
+.build-monitor-compile-list {
+  display: grid;
+  gap: 4px;
+  max-height: 315px;
+  overflow: auto;
+}
+
+.build-monitor-compile-row {
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 3px;
+  background: #1b2b36;
+}
+
+.build-monitor-compile-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #b9d0e0;
+  font: 11px var(--arc-font-monospace, ui-monospace, SFMono-Regular, Consolas, monospace);
+}
+
+.build-monitor-compile-bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: #67b7f4;
+}
+
+.build-monitor-compile-duration {
+  text-align: right;
+  color: #9eb4c3;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 850px) {
+  .build-monitor-compile-heading,
+  .build-monitor-compile-row {
+    grid-template-columns: minmax(110px, 1fr) minmax(80px, 0.7fr) 60px;
+    gap: 6px;
+  }
+}
