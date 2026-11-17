@@ -11,6 +11,7 @@ The `arc-project` CLI uses the project's configured `paths.build/default` direct
 - CMake single-config generators may emit a codemodel configuration with an empty name; BM6 accepts that when there is only one configuration, retaining the requested build configuration label. Multi-config generators still select the exact matching configuration.
 - Native artifact events reuse the BM5 exact-file-path observer. `MyEditor.vcxproj -> .../MyEditor.dll` can mark that module as having produced output; generic `ninja`/build progress messages do not.
 - `ArcBuildSnapshot.targetGraph` is optional and scoped to the command's unique `runId`. BM1 persists graph revisions and emits `target-graph-changed`; BM2 retains historical graph/observation state. Previous runs without a graph still load.
+- The editor passes the selected `--config` to explicit Configure and Rebuild's configure step rather than accidentally invoking the CLI's default configuration.
 - The default build succeeding does **not** satisfy the editor module target in the graph. The CLI requests **all**, so the monitor only marks individual native artifact outputs it can verify, never guessed target completion percentages or timings.
 
 ## Safety and compatibility
