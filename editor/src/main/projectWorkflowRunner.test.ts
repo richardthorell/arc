@@ -167,9 +167,11 @@ describe('project workflow orchestration', () => {
     const result = await runner.execute(plan(), authority());
     expect(result.state).toBe('succeeded');
     expect(result.targetGraph?.nodes).toMatchObject([
-      { id: 'output', satisfiedAt: expect.any(String), artifactObservedAt: undefined },
-      { id: 'game', artifactObservedAt: expect.any(String), satisfiedAt: undefined },
+      { id: 'output', satisfiedAt: expect.any(String) },
+      { id: 'game', artifactObservedAt: expect.any(String) },
     ]);
+    expect(result.targetGraph?.nodes[0]).not.toHaveProperty('artifactObservedAt');
+    expect(result.targetGraph?.nodes[1]).not.toHaveProperty('satisfiedAt');
     expect(result.targetGraph?.revision).toBe(3);
     const revisions = notify.mock.calls.map(([entry]) => entry.targetGraph?.revision).filter(Boolean);
     expect([...new Set(revisions)]).toEqual([1, 2, 3]);
