@@ -7,6 +7,7 @@ import type { WorkflowStageAdapter, WorkflowStageContext, WorkflowPublication } 
 import type { WorkflowProcessRequest } from './workflowProcess';
 import { runWorkflowProcess } from './workflowProcess';
 import { createCookWorkflowAdapter } from './cookWorkflowAdapter';
+import { CMakeTargetOutputObserver, readCMakeTargetGraph, requestCMakeCodemodel } from './cmakeTargetGraph';
 import type { EditorSettingsSnapshot } from '../common/editorWorkflowTypes';
 import { windowsToolchainSettingKeys, resolveVisualStudioGenerator } from './windowsToolchain';
 
@@ -102,7 +103,12 @@ export function createWindowsBuildWorkflow(
   let generation = '';
   let recordRoot = '';
   let artifacts: WorkflowArtifact[] = [];
-  const command = async (context: WorkflowStageContext, executable: string, args: string[]) => {
+  const command = async (
+    context: WorkflowStageContext,
+    executable: string,
+    args: string[],
+    observeRaw?: (text: string, stream: 'stdout' | 'stderr') => void,
+  ) => {
     context.assertCurrent();
     const result = await runProcess({
       executable,
@@ -110,7 +116,10 @@ export function createWindowsBuildWorkflow(
       cwd: context.authority.projectRoot,
       signal: context.signal,
       onOutput,
-      onRawOutput,
+      onRawOutput: (text, stream) => {
+        onRawOutput?.(text, stream);
+        observeRaw?.(text, stream);
+      },
       outputMode: executable === environment?.cmake ? 'log' : 'protocol',
     });
     context.assertCurrent();
@@ -145,6 +154,13 @@ export function createWindowsBuildWorkflow(
       }),
       configure: stage(async (context) => {
         if (!environment) throw new Error('Missing runtime build environment');
+        // CMake responds to File API queries as part of this configure step.
+        // Query failure must not turn a valid native build into an editor failure.
+        try {
+          requestCMakeCodemodel(codeDirectory);
+        } catch {
+          // The build remains authoritative even when diagnostics are unavailable.
+        }
         await command(context, environment.cmake, [
           '-S',
           context.authority.projectRoot,
@@ -159,9 +175,19 @@ export function createWindowsBuildWorkflow(
           `-DARC_WORKFLOW_PROFILE=${context.plan.profile}`,
           `-DCMAKE_CONFIGURATION_TYPES=${context.plan.configuration}`,
         ]);
+        try {
+          const graph = readCMakeTargetGraph(codeDirectory, context.plan.configuration, 'arc-runtime-output');
+          if (graph) context.publishTargetGraph(graph);
+        } catch {
+          // Missing, malformed, or unsupported File API metadata is nonfatal.
+        }
       }),
       compile: stage(async (context) => {
         if (!environment) throw new Error('Missing runtime build environment');
+        const graph = readCMakeTargetGraphSafely(context, codeDirectory);
+        const observer = graph
+          ? new CMakeTargetOutputObserver(codeDirectory, graph, (id) => context.reportTargetArtifact(id))
+          : undefined;
         await command(context, environment.cmake, [
           '--build',
           codeDirectory,
@@ -170,7 +196,10 @@ export function createWindowsBuildWorkflow(
           '--target',
           'arc-runtime-output',
           '--parallel',
-        ]);
+        ], (text, stream) => observer?.accept(text, stream));
+        // A successful native build satisfies the explicitly requested root,
+        // even if incremental dependencies emitted no artifact output.
+        context.reportRequestedTargetSatisfied();
         const result = JSON.parse(
           await command(context, tool, [
             'package',

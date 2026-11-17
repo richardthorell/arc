@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BuildTargetGraph } from './buildTargetTypes';
 
 export const workflowStageSchema = z.enum([
   'validate',
@@ -88,6 +89,8 @@ export type WorkflowRun = {
   state: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled';
   stages: WorkflowStageProgress[];
   artifacts: WorkflowArtifact[];
+  /** CMake File API graph for the requested target, when supported. */
+  targetGraph?: BuildTargetGraph;
   error?: string;
 };
 

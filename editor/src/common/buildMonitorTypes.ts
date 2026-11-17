@@ -1,5 +1,6 @@
 import type { ArcBuildDiagnostic } from './buildTypes';
 import type { WorkflowArtifact } from './projectWorkflowTypes';
+import type { BuildTargetGraph } from './buildTargetTypes';
 
 /** Unified, project-scoped build observation contract. BM1 is in-memory; BM2 adds disk persistence. */
 export type BuildMonitorSource = 'command' | 'workflow';
@@ -33,12 +34,14 @@ export type BuildMonitorRun = {
   errorCount: number;
   error?: string;
   artifacts?: WorkflowArtifact[];
+  targetGraph?: BuildTargetGraph;
 };
 
 type EventBase = { sequence: number; runId: string; stageId?: string; timestamp: string };
 export type BuildMonitorEvent =
   | (EventBase & { kind: 'run-started'; run: BuildMonitorRun })
   | (EventBase & { kind: 'stage-changed'; stage: BuildMonitorStage })
+  | (EventBase & { kind: 'target-graph-changed'; revision: number })
   | (EventBase & { kind: 'output'; text: string })
   | (EventBase & { kind: 'diagnostic'; diagnostic: ArcBuildDiagnostic })
   | (EventBase & { kind: 'run-completed'; run: BuildMonitorRun });

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { BuildTargetGraph } from '../common/buildTargetTypes';
 import {
   workflowPlanSchema,
   type WorkflowPlan,
@@ -15,6 +16,10 @@ export type WorkflowStageContext = {
   readonly authority: WorkflowAuthority;
   readonly signal: AbortSignal;
   assertCurrent(): void;
+  /** Called only by trusted native build adapters, never renderer IPC. */
+  publishTargetGraph(graph: BuildTargetGraph): void;
+  reportTargetArtifact(targetId: string): void;
+  reportRequestedTargetSatisfied(): void;
 };
 
 export type WorkflowStageAdapter = {
@@ -106,6 +111,29 @@ export class ProjectWorkflowRunner {
       assertCurrent: () => {
         if (controller.signal.aborted) throw new Error('Workflow cancelled');
         if (!this.isCurrent(authority)) throw new Error('Workflow authority changed; output was not published');
+      },
+      publishTargetGraph: (graph) => {
+        if (controller.signal.aborted || run.state !== 'running') return;
+        run.targetGraph = structuredClone(graph);
+        this.emit(run);
+      },
+      reportTargetArtifact: (targetId) => {
+        if (controller.signal.aborted || run.state !== 'running') return;
+        const graph = run.targetGraph;
+        const target = graph?.nodes.find((node) => node.id === targetId);
+        if (!graph || !target || target.artifactObservedAt) return;
+        target.artifactObservedAt = new Date().toISOString();
+        graph.revision++;
+        this.emit(run);
+      },
+      reportRequestedTargetSatisfied: () => {
+        if (controller.signal.aborted || run.state !== 'running') return;
+        const graph = run.targetGraph;
+        const target = graph?.nodes.find((node) => node.id === graph.rootTargetId);
+        if (!graph || !target || target.satisfiedAt) return;
+        target.satisfiedAt = new Date().toISOString();
+        graph.revision++;
+        this.emit(run);
       },
     };
     const entered: WorkflowStageAdapter[] = [];

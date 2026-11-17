@@ -237,6 +237,12 @@ export class BuildMonitorService {
       });
     }
 
+    if (workflow.targetGraph && run.targetGraph?.revision !== workflow.targetGraph.revision) {
+      run.targetGraph = structuredClone(workflow.targetGraph);
+      this.history.saveRun(run);
+      this.event({ kind: 'target-graph-changed', runId: run.id, revision: workflow.targetGraph.revision });
+    }
+
     // Workflow stages come from the native planner and runner, never a UI guess.
     for (const source of workflow.stages) {
       const stage = run.stages.find((entry) => entry.name === source.stage);
