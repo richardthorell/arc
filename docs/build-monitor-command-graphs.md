@@ -20,6 +20,7 @@ The `arc-project` CLI uses the project's configured `paths.build/default` direct
 - Paths escaping the project and existing symlinked build directories are rejected. Missing or malformed CMake metadata is nonfatal to the actual build.
 - `Clean`, `Reload`, and `Open IDE` do not present synthetic target graphs. A `Rebuild` performs its existing clean/configure/build commands, each with its own unique run record.
 - The existing CMake command parser, raw logs, cancellation, and module reload behavior remain unchanged.
+- After switching configurations on an already-configured single-config Ninja/Makefiles project, use **Configure** or **Rebuild** before Build. The current CLI does not automatically reconfigure a cached `CMAKE_BUILD_TYPE` on ordinary Build; BM6 does not change that execution policy.
 
 ## Follow-up
 
