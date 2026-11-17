@@ -44,8 +44,8 @@ export function beginNinjaCompileTrace(project: ArcProjectCandidate): (() => Bui
       if (!stat.isFile() || stat.size < offset) return undefined;
       if (identity && (stat.dev !== identity.dev || stat.ino !== identity.ino)) return undefined;
       const header = Buffer.alloc(HEADER.length);
-      if (fs.readSync(fd, header, 0, header.length, 0) !== HEADER.length || header.toString() !== HEADER)
-        return undefined;
+      const headerBytes = fs.readSync(fd, header, 0, header.length, 0);
+      if (headerBytes !== HEADER.length || header.toString() !== HEADER) return undefined;
       const available = stat.size - offset;
       if (!available) return undefined;
       const size = Math.min(available, MAX_LOG_BYTES);
@@ -63,8 +63,8 @@ export function beginNinjaCompileTrace(project: ArcProjectCandidate): (() => Bui
         if (fields.length < 5 || !/(?:^|[/\\])[^/\\]+\.(?:o|obj)$/i.test(fields[3])) continue;
         const startMs = Number(fields[0]);
         const endMs = Number(fields[1]);
-        if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs) || startMs < 0 || endMs < startMs)
-          continue;
+        if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs)) continue;
+        if (startMs < 0 || endMs < startMs) continue;
         const bytes = Buffer.byteLength(fields[3], 'utf8') + 96;
         if (tasks.length >= MAX_TASKS || payloadBytes + bytes > MAX_TRACE_BYTES) {
           truncated = true;
