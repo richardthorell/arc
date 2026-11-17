@@ -108,43 +108,65 @@ describe('BuildService command history', () => {
       vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcessWithoutNullStreams);
       const publish = vi.fn();
       const host = { command: vi.fn().mockResolvedValue({ succeeded: true }) };
-      const service = new BuildService(() => project, () => process.execPath, host, publish);
+      const service = new BuildService(
+        () => project,
+        () => process.execPath,
+        host,
+        publish,
+      );
       const pending = service.execute({ action: 'build', configuration: 'Debug' });
       const buildDir = path.join(root, 'Build', 'default');
       expect(fs.existsSync(path.join(buildDir, '.cmake', 'api', 'v1', 'query', 'codemodel-v2'))).toBe(true);
 
       const replyDir = path.join(buildDir, '.cmake', 'api', 'v1', 'reply');
       fs.mkdirSync(replyDir, { recursive: true });
-      fs.writeFileSync(path.join(replyDir, 'index-test.json'), JSON.stringify({
-        cmake: { generator: { name: 'Ninja' } },
-        reply: { 'codemodel-v2': { jsonFile: 'codemodel.json' } },
-      }));
-      fs.writeFileSync(path.join(replyDir, 'codemodel.json'), JSON.stringify({
-        configurations: [{ name: '', targets: [
-          { id: 'editor', name: 'MyEditor', jsonFile: 'target-editor.json' },
-        ] }],
-      }));
-      fs.writeFileSync(path.join(replyDir, 'target-editor.json'), JSON.stringify({
-        id: 'editor', name: 'MyEditor', type: 'MODULE_LIBRARY',
-        artifacts: [{ path: 'MyEditor.dll' }],
-      }));
+      fs.writeFileSync(
+        path.join(replyDir, 'index-test.json'),
+        JSON.stringify({
+          cmake: { generator: { name: 'Ninja' } },
+          reply: { 'codemodel-v2': { jsonFile: 'codemodel.json' } },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(replyDir, 'codemodel.json'),
+        JSON.stringify({
+          configurations: [{ name: '', targets: [{ id: 'editor', name: 'MyEditor', jsonFile: 'target-editor.json' }] }],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(replyDir, 'target-editor.json'),
+        JSON.stringify({
+          id: 'editor',
+          name: 'MyEditor',
+          type: 'MODULE_LIBRARY',
+          artifacts: [{ path: 'MyEditor.dll' }],
+        }),
+      );
       const output = path.join(buildDir, 'MyEditor.dll');
       child.stdout.emit('data', Buffer.from(`MyEditor.vcxproj -> ${output}\n`));
 
       const saved = path.join(root, 'Saved', 'Editor');
       fs.mkdirSync(saved, { recursive: true });
-      fs.writeFileSync(path.join(saved, 'active-build.json'), JSON.stringify({
-        moduleManifest: 'Build/default/arc-modules-Debug.json',
-      }));
-      fs.writeFileSync(path.join(buildDir, 'arc-modules-Debug.json'), JSON.stringify({
-        modules: [{ id: 'game.editor', path: output }],
-      }));
+      fs.writeFileSync(
+        path.join(saved, 'active-build.json'),
+        JSON.stringify({
+          moduleManifest: 'Build/default/arc-modules-Debug.json',
+        }),
+      );
+      fs.writeFileSync(
+        path.join(buildDir, 'arc-modules-Debug.json'),
+        JSON.stringify({
+          modules: [{ id: 'game.editor', path: output }],
+        }),
+      );
 
       child.emit('close', 0);
       await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
       expect(service.snapshot().targetGraph).toMatchObject({
-        configuration: 'Debug', rootTargetId: 'editor',
-        revision: 2, nodes: [{ name: 'MyEditor', artifactObservedAt: expect.any(String) }],
+        configuration: 'Debug',
+        rootTargetId: 'editor',
+        revision: 2,
+        nodes: [{ name: 'MyEditor', artifactObservedAt: expect.any(String) }],
       });
       expect(service.snapshot().targetGraph?.nodes[0]).not.toHaveProperty('satisfiedAt');
       expect(publish.mock.calls.some(([entry]) => entry.targetGraph?.revision === 1)).toBe(true);

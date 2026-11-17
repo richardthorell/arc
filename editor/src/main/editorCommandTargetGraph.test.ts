@@ -26,28 +26,56 @@ function project(): ArcProjectCandidate {
 function reply(buildDir: string, moduleDependencies = ['runtime']): void {
   const dir = path.join(buildDir, '.cmake', 'api', 'v1', 'reply');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'index-20261117-120000.json'), JSON.stringify({
-    cmake: { generator: { name: 'Ninja' } },
-    reply: { 'codemodel-v2': { jsonFile: 'codemodel-v2-file.json' } },
-  }));
-  fs.writeFileSync(path.join(dir, 'codemodel-v2-file.json'), JSON.stringify({
-    configurations: [{ name: '', targets: [
-      { id: 'editor', name: 'MyEditor', jsonFile: 'target-editor.json' },
-      { id: 'runtime', name: 'MyRuntime', jsonFile: 'target-runtime.json' },
-      { id: 'unrelated', name: 'OtherTest', jsonFile: 'target-test.json' },
-    ] }],
-  }));
-  fs.writeFileSync(path.join(dir, 'target-editor.json'), JSON.stringify({
-    id: 'editor', name: 'MyEditor', type: 'MODULE_LIBRARY',
-    dependencies: moduleDependencies.map((id) => ({ id })),
-    artifacts: [{ path: 'MyEditor.so' }],
-  }));
-  fs.writeFileSync(path.join(dir, 'target-runtime.json'), JSON.stringify({
-    id: 'runtime', name: 'MyRuntime', type: 'STATIC_LIBRARY', artifacts: [{ path: 'libMyRuntime.a' }],
-  }));
-  fs.writeFileSync(path.join(dir, 'target-test.json'), JSON.stringify({
-    id: 'unrelated', name: 'OtherTest', type: 'EXECUTABLE', artifacts: [{ path: 'OtherTest' }],
-  }));
+  fs.writeFileSync(
+    path.join(dir, 'index-20261117-120000.json'),
+    JSON.stringify({
+      cmake: { generator: { name: 'Ninja' } },
+      reply: { 'codemodel-v2': { jsonFile: 'codemodel-v2-file.json' } },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(dir, 'codemodel-v2-file.json'),
+    JSON.stringify({
+      configurations: [
+        {
+          name: '',
+          targets: [
+            { id: 'editor', name: 'MyEditor', jsonFile: 'target-editor.json' },
+            { id: 'runtime', name: 'MyRuntime', jsonFile: 'target-runtime.json' },
+            { id: 'unrelated', name: 'OtherTest', jsonFile: 'target-test.json' },
+          ],
+        },
+      ],
+    }),
+  );
+  fs.writeFileSync(
+    path.join(dir, 'target-editor.json'),
+    JSON.stringify({
+      id: 'editor',
+      name: 'MyEditor',
+      type: 'MODULE_LIBRARY',
+      dependencies: moduleDependencies.map((id) => ({ id })),
+      artifacts: [{ path: 'MyEditor.so' }],
+    }),
+  );
+  fs.writeFileSync(
+    path.join(dir, 'target-runtime.json'),
+    JSON.stringify({
+      id: 'runtime',
+      name: 'MyRuntime',
+      type: 'STATIC_LIBRARY',
+      artifacts: [{ path: 'libMyRuntime.a' }],
+    }),
+  );
+  fs.writeFileSync(
+    path.join(dir, 'target-test.json'),
+    JSON.stringify({
+      id: 'unrelated',
+      name: 'OtherTest',
+      type: 'EXECUTABLE',
+      artifacts: [{ path: 'OtherTest' }],
+    }),
+  );
 }
 
 afterEach(() => {
@@ -74,7 +102,9 @@ describe('BM6 normal editor command CMake graph', () => {
     expect(publish).toHaveBeenCalledTimes(2);
     const result = publish.mock.lastCall?.[0];
     expect(result).toMatchObject({
-      revision: 2, configuration: 'Debug', rootTargetId: 'editor',
+      revision: 2,
+      configuration: 'Debug',
+      rootTargetId: 'editor',
       nodes: [
         { id: 'editor', dependencies: ['runtime'], artifactObservedAt: expect.any(String) },
         { id: 'runtime', dependencies: [] },
@@ -94,8 +124,9 @@ describe('BM6 normal editor command CMake graph', () => {
     graph.observe('ninja: no work to do.\n', 'stdout');
     graph.finish();
     expect(publish).toHaveBeenCalledTimes(1);
-    expect(publish.mock.lastCall?.[0].nodes.every((node: { artifactObservedAt?: string }) =>
-      !node.artifactObservedAt)).toBe(true);
+    expect(
+      publish.mock.lastCall?.[0].nodes.every((node: { artifactObservedAt?: string }) => !node.artifactObservedAt),
+    ).toBe(true);
   });
 
   it('publishes a changed graph after an explicit configure without reusing obsolete artifacts', () => {

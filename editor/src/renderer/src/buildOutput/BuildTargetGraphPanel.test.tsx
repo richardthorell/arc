@@ -92,6 +92,8 @@ describe('BM5 target dependency graph', () => {
     value.source = 'command';
     value.targetGraph = undefined;
     render(<BuildTargetGraphPanel run={value} nowMs={Date.parse(start)} />);
-    expect(screen.getByText(/Normal Build and Configure can show the editor module dependency subtree/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Normal Build and Configure can show the editor module dependency subtree/),
+    ).toBeInTheDocument();
   });
 });

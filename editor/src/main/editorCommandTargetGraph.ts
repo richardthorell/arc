@@ -17,8 +17,7 @@ export function editorCommandBuildDirectory(project: ArcProjectCandidate): strin
   const root = path.resolve(project.projectRoot);
   const directory = path.resolve(root, buildRoot, 'default');
   const relative = path.relative(root, directory);
-  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-    return null;
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
   let current = root;
   for (const part of relative.split(path.sep)) {
     current = path.join(current, part);

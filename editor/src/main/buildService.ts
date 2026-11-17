@@ -228,12 +228,13 @@ export class BuildService {
       targetGraph: undefined,
     });
     const epoch = this.projectEpoch;
-    const trackGraph = (state === 'configuring' || state === 'building') && effective[0] !== 'ide'
-      ? EditorCommandTargetGraph.forProject(project, configuration, (graph) => {
-          if (epoch !== this.projectEpoch || this.snapshotValue.runId !== runId) return;
-          this.update({ targetGraph: graph });
-        })
-      : null;
+    const trackGraph =
+      (state === 'configuring' || state === 'building') && effective[0] !== 'ide'
+        ? EditorCommandTargetGraph.forProject(project, configuration, (graph) => {
+            if (epoch !== this.projectEpoch || this.snapshotValue.runId !== runId) return;
+            this.update({ targetGraph: graph });
+          })
+        : null;
     trackGraph?.prepare();
     await new Promise<void>((resolve, reject) => {
       const child = spawn(tool, effective, { cwd: project.projectRoot, shell: false, windowsHide: true });
