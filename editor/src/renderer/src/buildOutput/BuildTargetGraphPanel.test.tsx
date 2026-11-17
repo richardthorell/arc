@@ -66,6 +66,18 @@ describe('BM5 target dependency graph', () => {
     expect(screen.getByText('Satisfied')).toBeInTheDocument();
   });
 
+  it('automatically expands the requested target when graph metadata arrives live', () => {
+    const pending = run();
+    pending.targetGraph = undefined;
+    pending.state = 'running';
+    const { rerender } = render(<BuildTargetGraphPanel run={pending} nowMs={Date.parse(start)} />);
+    expect(screen.getByText('Waiting for CMake configure to report target dependencies…')).toBeInTheDocument();
+    rerender(<BuildTargetGraphPanel run={run()} nowMs={Date.parse(start) + 10000} />);
+    expect(screen.getByText('my_game')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse arc-runtime-output' }));
+    expect(screen.queryByText('my_game')).not.toBeInTheDocument();
+  });
+
   it('does not mistake target satisfaction for native artifact compilation', () => {
     const value = run();
     value.targetGraph!.nodes[1].artifactObservedAt = undefined;
