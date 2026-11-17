@@ -6,7 +6,7 @@ BM5 adds a native CMake File API dependency graph and *evidence-based* target ou
 
 - Before the Windows runtime **configure** stage, ARC writes a CMake File API `codemodel-v2` query to the workflow's private build directory.
 - After a successful CMake configure, ARC reads the latest native reply for the exact requested configuration and the `arc-runtime-output` root target. The target IDs, names, types, direct dependencies, and artifacts originate from CMake's codemodel target JSON files—not compiler console text.
-- ARC includes only up to **256 targets reachable** from the requested root. Unrelated tests/utilities are excluded. The UI labels a truncated graph explicitly. If the reply is missing, invalid, or incompatible, the build still runs; the monitor displays that target metadata is unavailable.
+- ARC includes only up to **128 targets reachable** from the requested root. Unrelated tests/utilities are excluded. The UI labels a truncated graph explicitly. If the reply is missing, invalid, or incompatible, the build still runs; the monitor displays that target metadata is unavailable.
 - The workflow runner publishes the graph using its trusted stage context; BM1's shared monitor persists it in the BM2 build history index, including across editor restarts. A `target-graph-changed` event refreshes the live UI.
 
 ## Live observations

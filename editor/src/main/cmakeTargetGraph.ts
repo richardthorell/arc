@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import type { BuildTargetGraph, BuildTargetNode } from '../common/buildTargetTypes';
 
-const MAX_TARGETS = 256;
+const MAX_TARGETS = 128;
 const MAX_CONFIG_TARGETS = 8_000;
 const MAX_REPLY_SIZE = 12 * 1024 * 1024;
 const MAX_FILE_SIZE = 4 * 1024 * 1024;

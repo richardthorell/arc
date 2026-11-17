@@ -127,7 +127,7 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
           );
         })}
       </div>
-      {graph.truncated && <p className="build-monitor-target-note">Graph limited to 256 reachable targets. Some dependencies are omitted.</p>}
+      {graph.truncated && <p className="build-monitor-target-note">Graph limited to 128 reachable targets. Some dependencies are omitted.</p>}
     </section>
   );
 }
