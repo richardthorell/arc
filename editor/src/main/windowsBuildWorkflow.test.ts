@@ -20,6 +20,8 @@ function fixture(
     variants?: boolean;
     wrongIdentity?: boolean;
     escape?: boolean;
+    cmakeGraph?: boolean;
+    emitNativeArtifact?: boolean;
   } = {},
 ) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc shipping workflow '));
@@ -57,6 +59,54 @@ function fixture(
     if (index === options.stale) current = false;
     if (index === options.cancel) runner.cancel(runner.snapshot()!.id);
     const arg = (key: string) => request.args[request.args.indexOf(key) + 1];
+    if (options.cmakeGraph && request.args[0] === '-S') {
+      const reply = path.join(arg('-B'), '.cmake', 'api', 'v1', 'reply');
+      expect(fs.existsSync(path.join(arg('-B'), '.cmake', 'api', 'v1', 'query', 'codemodel-v2'))).toBe(true);
+      fs.mkdirSync(reply, { recursive: true });
+      fs.writeFileSync(
+        path.join(reply, 'index-20261116-100000.json'),
+        JSON.stringify({
+          cmake: { generator: { name: 'Visual Studio 17 2022' } },
+          reply: { 'codemodel-v2': { jsonFile: 'codemodel-v2.json' } },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(reply, 'codemodel-v2.json'),
+        JSON.stringify({
+          configurations: [
+            {
+              name: 'Shipping',
+              targets: [
+                { id: 'root', name: 'arc-runtime-output', jsonFile: 'target-root.json' },
+                { id: 'game', name: 'game', jsonFile: 'target-game.json' },
+              ],
+            },
+          ],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(reply, 'target-root.json'),
+        JSON.stringify({
+          id: 'root',
+          name: 'arc-runtime-output',
+          type: 'UTILITY',
+          dependencies: [{ id: 'game' }],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(reply, 'target-game.json'),
+        JSON.stringify({
+          id: 'game',
+          name: 'game',
+          type: 'EXECUTABLE',
+          artifacts: [{ path: 'Shipping/game.exe' }],
+        }),
+      );
+    }
+    if (options.emitNativeArtifact && request.args[0] === '--build') {
+      const artifact = path.join(arg('--build'), 'Shipping', 'game.exe');
+      request.onRawOutput?.(`game.vcxproj -> ${artifact}\n`, 'stdout');
+    }
     if (request.args[0] === 'cook') {
       const manifests = (options.variants ? ['bc', 'other'] : ['bc']).map((name) => {
         const manifest = path.join(arg('--output'), `${name}.arccookmanifest`);
@@ -172,6 +222,29 @@ describe('Windows Shipping workflow', () => {
     // Incremental compilation retains the same captured-profile code directory.
     expect((await value.run()).state).toBe('succeeded');
     expect(value.runProcess.mock.calls[8][0].args).toEqual(calls[0]);
+  });
+
+  it('discovers CMake dependencies and reports native artifacts during the Windows build', async () => {
+    const value = fixture({ cmakeGraph: true, emitNativeArtifact: true });
+    const result = await value.run();
+    expect(result.state).toBe('succeeded');
+    expect(result.targetGraph).toMatchObject({
+      configuration: 'Shipping',
+      rootTargetId: 'root',
+      revision: 3,
+      nodes: [
+        { id: 'root', dependencies: ['game'], satisfiedAt: expect.any(String) },
+        { id: 'game', artifactObservedAt: expect.any(String) },
+      ],
+    });
+  });
+
+  it('never claims unreported dependencies were rebuilt on an incremental success', async () => {
+    const value = fixture({ cmakeGraph: true });
+    const result = await value.run();
+    expect(result.state).toBe('succeeded');
+    expect(result.targetGraph?.nodes.find((node) => node.id === 'root')?.satisfiedAt).toEqual(expect.any(String));
+    expect(result.targetGraph?.nodes.find((node) => node.id === 'game')?.artifactObservedAt).toBeUndefined();
   });
 
   it.each([1, 2, 3, 4, 5, 6, 7, 8])('preserves previous output when command %s fails', async (fail) => {
