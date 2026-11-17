@@ -63,22 +63,45 @@ function fixture(
       const reply = path.join(arg('-B'), '.cmake', 'api', 'v1', 'reply');
       expect(fs.existsSync(path.join(arg('-B'), '.cmake', 'api', 'v1', 'query', 'codemodel-v2'))).toBe(true);
       fs.mkdirSync(reply, { recursive: true });
-      fs.writeFileSync(path.join(reply, 'index-20261116-100000.json'), JSON.stringify({
-        cmake: { generator: { name: 'Visual Studio 17 2022' } },
-        reply: { 'codemodel-v2': { jsonFile: 'codemodel-v2.json' } },
-      }));
-      fs.writeFileSync(path.join(reply, 'codemodel-v2.json'), JSON.stringify({
-        configurations: [{ name: 'Shipping', targets: [
-          { id: 'root', name: 'arc-runtime-output', jsonFile: 'target-root.json' },
-          { id: 'game', name: 'game', jsonFile: 'target-game.json' },
-        ] }],
-      }));
-      fs.writeFileSync(path.join(reply, 'target-root.json'), JSON.stringify({
-        id: 'root', name: 'arc-runtime-output', type: 'UTILITY', dependencies: [{ id: 'game' }],
-      }));
-      fs.writeFileSync(path.join(reply, 'target-game.json'), JSON.stringify({
-        id: 'game', name: 'game', type: 'EXECUTABLE', artifacts: [{ path: 'Shipping/game.exe' }],
-      }));
+      fs.writeFileSync(
+        path.join(reply, 'index-20261116-100000.json'),
+        JSON.stringify({
+          cmake: { generator: { name: 'Visual Studio 17 2022' } },
+          reply: { 'codemodel-v2': { jsonFile: 'codemodel-v2.json' } },
+        }),
+      );
+      fs.writeFileSync(
+        path.join(reply, 'codemodel-v2.json'),
+        JSON.stringify({
+          configurations: [
+            {
+              name: 'Shipping',
+              targets: [
+                { id: 'root', name: 'arc-runtime-output', jsonFile: 'target-root.json' },
+                { id: 'game', name: 'game', jsonFile: 'target-game.json' },
+              ],
+            },
+          ],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(reply, 'target-root.json'),
+        JSON.stringify({
+          id: 'root',
+          name: 'arc-runtime-output',
+          type: 'UTILITY',
+          dependencies: [{ id: 'game' }],
+        }),
+      );
+      fs.writeFileSync(
+        path.join(reply, 'target-game.json'),
+        JSON.stringify({
+          id: 'game',
+          name: 'game',
+          type: 'EXECUTABLE',
+          artifacts: [{ path: 'Shipping/game.exe' }],
+        }),
+      );
     }
     if (options.emitNativeArtifact && request.args[0] === '--build') {
       const artifact = path.join(arg('--build'), 'Shipping', 'game.exe');

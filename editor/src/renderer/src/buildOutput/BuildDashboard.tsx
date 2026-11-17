@@ -177,7 +177,12 @@ export function BuildDashboard({
       }, 150);
     };
     const unsubscribe = api?.onMonitorEvent((event) => {
-      if (event.kind === 'run-started' || event.kind === 'stage-changed' || event.kind === 'run-completed' || event.kind === 'target-graph-changed') {
+      if (
+        event.kind === 'run-started' ||
+        event.kind === 'stage-changed' ||
+        event.kind === 'run-completed' ||
+        event.kind === 'target-graph-changed'
+      ) {
         scheduleRefresh();
       }
     });

@@ -188,15 +188,20 @@ export function createWindowsBuildWorkflow(
         const observer = targetGraph
           ? new CMakeTargetOutputObserver(codeDirectory, targetGraph, (id) => context.reportTargetArtifact(id))
           : undefined;
-        await command(context, environment.cmake, [
-          '--build',
-          codeDirectory,
-          '--config',
-          context.plan.configuration,
-          '--target',
-          'arc-runtime-output',
-          '--parallel',
-        ], (text, stream) => observer?.accept(text, stream));
+        await command(
+          context,
+          environment.cmake,
+          [
+            '--build',
+            codeDirectory,
+            '--config',
+            context.plan.configuration,
+            '--target',
+            'arc-runtime-output',
+            '--parallel',
+          ],
+          (text, stream) => observer?.accept(text, stream),
+        );
         // A successful native build satisfies the explicitly requested root,
         // even if incremental dependencies emitted no artifact output.
         context.reportRequestedTargetSatisfied();

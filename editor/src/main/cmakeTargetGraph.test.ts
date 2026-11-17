@@ -16,28 +16,50 @@ function fixture() {
   requestCMakeCodemodel(buildDir);
   const reply = path.join(buildDir, '.cmake', 'api', 'v1', 'reply');
   fs.mkdirSync(reply, { recursive: true });
-  fs.writeFileSync(path.join(reply, 'index-20261116-100000.json'), JSON.stringify({
-    cmake: { generator: { name: 'Visual Studio 17 2022' } },
-    reply: { 'codemodel-v2': { jsonFile: 'codemodel-v2-file.json' } },
-  }));
-  fs.writeFileSync(path.join(reply, 'codemodel-v2-file.json'), JSON.stringify({
-    configurations: [{
-      name: 'Shipping',
-      targets: [
-        { id: 'root', name: 'arc-runtime-output', jsonFile: 'target-root.json' },
-        { id: 'game', name: 'game', jsonFile: 'target-game.json' },
-        { id: 'core', name: 'arc_core', jsonFile: 'target-core.json' },
-        { id: 'unrelated', name: 'test_runner', jsonFile: 'target-test.json' },
+  fs.writeFileSync(
+    path.join(reply, 'index-20261116-100000.json'),
+    JSON.stringify({
+      cmake: { generator: { name: 'Visual Studio 17 2022' } },
+      reply: { 'codemodel-v2': { jsonFile: 'codemodel-v2-file.json' } },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(reply, 'codemodel-v2-file.json'),
+    JSON.stringify({
+      configurations: [
+        {
+          name: 'Shipping',
+          targets: [
+            { id: 'root', name: 'arc-runtime-output', jsonFile: 'target-root.json' },
+            { id: 'game', name: 'game', jsonFile: 'target-game.json' },
+            { id: 'core', name: 'arc_core', jsonFile: 'target-core.json' },
+            { id: 'unrelated', name: 'test_runner', jsonFile: 'target-test.json' },
+          ],
+        },
       ],
-    }],
-  }));
+    }),
+  );
   const node = (id: string, name: string, type: string, dependencies: string[], artifacts: string[]) =>
-    JSON.stringify({ id, name, type, dependencies: dependencies.map((dependency) => ({ id: dependency })),
-      artifacts: artifacts.map((artifact) => ({ path: artifact })) });
+    JSON.stringify({
+      id,
+      name,
+      type,
+      dependencies: dependencies.map((dependency) => ({ id: dependency })),
+      artifacts: artifacts.map((artifact) => ({ path: artifact })),
+    });
   fs.writeFileSync(path.join(reply, 'target-root.json'), node('root', 'arc-runtime-output', 'UTILITY', ['game'], []));
-  fs.writeFileSync(path.join(reply, 'target-game.json'), node('game', 'game', 'EXECUTABLE', ['core'], ['Shipping/game.exe']));
-  fs.writeFileSync(path.join(reply, 'target-core.json'), node('core', 'arc_core', 'STATIC_LIBRARY', [], ['Shipping/arc_core.lib']));
-  fs.writeFileSync(path.join(reply, 'target-test.json'), node('unrelated', 'test_runner', 'EXECUTABLE', [], ['Shipping/test.exe']));
+  fs.writeFileSync(
+    path.join(reply, 'target-game.json'),
+    node('game', 'game', 'EXECUTABLE', ['core'], ['Shipping/game.exe']),
+  );
+  fs.writeFileSync(
+    path.join(reply, 'target-core.json'),
+    node('core', 'arc_core', 'STATIC_LIBRARY', [], ['Shipping/arc_core.lib']),
+  );
+  fs.writeFileSync(
+    path.join(reply, 'target-test.json'),
+    node('unrelated', 'test_runner', 'EXECUTABLE', [], ['Shipping/test.exe']),
+  );
   return { buildDir, reply };
 }
 
@@ -79,11 +101,15 @@ describe('CMake File API target graph', () => {
 
   it('rejects traversal in CMake-provided reply filenames', () => {
     const { buildDir, reply } = fixture();
-    fs.writeFileSync(path.join(reply, 'index-20261116-200000.json'), JSON.stringify({
-      reply: { 'codemodel-v2': { jsonFile: '../outside.json' } },
-    }));
-    expect(() => readCMakeTargetGraph(buildDir, 'Shipping', 'arc-runtime-output'))
-      .toThrow('Invalid CMake File API filename');
+    fs.writeFileSync(
+      path.join(reply, 'index-20261116-200000.json'),
+      JSON.stringify({
+        reply: { 'codemodel-v2': { jsonFile: '../outside.json' } },
+      }),
+    );
+    expect(() => readCMakeTargetGraph(buildDir, 'Shipping', 'arc-runtime-output')).toThrow(
+      'Invalid CMake File API filename',
+    );
   });
 
   it('does not invent a graph if the native reply is unavailable', () => {

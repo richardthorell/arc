@@ -33,8 +33,7 @@ function replyJson(replyDir: string, name: string, maxBytes = MAX_FILE_SIZE): un
   if (!/^[A-Za-z0-9_.-]+\.json$/u.test(name)) throw new Error('Invalid CMake File API filename');
   const filename = path.join(replyDir, name);
   const info = fs.lstatSync(filename);
-  if (!info.isFile() || info.isSymbolicLink() || info.size > maxBytes)
-    throw new Error('Invalid CMake File API reply');
+  if (!info.isFile() || info.isSymbolicLink() || info.size > maxBytes) throw new Error('Invalid CMake File API reply');
   return JSON.parse(fs.readFileSync(filename, 'utf8')) as unknown;
 }
 
@@ -50,7 +49,11 @@ export function readCMakeTargetGraph(
 ): BuildTargetGraph | null {
   const replyDir = replyDirectory(buildDir);
   if (!fs.existsSync(replyDir)) return null;
-  const indices = fs.readdirSync(replyDir).filter((name) => /^index-[\w.-]+\.json$/u.test(name)).sort().reverse();
+  const indices = fs
+    .readdirSync(replyDir)
+    .filter((name) => /^index-[\w.-]+\.json$/u.test(name))
+    .sort()
+    .reverse();
   if (!indices.length) return null;
   const index = replyJson(replyDir, indices[0], MAX_REPLY_SIZE) as {
     cmake?: { generator?: { name?: string } };
@@ -147,7 +150,10 @@ export class CMakeTargetOutputObserver {
   private observeLine(line: string): void {
     const arrow = line.lastIndexOf(' -> ');
     if (arrow < 0) return;
-    const candidate = line.slice(arrow + 4).trim().replace(/^["']|["']$/gu, '');
+    const candidate = line
+      .slice(arrow + 4)
+      .trim()
+      .replace(/^["']|["']$/gu, '');
     if (!candidate) return;
     const id = this.artifacts.get(normalizedArtifact(this.buildDir, candidate));
     if (!id || this.observed.has(id)) return;

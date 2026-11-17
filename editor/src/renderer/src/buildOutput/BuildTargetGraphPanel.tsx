@@ -69,12 +69,16 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
   return (
     <section className="build-monitor-targets" aria-label="Target dependency graph">
       <div className="build-monitor-section-title">
-        <h4><GitBranch size={15} aria-hidden="true" /> CMake target dependencies</h4>
-        <span>{observed} artifact output{observed === 1 ? '' : 's'} observed · {graph.nodes.length} targets</span>
+        <h4>
+          <GitBranch size={15} aria-hidden="true" /> CMake target dependencies
+        </h4>
+        <span>
+          {observed} artifact output{observed === 1 ? '' : 's'} observed · {graph.nodes.length} targets
+        </span>
       </div>
       <p className="build-monitor-target-note">
-        Dependencies come from CMake File API ({graph.configuration}). Markers show explicitly reported native artifacts,
-        not an estimate of completed targets. Up-to-date targets may emit no output.
+        Dependencies come from CMake File API ({graph.configuration}). Markers show explicitly reported native
+        artifacts, not an estimate of completed targets. Up-to-date targets may emit no output.
       </p>
       <div className="build-monitor-target-axis" aria-hidden="true">
         <span>Dependency tree</span>
@@ -105,7 +109,9 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
                   >
                     {expanded.has(node.id) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </button>
-                ) : <span className="build-monitor-target-spacer" />}
+                ) : (
+                  <span className="build-monitor-target-spacer" />
+                )}
                 <span title={`${node.name} · ${node.type}`}>{node.name}</span>
                 {shared && <small title="Shared dependency already listed">shared</small>}
               </div>
@@ -127,7 +133,11 @@ export function BuildTargetGraphPanel({ run, nowMs }: { run: BuildMonitorRun; no
           );
         })}
       </div>
-      {graph.truncated && <p className="build-monitor-target-note">Graph limited to 128 reachable targets. Some dependencies are omitted.</p>}
+      {graph.truncated && (
+        <p className="build-monitor-target-note">
+          Graph limited to 128 reachable targets. Some dependencies are omitted.
+        </p>
+      )}
     </section>
   );
 }
