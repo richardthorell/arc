@@ -100,6 +100,7 @@ export function createWindowsBuildWorkflow(
   const cook = createCookWorkflowAdapter(cooker, runProcess, onOutput, onRawOutput);
   let codeDirectory = '';
   let buildManifest = '';
+  let targetGraph: ReturnType<typeof readCMakeTargetGraph> = null;
   let generation = '';
   let recordRoot = '';
   let artifacts: WorkflowArtifact[] = [];
@@ -176,17 +177,16 @@ export function createWindowsBuildWorkflow(
           `-DCMAKE_CONFIGURATION_TYPES=${context.plan.configuration}`,
         ]);
         try {
-          const graph = readCMakeTargetGraph(codeDirectory, context.plan.configuration, 'arc-runtime-output');
-          if (graph) context.publishTargetGraph(graph);
+          targetGraph = readCMakeTargetGraph(codeDirectory, context.plan.configuration, 'arc-runtime-output');
+          if (targetGraph) context.publishTargetGraph(targetGraph);
         } catch {
           // Missing, malformed, or unsupported File API metadata is nonfatal.
         }
       }),
       compile: stage(async (context) => {
         if (!environment) throw new Error('Missing runtime build environment');
-        const graph = readCMakeTargetGraphSafely(context, codeDirectory);
-        const observer = graph
-          ? new CMakeTargetOutputObserver(codeDirectory, graph, (id) => context.reportTargetArtifact(id))
+        const observer = targetGraph
+          ? new CMakeTargetOutputObserver(codeDirectory, targetGraph, (id) => context.reportTargetArtifact(id))
           : undefined;
         await command(context, environment.cmake, [
           '--build',
