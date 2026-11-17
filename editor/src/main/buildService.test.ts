@@ -66,6 +66,18 @@ describe('BuildService command history', () => {
     expect(service.snapshot().runId).toBe(history[0].runId);
   });
 
+  it('passes the selected configuration to CMake configure instead of using the CLI default', async () => {
+    const { service, process: child } = setup();
+    const pending = service.execute({ action: 'configure', configuration: 'Debug' });
+    expect(spawn).toHaveBeenCalledWith(
+      process.execPath,
+      ['configure', '--project', activeProject.descriptorPath, '--config', 'Debug'],
+      expect.objectContaining({ cwd: activeProject.projectRoot }),
+    );
+    child.emit('close', 0);
+    await expect(pending).resolves.toMatchObject({ state: 'succeeded', configuration: 'Debug' });
+  });
+
   it('emits separate, untruncated stdout/stderr chunks to the history observer', async () => {
     const child = new FakeBuildProcess();
     vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcessWithoutNullStreams);
