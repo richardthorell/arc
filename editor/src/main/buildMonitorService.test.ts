@@ -353,6 +353,22 @@ describe('BuildMonitorService BM1 event stream', () => {
     expect(monitor.snapshot().events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(2);
   });
 
+  it('persists BM7 native compile traces without converting them into CMake target completion', () => {
+    const monitor = new BuildMonitorService();
+    const trace = {
+      source: 'ninja-log' as const,
+      clock: 'ninja-invocation' as const,
+      truncated: false,
+      tasks: [{ output: 'CMakeFiles/game.dir/game.cpp.obj', startMs: 10, endMs: 44, durationMs: 34 }],
+    };
+    monitor.observeCommand(command(), 'project-a');
+    monitor.observeCommand(command({ compileTrace: trace }), 'project-a');
+    monitor.observeCommand(command({ compileTrace: trace }), 'project-a');
+    expect(monitor.snapshot().runs[0].compileTrace).toEqual(trace);
+    expect(monitor.snapshot().runs[0].targetGraph).toBeUndefined();
+    expect(monitor.snapshot().events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(0);
+  });
+
   it('isolates projects and ignores stale workflow notifications', () => {
     const monitor = new BuildMonitorService();
     monitor.observeCommand(command(), 'project-a');
