@@ -20,11 +20,13 @@ function fixture(generator?: string) {
   };
 }
 const runId = 'eb97d024-98ac-49b4-8791-1ab76462a4a7';
-const log =
-  '21:15:02.100 1>  Task "CL" (TaskId:17)\n' +
-  '21:15:02.125 2>  Task "CL" (TaskId:22)\n' +
-  '21:15:02.175 2>  Done executing task "CL". (TaskId:22)\n' +
-  '21:15:02.250 1>  Done executing task "CL". (TaskId:17)\n';
+const log = [
+  '21:15:02.100 1>  Task "CL" (TaskId:17)',
+  '21:15:02.125 2>  Task "CL" (TaskId:22)',
+  '21:15:02.175 2>  Done executing task "CL". (TaskId:22)',
+  '21:15:02.250 1>  Done executing task "CL". (TaskId:17)',
+  '',
+].join('\n');
 
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
@@ -57,9 +59,11 @@ describe('BM7.2 native MSBuild CL task intervals', () => {
   });
 
   it('normalizes midnight rollover without confusing historical builds', () => {
-    const input =
-      '23:59:59.950 1>Task "CL" (TaskId:13)\n' +
-      '00:00:00.150 1>Done executing task "CL". (TaskId:13)\n';
+    const input = [
+      '23:59:59.950 1>Task "CL" (TaskId:13)',
+      '00:00:00.150 1>Done executing task "CL". (TaskId:13)',
+      '',
+    ].join('\n');
     expect(parseMsbuildCompileLog(input)?.tasks).toEqual([
       { output: 'CL task #13 (node 1)', startMs: 0, endMs: 200, durationMs: 200 },
     ]);
