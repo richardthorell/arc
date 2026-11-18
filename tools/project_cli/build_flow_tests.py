@@ -5,6 +5,7 @@ CMake project. No installed ARC SDK, Vulkan, GPU, Android NDK or VS build is
 needed: this specifically exercises the native CLI's configure/build lifecycle.
 """
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -134,6 +135,8 @@ add_custom_target(Recovered ALL
         run("build", *project, "--build-dir", "configure-fails", *generator,
             "--msbuild-timing-log", str(log_path))
         assert log_path.is_file() and log_path.stat().st_size > 0, "Missing MSBuild diagnostic log"
+        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        assert re.search(r"(?m)^\\s*\\d{1,2}:\\d{2}:\\d{2}", log_text), "MSBuild logger omitted native timestamps"
         unsafe = root / "outside-build.log"
         payload, _ = run("build", *project, "--build-dir", "configure-fails", *generator,
                          "--msbuild-timing-log", str(unsafe), success=False)
