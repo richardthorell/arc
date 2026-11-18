@@ -1056,7 +1056,6 @@
   }
 }
 
-
 /* BM7.3 — source/task inspection uses a deliberate click, not inferred logs. */
 .build-monitor-compile-select {
   display: flex;
