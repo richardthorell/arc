@@ -450,7 +450,15 @@ export function BuildDashboard({
                   )}
                 </section>
                 <BuildTargetGraphPanel key={selected.id} run={selected} nowMs={elapsed} />
-                <BuildCompileTasksPanel run={selected} />
+                <BuildCompileTasksPanel
+                  key={selected.id}
+                  run={selected}
+                  onFilterOutput={(outputName) => {
+                    setSearch(outputName);
+                    setStream('all');
+                    setTab('output');
+                  }}
+                />
                 <section className="build-monitor-output" aria-label="Build logs and diagnostics">
                   <div className="build-monitor-output-header">
                     <div className="build-monitor-tabs" role="tablist" aria-label="Output category">
