@@ -219,7 +219,9 @@ describe('Build Monitor BM3', () => {
     expect(screen.getByText('MyEditor', { selector: 'dd' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Find output text in build logs' }));
     expect(screen.getByRole('tab', { name: 'Output' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('textbox', { name: 'Search build output' })).toHaveValue('CMakeFiles/MyEditor.dir/main.cpp.o');
+    expect(screen.getByRole('textbox', { name: 'Search build output' })).toHaveValue(
+      'CMakeFiles/MyEditor.dir/main.cpp.o',
+    );
     expect(screen.getByText('CMakeFiles/MyEditor.dir/main.cpp.o built')).toBeInTheDocument();
     expect(screen.queryByText('unrelated compiler output')).not.toBeInTheDocument();
   });
