@@ -43,7 +43,11 @@ function objectOutput(entry: CommandEntry): string | null {
   return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
 }
 
-function association(entry: CommandEntry, buildRoot: string, projectRoot: string): {
+function association(
+  entry: CommandEntry,
+  buildRoot: string,
+  projectRoot: string,
+): {
   outputKey: string;
   value: SourceAssociation;
 } | null {
