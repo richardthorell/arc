@@ -101,7 +101,11 @@ export function BuildCompileTasksPanel({
                 <dd>{selected.output}</dd>
               </dl>
               {trace.source === 'ninja-log' && onFilterOutput && (
-                <button type="button" className="build-monitor-compile-filter" onClick={() => onFilterOutput(selected.output)}>
+                <button
+                  type="button"
+                  className="build-monitor-compile-filter"
+                  onClick={() => onFilterOutput(selected.output)}
+                >
                   Find output text in build logs
                 </button>
               )}
