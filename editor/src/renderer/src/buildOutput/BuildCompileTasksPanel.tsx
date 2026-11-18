@@ -13,8 +13,8 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
 
   const msbuild = trace.source === 'msbuild-file-log';
   const description = msbuild
-    ? 'MSBuild CL task start/finish timestamps, relative to the first observed CL task. One CL task may compile multiple source files; these are compiler invocation intervals, not per-file timings.'
-    : 'Compiler object outputs measured by Ninja. Bars show actual task overlap on the Ninja invocation clock, not elapsed time since the editor Build command started.';
+    ? 'MSBuild CL task start/finish timestamps, relative to the first completed CL task. One CL task may compile multiple source files; these are compiler invocation intervals, not per-file timings. No CMake target completion is inferred.'
+    : 'Compiler object outputs measured by Ninja. Bars show actual task overlap on the Ninja invocation clock, not elapsed time since the editor Build command started. No CMake target completion is inferred.';
   const noTasks = msbuild
     ? 'No completed CL tasks were recorded by MSBuild.'
     : 'No object compilation was recorded in this Ninja invocation.';
@@ -28,9 +28,7 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
         </h4>
         <span>{tasks.length} measured · {msbuild ? 'MSBuild' : 'Ninja'}</span>
       </div>
-      <p className="build-monitor-target-note">
-        {description} No CMake target completion is inferred.
-      </p>
+      <p className="build-monitor-target-note">{description}</p>
       {tasks.length ? (
         <>
           <div className="build-monitor-compile-heading" aria-hidden="true">
