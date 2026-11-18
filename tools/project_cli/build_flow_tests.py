@@ -5,6 +5,7 @@ CMake project. No installed ARC SDK, Vulkan, GPU, Android NDK or VS build is
 needed: this specifically exercises the native CLI's configure/build lifecycle.
 """
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -123,6 +124,24 @@ add_custom_target(Recovered ALL
 ''', encoding="utf-8")
     run("build", *project, "--build-dir", "configure-fails", *generator)
     assert (build_root / "configure-fails" / "recovered.txt").is_file()
+
+    # BM7.2: opt-in telemetry is forwarded only for the Visual Studio
+    # generator. A distinct log must be produced without disturbing JSON
+    # output or normal native build behavior.
+    if len(generator) == 2 and generator[1].startswith("Visual Studio "):
+        log_folder = build_root / "configure-fails" / ".arc-monitor"
+        log_folder.mkdir(parents=True, exist_ok=True)
+        log_path = log_folder / "arc-msbuild-cli-smoke.log"
+        run("build", *project, "--build-dir", "configure-fails", *generator,
+            "--msbuild-timing-log", str(log_path))
+        assert log_path.is_file() and log_path.stat().st_size > 0, "Missing MSBuild diagnostic log"
+        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        assert re.search(r"(?m)^\\s*\\d{1,2}:\\d{2}:\\d{2}", log_text), "MSBuild logger omitted native timestamps"
+        unsafe = root / "outside-build.log"
+        payload, _ = run("build", *project, "--build-dir", "configure-fails", *generator,
+                         "--msbuild-timing-log", str(unsafe), success=False)
+        assert "Invalid MSBuild timing log path" in payload["error"], payload
+        assert not unsafe.exists(), "Native logger wrote outside the build output"
 
     # A compile error after successful configure must be distinguished from
     # a configure failure and must preserve CMake's actual error output.
