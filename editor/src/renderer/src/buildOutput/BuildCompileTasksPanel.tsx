@@ -31,13 +31,14 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
   const source = SOURCE_LABELS[trace.source];
   const tasks = trace.tasks.slice(0, 256);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
+  const measuredLabel = `${tasks.length} measured · ${source.generator}`;
   return (
     <section className="build-monitor-targets build-monitor-compiles" aria-label="Compilation task timeline">
       <div className="build-monitor-section-title">
         <h4>
           <Activity size={15} aria-hidden="true" /> Native compilation tasks
         </h4>
-        <span>{tasks.length} measured · {source.generator}</span>
+        <span>{measuredLabel}</span>
       </div>
       <p className="build-monitor-target-note">{source.note}</p>
       {tasks.length ? (
