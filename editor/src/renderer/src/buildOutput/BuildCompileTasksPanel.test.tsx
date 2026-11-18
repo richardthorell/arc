@@ -43,6 +43,21 @@ describe('BM7.1 compilation timeline', () => {
     expect(screen.getByText('80 ms')).toBeInTheDocument();
   });
 
+  it('labels MSBuild CL task intervals without claiming per-object or per-file timings', () => {
+    const value = run();
+    value.compileTrace = {
+      source: 'msbuild-file-log',
+      clock: 'msbuild-cl-events',
+      truncated: false,
+      tasks: [{ output: 'CL task #19 (node 2)', startMs: 0, endMs: 600, durationMs: 600 }],
+    };
+    render(<BuildCompileTasksPanel run={value} />);
+    expect(screen.getByText('1 measured · MSBuild')).toBeInTheDocument();
+    expect(screen.getByText('CL task #19 (node 2)')).toBeInTheDocument();
+    expect(screen.getByText(/One CL task may compile multiple source files/)).toBeInTheDocument();
+    expect(screen.getByText('600 ms')).toBeInTheDocument();
+  });
+
   it('does not render for generators without measured native data', () => {
     const value = run();
     value.compileTrace = undefined;
