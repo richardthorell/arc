@@ -178,6 +178,16 @@ describe('BuildService command history', () => {
         path.join(buildDir, '.ninja_log'),
         '# ninja log v5\n10\t80\t123\tCMakeFiles/MyEditor.dir/main.cpp.obj\tcommand-hash\n',
       );
+      fs.writeFileSync(
+        path.join(buildDir, 'compile_commands.json'),
+        JSON.stringify([
+          {
+            directory: buildDir,
+            file: path.join(root, 'Source', 'main.cpp'),
+            command: 'c++ -c Source/main.cpp -o CMakeFiles/MyEditor.dir/main.cpp.obj',
+          },
+        ]),
+      );
       child.emit('close', 0);
       await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
       expect(service.snapshot().targetGraph).toMatchObject({
@@ -190,7 +200,14 @@ describe('BuildService command history', () => {
       expect(service.snapshot().compileTrace).toMatchObject({
         source: 'ninja-log',
         clock: 'ninja-invocation',
-        tasks: [{ output: 'CMakeFiles/MyEditor.dir/main.cpp.obj', durationMs: 70 }],
+        tasks: [
+          {
+            output: 'CMakeFiles/MyEditor.dir/main.cpp.obj',
+            sourceFile: 'Source/main.cpp',
+            targetName: 'MyEditor',
+            durationMs: 70,
+          },
+        ],
       });
       expect(publish.mock.calls.some(([entry]) => entry.targetGraph?.revision === 1)).toBe(true);
       expect(host.command).toHaveBeenCalledOnce();
