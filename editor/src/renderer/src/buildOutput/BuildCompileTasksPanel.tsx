@@ -2,6 +2,23 @@ import { Activity } from 'lucide-react';
 
 import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
 
+const SOURCE_LABELS = {
+  'ninja-log': {
+    generator: 'Ninja',
+    note: 'Compiler object outputs measured by Ninja. Bars show actual task overlap on the Ninja invocation clock, not elapsed time since the editor Build command started. No CMake target completion is inferred.',
+    item: 'Object output',
+    axis: 'Ninja invocation elapsed →',
+    empty: 'No object compilation was recorded in this Ninja invocation.',
+  },
+  'msbuild-file-log': {
+    generator: 'MSBuild',
+    note: 'MSBuild CL task start/finish timestamps, relative to the first completed CL task. One CL task may compile multiple source files; these are compiler invocation intervals, not per-file timings. No CMake target completion is inferred.',
+    item: 'CL task',
+    axis: 'First CL task elapsed →',
+    empty: 'No completed CL tasks were recorded by MSBuild.',
+  },
+} as const;
+
 function duration(ms: number): string {
   return ms < 1000 ? String(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s';
 }
@@ -11,13 +28,7 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
   const trace = run.compileTrace;
   if (!trace) return null;
 
-  const msbuild = trace.source === 'msbuild-file-log';
-  const description = msbuild
-    ? 'MSBuild CL task start/finish timestamps, relative to the first completed CL task. One CL task may compile multiple source files; these are compiler invocation intervals, not per-file timings. No CMake target completion is inferred.'
-    : 'Compiler object outputs measured by Ninja. Bars show actual task overlap on the Ninja invocation clock, not elapsed time since the editor Build command started. No CMake target completion is inferred.';
-  const noTasks = msbuild
-    ? 'No completed CL tasks were recorded by MSBuild.'
-    : 'No object compilation was recorded in this Ninja invocation.';
+  const source = SOURCE_LABELS[trace.source];
   const tasks = trace.tasks.slice(0, 256);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
   return (
@@ -26,14 +37,14 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
         <h4>
           <Activity size={15} aria-hidden="true" /> Native compilation tasks
         </h4>
-        <span>{tasks.length} measured · {msbuild ? 'MSBuild' : 'Ninja'}</span>
+        <span>{tasks.length} measured · {source.generator}</span>
       </div>
-      <p className="build-monitor-target-note">{description}</p>
+      <p className="build-monitor-target-note">{source.note}</p>
       {tasks.length ? (
         <>
           <div className="build-monitor-compile-heading" aria-hidden="true">
-            <span>{msbuild ? 'CL task' : 'Object output'}</span>
-            <span>{msbuild ? 'First CL task elapsed →' : 'Ninja invocation elapsed →'}</span>
+            <span>{source.item}</span>
+            <span>{source.axis}</span>
             <span>Duration</span>
           </div>
           <div className="build-monitor-compile-list" role="list" aria-label="Measured compile tasks">
@@ -59,7 +70,7 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
           </div>
         </>
       ) : (
-        <p className="build-monitor-empty">{noTasks}</p>
+        <p className="build-monitor-empty">{source.empty}</p>
       )}
       {trace.truncated && (
         <p className="build-monitor-target-note">
