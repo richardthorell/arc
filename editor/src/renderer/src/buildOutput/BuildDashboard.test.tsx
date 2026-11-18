@@ -182,6 +182,48 @@ describe('Build Monitor BM3', () => {
     expect(screen.getByRole('button', { name: /cook · Debug/ })).toHaveAttribute('aria-current', 'true');
   });
 
+  it('drills into a measured source and filters only text matched in the selected build log', async () => {
+    const traced: BuildMonitorRun = {
+      ...current,
+      source: 'command',
+      compileTrace: {
+        source: 'ninja-log',
+        clock: 'ninja-invocation',
+        truncated: false,
+        tasks: [
+          {
+            output: 'CMakeFiles/MyEditor.dir/main.cpp.o',
+            sourceFile: 'Source/main.cpp',
+            targetName: 'MyEditor',
+            startMs: 0,
+            endMs: 60,
+            durationMs: 60,
+          },
+        ],
+      },
+    };
+    const details = makeDetails(traced);
+    details.logs.items = [
+      { stream: 'stdout', text: 'CMakeFiles/MyEditor.dir/main.cpp.o built\n', timestamp: traced.startedAt },
+      { stream: 'stdout', text: 'unrelated compiler output\n', timestamp: traced.startedAt },
+    ];
+    mockApi({
+      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, runs: [previous, traced] }),
+      history: vi.fn().mockResolvedValue({ ...page, runs: [traced, previous] }),
+      historyDetails: vi.fn().mockResolvedValue(details),
+    });
+    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    expect(await screen.findByText('unrelated compiler output')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Diagnostics' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect compile task: Source/main.cpp' }));
+    expect(screen.getByText('MyEditor', { selector: 'dd' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Find output text in build logs' }));
+    expect(screen.getByRole('tab', { name: 'Output' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('textbox', { name: 'Search build output' })).toHaveValue('CMakeFiles/MyEditor.dir/main.cpp.o');
+    expect(screen.getByText('CMakeFiles/MyEditor.dir/main.cpp.o built')).toBeInTheDocument();
+    expect(screen.queryByText('unrelated compiler output')).not.toBeInTheDocument();
+  });
+
   it('reports a storage error without crashing and shows an empty state', async () => {
     mockApi({
       monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, runs: [], activeRunId: null }),
