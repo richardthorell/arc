@@ -12,6 +12,12 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
   if (!trace) return null;
 
   const msbuild = trace.source === 'msbuild-file-log';
+  const description = msbuild
+    ? 'MSBuild CL task start/finish timestamps, relative to the first observed CL task. One CL task may compile multiple source files; these are compiler invocation intervals, not per-file timings.'
+    : 'Compiler object outputs measured by Ninja. Bars show actual task overlap on the Ninja invocation clock, not elapsed time since the editor Build command started.';
+  const noTasks = msbuild
+    ? 'No completed CL tasks were recorded by MSBuild.'
+    : 'No object compilation was recorded in this Ninja invocation.';
   const tasks = trace.tasks.slice(0, 256);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
   return (
@@ -23,10 +29,7 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
         <span>{tasks.length} measured · {msbuild ? 'MSBuild' : 'Ninja'}</span>
       </div>
       <p className="build-monitor-target-note">
-        {msbuild
-          ? 'MSBuild CL task start/finish timestamps, relative to the first observed CL task. One CL task may compile multiple source files; these are compiler invocation intervals, not per-file timings.'
-          : 'Compiler object outputs measured by Ninja. Bars show actual task overlap on the Ninja invocation clock, not elapsed time since the editor Build command started.'}{' '}
-        No CMake target completion is inferred.
+        {description} No CMake target completion is inferred.
       </p>
       {tasks.length ? (
         <>
@@ -58,9 +61,7 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
           </div>
         </>
       ) : (
-        <p className="build-monitor-empty">
-          {msbuild ? 'No completed CL tasks were recorded by MSBuild.' : 'No object compilation was recorded in this Ninja invocation.'}
-        </p>
+        <p className="build-monitor-empty">{noTasks}</p>
       )}
       {trace.truncated && (
         <p className="build-monitor-target-note">
