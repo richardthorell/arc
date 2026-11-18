@@ -8,9 +8,9 @@ export type BuildCompileTask = {
 };
 
 export type BuildCompileTrace = {
-  source: 'ninja-log';
-  /** Ninja's offsets do not include CMake configuration or CLI startup time. */
-  clock: 'ninja-invocation';
+  source: 'ninja-log' | 'msbuild-file-log';
+  /** Native tool event clock, not the editor command's absolute start time. */
+  clock: 'ninja-invocation' | 'msbuild-cl-events';
   tasks: BuildCompileTask[];
   truncated: boolean;
 };
