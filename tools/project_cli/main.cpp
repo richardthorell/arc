@@ -311,7 +311,8 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
     const auto configure = [&]() -> int
     {
         std::vector<std::string> command{"-S", context.value().root.string(), "-B", build_directory.string(),
-                                         "-DCMAKE_BUILD_TYPE=" + configuration};
+                                         "-DCMAKE_BUILD_TYPE=" + configuration,
+                                         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"};
         auto sdk = args.option("--sdk");
         if (!sdk)
         {
