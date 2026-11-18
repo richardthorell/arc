@@ -383,7 +383,7 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
             const auto target = std::filesystem::path(*logfile).lexically_normal();
             const auto name = target.filename().string();
             std::error_code error;
-            if (logfile->find_first_of(";\\r\\n") != std::string::npos || !target.is_absolute() ||
+            if (logfile->find_first_of(";\r\n") != std::string::npos || !target.is_absolute() ||
                 name.rfind("arc-msbuild-", 0) != 0 || target.extension() != ".log" ||
                 !std::filesystem::is_directory(folder) || std::filesystem::is_symlink(folder) ||
                 !std::filesystem::equivalent(target.parent_path(), folder, error) || error ||
