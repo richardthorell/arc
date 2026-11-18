@@ -17,6 +17,7 @@ export type WindowsBuildEnvironment = {
   sdkRoot: string;
   visualStudio: string;
   generator: string;
+  development?: { buildDirectory: string; engineVersion: string; architecture: string };
 };
 
 export function resolveWindowsBuildEnvironment(
@@ -29,11 +30,43 @@ export function resolveWindowsBuildEnvironment(
     if (!cmake?.valid || !studio?.valid) return undefined;
     // An installed CLI's sibling SDK is authoritative; a development-tree CLI
     // cannot silently select some other registered SDK or a newest build folder.
-    const sdkRoot = path.dirname(path.dirname(fs.realpathSync(tool)));
-    if (!fs.statSync(path.join(sdkRoot, 'lib', 'cmake', 'ARC', 'ARCConfig.cmake')).isFile()) return undefined;
+    let sdkRoot = path.dirname(path.dirname(fs.realpathSync(tool)));
+    let development: WindowsBuildEnvironment['development'];
+    if (process.env.ARC_DEVELOPMENT_SDK) {
+      sdkRoot = fs.realpathSync(process.env.ARC_DEVELOPMENT_SDK);
+      const configuration = process.env.ARC_DEVELOPMENT_CONFIGURATION;
+      if (!configuration || !/^[A-Za-z0-9_-]+$/.test(configuration)) return undefined;
+      const metadata = z
+        .object({
+          version: z.literal(1),
+          engineVersion: z.string(),
+          buildDirectory: z.string(),
+          projectTool: z.string(),
+          architecture: z.string(),
+        })
+        .parse(readJson(path.join(sdkRoot, configuration, 'arc-development-sdk.json')));
+      if (fs.realpathSync(metadata.projectTool) !== fs.realpathSync(tool)) return undefined;
+      development = {
+        buildDirectory: metadata.buildDirectory,
+        engineVersion: metadata.engineVersion,
+        architecture: metadata.architecture,
+      };
+      if (!fs.statSync(path.join(sdkRoot, configuration, 'lib', 'cmake', 'ARC', 'ARCConfig.cmake')).isFile())
+        return undefined;
+      // Runtime output currently uses Shipping; prepare that configuration on demand.
+      sdkRoot = path.join(sdkRoot, 'Shipping');
+    }
+    if (!development && !fs.statSync(path.join(sdkRoot, 'lib', 'cmake', 'ARC', 'ARCConfig.cmake')).isFile())
+      return undefined;
     const generator = resolveVisualStudioGenerator(studio.resolvedPath);
     if (!generator) return undefined;
-    return { cmake: cmake.resolvedPath, sdkRoot, visualStudio: studio.resolvedPath, generator };
+    return {
+      cmake: cmake.resolvedPath,
+      sdkRoot,
+      visualStudio: studio.resolvedPath,
+      generator,
+      ...(development ? { development } : {}),
+    };
   } catch {
     return undefined;
   }
@@ -79,6 +112,10 @@ export function windowsBuildCapability(
       available: false,
       reason: 'Configure CMake and Visual Studio and use an installed ARC SDK to build runtime output',
     };
+  if (environment.development && environment.development.engineVersion !== plan.engineVersion)
+    return { available: false, reason: 'The project requires a different engine version than the development SDK' };
+  if (environment.development && environment.development.architecture !== plan.architecture)
+    return { available: false, reason: 'The selected target architecture differs from the development SDK' };
   return { available: true };
 }
 
@@ -155,6 +192,16 @@ export function createWindowsBuildWorkflow(
       }),
       configure: stage(async (context) => {
         if (!environment) throw new Error('Missing runtime build environment');
+        if (environment.development) {
+          await command(context, environment.cmake, [
+            '--build',
+            environment.development.buildDirectory,
+            '--config',
+            context.plan.configuration,
+            '--target',
+            'arc-development-sdk',
+          ]);
+        }
         // CMake responds to File API queries as part of this configure step.
         // Query failure must not turn a valid native build into an editor failure.
         try {
@@ -173,6 +220,7 @@ export function createWindowsBuildWorkflow(
           context.plan.architecture === 'arm64' ? 'ARM64' : 'x64',
           `-DCMAKE_GENERATOR_INSTANCE=${environment.visualStudio}`,
           `-DCMAKE_PREFIX_PATH=${environment.sdkRoot}`,
+          `-DARC_DIR=${path.join(environment.sdkRoot, 'lib', 'cmake', 'ARC')}`,
           `-DARC_WORKFLOW_PROFILE=${context.plan.profile}`,
           `-DCMAKE_CONFIGURATION_TYPES=${context.plan.configuration}`,
         ]);

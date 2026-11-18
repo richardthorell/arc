@@ -303,6 +303,55 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
         auto sdk = args.option("--sdk");
         if (!sdk)
         {
+            // The source-editor launcher supplies one exact local SDK staging root.
+            // Never guess a checkout, pick a newest build, or register it globally.
+            std::filesystem::path development;
+#if defined(_WIN32)
+            const auto length = GetEnvironmentVariableW(L"ARC_DEVELOPMENT_SDK", nullptr, 0);
+            if (length > 0)
+            {
+                std::wstring value(length, L'\0');
+                const auto written = GetEnvironmentVariableW(L"ARC_DEVELOPMENT_SDK", value.data(), length);
+                if (written > 0 && written < length)
+                {
+                    value.resize(written);
+                    development = value;
+                }
+            }
+#else
+            if (const char* value = std::getenv("ARC_DEVELOPMENT_SDK")) development = value;
+#endif
+            if (!development.empty())
+            {
+                const auto& root = development;
+                if (configuration.find_first_of("/\\:") != std::string::npos || configuration == "." ||
+                    configuration == "..")
+                    return fail(json_output, "Invalid development SDK configuration");
+                std::ifstream manifest(root / configuration / "arc-development-sdk.json");
+                const auto metadata = json::parse(manifest, nullptr, false);
+                if (!metadata.is_object() || metadata.value("version", json{}) != 1 ||
+                    metadata.value("engineVersion", json{}) != descriptor.value().engine_version ||
+                    metadata.value("configuration", json{}) != configuration || !metadata.contains("buildDirectory") ||
+                    !metadata["buildDirectory"].is_string())
+                    return fail(json_output, "The development ARC SDK does not support this engine version or "
+                                             "configuration. Restart run_editor.py with a matching build, or select "
+                                             "an installed SDK using --sdk.");
+                const auto engine_build = metadata["buildDirectory"].get<std::string>();
+                std::string output;
+                const int code = run_process(
+                    cmake, {"--build", engine_build, "--config", configuration, "--target", "arc-development-sdk"},
+                    context.value().root, &output, json_output);
+                if (code != 0)
+                    return fail(json_output,
+                                "Preparing the matching development ARC SDK failed. Review the "
+                                "engine build output above. If editor tool sources changed, restart "
+                                "through run_editor.py before retrying.",
+                                code < 0 ? 1 : code);
+                sdk = (root / configuration).string();
+            }
+        }
+        if (!sdk)
+        {
             // Select only an unambiguous installation for the exact engine
             // version. Never silently use another engine version or SDK.
             const auto installations =
@@ -322,7 +371,12 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
                                                  ". Select the intended installation using --sdk <ARC SDK root>.");
             }
         }
-        if (sdk) command.push_back("-DCMAKE_PREFIX_PATH=" + *sdk);
+        if (sdk)
+        {
+            command.push_back("-DCMAKE_PREFIX_PATH=" + *sdk);
+            // Explicit SDK selection must override an older cached ARC_DIR.
+            command.push_back("-DARC_DIR=" + (std::filesystem::path(*sdk) / "lib" / "cmake" / "ARC").generic_string());
+        }
         if (const auto generator = args.option("--generator"))
         {
             command.push_back("-G");

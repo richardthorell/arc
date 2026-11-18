@@ -159,6 +159,22 @@ Build reruns CMake configuration before incremental compilation, including after
 a failed configure left a cache behind. If configuration fails, fix the reported
 SDK/toolchain problem and retry Build; deleting the build directory is not required.
 
+When running the source editor through `python run_editor.py` (with or without
+`--quick-start`), the runner stages a matching development SDK under
+`out/build/<selected-build>/development-sdk/<configuration>`. Quick-start and
+custom projects opened in that editor use this SDK automatically; no engine
+registration or manual `ARC_DIR` setting is needed. Other configurations are
+built and staged on demand, so their first build can take longer. The staging
+target reuses the normal SDK install rules and does not modify system installs
+or project descriptors. Restart the editor through the runner to pick up this
+handoff; launching Electron directly does not prepare an SDK.
+
+`ARC_DEVELOPMENT_SDK` and `ARC_DEVELOPMENT_CONFIGURATION` are launcher-owned
+process settings, not project settings. An explicit CLI `--sdk` overrides the
+development SDK. Engine-version mismatches fail instead of selecting another
+installation. Windows runtime output also checks the SDK architecture; this
+does not enable Android deployment or change existing Play destinations.
+
 External CMake projects can consume the relocatable SDK through the exported package:
 
 ```cmake

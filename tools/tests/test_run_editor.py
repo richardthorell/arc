@@ -111,6 +111,7 @@ class EditorNativeBuildTests(unittest.TestCase):
 
     def test_force_build_resets_before_configuring(self) -> None:
         calls = []
+        environment = {}
 
         with mock.patch.object(run_editor.arc_build, "find_executable", return_value="cmake"), mock.patch.object(
             run_editor.arc_build,
@@ -135,7 +136,11 @@ class EditorNativeBuildTests(unittest.TestCase):
         ), mock.patch.object(
             run_editor, "find_project_tool_executable", return_value="arc-project"
         ):
-            run_editor.prepare_native_editor(self.make_args(force_build=True), str(REPO_ROOT))
+            run_editor.prepare_native_editor(self.make_args(force_build=True), str(REPO_ROOT), environment)
+
+        self.assertEqual(environment["ARC_DEVELOPMENT_SDK"],
+                         str(REPO_ROOT / "out" / "build" / "editor-vulkan" / "development-sdk"))
+        self.assertEqual(environment["ARC_DEVELOPMENT_CONFIGURATION"], "Release")
 
         reset.assert_called_once_with(
             str(REPO_ROOT / "out" / "build" / "editor-vulkan"),
@@ -143,7 +148,7 @@ class EditorNativeBuildTests(unittest.TestCase):
         )
         self.assertEqual(
             calls,
-            ["reset", "resolve", "configure", "arc_host_process", "arc-project-cli"],
+            ["reset", "resolve", "configure", "arc_host_process", "arc-project-cli", "arc-development-sdk"],
         )
 
     def test_generator_platform_mismatch_requires_force_build(self) -> None:
@@ -183,9 +188,11 @@ class EditorNativeBuildTests(unittest.TestCase):
         configure_command = configure.call_args.args[0]
         self.assertIn("-G", configure_command)
         self.assertIn("Visual Studio 18 2026", configure_command)
+        self.assertIn("-DARC_BUILD_PROJECT_TOOL=ON", configure_command)
+        self.assertIn("-DARC_BUILD_ASSET_COOKER=ON", configure_command)
         self.assertEqual(
             [entry[0] for entry in calls],
-            ["configure", "build", "build"],
+            ["configure", "build", "build", "build"],
         )
 
 

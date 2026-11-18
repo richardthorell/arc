@@ -174,6 +174,12 @@ install(EXPORT ARCTargets
     NAMESPACE ARC::
     DESTINATION "lib/cmake/ARC"
     COMPONENT sdk)
+
+# Source-editor projects consume the normal SDK staged locally from this exact
+# build. No global installation or engine registration is required.
+if(ARC_BUILD_EDITOR AND TARGET arc-project-cli AND TARGET arc-cook)
+    include(cmake/ARCDevelopmentSDK.cmake)
+endif()
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/templates/"
     DESTINATION "share/arc/templates"
     COMPONENT project-templates)

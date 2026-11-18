@@ -5,6 +5,7 @@ CMake project. No installed ARC SDK, Vulkan, GPU, Android NDK or VS build is
 needed: this specifically exercises the native CLI's configure/build lifecycle.
 """
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -14,10 +15,14 @@ import tempfile
 tool, templates, version, cmake = sys.argv[1:5]
 
 
-def run(*arguments, success=True):
+def run(*arguments, success=True, environment=None):
+    env = os.environ.copy()
+    env.pop("ARC_DEVELOPMENT_SDK", None)
+    if environment:
+        env.update(environment)
     result = subprocess.run(
         [tool, *arguments, "--json"], capture_output=True, text=True, check=False,
-        timeout=90,
+        timeout=90, env=env,
     )
     # CMake must never corrupt the machine-readable JSON stream. The caller's
     # redirected stderr instead contains compiler/configure details.
@@ -138,5 +143,47 @@ add_custom_target(Failing ALL
     assert "CMake build failed" in payload["error"], payload
     assert "compile-fails" in payload["error"] and "configuration failed" not in payload["error"]
     assert stderr.strip(), "CMake stderr must be preserved on build failures"
+
+    # The source editor supplies an explicit, versioned SDK staging root.
+    # Exercise the real CLI/CMake handoff without rebuilding the whole engine.
+    engine_source = root / "engine-source"
+    engine_source.mkdir()
+    engine_build = root / "engine-build"
+    engine_source.joinpath("CMakeLists.txt").write_text('''
+cmake_minimum_required(VERSION 3.20)
+project(DevelopmentSDK NONE)
+add_custom_target(arc-development-sdk
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_BINARY_DIR}/prepared.txt")
+''', encoding="utf-8")
+    subprocess.run([cmake, "-S", str(engine_source), "-B", str(engine_build)], check=True,
+                   capture_output=True, timeout=90)
+    staging = root / "development SDK"
+    prefix = staging / "RelWithDebInfo"
+    package = prefix / "lib" / "cmake" / "ARC"
+    package.mkdir(parents=True)
+    package.joinpath("ARCConfig.cmake").write_text('set(ARC_FOUND TRUE)\n', encoding="utf-8")
+    metadata = {"version": 1, "engineVersion": version, "configuration": "RelWithDebInfo",
+                "buildDirectory": engine_build.as_posix()}
+    manifest = prefix / "arc-development-sdk.json"
+    manifest.write_text(json.dumps(metadata), encoding="utf-8")
+    source.write_text('''
+cmake_minimum_required(VERSION 3.20)
+project(DevelopmentConsumer NONE)
+find_package(ARC CONFIG REQUIRED)
+add_custom_target(Consumer ALL
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_BINARY_DIR}/consumer.txt")
+''', encoding="utf-8")
+    environment = {"ARC_DEVELOPMENT_SDK": str(staging)}
+    run("build", *project, "--build-dir", "development-consumer", environment=environment)
+    assert (engine_build / "prepared.txt").is_file()
+    assert (build_root / "development-consumer" / "consumer.txt").is_file()
+    metadata["engineVersion"] = "999.0.0"
+    manifest.write_text(json.dumps(metadata), encoding="utf-8")
+    payload, _ = run("build", *project, environment=environment, success=False)
+    assert "does not support this engine version" in payload["error"]
+    payload, _ = run("build", *project, "--config", "Missing", environment=environment, success=False)
+    assert "configuration" in payload["error"]
+    # Explicit SDK choice takes precedence over the launcher's development SDK.
+    run("build", *project, "--build-dir", "explicit-sdk", "--sdk", str(prefix), environment=environment)
 
 print("ARC first-build auto-configure, clean, and CMake diagnostics passed")
