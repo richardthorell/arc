@@ -391,7 +391,7 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
                 return fail(json_output, "Invalid MSBuild timing log path; expected an unused .arc-monitor log", 2);
             command.push_back("--");
             command.push_back("-flp:LogFile=" + target.string() +
-                              ";Verbosity=diagnostic;ShowTimestamp;NoItemAndPropertyList;Encoding=UTF-8");
+                              ";Verbosity=diagnostic;EnableMPLogging;ShowTimestamp;NoItemAndPropertyList;Encoding=UTF-8");
         }
         std::string output;
         const int code = run_process(cmake, command, context.value().root, &output, json_output);
