@@ -172,6 +172,11 @@ describe('BuildService command history', () => {
         }),
       );
 
+      // Ninja creates its log during the native compilation invocation.
+      fs.writeFileSync(
+        path.join(buildDir, '.ninja_log'),
+        '# ninja log v5\n10\t80\t123\tCMakeFiles/MyEditor.dir/main.cpp.obj\tcommand-hash\n',
+      );
       child.emit('close', 0);
       await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
       expect(service.snapshot().targetGraph).toMatchObject({
@@ -181,6 +186,11 @@ describe('BuildService command history', () => {
         nodes: [{ name: 'MyEditor', artifactObservedAt: expect.any(String) }],
       });
       expect(service.snapshot().targetGraph?.nodes[0]).not.toHaveProperty('satisfiedAt');
+      expect(service.snapshot().compileTrace).toMatchObject({
+        source: 'ninja-log',
+        clock: 'ninja-invocation',
+        tasks: [{ output: 'CMakeFiles/MyEditor.dir/main.cpp.obj', durationMs: 70 }],
+      });
       expect(publish.mock.calls.some(([entry]) => entry.targetGraph?.revision === 1)).toBe(true);
       expect(host.command).toHaveBeenCalledOnce();
     } finally {

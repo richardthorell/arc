@@ -11,6 +11,7 @@ import { CookWorkflowService } from './cookWorkflowService';
 import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
 import type { WindowsBuildEnvironment } from './windowsBuildWorkflow';
 import { EditorCommandTargetGraph } from './editorCommandTargetGraph';
+import { beginNinjaCompileTrace } from './ninjaCompileTasks';
 
 type HostBridge = {
   command(
@@ -87,6 +88,8 @@ export class BuildService {
     this.update({
       history: [],
       runId: undefined,
+      compileTrace: undefined,
+      targetGraph: undefined,
       state: 'idle',
       diagnostics: [],
       buildRequired: false,
@@ -226,6 +229,7 @@ export class BuildService {
       completedAt: undefined,
       command: `${tool} ${effective.join(' ')}`,
       targetGraph: undefined,
+      compileTrace: undefined,
     });
     const epoch = this.projectEpoch;
     const trackGraph =
@@ -236,6 +240,9 @@ export class BuildService {
           })
         : null;
     trackGraph?.prepare();
+    // Ninja's log is append-only across incremental invocations. Capture a
+    // cursor before spawn to exclude older builds from this run's timeline.
+    const finishCompileTrace = state === 'building' ? beginNinjaCompileTrace(project) : null;
     await new Promise<void>((resolve, reject) => {
       const child = spawn(tool, effective, { cwd: project.projectRoot, shell: false, windowsHide: true });
       this.process = child;
@@ -271,6 +278,12 @@ export class BuildService {
       child.on('close', (code) => {
         if (failedToStart) return;
         trackGraph?.finish();
+        try {
+          const compileTrace = finishCompileTrace?.();
+          if (compileTrace) this.update({ compileTrace });
+        } catch {
+          // Native telemetry must not affect compilation or cancellation.
+        }
         if (pending.info.trim()) this.parseLine(pending.info, code === 0 ? 'info' : 'error');
         if (pending.error.trim()) this.parseLine(pending.error, 'error');
         this.process = null;
