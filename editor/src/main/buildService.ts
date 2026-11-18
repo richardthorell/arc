@@ -285,7 +285,8 @@ export class BuildService {
         trackGraph?.finish();
         try {
           const compileTrace = msbuildTrace?.finish() ?? finishNinjaTrace?.();
-          if (compileTrace) this.update({ compileTrace: enrichCompileTrace(project, compileTrace, this.snapshotValue.targetGraph) });
+          if (compileTrace)
+            this.update({ compileTrace: enrichCompileTrace(project, compileTrace, this.snapshotValue.targetGraph) });
         } catch {
           // Native telemetry must not affect compilation or cancellation.
         }
