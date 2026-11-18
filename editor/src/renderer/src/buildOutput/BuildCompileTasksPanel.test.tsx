@@ -1,5 +1,8 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
+
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
 import { BuildCompileTasksPanel } from './BuildCompileTasksPanel';
@@ -27,6 +30,8 @@ function run(): BuildMonitorRun {
     },
   };
 }
+
+afterEach(cleanup);
 
 describe('BM7.1 compilation timeline', () => {
   it('shows overlapping measured tasks on the Ninja clock without claiming command timing', () => {
