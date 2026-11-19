@@ -120,6 +120,19 @@ export class CookWorkflowService {
           targetId,
           platform: profile.platform,
           label: `${profile.id} — ${profile.configuration} / ${profile.architecture} / ${profile.renderer} / ${profile.textures.outputs.join(', ')}`,
+          editorBuildAvailable:
+            process.platform === 'win32' &&
+            profile.platform === 'windows' &&
+            profile.configuration === 'Shipping' &&
+            Boolean(this.buildEnvironment()),
+          editorBuildReason:
+            profile.platform !== 'windows' || process.platform !== 'win32'
+              ? 'The Editor currently supports full packaged builds only for Windows Shipping on Windows. Use arc-project build for other platforms.'
+              : profile.configuration !== 'Shipping'
+                ? 'The current Editor runtime build adapter supports only the Windows Shipping profile.'
+                : !this.buildEnvironment()
+                  ? 'Configure CMake, Visual Studio and an installed ARC SDK in Editor Settings.'
+                  : undefined,
         },
       ];
     });

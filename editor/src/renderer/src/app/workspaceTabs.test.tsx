@@ -58,7 +58,12 @@ function Harness() {
           else closeDocument(id);
         }}
       />
-      <WorkspaceToolbarHost document={activeDocument} activeView={activeView} registry={registry} />
+      <WorkspaceToolbarHost
+        document={activeDocument}
+        activeView={activeView}
+        registry={registry}
+        buildsToolbar={<span>Build actions</span>}
+      />
     </>
   );
 }
@@ -79,7 +84,7 @@ describe('generic workspace tab model', () => {
       closeable: true,
     };
     const result = render(<WorkspaceToolbarHost document={null} activeView={view} registry={registry} />);
-    expect(result.container.firstElementChild).toHaveClass('editor-toolbar-host', 'editor-toolbar-host-empty');
+    expect(result.container.firstElementChild).toHaveClass('editor-toolbar-host', 'editor-toolbar-builds');
   });
 
   it('opens Builds once without closing or mutating the level asset tab', () => {
@@ -94,9 +99,9 @@ describe('generic workspace tab model', () => {
     const builds = screen.getByRole('tab', { name: 'Builds' });
     expect(builds).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'World' })).toHaveAttribute('aria-selected', 'false');
-    // Even though the Builds view has no asset toolbar, the workbench grid
-    // must retain its toolbar element or the status bar moves above content.
-    expect(document.querySelector('.editor-toolbar-host')).toHaveClass('editor-toolbar-host-empty');
+    // Builds contributes its own toolbar, without replacing the asset toolbar registry.
+    expect(document.querySelector('.editor-toolbar-host')).toHaveClass('editor-toolbar-builds');
+    expect(screen.getByText('Build actions')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Builds' }));
     expect(screen.queryByRole('tab', { name: 'Builds' })).not.toBeInTheDocument();

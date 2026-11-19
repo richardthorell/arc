@@ -1,0 +1,48 @@
+.build-create-fields {
+  display: grid;
+  gap: 17px;
+  padding: 4px 1px;
+  color: var(--arc-color-text, #d4e0e9);
+  font-size: 12px;
+}
+
+.build-create-fields > p {
+  margin: 0;
+  color: var(--arc-color-text-muted, #a9b9c7);
+  line-height: 1.5;
+}
+
+.build-create-fields > label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.build-create-fields > label > span:first-child {
+  color: var(--arc-color-text-strong, #f0f4f8);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.build-create-fields .ui-dropdown {
+  min-width: 0;
+  width: 100%;
+}
+
+.build-create-fields .ui-dropdown-trigger {
+  width: 100%;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.build-create-fields .build-create-summary {
+  padding: 11px 12px;
+  border: 1px solid var(--arc-color-border-subtle, #354958);
+  border-radius: 5px;
+  background: var(--arc-color-bg-panel, #1c2a35);
+  line-height: 1.7;
+}
+
+.build-create-fields [role='alert'] {
+  color: #f3a1a6;
+}

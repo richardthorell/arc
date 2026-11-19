@@ -141,38 +141,13 @@ describe('Build Monitor workspace presentation', () => {
   });
 });
 
-describe('Build Monitor command controls', () => {
-  it('allows starting a code build with the project-selected configuration when idle', async () => {
-    const { api } = mockApi({
-      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [previous] }),
-      history: vi.fn().mockResolvedValue({ ...page, runs: [previous] }),
-    });
-    render(
-      <BuildDashboard
-        presentation="workspace"
-        snapshot={{
-          revision: 1,
-          state: 'idle',
-          configuration: 'Debug',
-          buildRequired: true,
-          reloadRequired: false,
-          restartRequired: false,
-          diagnostics: [],
-        }}
-        onClose={vi.fn()}
-        onOpenDiagnostic={vi.fn()}
-      />,
-    );
-    await screen.findByText('build log for older-run');
-    fireEvent.click(screen.getByRole('button', { name: 'Start code build' }));
-    await waitFor(() => expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'Debug' }));
-  });
-
-  it('disables new code builds while a workflow is already running', async () => {
+describe('Build Monitor workspace actions', () => {
+  it('leaves build execution to the Builds-only top toolbar', async () => {
     mockApi();
-    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    render(<BuildDashboard presentation="workspace" snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
     await screen.findByText('build log for current-run');
-    expect(screen.getByRole('button', { name: 'Start code build' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Start code build' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel build' })).not.toBeInTheDocument();
   });
 });
 
@@ -199,7 +174,7 @@ describe('Build Monitor actionable workflow', () => {
       'CMake configuration failed: no matching ARC SDK',
     );
     expect(screen.getByText('No compiler diagnostics recorded')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry selected build' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry build failed-command' }));
     await waitFor(() => expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'RelWithDebInfo' }));
     expect(screen.getByRole('button', { name: 'View error output' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Target dependency graph' })).not.toBeInTheDocument();

@@ -1,0 +1,73 @@
+/* Reuse the shared editor toolbar grid, chrome, and horizontal padding. */
+.editor-toolbar-host.editor-toolbar-builds {
+  min-width: 0;
+}
+
+.builds-editor-toolbar.main-toolbar {
+  width: 100%;
+  min-width: 0;
+}
+
+.builds-editor-toolbar .toolbar-right {
+  white-space: nowrap;
+}
+
+/* A single fixed slot prevents layout jumps as Build... changes to Stop/Stopping... . */
+.builds-editor-toolbar .builds-toolbar-action-slot {
+  display: inline-flex;
+  align-items: center;
+  width: 120px;
+  min-width: 120px;
+  height: var(--arc-control-height);
+  flex: 0 0 120px;
+}
+
+.builds-editor-toolbar .builds-toolbar-action-slot > .ui-split-button,
+.builds-editor-toolbar .builds-toolbar-action-slot > .ui-button {
+  width: 100%;
+}
+
+.builds-editor-toolbar .builds-toolbar-build.ui-split-button > .ui-split-button-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
+}
+
+/* Match the standard editor toolbar control height and typography. */
+.builds-editor-toolbar .builds-toolbar-build.ui-split-button,
+.builds-editor-toolbar .builds-toolbar-build.ui-split-button > .ui-button,
+.builds-editor-toolbar .builds-toolbar-stop.ui-button {
+  height: var(--arc-control-height);
+  min-height: var(--arc-control-height);
+  max-height: var(--arc-control-height);
+}
+
+.builds-editor-toolbar .builds-toolbar-build.ui-split-button > .ui-button,
+.builds-editor-toolbar .builds-toolbar-stop.ui-button {
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.builds-editor-toolbar .builds-toolbar-stop.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--arc-space-2);
+  padding: 0 var(--arc-space-3);
+  border-color: #9d5158;
+  color: #fff1f1;
+  background: #913c45;
+}
+
+.builds-editor-toolbar .builds-toolbar-stop:hover:not(:disabled) {
+  background: #ac4751;
+}
+
+.builds-toolbar-progress {
+  color: var(--arc-color-text-muted);
+  white-space: nowrap;
+  text-transform: capitalize;
+  font-size: var(--arc-text-sm);
+}
