@@ -104,7 +104,7 @@ export function BuildToolbar({
     <UiEditorToolbar
       aria-label="Builds toolbar"
       className="builds-editor-toolbar"
-      left={buildAction}
+      left={<span className="builds-toolbar-action-slot">{buildAction}</span>}
       center={
         busy ? (
           <span className="builds-toolbar-progress" role="status">
