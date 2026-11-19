@@ -15,7 +15,8 @@ describe('MainToolbar shared controls', () => {
     expect(source).not.toMatch(nativeToolbarControl);
     expect(source).toContain('UiIconButton');
     expect(source).toContain('UiDropdown');
-    expect(source).toContain('UiSplitButton');
+    expect(source).toContain('UiButton');
+    expect(source).not.toContain('UiSplitButton');
   });
 
   it('keeps the Scene toolbar on the shared region and group vocabulary', () => {
