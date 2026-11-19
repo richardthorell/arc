@@ -65,7 +65,6 @@ export function BuildCreationDialog({
   const [target, setTarget] = useState(action === 'cook' ? '' : (saved.current?.target ?? ''));
   const [profile, setProfile] = useState(saved.current?.profile ?? currentConfiguration);
   const [saving, setSaving] = useState(false);
-  const [saveChanges, setSaveChanges] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const busy = useRef(false);
@@ -152,7 +151,7 @@ export function BuildCreationDialog({
     setSaving(true);
     setError('');
     try {
-      if (dirty.length && saveChanges) {
+      if (dirty.length) {
         for (const document of dirty) {
           if (!(await saveDocument(document))) {
             throw new Error(`Could not save ${document.title}. Build did not start.`);
@@ -280,20 +279,6 @@ export function BuildCreationDialog({
               ? 'Cooks saved content only; no compilation, packaging or deployment.'
               : 'Build includes compilation, cooking and packaging. No deployment.'}
           </p>
-        )}
-        {dirty.length > 0 && (
-          <label className="build-create-save">
-            <input
-              type="checkbox"
-              checked={saveChanges}
-              disabled={saving}
-              onChange={(event) => setSaveChanges(event.target.checked)}
-            />
-            Save {dirty.length} modified document{dirty.length === 1 ? '' : 's'} before {actionLabel.toLowerCase()}
-          </label>
-        )}
-        {dirty.length > 0 && !saveChanges && (
-          <p className="build-create-hint">Unsaved changes will not be included in cooked content.</p>
         )}
         {!selectedTarget && !loading && <p role="alert">No compatible build target is configured for this platform.</p>}
         {blocked && <p role="alert">{blocked}</p>}
