@@ -10,8 +10,54 @@
     var(--arc-statusbar-height);
 }
 
+/* Tool views occupy the same center workspace as asset editors but do not
+   require an asset-specific toolbar. Parked asset sessions stay mounted. */
+.workbench-shell.is-workspace-view {
+  --arc-toolbar-height: 0px;
+}
+
+.workspace-view-session {
+  grid-area: 1 / 1;
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--arc-color-bg-panel);
+}
+
 .workbench-shell.has-detached-play-bar {
   --arc-play-session-height: 28px;
+}
+
+/* ARC's workbench has six fixed grid slots. Keep their placement explicit
+   so modal prompts, parked editors or a zero-height tool toolbar cannot
+   auto-place the workspace or bottom status bar into a different row. */
+.workbench-shell > .editor-document-tabs {
+  grid-row: 2;
+}
+
+.workbench-shell > .editor-toolbar-host {
+  grid-row: 3;
+}
+
+.workbench-shell > .play-session-host {
+  grid-row: 4;
+}
+
+.workbench-shell > .workbench-body-dockview {
+  grid-row: 5;
+}
+
+.workbench-shell > .status-bar {
+  grid-row: 6;
+}
+
+/* The center surface has one shared grid cell: parked asset workspaces
+   and the foreground non-asset view stack within that same cell. */
+.workbench-shell .dockview-editor-region {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .play-session-host {

@@ -1,0 +1,128 @@
+.build-activity-tray {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  z-index: 25;
+}
+
+.build-activity-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(280px, 28vw);
+  height: 24px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--arc-radius-2);
+  color: var(--arc-color-text-muted);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.build-activity-trigger:hover,
+.build-activity-trigger[aria-expanded='true'] {
+  border-color: var(--arc-color-border-subtle);
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-hover);
+}
+
+.build-activity-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-activity-trigger.is-failed,
+.build-activity-result.is-failed {
+  color: var(--arc-color-danger);
+}
+
+.build-activity-trigger.is-succeeded,
+.build-activity-result.is-succeeded {
+  color: var(--arc-color-success);
+}
+
+.build-activity-trigger.is-running,
+.build-activity-result.is-running {
+  color: var(--arc-color-accent-hover);
+}
+
+.build-activity-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  width: min(340px, calc(100vw - 28px));
+  padding: 14px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: var(--arc-radius-3);
+  background: var(--arc-color-bg-panel-raised);
+  color: var(--arc-color-text);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.build-activity-popover > header,
+.build-activity-popover > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.build-activity-popover > header > span,
+.build-activity-project,
+.build-activity-result {
+  color: var(--arc-color-text-muted);
+  font-size: 12px;
+}
+
+.build-activity-popover > p {
+  margin: 12px 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.build-activity-popover > p.build-activity-result {
+  margin-top: 4px;
+}
+
+.build-activity-popover > p.build-activity-error {
+  color: var(--arc-color-danger);
+}
+
+.build-activity-popover > footer {
+  margin-top: 14px;
+  justify-content: flex-end;
+}
+
+.build-activity-popover > footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 1px solid var(--arc-color-border);
+  border-radius: var(--arc-radius-2);
+  color: var(--arc-color-text-strong);
+  background: var(--arc-color-bg-hover);
+  cursor: pointer;
+}
+
+.build-activity-popover > footer .build-activity-cancel {
+  color: var(--arc-color-danger);
+}
+
+.build-activity-spin {
+  animation: build-activity-rotate 1.5s linear infinite;
+}
+
+@keyframes build-activity-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-activity-spin {
+    animation: none;
+  }
+}

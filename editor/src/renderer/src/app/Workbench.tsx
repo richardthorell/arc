@@ -45,11 +45,13 @@ import { WorkspaceDock, type WorkspaceLayoutName } from '../layout/WorkspaceDock
 import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
 import { PlaySessionBar } from '../layout/PlaySessionBar';
-import { EditorDocumentTabs } from '../editors/EditorDocumentTabs';
-import { EditorHost, EditorToolbarHost } from '../editors/EditorHost';
+import { WorkspaceTabs } from '../editors/WorkspaceTabs';
+import { EditorHost } from '../editors/EditorHost';
+import { WorkspaceToolbarHost } from '../editors/WorkspaceToolbarHost';
 import { EditorWorkspaceSessions } from '../editors/EditorWorkspaceSessions';
 import { createEditorRegistry } from '../editors/editorRegistry';
 import { useEditorDocuments } from '../editors/editorDocuments';
+import { closeWorkspaceView, openWorkspaceView, resetWorkspaceViews, useWorkspaceTabs } from './workspaceTabs';
 import type { EditorDocument } from '../editors/editorTypes';
 import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
@@ -82,6 +84,7 @@ import type { TerrainModifierStackSnapshot } from '../terrain/TerrainStackPanel'
 import { CreateTerrainDialog } from '../terrain/CreateTerrainDialog';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
+import { BuildDashboard } from '../buildOutput/BuildDashboard';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
@@ -424,7 +427,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const runtimeInspectionRevision = useRef(0);
   const [projectComponentSchemas, setProjectComponentSchemas] = useState<HostProjectComponentSchema[]>([]);
   const [buildSnapshot, setBuildSnapshot] = useState<ArcBuildSnapshot | null>(null);
-  const [buildDashboardOpen, setBuildDashboardOpen] = useState(false);
   const [cookPlatform, setCookPlatform] = useState<string | null>(null);
   const [cookSnapshot, setCookSnapshot] = useState<WorkflowExecutionSnapshot | null>(null);
   useEffect(() => {
@@ -473,7 +475,17 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     activeDocument,
     syncSingletonDocument,
     activateDocument,
+    closeDocument,
   } = useEditorDocuments();
+  const {
+    tabs: workspaceTabs,
+    activeTabId,
+    activeView,
+    activateTab,
+  } = useWorkspaceTabs(editorDocuments, activeDocumentId);
+  useEffect(() => {
+    resetWorkspaceViews();
+  }, [project?.root]);
   const [activeTool, setActiveTool] = useState<'select' | 'translate' | 'rotate' | 'scale' | 'terrain'>('translate');
   const [terrainToolState, setTerrainToolState] = useState<TerrainToolState | null>(null);
   const [coordinateSpace, setCoordinateSpace] = useState<'world' | 'local'>('world');
@@ -1650,15 +1662,14 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               setCookPlatform(cookSnapshot.run?.plan.platform ?? targetPlatform);
               return;
             }
-            setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
-            setBuildDashboardOpen(true);
+            openWorkspaceView('builds', 'Builds');
           }}
           onBuildAction={(action) => {
             if (action === 'cook') {
               setCookPlatform(targetPlatform);
               return;
             }
-            setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
+            openWorkspaceView('builds', 'Builds');
             void window.arc.build
               .execute({ action })
               .then(setBuildSnapshot)
@@ -1846,14 +1857,16 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return (
         <BuildOutputPanel
           snapshot={buildSnapshot}
-          expanded={buildDashboardOpen}
-          onExpandedChange={setBuildDashboardOpen}
+          expanded={false}
+          onExpandedChange={(value) => {
+            if (value) openWorkspaceView('builds', 'Builds');
+          }}
           onOpenDiagnostic={(diagnostic) => {
             if (diagnostic.file)
               void window.arc.build.openDiagnostic(diagnostic.file, diagnostic.line, diagnostic.column);
           }}
           onExecute={(request: ArcBuildRequest) => {
-            setLayout((current) => ({ ...current, bottomVisible: true, activeBottomPanel: 'buildOutput' }));
+            openWorkspaceView('builds', 'Builds');
             void window.arc.build
               .execute(request)
               .then(setBuildSnapshot)
@@ -1926,10 +1939,12 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return renderLeftPanel(panel);
   };
 
-  const showDetachedPlayBar = runtimeWorldActive && activeDocument?.kind !== 'level';
+  const showDetachedPlayBar = runtimeWorldActive && !activeView && activeDocument?.kind !== 'level';
 
   return (
-    <main className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}`}>
+    <main
+      className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}${activeView ? ' is-workspace-view' : ''}`}
+    >
       {cookPlatform && (
         <CookWorkflowDialog
           key={`${project?.root}:${cookPlatform}`}
@@ -1960,13 +1975,20 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         onToggleGrid={() => void toggleViewportGrid()}
         onPanel={(panel) => setRequestedWorkspacePanel(panel)}
       />
-      <EditorDocumentTabs
-        documents={editorDocuments}
-        activeDocumentId={activeDocumentId}
+      <WorkspaceTabs
+        tabs={workspaceTabs}
+        activeTabId={activeTabId}
         registry={editorRegistry}
-        onActivate={activateDocument}
+        onActivate={(tabId) => activateTab(tabId, activateDocument)}
+        onClose={(tabId) => {
+          if (tabId.startsWith('view:')) closeWorkspaceView(tabId);
+          else closeDocument(tabId);
+        }}
       />
-      <EditorToolbarHost document={activeDocument} registry={editorRegistry} />
+      {/* Keep the toolbar DOM slot mounted even for workspace views.
+          Its grid track is zero-height for tools, but removing the element
+          shifts the workspace and status bar into the wrong rows. */}
+      <WorkspaceToolbarHost document={activeDocument} activeView={activeView} registry={editorRegistry} />
       <div className="play-session-host">
         {showDetachedPlayBar && (
           <PlaySessionBar
@@ -2006,7 +2028,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         <section className="editor-region dockview-editor-region">
           <EditorWorkspaceSessions
             documents={editorDocuments}
-            activeDocumentId={activeDocumentId}
+            activeDocumentId={activeView ? null : activeDocumentId}
             projectKey={project?.root ?? 'no-project'}
             renderDocument={(document, isActive) => (
               <WorkspaceDock
@@ -2032,6 +2054,20 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
               />
             )}
           />
+          {activeView?.viewId === 'builds' && (
+            <div className="workspace-view-session" role="tabpanel" aria-label="Builds">
+              <BuildDashboard
+                presentation="workspace"
+                snapshot={buildSnapshot}
+                onClose={() => closeWorkspaceView(activeView.id)}
+                onOpenDiagnostic={(diagnostic) => {
+                  if (diagnostic.file)
+                    void window.arc.build.openDiagnostic(diagnostic.file, diagnostic.line, diagnostic.column);
+                }}
+                onCancel={() => void window.arc.build.execute({ action: 'cancel' })}
+              />
+            </div>
+          )}
         </section>
       </section>
 
@@ -2048,6 +2084,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
         }
         runtimeState={runtimeState.state}
         runtimeError={runtimeState.error}
+        projectKey={project?.root ?? 'no-project'}
+        onOpenBuilds={() => openWorkspaceView('builds', 'Builds')}
       />
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} onResetLayout={resetLayout} />}
       {commandPaletteOpen && (

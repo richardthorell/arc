@@ -111,6 +111,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('Build Monitor workspace presentation', () => {
+  it('renders modelessly inside the document workspace without trapping Escape or cancelling the build', async () => {
+    const { api } = mockApi();
+    const onClose = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <BuildDashboard
+        presentation="workspace"
+        snapshot={null}
+        onClose={onClose}
+        onCancel={onCancel}
+        onOpenDiagnostic={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('region', { name: 'Build monitor' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Build monitor' })).not.toBeInTheDocument();
+    expect(await screen.findByText('build log for current-run')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Close build monitor' })).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(api.monitorSnapshot).toHaveBeenCalled();
+  });
+});
+
 describe('Build Monitor BM3', () => {
   it('shows a current build, measured stages and a selectable archived failure with diagnostics', async () => {
     const { api } = mockApi();
