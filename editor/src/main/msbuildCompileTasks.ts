@@ -147,9 +147,29 @@ export function beginMsbuildCompileTrace(
         return undefined;
       }
     };
+    let lastSize = -1;
+    let lastMtime = -1;
+    let lastTrace: BuildCompileTrace | undefined;
     return {
       args: ['--msbuild-timing-log', filename],
-      snapshot: () => readTrace(false),
+      snapshot: () => {
+        try {
+          const info = fs.lstatSync(filename);
+          if (!info.isFile() || info.isSymbolicLink()) return undefined;
+          if (info.size === lastSize && info.mtimeMs === lastMtime) return lastTrace;
+          const next = readTrace(false);
+          // A locked logger can return nothing even if the file exists.
+          // Retry on the next poll rather than caching unavailable data.
+          if (next) {
+            lastTrace = next;
+            lastSize = info.size;
+            lastMtime = info.mtimeMs;
+          }
+          return next;
+        } catch {
+          return undefined;
+        }
+      },
       finish: () => {
         try {
           return readTrace(true);
