@@ -62,6 +62,18 @@ describe('Builds-only action toolbar', () => {
     expect(toolbar.querySelector('[data-toolbar-region="right"]')).toContainElement(screen.getByRole('alert'));
   });
 
+  it('keeps one action-width slot when Build changes to Stop and back', () => {
+    const { onCreate, rerender } = setup();
+    const slot = screen.getByRole('toolbar', { name: 'Builds toolbar' }).querySelector('.builds-toolbar-action-slot');
+    expect(slot).toContainElement(screen.getByRole('button', { name: 'Create build' }));
+
+    rerender(<BuildToolbar snapshot={idle} workflow={workflow} onCreate={onCreate} />);
+    expect(slot).toContainElement(screen.getByRole('button', { name: 'Stop' }));
+
+    rerender(<BuildToolbar snapshot={idle} workflow={null} onCreate={onCreate} />);
+    expect(slot).toContainElement(screen.getByRole('button', { name: 'Create build' }));
+  });
+
   it('opens Build... from its primary button and distinct operation dialogs from dropdown', () => {
     const { onCreate } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Create build' }));
