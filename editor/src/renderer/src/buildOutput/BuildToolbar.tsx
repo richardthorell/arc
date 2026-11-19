@@ -34,18 +34,16 @@ export function BuildToolbar({
   snapshot,
   workflow,
   onCreate,
-  launchError,
+  onError,
 }: {
   snapshot: ArcBuildSnapshot | null;
   workflow: WorkflowExecutionSnapshot | null;
   onCreate: (action: BuildDialogAction) => void;
-  launchError?: string;
+  onError?: (message: string) => void;
 }) {
   const [stopping, setStopping] = useState(false);
-  const [error, setError] = useState('');
   const busy = codeBusy(snapshot) || workflowBusy(workflow);
   const cancelling = stopping || workflow?.run?.state === 'cancelling';
-  const displayedError = error || launchError;
 
   useEffect(() => {
     if (!busy) setStopping(false);
@@ -53,7 +51,6 @@ export function BuildToolbar({
 
   const stop = async () => {
     if (stopping || !busy) return;
-    setError('');
     setStopping(true);
     try {
       if (workflowBusy(workflow)) {
@@ -64,7 +61,7 @@ export function BuildToolbar({
       }
     } catch (reason) {
       setStopping(false);
-      setError(String(reason));
+      onError?.(reason instanceof Error ? reason.message : String(reason));
     }
   };
 
@@ -105,17 +102,10 @@ export function BuildToolbar({
       aria-label="Builds toolbar"
       className="builds-editor-toolbar"
       left={<span className="builds-toolbar-action-slot">{buildAction}</span>}
-      center={
+      right={
         busy ? (
           <span className="builds-toolbar-progress" role="status">
             {progressLabel}
-          </span>
-        ) : undefined
-      }
-      right={
-        displayedError ? (
-          <span className="builds-toolbar-error" role="alert" title={displayedError}>
-            {displayedError}
           </span>
         ) : undefined
       }
