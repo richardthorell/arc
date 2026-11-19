@@ -7,35 +7,28 @@ import {
   Crosshair,
   Globe,
   Grid3X3,
-  Hammer,
-  Maximize2,
   Monitor,
   Mountain,
   MousePointer2,
   Move,
   Pause,
   Play,
-  RefreshCw,
   Rotate3D,
   Scaling,
   Settings2,
   Smartphone,
   Square,
   StepForward,
-  Trash2,
 } from 'lucide-react';
 
 import type { ArcProjectDescriptor } from '../../../common/projectTypes';
-import type { ArcBuildSnapshot } from '../../../common/buildTypes';
 import type { CommandId, EditorRuntimeState } from '../app/workbenchTypes';
 import { requestSettingsDialog } from '../settings/settingsDialogRoute';
 import {
   UiButton,
   UiDropdown,
   UiIconButton,
-  UiSplitButton,
   type UiDropdownOption,
-  type UiSplitButtonOption,
 } from '../ui';
 import { PlatformBrandIcon } from './PlatformBrandIcon';
 import type { EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
@@ -45,9 +38,11 @@ import './MainToolbar.css';
 
 export type EditorTargetPlatform =
   'windows' | 'linux' | 'macos' | 'ios' | 'android' | 'xbox' | 'playstation' | 'switch';
-export type ToolbarBuildAction = 'build' | 'rebuild' | 'configure' | 'clean' | 'cook';
 export type ToolbarCoordinateSpace = 'world' | 'local';
 export type ToolbarTransformOrigin = 'pivot' | 'center';
+
+export const EDITOR_VIEWPORT_TARGET_ID = 'editor-viewport';
+export const STANDALONE_TARGET_ID = 'standalone';
 
 export type EditorTargetDevice = {
   id: string;
@@ -201,14 +196,6 @@ function ToolbarPlaybackOptions({ timeScale, onTimeScaleChange }: ToolbarPlaybac
   );
 }
 
-const buildOptions: ReadonlyArray<UiSplitButtonOption<ToolbarBuildAction>> = [
-  { value: 'build', label: 'Build Editor Code', icon: <Hammer size={14} /> },
-  { value: 'cook', label: 'Cook Content Only', icon: <Hammer size={14} /> },
-  { value: 'rebuild', label: 'Rebuild Editor Code', icon: <RefreshCw size={14} /> },
-  { value: 'configure', label: 'Configure Editor Code', icon: <Settings2 size={14} /> },
-  { value: 'clean', label: 'Clean Editor Code', icon: <Trash2 size={14} /> },
-];
-
 type ToolbarSnapMenuProps = {
   snapping: boolean;
   translationSnap: number;
@@ -330,7 +317,6 @@ export type MainToolbarProps = {
   onRotationSnapChange?: (value: number) => void;
   onScaleSnapChange?: (value: number) => void;
   runtimeState?: EditorRuntimeState;
-  runtimeError?: string;
   authoringDisabled?: boolean;
   timeScale?: number;
   onTimeScaleChange?: (value: number) => void;
@@ -343,10 +329,6 @@ export type MainToolbarProps = {
   onTargetDeviceChange?: (deviceId: string) => void;
   targetDeviceActions?: ReactNode;
   targetDeviceMenuActions?: ReadonlyArray<UiDropdownOption<string>>;
-  onBuildAction?: (action: ToolbarBuildAction) => void;
-  buildSnapshot?: ArcBuildSnapshot | null;
-  cooking?: boolean;
-  onOpenBuildDashboard?: () => void;
 };
 
 export function MainToolbar({
@@ -364,7 +346,6 @@ export function MainToolbar({
   onScaleSnapChange,
   terrainEnabled = false,
   runtimeState = 'stopped',
-  runtimeError = '',
   authoringDisabled = false,
   timeScale = 1,
   onTimeScaleChange,
@@ -377,18 +358,21 @@ export function MainToolbar({
   onTargetDeviceChange,
   targetDeviceActions,
   targetDeviceMenuActions = [],
-  onBuildAction,
-  buildSnapshot,
-  cooking = false,
-  onOpenBuildDashboard,
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
   const hostPlatform = detectHostTargetPlatform();
   const [projectTargetPlatforms, setProjectTargetPlatforms] = useState<EditorTargetPlatform[]>(() => [hostPlatform]);
-  const [localTargetDevice, setLocalTargetDevice] = useState('local');
-  const buildState = cooking ? 'cooking' : (buildSnapshot?.state ?? 'idle');
-  const recentBuildCommands = buildSnapshot?.history?.slice(-6) ?? [];
-  const longestBuildCommand = Math.max(1, ...recentBuildCommands.map((run) => run.durationMs));
+  const [localTargetDevices, setLocalTargetDevices] = useState<Record<string, string>>(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem('arc.editor.play-targets.v1') ?? '{}') as unknown;
+      if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+      return Object.fromEntries(
+        Object.entries(stored).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      );
+    } catch {
+      return {};
+    }
+  });
   const [localSettings, setLocalSettings] = useState<EditorSettingsSnapshot | null>(null);
   useEffect(() => {
     let revision = 0;
@@ -418,10 +402,6 @@ export function MainToolbar({
     };
   }, []);
   const playLabel = runtimeState === 'paused' ? 'Resume' : 'Play';
-  const runtimeLabel =
-    runtimeState === 'stopped'
-      ? 'Authoring World'
-      : `Play World: ${runtimeState[0].toUpperCase()}${runtimeState.slice(1)}`;
 
   useEffect(() => {
     if (configuredTargetPlatforms) {
@@ -461,26 +441,60 @@ export function MainToolbar({
     if (targetPlatform && targetPlatform !== effectiveTargetPlatform) onTargetPlatformChange?.(effectiveTargetPlatform);
   }, [effectiveTargetPlatform, onTargetPlatformChange, targetPlatform]);
 
-  const availableTargetDevices: EditorTargetDevice[] = targetDevices
-    ? targetDevices.filter((device) => device.platform === effectiveTargetPlatform)
-    : effectiveTargetPlatform === hostPlatform
-      ? [{ id: 'local', label: 'This Computer', platform: hostPlatform }]
-      : [];
-  const requestedTargetDevice = targetDevice ?? localTargetDevice;
-  const effectiveTargetDevice =
-    availableTargetDevices.find((device) => device.id === requestedTargetDevice)?.id ??
-    availableTargetDevices[0]?.id ??
-    '__no-device__';
-  const deviceOptions: ReadonlyArray<UiDropdownOption<string>> = availableTargetDevices.length
-    ? availableTargetDevices.map((device) => ({
-        value: device.id,
-        label: device.label,
-        menuLabel: device.menuLabel,
-        details: device.details,
-        icon: device.platform === hostPlatform ? <Monitor size={14} /> : <Smartphone size={14} />,
-        disabled: device.disabled,
-      }))
-    : [{ value: '__no-device__', label: 'No devices available', icon: <Smartphone size={14} />, disabled: true }];
+  const availableTargetDevices: EditorTargetDevice[] = [
+    ...(effectiveTargetPlatform === hostPlatform
+      ? [
+          { id: EDITOR_VIEWPORT_TARGET_ID, label: 'Editor Viewport', platform: hostPlatform },
+          { id: STANDALONE_TARGET_ID, label: 'This Computer (Standalone)', platform: hostPlatform },
+        ]
+      : []),
+    ...(targetDevices ?? []).filter(
+      (device) =>
+        device.platform === effectiveTargetPlatform &&
+        device.id !== EDITOR_VIEWPORT_TARGET_ID &&
+        device.id !== STANDALONE_TARGET_ID,
+    ),
+  ];
+  const requestedTargetDevice =
+    targetDevice ??
+    localTargetDevices[effectiveTargetPlatform] ??
+    (effectiveTargetPlatform === hostPlatform ? EDITOR_VIEWPORT_TARGET_ID : '');
+  // A disconnected device remains selected rather than silently switching to a different target.
+  const knownTarget = availableTargetDevices.some((device) => device.id === requestedTargetDevice);
+  const effectiveTargetDevice = knownTarget
+    ? requestedTargetDevice
+    : requestedTargetDevice && requestedTargetDevice !== '__choose__'
+      ? requestedTargetDevice
+      : '__no-device__';
+  const deviceOptions: ReadonlyArray<UiDropdownOption<string>> = [
+    ...availableTargetDevices.map((device) => ({
+      value: device.id,
+      label: device.label,
+      menuLabel: device.menuLabel,
+      details: device.details,
+      icon:
+        device.id === EDITOR_VIEWPORT_TARGET_ID || device.platform === hostPlatform ? (
+          <Monitor size={14} />
+        ) : (
+          <Smartphone size={14} />
+        ),
+      disabled: device.disabled,
+    })),
+    ...(!knownTarget
+      ? [
+          {
+            value: effectiveTargetDevice,
+            label: requestedTargetDevice && requestedTargetDevice !== '__choose__' ? 'Selected target unavailable' : 'Select a target',
+            icon: <Smartphone size={14} />,
+            disabled: true,
+          },
+        ]
+      : []),
+  ];
+  const playInEditor = effectiveTargetPlatform === hostPlatform && effectiveTargetDevice === EDITOR_VIEWPORT_TARGET_ID;
+  const playTargetUnavailableReason = playInEditor
+    ? undefined
+    : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
 
   const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
     ...projectTargetPlatforms.flatMap((platform) => {
@@ -517,8 +531,9 @@ export function MainToolbar({
           <UiIconButton
             active={runtimeState === 'running'}
             className="toolbar-button play"
-            disabled={runtimeState === 'running' || runtimeState === 'faulted'}
+            disabled={runtimeState === 'running' || runtimeState === 'faulted' || !playInEditor}
             label={playLabel}
+            title={playTargetUnavailableReason ?? playLabel}
             onClick={() => onCommand('scene.play')}
           >
             <Play fill="currentColor" strokeWidth={0} size={14} />
@@ -549,13 +564,6 @@ export function MainToolbar({
             <StepForward size={14} />
           </UiIconButton>
           <ToolbarPlaybackOptions timeScale={timeScale} onTimeScaleChange={onTimeScaleChange} />
-          <span
-            className={`toolbar-runtime-state is-${runtimeState}`}
-            data-testid="toolbar-runtime-state"
-            title={runtimeError || runtimeLabel}
-          >
-            {runtimeLabel}
-          </span>
         </div>
       </div>
 
@@ -642,8 +650,9 @@ export function MainToolbar({
 
       <div className="toolbar-right">
         <UiDropdown
-          ariaLabel="Target platform"
+          ariaLabel="Play platform"
           className="toolbar-platform-dropdown"
+          disabled={runtimeState !== 'stopped'}
           onValueChange={(platform) => {
             if (platform !== '__platform-settings__') onTargetPlatformChange?.(platform);
           }}
@@ -651,55 +660,26 @@ export function MainToolbar({
           value={effectiveTargetPlatform}
         />
         <UiDropdown
-          ariaLabel="Target device"
-          title={targetDeviceTitle}
+          ariaLabel="Play target"
+          title={targetDeviceTitle ?? playTargetUnavailableReason}
           className="toolbar-device-dropdown"
+          disabled={runtimeState !== 'stopped'}
           onValueChange={(deviceId) => {
-            setLocalTargetDevice(deviceId);
+            setLocalTargetDevices((current) => {
+              const next = { ...current, [effectiveTargetPlatform]: deviceId };
+              try {
+                window.localStorage.setItem('arc.editor.play-targets.v1', JSON.stringify(next));
+              } catch {
+                // Target selection still works if preferences cannot be stored.
+              }
+              return next;
+            });
             onTargetDeviceChange?.(deviceId);
           }}
           options={[...deviceOptions, ...targetDeviceMenuActions]}
           value={effectiveTargetDevice}
         />
         {targetDeviceActions}
-        <UiSplitButton
-          ariaLabel={cooking ? 'Cook progress' : 'Build Editor Code'}
-          className="toolbar-build-split"
-          icon={<Hammer size={14} />}
-          label={cooking ? 'Cook progress' : 'Build Editor Code'}
-          menuAriaLabel="Build actions"
-          onClick={() => onBuildAction?.(cooking ? 'cook' : 'build')}
-          onOptionSelect={(action) => onBuildAction?.(action)}
-          options={buildOptions.map((option) => ({ ...option, disabled: cooking && option.value !== 'cook' }))}
-          variant="primary"
-        />
-        {onOpenBuildDashboard && (
-          <UiButton
-            variant="toolbar"
-            className={`toolbar-build-monitor is-${buildState}`}
-            type="button"
-            aria-label="Open build dashboard"
-            title={`Build: ${buildState} · ${recentBuildCommands.length} recorded commands`}
-            onClick={onOpenBuildDashboard}
-          >
-            <span className="toolbar-build-monitor-light" aria-hidden="true" />
-            <span className="toolbar-build-monitor-label">{buildState === 'idle' ? 'Idle' : buildState}</span>
-            <span className="toolbar-build-mini-chart" aria-hidden="true">
-              {recentBuildCommands.length ? (
-                recentBuildCommands.map((run) => (
-                  <span
-                    key={run.id}
-                    className={`is-${run.result}`}
-                    style={{ height: `${Math.max(3, Math.round((run.durationMs / longestBuildCommand) * 16))}px` }}
-                  />
-                ))
-              ) : (
-                <span className="is-empty" />
-              )}
-            </span>
-            <Maximize2 size={12} aria-hidden="true" />
-          </UiButton>
-        )}
       </div>
     </section>
   );
