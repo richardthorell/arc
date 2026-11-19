@@ -91,11 +91,12 @@ describe('BM7.2 native MSBuild CL task intervals', () => {
     const filename = capture!.args[1];
     expect(capture?.snapshot()).toBeUndefined();
 
-    fs.writeFileSync(
-      filename,
-      '12:00:00.000 1>  Task "CL" (TaskId:9)\n' +
-        '12:00:00.100 2>  Task "CL" (TaskId:10)\n',
-    );
+    const starts = [
+      '12:00:00.000 1>  Task "CL" (TaskId:9)',
+      '12:00:00.100 2>  Task "CL" (TaskId:10)',
+      '',
+    ].join('\n');
+    fs.writeFileSync(filename, starts);
     expect(capture?.snapshot()).toMatchObject({ tasks: [], truncated: false });
     fs.appendFileSync(filename, '12:00:00.320 2>  Done executing task "CL". (TaskId:10)\n');
     expect(capture?.snapshot()).toMatchObject({
