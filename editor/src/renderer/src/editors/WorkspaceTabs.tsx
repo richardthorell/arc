@@ -66,7 +66,8 @@ export function WorkspaceTabs({
           const registration = document ? registry[document.kind] : null;
           const title = document?.title ?? (tab.type === 'view' ? tab.title : '');
           const active = tab.id === activeTabId;
-          const closeable = tab.type === 'view' ? tab.closeable : (registration?.closeable ?? registration?.allowMultiple ?? true);
+          const closeable =
+            tab.type === 'view' ? tab.closeable : (registration?.closeable ?? registration?.allowMultiple ?? true);
           const ViewIcon = tab.type === 'view' ? (tab.viewId === 'builds' ? Activity : PanelsTopLeft) : null;
           return (
             <div

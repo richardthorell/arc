@@ -84,7 +84,12 @@ export function BuildActivityTray({ projectKey, onOpenBuilds }: BuildActivityTra
   const Icon =
     state === 'running' ? LoaderCircle : state === 'failed' ? XCircle : state === 'succeeded' ? CheckCircle2 : Activity;
   const runningStage = activeRun?.stages.find((stage) => stage.state === 'running')?.name;
-  const label = state === 'running' ? `Building${runningStage ? ` · ${runningStage}` : ''}` : state === 'idle' ? 'Builds' : `Build ${state}`;
+  const label =
+    state === 'running'
+      ? `Building${runningStage ? ` · ${runningStage}` : ''}`
+      : state === 'idle'
+        ? 'Builds'
+        : `Build ${state}`;
 
   const cancel = async () => {
     if (!activeRun) return;
@@ -135,7 +140,11 @@ export function BuildActivityTray({ projectKey, onOpenBuilds }: BuildActivityTra
                 ? `${recentRun.state} · ${recentRun.errorCount} errors · ${recentRun.warningCount} warnings`
                 : 'No build recorded for this project'}
           </p>
-          {error && <p className="build-activity-error" role="alert">{error}</p>}
+          {error && (
+            <p className="build-activity-error" role="alert">
+              {error}
+            </p>
+          )}
           <footer>
             <button
               type="button"

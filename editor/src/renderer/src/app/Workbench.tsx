@@ -476,10 +476,12 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     activateDocument,
     closeDocument,
   } = useEditorDocuments();
-  const { tabs: workspaceTabs, activeTabId, activeView, activateTab } = useWorkspaceTabs(
-    editorDocuments,
-    activeDocumentId,
-  );
+  const {
+    tabs: workspaceTabs,
+    activeTabId,
+    activeView,
+    activateTab,
+  } = useWorkspaceTabs(editorDocuments, activeDocumentId);
   useEffect(() => {
     resetWorkspaceViews();
   }, [project?.root]);
@@ -1939,7 +1941,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const showDetachedPlayBar = runtimeWorldActive && !activeView && activeDocument?.kind !== 'level';
 
   return (
-    <main className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}${activeView ? ' is-workspace-view' : ''}`}>
+    <main
+      className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}${activeView ? ' is-workspace-view' : ''}`}
+    >
       {cookPlatform && (
         <CookWorkflowDialog
           key={`${project?.root}:${cookPlatform}`}
