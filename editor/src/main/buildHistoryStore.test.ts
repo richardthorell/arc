@@ -234,7 +234,12 @@ describe('BuildHistoryStore (BM2)', () => {
 
     const restored = new BuildMonitorService();
     restored.attachProject(project);
-    expect(restored.historyPage().runs[0]).toMatchObject({ id: 'run-live', state: 'failed' });
+    expect(restored.historyPage().runs[0]).toMatchObject({
+      id: 'run-live',
+      state: 'interrupted',
+      error: 'Editor closed before the build completed',
+    });
+    expect(restored.historyPage().runs[0].durationMs).toBeUndefined();
     expect(restored.historyDetails('run-live')?.logs.items[0].text).toBe('complete stdout');
     const events = restored.historyDetails('run-live')?.events.items as BuildMonitorEvent[];
     expect(events.map((event) => event.kind)).toEqual(['run-started', 'diagnostic']);
