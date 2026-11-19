@@ -1,32 +1,39 @@
+/* Reuse the shared editor toolbar grid, chrome, and horizontal padding. */
 .editor-toolbar-host.editor-toolbar-builds {
-  display: flex;
-  align-items: center;
   min-width: 0;
-  padding: 0 10px;
-  background: var(--arc-color-bg-panel, #19262f);
-  border-bottom: 1px solid var(--arc-color-border-subtle, #304251);
 }
 
-.builds-editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.builds-editor-toolbar.main-toolbar {
   width: 100%;
-  height: 100%;
   min-width: 0;
-  font-size: 12px;
 }
 
-.builds-editor-toolbar .ui-split-button {
-  flex: 0 0 auto;
+.builds-editor-toolbar .toolbar-right {
+  white-space: nowrap;
 }
 
-.builds-editor-toolbar .builds-toolbar-stop {
+/* Match the standard editor toolbar control height and typography. */
+.builds-editor-toolbar .builds-toolbar-build.ui-split-button,
+.builds-editor-toolbar .builds-toolbar-build.ui-split-button > .ui-button,
+.builds-editor-toolbar .builds-toolbar-stop.ui-button {
+  height: var(--arc-control-height);
+  min-height: var(--arc-control-height);
+  max-height: var(--arc-control-height);
+}
+
+.builds-editor-toolbar .builds-toolbar-build.ui-split-button > .ui-button,
+.builds-editor-toolbar .builds-toolbar-stop.ui-button {
+  font-family: var(--arc-font-ui);
+  font-size: var(--arc-text-sm);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.builds-editor-toolbar .builds-toolbar-stop.ui-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 29px;
-  padding: 4px 12px;
+  gap: var(--arc-space-2);
+  padding: 0 var(--arc-space-3);
   border-color: #9d5158;
   color: #fff1f1;
   background: #913c45;
@@ -36,18 +43,17 @@
   background: #ac4751;
 }
 
-.builds-toolbar-spacer {
-  flex: 1;
-}
-
 .builds-toolbar-progress {
-  color: var(--arc-color-text-muted, #a1b2c0);
+  color: var(--arc-color-text-muted);
   white-space: nowrap;
   text-transform: capitalize;
+  font-size: var(--arc-text-sm);
 }
 
 .builds-toolbar-error {
-  color: #f39aa3;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--arc-color-danger);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
