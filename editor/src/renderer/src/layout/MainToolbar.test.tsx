@@ -207,7 +207,7 @@ describe('MainToolbar runtime controls', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Play' })).toHaveAttribute(
       'title',
-      expect.stringContaining('Remote Play'),
+      expect.stringContaining('remote Play'),
     );
     expect(screen.queryByRole('button', { name: 'Build Editor Code' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open build dashboard' })).not.toBeInTheDocument();
