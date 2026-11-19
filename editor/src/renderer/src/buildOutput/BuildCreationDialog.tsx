@@ -153,7 +153,7 @@ export function BuildCreationDialog({
       if (selectedTarget !== EDITOR_MODULE) {
         const latest = await window.arc.build.cookOptions();
         if (!alive.current) return;
-        if (!options || latest.authority !== options.authority)
+        if (!options || !latest || latest.authority !== options.authority)
           throw new Error('Project or SDK changed. Reopen Build to refresh profiles.');
         if (
           !latest.profiles.some(
