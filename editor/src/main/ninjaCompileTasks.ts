@@ -36,13 +36,24 @@ export function beginNinjaCompileTrace(project: ArcProjectCandidate): (() => Bui
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return null;
   }
 
+  let lastSize = -1;
+  let lastTrace: BuildCompileTrace | undefined;
+  let invalidated = false;
   return () => {
+    if (invalidated) return undefined;
     let fd: number | undefined;
     try {
       fd = fs.openSync(filename, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
       const stat = fs.fstatSync(fd);
       if (!stat.isFile() || stat.size < offset) return undefined;
       if (identity && (stat.dev !== identity.dev || stat.ino !== identity.ino)) return undefined;
+      // Ninja may compact or replace its log; never interpret rewritten old
+      // records as new work for this invocation.
+      if (lastSize >= 0 && stat.size < lastSize) {
+        invalidated = true;
+        return undefined;
+      }
+      if (stat.size === lastSize) return lastTrace;
       const header = Buffer.alloc(HEADER.length);
       const headerBytes = fs.readSync(fd, header, 0, header.length, 0);
       if (headerBytes !== HEADER.length || header.toString() !== HEADER) return undefined;
@@ -73,7 +84,9 @@ export function beginNinjaCompileTrace(project: ArcProjectCandidate): (() => Bui
         payloadBytes += bytes;
         tasks.push({ output: fields[3], startMs, endMs, durationMs: endMs - startMs });
       }
-      return { source: 'ninja-log', clock: 'ninja-invocation', tasks, truncated };
+      lastTrace = { source: 'ninja-log', clock: 'ninja-invocation', tasks, truncated };
+      lastSize = stat.size;
+      return lastTrace;
     } catch {
       // Timing extraction is best-effort and must never change build results.
       return undefined;

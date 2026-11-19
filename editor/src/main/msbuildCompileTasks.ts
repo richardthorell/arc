@@ -27,7 +27,11 @@ function clockMs(line: string): number | null {
  * A single CL task can compile multiple sources, so these are measured CL
  * invocation intervals and MUST NOT be labelled per-source/object timings.
  */
-export function parseMsbuildCompileLog(content: string, clipped = false): BuildCompileTrace | undefined {
+export function parseMsbuildCompileLog(
+  content: string,
+  clipped = false,
+  completed = true,
+): BuildCompileTrace | undefined {
   const active = new Map<string, { start: number; label: string }>();
   const intervals: Array<{ start: number; end: number; label: string }> = [];
   const startPattern = /\bTask "CL"\s*\(TaskId:\s*(\d+)\)/;
@@ -82,12 +86,19 @@ export function parseMsbuildCompileLog(content: string, clipped = false): BuildC
   }
   tasks.sort((a, b) => a.startMs - b.startMs);
   // A failed/cancelled build may have incomplete tasks; never fabricate an end time.
-  return { source: 'msbuild-file-log', clock: 'msbuild-cl-events', tasks, truncated: truncated || active.size > 0 };
+  return {
+    source: 'msbuild-file-log',
+    clock: 'msbuild-cl-events',
+    tasks,
+    truncated: truncated || (completed && active.size > 0),
+  };
 }
 
 export type MsbuildCompileCapture = {
   /** Pass only to the native arc-project CLI, not directly to CMake. */
   args: string[];
+  /** Read completed CL intervals without deleting the in-progress native log. */
+  snapshot: () => BuildCompileTrace | undefined;
   finish: () => BuildCompileTrace | undefined;
 };
 
@@ -116,30 +127,56 @@ export function beginMsbuildCompileTrace(
     if (stat.isSymbolicLink() || !stat.isDirectory()) return null;
     const filename = path.join(folder, 'arc-msbuild-' + runId + '.log');
     if (fs.existsSync(filename) || filename.includes(';')) return null;
+    const readTrace = (completed: boolean): BuildCompileTrace | undefined => {
+      try {
+        const stat = fs.lstatSync(filename);
+        if (stat.isSymbolicLink() || !stat.isFile()) return undefined;
+        const fd = fs.openSync(filename, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+        try {
+          const size = Math.min(stat.size, MAX_LOG_BYTES);
+          const buffer = Buffer.alloc(size);
+          const read = fs.readSync(fd, buffer, 0, size, 0);
+          const end = buffer.lastIndexOf(10, read - 1);
+          if (end < 0) return undefined;
+          return parseMsbuildCompileLog(buffer.subarray(0, end).toString('utf8'), stat.size > MAX_LOG_BYTES, completed);
+        } finally {
+          fs.closeSync(fd);
+        }
+      } catch {
+        // An active MSBuild logger may temporarily lock or buffer the file.
+        // Unavailable telemetry must never interfere with compilation.
+        return undefined;
+      }
+    };
+    let lastSize = -1;
+    let lastMtime = -1;
+    let lastTrace: BuildCompileTrace | undefined;
     return {
       args: ['--msbuild-timing-log', filename],
+      snapshot: () => {
+        try {
+          const info = fs.lstatSync(filename);
+          if (!info.isFile() || info.isSymbolicLink()) return undefined;
+          if (info.size === lastSize && info.mtimeMs === lastMtime) return lastTrace;
+          const next = readTrace(false);
+          // A locked logger can return nothing even if the file exists.
+          // Retry on the next poll rather than caching unavailable data.
+          if (next) {
+            lastTrace = next;
+            lastSize = info.size;
+            lastMtime = info.mtimeMs;
+          }
+          return next;
+        } catch {
+          return undefined;
+        }
+      },
       finish: () => {
         try {
-          const stat = fs.lstatSync(filename);
-          if (stat.isSymbolicLink() || !stat.isFile()) return undefined;
-          const fd = fs.openSync(filename, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
-          try {
-            const size = Math.min(stat.size, MAX_LOG_BYTES);
-            const buffer = Buffer.alloc(size);
-            const read = fs.readSync(fd, buffer, 0, size, 0);
-            const end = buffer.lastIndexOf(10, read - 1);
-            if (end < 0) return undefined;
-            return parseMsbuildCompileLog(buffer.subarray(0, end).toString('utf8'), stat.size > MAX_LOG_BYTES);
-          } finally {
-            fs.closeSync(fd);
-          }
-        } catch {
-          // Missing or malformed diagnostics are nonfatal to the native build.
-          return undefined;
+          return readTrace(true);
         } finally {
           try {
-            // The per-invocation diagnostic log is transient; BM2 stores only
-            // bounded task intervals, not huge (potentially sensitive) logs.
+            // Persist bounded intervals, not raw potentially sensitive logs.
             fs.rmSync(filename, { force: true });
           } catch {
             // Cleanup failures must not change the native command's result.

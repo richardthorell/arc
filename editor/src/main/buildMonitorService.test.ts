@@ -369,6 +369,34 @@ describe('BuildMonitorService BM1 event stream', () => {
     expect(monitor.snapshot().events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(0);
   });
 
+  it('publishes deduplicated compile-trace events for measured live progress and final metadata', () => {
+    const monitor = new BuildMonitorService();
+    const trace = {
+      source: 'ninja-log' as const,
+      clock: 'ninja-invocation' as const,
+      truncated: false,
+      tasks: [{ output: 'CMakeFiles/game.dir/main.cpp.o', startMs: 0, endMs: 25, durationMs: 25 }],
+    };
+    monitor.observeCommand(command(), 'project-a');
+    monitor.observeCommand(command({ compileTrace: trace }), 'project-a');
+    monitor.observeCommand(command({ compileTrace: trace }), 'project-a');
+    const nextTask = { output: 'CMakeFiles/game.dir/other.cpp.o', startMs: 10, endMs: 50, durationMs: 40 };
+    const second = { ...trace, tasks: [...trace.tasks, nextTask] };
+    monitor.observeCommand(command({ compileTrace: second }), 'project-a');
+    monitor.observeCommand(command({ compileTrace: second }), 'project-a');
+    const sourceTask = { ...second.tasks[0], sourceFile: 'Source/main.cpp' };
+    const attributed = { ...second, tasks: [sourceTask, nextTask] };
+    monitor.observeCommand(command({ compileTrace: attributed }), 'project-a');
+    const changes = monitor.snapshot().events.filter((event) => event.kind === 'compile-trace-changed');
+    expect(changes).toMatchObject([
+      { kind: 'compile-trace-changed', runId: 'command-001', taskCount: 1 },
+      { kind: 'compile-trace-changed', runId: 'command-001', taskCount: 2 },
+      { kind: 'compile-trace-changed', runId: 'command-001', taskCount: 2 },
+    ]);
+    expect(monitor.snapshot().runs[0].compileTrace?.tasks[0].sourceFile).toBe('Source/main.cpp');
+    expect(monitor.snapshot().events.filter((event) => event.kind === 'target-graph-changed')).toHaveLength(0);
+  });
+
   it('isolates projects and ignores stale workflow notifications', () => {
     const monitor = new BuildMonitorService();
     monitor.observeCommand(command(), 'project-a');

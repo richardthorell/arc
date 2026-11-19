@@ -45,6 +45,7 @@ export class BuildService {
   private projectEpoch = 0;
   private legacyOperation = false;
   private cancelledProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
+  private stopCompilePolling: (() => void) | null = null;
 
   constructor(
     private readonly activeProject: () => ArcProjectCandidate | null,
@@ -81,6 +82,7 @@ export class BuildService {
   }
 
   watchProject(): void {
+    this.stopCompilePolling?.();
     this.workflows.invalidate();
     ++this.projectEpoch;
     this.sourceWatcher?.close();
@@ -152,6 +154,7 @@ export class BuildService {
 
   private async executeLegacy(request: ArcBuildRequest): Promise<ArcBuildSnapshot> {
     if (request.action === 'cancel') {
+      this.stopCompilePolling?.();
       if (this.process) {
         this.cancelledProcesses.add(this.process);
         this.process.kill();
@@ -206,6 +209,7 @@ export class BuildService {
   }
 
   dispose(): void {
+    this.stopCompilePolling?.();
     this.workflows.invalidate();
     this.process?.kill();
     this.sourceWatcher?.close();
@@ -250,6 +254,30 @@ export class BuildService {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(tool, effective, { cwd: project.projectRoot, shell: false, windowsHide: true });
       this.process = child;
+      let compilePoll: ReturnType<typeof setInterval> | undefined;
+      const stopPolling = () => {
+        if (compilePoll !== undefined) clearInterval(compilePoll);
+        compilePoll = undefined;
+        if (this.stopCompilePolling === stopPolling) this.stopCompilePolling = null;
+      };
+      const publishMeasured = (trace: ReturnType<NonNullable<typeof finishNinjaTrace>>, final: boolean) => {
+        if (!trace || (!final && !trace.tasks.length)) return;
+        if (epoch !== this.projectEpoch || this.snapshotValue.runId !== runId) return;
+        const enriched = enrichCompileTrace(project, trace, this.snapshotValue.targetGraph);
+        if (JSON.stringify(enriched) !== JSON.stringify(this.snapshotValue.compileTrace))
+          this.update({ compileTrace: enriched });
+      };
+      if (state === 'building' && (finishNinjaTrace || msbuildTrace)) {
+        this.stopCompilePolling = stopPolling;
+        compilePoll = setInterval(() => {
+          if (this.process !== child) return;
+          try {
+            publishMeasured(msbuildTrace?.snapshot() ?? finishNinjaTrace?.(), false);
+          } catch {
+            // Live native observations are best-effort, never build failures.
+          }
+        }, 750);
+      }
       let failedToStart = false;
       // CMake output and the CLI's failure summary can arrive on different
       // pipes. Keep independent partial lines to avoid joining two errors.
@@ -273,6 +301,7 @@ export class BuildService {
       child.stderr.on('data', (data: Buffer) => consume(data, 'error'));
       child.on('error', (error) => {
         failedToStart = true;
+        stopPolling();
         msbuildTrace?.finish();
         this.process = null;
         this.append('error', error.message, 'compiler');
@@ -282,11 +311,11 @@ export class BuildService {
       });
       child.on('close', (code) => {
         if (failedToStart) return;
+        stopPolling();
         trackGraph?.finish();
         try {
           const compileTrace = msbuildTrace?.finish() ?? finishNinjaTrace?.();
-          if (compileTrace)
-            this.update({ compileTrace: enrichCompileTrace(project, compileTrace, this.snapshotValue.targetGraph) });
+          publishMeasured(compileTrace, true);
         } catch {
           // Native telemetry must not affect compilation or cancellation.
         }

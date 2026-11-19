@@ -219,6 +219,7 @@ describe('BuildService command history', () => {
   it('forwards native MSBuild telemetry flags without changing failed command reporting', async () => {
     const capture = vi.spyOn(msbuild, 'beginMsbuildCompileTrace').mockReturnValue({
       args: ['--msbuild-timing-log', '/project/.arc-monitor/trace.log'],
+      snapshot: () => undefined,
       finish: () => ({
         source: 'msbuild-file-log',
         clock: 'msbuild-cl-events',
@@ -252,6 +253,74 @@ describe('BuildService command history', () => {
       });
     } finally {
       capture.mockRestore();
+    }
+  });
+
+  it('publishes measured native tasks while building, suppresses duplicates and stops polling on exit', async () => {
+    vi.useFakeTimers();
+    const first = {
+      source: 'msbuild-file-log' as const,
+      clock: 'msbuild-cl-events' as const,
+      truncated: false,
+      tasks: [{ output: 'CL task #1', startMs: 0, endMs: 70, durationMs: 70 }],
+    };
+    let observed = first;
+    const capture = vi.spyOn(msbuild, 'beginMsbuildCompileTrace').mockReturnValue({
+      args: [],
+      snapshot: () => observed,
+      finish: () => observed,
+    });
+    try {
+      const { service, process: child } = setup();
+      const pending = service.execute({ action: 'build', configuration: 'Debug' });
+      expect(service.snapshot().compileTrace).toBeUndefined();
+
+      await vi.advanceTimersByTimeAsync(750);
+      expect(service.snapshot().state).toBe('building');
+      expect(service.snapshot().compileTrace).toEqual(first);
+      const afterFirst = service.snapshot().revision;
+
+      await vi.advanceTimersByTimeAsync(750);
+      expect(service.snapshot().revision).toBe(afterFirst);
+      observed = {
+        ...first,
+        tasks: [...first.tasks, { output: 'CL task #2', startMs: 25, endMs: 100, durationMs: 75 }],
+      };
+      await vi.advanceTimersByTimeAsync(750);
+      expect(service.snapshot().compileTrace?.tasks).toHaveLength(2);
+
+      child.emit('close', 1);
+      await expect(pending).rejects.toThrow('code 1');
+      const afterExit = service.snapshot().revision;
+      await vi.advanceTimersByTimeAsync(2250);
+      expect(service.snapshot().revision).toBe(afterExit);
+    } finally {
+      capture.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops live compile polling immediately on cancellation', async () => {
+    vi.useFakeTimers();
+    const polling = vi.fn().mockReturnValue(undefined);
+    const capture = vi.spyOn(msbuild, 'beginMsbuildCompileTrace').mockReturnValue({
+      args: [],
+      snapshot: polling,
+      finish: () => undefined,
+    });
+    try {
+      const { service, process: child } = setup();
+      const pending = service.execute({ action: 'build' });
+      await vi.advanceTimersByTimeAsync(750);
+      expect(polling).toHaveBeenCalledOnce();
+      await service.execute({ action: 'cancel' });
+      await vi.advanceTimersByTimeAsync(2250);
+      expect(polling).toHaveBeenCalledOnce();
+      child.emit('close', null);
+      await expect(pending).rejects.toThrow('cancelled');
+    } finally {
+      capture.mockRestore();
+      vi.useRealTimers();
     }
   });
 

@@ -42,3 +42,16 @@ Normal `arc-project configure/build` requests `CMAKE_EXPORT_COMPILE_COMMANDS=ON`
 - Enrichment reads only a bounded, regular, non-symlinked compilation database (up to 8 MiB / 25,000 entries), limits the persisted trace to roughly 32 KiB, and never interrupts compilation.
 
 Follow-ups: per-source timing inside MSBuild `CL` invocations, direct task-ID log correlation (if reliable native events become available), makefile-specific instrumentation, and historical compile-task comparisons.
+
+## BM7.4 — live, measured native compile-task updates
+
+While a normal editor **Build/Rebuild** command runs, the main process checks native timing sources at most once every 750 milliseconds:
+
+- **Ninja:** reads only `.ninja_log` records appended after this invocation's starting cursor. A record becomes visible only after a complete native line is written. Old incremental-build timing records never enter this run's trace. Replaced or shrunken logs are ignored.
+- **MSBuild:** reads the unique `.arc-monitor` log without deleting it until process exit. Only paired `CL` task start/finish messages count as measured intervals. Unfinished tasks receive no guessed end times. Raw diagnostic logs are still removed after native build termination.
+- Unchanged snapshots are suppressed; `compile-trace-changed` events refresh the active run and Build Monitor timeline, including persisted history. BM7.3's CMake database supplies verified source/target metadata where available.
+- Polling stops on process exit/error, cancellation, project switch or editor disposal. Read and parsing failures are nonfatal, and history retains only bounded task data.
+
+**Live means flushed native measurements**, not a predicted build percentage. Some generators/logger configurations buffer their timing files and may only expose task records after process exit. No task is treated as complete until the native tool supplies measured start/end records. MSBuild remains task-level, not per-source timing.
+
+Follow-ups: explicit compiler start/in-flight task events from supported native providers, per-translation-unit MSBuild instrumentation, and historical task-duration comparisons.

@@ -51,6 +51,24 @@ describe('BM7.1 Ninja measured compilation tasks', () => {
     });
   });
 
+  it('reports only flushed, measured compile edges during a running Ninja invocation', () => {
+    const { project, build, filename } = fixture();
+    fs.mkdirSync(build, { recursive: true });
+    fs.writeFileSync(filename, header + record(3, 999, 'CMakeFiles/Old.dir/old.cpp.o'));
+    const observe = beginNinjaCompileTrace(project);
+    expect(observe?.()).toBeUndefined();
+
+    fs.appendFileSync(filename, '5\t100\t1\tCMakeFiles/Now.dir/first.cpp.o\thash');
+    expect(observe?.()).toBeUndefined();
+    fs.appendFileSync(filename, '\n');
+    expect(observe?.()?.tasks).toEqual([
+      { output: 'CMakeFiles/Now.dir/first.cpp.o', startMs: 5, endMs: 100, durationMs: 95 },
+    ]);
+    fs.appendFileSync(filename, record(15, 200, 'CMakeFiles/Now.dir/second.cpp.o'));
+    expect(observe?.()?.tasks).toHaveLength(2);
+    expect(observe?.()?.tasks[0].output).toBe('CMakeFiles/Now.dir/first.cpp.o');
+  });
+
   it('does not inherit compile timings from older Ninja invocations or a no-op build', () => {
     const { project, build, filename } = fixture();
     fs.mkdirSync(build, { recursive: true });

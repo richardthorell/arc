@@ -92,6 +92,17 @@ describe('BM7.1 compilation timeline', () => {
     expect(screen.queryByRole('button', { name: 'Find output text in build logs' })).not.toBeInTheDocument();
   });
 
+  it('labels recorded intervals as live only while their build is running', () => {
+    const value = run();
+    value.state = 'running';
+    const { rerender } = render(<BuildCompileTasksPanel run={value} />);
+    expect(screen.getByText('2 measured · Ninja · live')).toBeInTheDocument();
+    expect(screen.getByText(/Completed tasks appear as the native tool flushes/)).toBeInTheDocument();
+    rerender(<BuildCompileTasksPanel run={{ ...value, state: 'succeeded' }} />);
+    expect(screen.getByText('2 measured · Ninja')).toBeInTheDocument();
+    expect(screen.queryByText(/Completed tasks appear as the native tool flushes/)).not.toBeInTheDocument();
+  });
+
   it('does not render for generators without measured native data', () => {
     const value = run();
     value.compileTrace = undefined;
