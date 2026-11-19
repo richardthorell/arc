@@ -68,25 +68,28 @@ export function BuildCreationDialog({
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const busy = useRef(false);
+  const alive = useRef(true);
 
   const dirty = documents.filter((document) => document.dirty);
   const legacyOnly = action === 'rebuild' || action === 'configure' || action === 'clean';
 
   useEffect(() => {
-    let alive = true;
+    alive.current = true;
+    let mounted = true;
     void window.arc.build
       .cookOptions()
       .then((result) => {
-        if (alive) setOptions(result);
+        if (mounted) setOptions(result);
       })
       .catch((reason: unknown) => {
-        if (alive) setError(String(reason));
+        if (mounted) setError(String(reason));
       })
       .finally(() => {
-        if (alive) setLoading(false);
+        if (mounted) setLoading(false);
       });
     return () => {
-      alive = false;
+      mounted = false;
+      alive.current = false;
     };
   }, []);
 
@@ -143,11 +146,13 @@ export function BuildCreationDialog({
           if (!(await saveDocument(document))) {
             throw new Error(`Could not save ${document.title}. Build did not start.`);
           }
+          if (!alive.current) return;
         }
       }
       // Revalidate the authoritative profile/SDK identity after saving.
       if (selectedTarget !== EDITOR_MODULE) {
         const latest = await window.arc.build.cookOptions();
+        if (!alive.current) return;
         if (!options || latest.authority !== options.authority)
           throw new Error('Project or SDK changed. Reopen Build to refresh profiles.');
         if (
@@ -159,6 +164,7 @@ export function BuildCreationDialog({
           throw new Error('The selected build profile is no longer available.');
       }
 
+      if (!alive.current) return;
       const preference = { platform: selectedPlatform, target: selectedTarget, profile: selectedProfile };
       try {
         localStorage.setItem(preferenceKey(projectKey), JSON.stringify(preference));
@@ -185,10 +191,10 @@ export function BuildCreationDialog({
       onStarted?.();
       onClose();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (alive.current) setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       busy.current = false;
-      setSaving(false);
+      if (alive.current) setSaving(false);
     }
   };
 
