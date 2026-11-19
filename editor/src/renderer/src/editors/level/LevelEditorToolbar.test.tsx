@@ -94,20 +94,20 @@ describe('Android target picker', () => {
     const api = bridge({ ...snapshot(), targets: [] });
     render(<Harness />);
     await waitFor(() => expect(api.listTargets).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
     fireEvent.click(screen.getByText('Android Device Manager…'));
     expect(api.openDeviceManager).toHaveBeenCalledOnce();
   });
   it('does not offer Android Device Manager for desktop targets', () => {
     bridge();
     render(<Harness platform="windows" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
     expect(screen.queryByText('Android Device Manager…')).not.toBeInTheDocument();
   });
   it('opens Device Manager below a separator without changing the target', async () => {
     const api = bridge();
     render(<Harness />);
-    const picker = screen.getByRole('button', { name: 'Target device' });
+    const picker = screen.getByRole('button', { name: 'Play target' });
     await waitFor(() => expect(picker).toHaveTextContent('Pixel 9'));
     fireEvent.click(picker);
     expect(screen.getByRole('separator')).toBeInTheDocument();
@@ -123,8 +123,8 @@ describe('Android target picker', () => {
       value.targets[0] = { ...value.targets[0], connectionType: 'network', networkAddress };
       bridge(value);
       render(<Harness />);
-      await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9'));
-      fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9'));
+      fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
       const row = screen
         .getByRole('option', { name: /Pixel 9.*phone/ })
         .querySelectorAll('.ui-dropdown-option-detail')[1];
@@ -174,9 +174,9 @@ describe('Android target picker', () => {
   it('selects the sole ready target, labels duplicate names with serials, and disables unauthorized devices', async () => {
     bridge();
     render(<Harness />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent(/^Pixel 9$/));
-    expect(screen.getByRole('button', { name: 'Target device' })).not.toHaveTextContent('API 36');
-    fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent(/^Pixel 9$/));
+    expect(screen.getByRole('button', { name: 'Play target' })).not.toHaveTextContent('API 36');
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
     expect(screen.getByRole('option', { name: /Pixel 9.*phone/ })).toBeEnabled();
     const option = screen.getByRole('option', { name: /Pixel 9.*phone/ });
     expect(option.querySelector('.ui-dropdown-option-text')?.children[0]).toHaveTextContent(
@@ -197,8 +197,8 @@ describe('Android target picker', () => {
   it('selects an AVD without launching, persists it, and starts only on explicit action', async () => {
     const api = bridge();
     render(<Harness />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9'));
-    fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9'));
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
     fireEvent.click(screen.getByRole('option', { name: /Tablet/ }));
     expect(api.startEmulator).not.toHaveBeenCalled();
     expect(localStorage.getItem(androidPreferenceKey('/project', '/sdk'))).toBe('avd:Tablet');
@@ -211,14 +211,14 @@ describe('Android target picker', () => {
     const api = bridge(value);
     render(<Harness />);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Selected target unavailable'),
+      expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Selected target unavailable'),
     );
     api.listTargets.mockResolvedValue({
       ...value,
       targets: [...value.targets, { ...value.targets[0], id: 'device:missing', name: 'Reconnected' }],
     });
     await nextPoll();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Reconnected'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Reconnected'));
   });
   it('requires a choice when multiple targets are ready and retains a disconnected choice', async () => {
     const value = snapshot();
@@ -226,14 +226,14 @@ describe('Android target picker', () => {
     const api = bridge(value);
     render(<Harness />);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Select Android target'),
+      expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Select Android target'),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
     fireEvent.click(screen.getByRole('option', { name: /Pixel 9.*phone/ }));
     api.listTargets.mockResolvedValue({ ...value, targets: value.targets.slice(1) });
     await nextPoll();
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Selected target unavailable'),
+      expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Selected target unavailable'),
     );
   });
   it('reports diagnostics without hiding connected devices', async () => {
@@ -241,10 +241,10 @@ describe('Android target picker', () => {
     value.diagnostics = ['Emulator missing. Install it in Android Studio.'];
     bridge(value);
     render(<Harness />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9'));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Refresh Android targets' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Target device' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveAttribute(
       'title',
       expect.stringContaining('Emulator missing'),
     );
@@ -256,7 +256,7 @@ describe('Android target picker', () => {
     render(<Harness />);
     fireEvent.click(await screen.findByRole('button', { name: 'Start Emulator' }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Target device' })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: 'Play target' })).toHaveAttribute(
         'title',
         expect.stringContaining('Emulator process failed'),
       ),
@@ -281,10 +281,11 @@ describe('Android target picker', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Refresh Android targets' })).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole('button', { name: 'Build Editor Code' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Editor Viewport');
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
     expect(localStorage.getItem(androidPreferenceKey('/project', '/sdk'))).toBeNull();
     view.rerender(<Harness project="/other" />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9'));
   });
   it('scopes preferences to both project and SDK', async () => {
     localStorage.setItem(androidPreferenceKey('/project', '/sdk'), 'avd:Tablet');
@@ -292,7 +293,7 @@ describe('Android target picker', () => {
     const view = render(<Harness />);
     await screen.findByRole('button', { name: 'Start Emulator' });
     view.rerender(<Harness project="/other" />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9'));
     api.listTargets.mockResolvedValue({ ...snapshot(), sdkRoot: '/other-sdk' });
     await nextPoll();
     await waitFor(() =>
