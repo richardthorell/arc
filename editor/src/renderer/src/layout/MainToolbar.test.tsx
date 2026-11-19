@@ -308,9 +308,7 @@ describe('MainToolbar runtime controls', () => {
   });
 
   it('locks Play destination changes while a local runtime is active', () => {
-    const { rerender } = render(
-      <MainToolbar onCommand={vi.fn()} runtimeState="running" targetPlatform="windows" />,
-    );
+    const { rerender } = render(<MainToolbar onCommand={vi.fn()} runtimeState="running" targetPlatform="windows" />);
     expect(screen.getByRole('button', { name: 'Play platform' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Play target' })).toBeDisabled();
     rerender(<MainToolbar onCommand={vi.fn()} runtimeState="stopped" targetPlatform="windows" />);
