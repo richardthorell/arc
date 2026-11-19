@@ -46,7 +46,8 @@ import { MenuBar } from '../layout/MenuBar';
 import { StatusBar } from '../layout/StatusBar';
 import { PlaySessionBar } from '../layout/PlaySessionBar';
 import { WorkspaceTabs } from '../editors/WorkspaceTabs';
-import { EditorHost, EditorToolbarHost } from '../editors/EditorHost';
+import { EditorHost } from '../editors/EditorHost';
+import { WorkspaceToolbarHost } from '../editors/WorkspaceToolbarHost';
 import { EditorWorkspaceSessions } from '../editors/EditorWorkspaceSessions';
 import { createEditorRegistry } from '../editors/editorRegistry';
 import { useEditorDocuments } from '../editors/editorDocuments';
@@ -1987,7 +1988,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       {/* Keep the toolbar DOM slot mounted even for workspace views.
           Its grid track is zero-height for tools, but removing the element
           shifts the workspace and status bar into the wrong rows. */}
-      <EditorToolbarHost document={activeView ? null : activeDocument} registry={editorRegistry} />
+      <WorkspaceToolbarHost document={activeDocument} activeView={activeView} registry={editorRegistry} />
       <div className="play-session-host">
         {showDetachedPlayBar && (
           <PlaySessionBar
