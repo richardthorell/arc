@@ -119,7 +119,9 @@ export function BuildCreationDialog({
   const selectedProfile = availableProfiles.some((item) => item.id === profile)
     ? profile
     : (availableProfiles[0]?.id ?? '');
-  const valid = Boolean(selectedTarget && selectedProfile && !submitting && (selectedTarget === EDITOR_MODULE || options));
+  const valid = Boolean(
+    selectedTarget && selectedProfile && !submitting && (selectedTarget === EDITOR_MODULE || options),
+  );
   const authoredSelection = authored.find(
     (item) => item.id === selectedProfile && item.targetId === selectedTarget && item.platform === selectedPlatform,
   );
