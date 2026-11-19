@@ -432,10 +432,12 @@ export function MainToolbar({
     };
   }, [configuredTargetPlatforms, hostPlatform]);
 
+  // The editor viewport is always available, even for Android-only projects.
+  const playablePlatforms = Array.from(new Set([hostPlatform, ...projectTargetPlatforms]));
   const requestedTargetPlatform = targetPlatform ?? hostPlatform;
-  const effectiveTargetPlatform = projectTargetPlatforms.includes(requestedTargetPlatform)
+  const effectiveTargetPlatform = playablePlatforms.includes(requestedTargetPlatform)
     ? requestedTargetPlatform
-    : (projectTargetPlatforms[0] ?? hostPlatform);
+    : hostPlatform;
 
   useEffect(() => {
     if (targetPlatform && targetPlatform !== effectiveTargetPlatform) onTargetPlatformChange?.(effectiveTargetPlatform);
@@ -501,9 +503,9 @@ export function MainToolbar({
     : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
 
   const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
-    ...projectTargetPlatforms.flatMap((platform) => {
+    ...playablePlatforms.flatMap((platform) => {
       const option = platformOptions.find((candidate) => candidate.value === platform);
-      const reason = platformUnavailableReason(platform, localSettings);
+      const reason = platform === hostPlatform ? undefined : platformUnavailableReason(platform, localSettings);
       return option
         ? [
             {
