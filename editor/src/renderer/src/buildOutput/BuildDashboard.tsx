@@ -13,6 +13,11 @@ import {
   Search,
   X,
   XCircle,
+  CirclePause,
+  RotateCcw,
+  FolderOpen,
+  Copy,
+  PackageCheck,
 } from 'lucide-react';
 
 import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/buildTypes';
@@ -21,6 +26,14 @@ import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorSnapshot } from '.
 import { BuildStageTimeline } from './BuildStageTimeline';
 import { BuildTargetGraphPanel } from './BuildTargetGraphPanel';
 import { BuildCompileTasksPanel } from './BuildCompileTasksPanel';
+import {
+  availableBuildPlatforms,
+  buildDisplayState,
+  buildDuration,
+  buildFailureReason,
+  canRetryBuild,
+  filterBuildRuns,
+} from './buildMonitorPresentation';
 
 const MAX_DISPLAY_CHUNKS = 1200;
 const MAX_DISPLAY_EVENTS = 1600;
@@ -89,7 +102,9 @@ function Status({ state }: { state: BuildMonitorRun['state'] | 'idle' }) {
           ? XCircle
           : state === 'cancelled'
             ? Ban
-            : Clock3;
+            : state === 'interrupted'
+              ? CirclePause
+              : Clock3;
   return (
     <span className={`build-monitor-status is-${state}`}>
       <Icon size={14} aria-hidden="true" />
@@ -127,6 +142,10 @@ export function BuildDashboard({
   const [severity, setSeverity] = useState<'all' | 'error' | 'warning'>('all');
   const [stream, setStream] = useState<'all' | 'stdout' | 'stderr'>('all');
   const [elapsed, setElapsed] = useState(Date.now());
+  const [historyStatus, setHistoryStatus] = useState<BuildMonitorRun['state'] | 'all'>('all');
+  const [historyPlatform, setHistoryPlatform] = useState('all');
+  const [historySearch, setHistorySearch] = useState('');
+  const [retrying, setRetrying] = useState(false);
   const projectRef = useRef<string | null | undefined>(undefined);
   const overviewRequest = useRef(0);
   const selectedRef = useRef<string | null>(null);
@@ -250,6 +269,8 @@ export function BuildDashboard({
   }, [api]);
 
   const runs = history?.runs ?? [];
+  const matchingRuns = filterBuildRuns(runs, historyStatus, historyPlatform, historySearch);
+  const platforms = availableBuildPlatforms(runs);
   const activeId = monitor?.activeRunId ?? runs.find((run) => run.state === 'running')?.id;
   const selected =
     monitor?.runs.find((run) => run.id === selectedRunId) ?? runs.find((run) => run.id === selectedRunId) ?? null;
@@ -285,9 +306,7 @@ export function BuildDashboard({
     }
   };
 
-  const visibleTime = selected
-    ? (selected.durationMs ?? (active ? Math.max(0, elapsed - Date.parse(selected.startedAt)) : undefined))
-    : undefined;
+  const visibleTime = selected ? buildDuration(selected, elapsed) : undefined;
   const output = (detail?.logs ?? []).filter(
     (chunk) => (stream === 'all' || chunk.stream === stream) && chunk.text.toLowerCase().includes(search.toLowerCase()),
   );
@@ -300,6 +319,58 @@ export function BuildDashboard({
       (severity === 'all' || item.severity === severity) &&
       `${item.file ?? ''} ${item.message}`.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const firstError = diagnostics.find((item) => item.severity === 'error');
+  const lastStderr = detail?.logs
+    .filter((chunk) => chunk.stream === 'stderr')
+    .flatMap((chunk) => chunk.text.split(/\r?\n/))
+    .filter(Boolean)
+    .at(-1);
+  const failure = selected ? buildFailureReason(selected, firstError?.message, lastStderr) : null;
+  const anyActiveRun = Boolean(activeId);
+
+  const retrySelected = async () => {
+    if (!api || !selected || anyActiveRun || !canRetryBuild(selected) || retrying) return;
+    setRetrying(true);
+    setError('');
+    try {
+      if (selected.source === 'workflow') {
+        if (!selected.request) throw new Error('This older workflow has no saved retry settings');
+        await api.executeWorkflow(selected.request);
+      } else {
+        const action = selected.action;
+        if (action !== 'build' && action !== 'configure' && action !== 'clean') return;
+        await api.execute({ action, configuration: selected.configuration });
+      }
+      await refresh();
+    } catch (reason) {
+      setError(String(reason));
+      await refresh();
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const revealArtifact = async (path: string) => {
+    if (!api || !selected) return;
+    try {
+      const result = await api.revealArtifact(selected.id, path);
+      if (result) setError(result);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
+  const copyFailure = async () => {
+    if (!selected || !failure) return;
+    try {
+      await navigator.clipboard.writeText(
+        [selected.action, selected.configuration, selected.platform ?? 'Project', failure].join(' · '),
+      );
+    } catch (reason) {
+      setError(`Unable to copy details: ${String(reason)}`);
+    }
+  };
 
   const monitorContent = (
     <section
@@ -317,6 +388,17 @@ export function BuildDashboard({
           </div>
         </div>
         <div className="build-monitor-actions">
+          {selected && canRetryBuild(selected) && (
+            <button
+              type="button"
+              onClick={() => void retrySelected()}
+              aria-label="Retry selected build"
+              title="Retry this build with its recorded configuration"
+              disabled={anyActiveRun || retrying}
+            >
+              <RotateCcw size={15} /> {retrying ? 'Retrying…' : 'Retry'}
+            </button>
+          )}
           {active && (selected?.source === 'workflow' || onCancel) && (
             <button type="button" onClick={() => void cancelSelected()} className="build-monitor-cancel">
               <Ban size={14} /> Cancel build
