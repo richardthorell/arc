@@ -188,11 +188,17 @@ export class BuildMonitorService {
       this.event({ kind: 'target-graph-changed', runId: run.id, revision: snapshot.targetGraph.revision });
     }
 
-    // BM7.1: persist the bounded post-build Ninja timing trace. The trace is
-    // relative to the native invocation, not the editor command's start time.
-    if (snapshot.compileTrace && !run.compileTrace) {
+    // BM7.4: keep measured native task snapshots live and persist each
+    // change. The native tool's clock cannot be aligned to editor stages.
+    if (snapshot.compileTrace && JSON.stringify(snapshot.compileTrace) !== JSON.stringify(run.compileTrace)) {
       run.compileTrace = structuredClone(snapshot.compileTrace);
       this.history.saveRun(run);
+      this.event({
+        kind: 'compile-trace-changed',
+        runId: run.id,
+        source: snapshot.compileTrace.source,
+        taskCount: snapshot.compileTrace.tasks.length,
+      });
     }
 
     const cursor = this.diagnosticCursor.get(run.id) ?? 0;
