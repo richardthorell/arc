@@ -60,8 +60,6 @@
   grid-template-rows: minmax(0, 1fr);
 }
 
-
-
 .play-session-host {
   min-width: 0;
   min-height: 0;
