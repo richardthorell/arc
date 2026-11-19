@@ -5,7 +5,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CookWorkflowOptions } from '../../../common/projectWorkflowTypes';
-import type { EditorDocument } from '../editors/editorTypes';
 import { BuildCreationDialog } from './BuildCreationDialog';
 import type { BuildDialogAction } from './BuildToolbar';
 
@@ -41,14 +40,6 @@ const options: CookWorkflowOptions = {
 const cookOptions = vi.fn();
 const executeWorkflow = vi.fn();
 const execute = vi.fn();
-const dirty: EditorDocument = {
-  id: 'material:dirty',
-  kind: 'material',
-  title: 'Unsaved Material',
-  dirty: true,
-  readOnly: false,
-};
-
 beforeEach(() => {
   localStorage.clear();
   cookOptions.mockResolvedValue(options);
@@ -68,12 +59,10 @@ afterEach(() => {
 function open(
   action: BuildDialogAction = 'build',
   platform = 'android',
-  documents: readonly EditorDocument[] = [],
   projectKey = 'Game A',
 ) {
   const onClose = vi.fn();
   const onError = vi.fn();
-  const saveDocument = vi.fn().mockResolvedValue(true);
   const view = render(
     <BuildCreationDialog
       action={action}
@@ -81,13 +70,11 @@ function open(
       hostPlatform="windows"
       preferredPlatform={platform}
       currentConfiguration="RelWithDebInfo"
-      documents={documents}
-      saveDocument={saveDocument}
       onClose={onClose}
       onError={onError}
     />,
   );
-  return { onClose, onError, saveDocument, ...view };
+  return { onClose, onError, ...view };
 }
 
 describe('Build project configuration', () => {
@@ -200,55 +187,32 @@ describe('Build project configuration', () => {
     );
   });
 
-  it('saves dirty documents automatically without a save checkbox before starting cooking', async () => {
-    const { saveDocument } = open('cook', 'android', [dirty]);
+  it('starts cooking without any save control or document-save step', async () => {
+    open('cook');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Save 1 modified document/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/save.*document/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
-    await waitFor(() => expect(saveDocument).toHaveBeenCalledWith(dirty));
     await waitFor(() => expect(executeWorkflow).toHaveBeenCalledOnce());
-    expect(saveDocument.mock.invocationCallOrder[0]).toBeLessThan(executeWorkflow.mock.invocationCallOrder[0]);
   });
 
-  it('requires saving modified assets before dispatch and prevents failed-save builds', async () => {
-    const { saveDocument } = open('cook', 'android', [dirty]);
-    saveDocument.mockResolvedValue(false);
+  it('does not dispatch if the dialog closes during asynchronous profile revalidation', async () => {
+    let resolveProfiles!: (result: CookWorkflowOptions) => void;
+    const { onClose, unmount } = open('cook');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save Unsaved Material');
-    expect(executeWorkflow).not.toHaveBeenCalled();
-    expect(execute).not.toHaveBeenCalled();
-  });
-
-  it('does not dispatch when the Build dialog closes during an asynchronous save', async () => {
-    let complete!: (saved: boolean) => void;
-    const saveDocument = vi.fn(
+    cookOptions.mockImplementationOnce(
       () =>
-        new Promise<boolean>((resolve) => {
-          complete = resolve;
+        new Promise<CookWorkflowOptions>((resolve) => {
+          resolveProfiles = resolve;
         }),
     );
-    const view = render(
-      <BuildCreationDialog
-        action="cook"
-        projectKey="closing-game"
-        hostPlatform="windows"
-        preferredPlatform="android"
-        currentConfiguration="Debug"
-        documents={[dirty]}
-        saveDocument={saveDocument}
-        onClose={vi.fn()}
-        onError={vi.fn()}
-      />,
-    );
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
-    await waitFor(() => expect(saveDocument).toHaveBeenCalledOnce());
-    view.unmount();
-    await act(async () => complete(true));
+    await waitFor(() => expect(cookOptions).toHaveBeenCalledTimes(2));
+    unmount();
+    await act(async () => resolveProfiles(options));
     expect(executeWorkflow).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('does not start a workflow if the project options disappear before dispatch', async () => {
