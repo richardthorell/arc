@@ -86,7 +86,12 @@ export function parseMsbuildCompileLog(
   }
   tasks.sort((a, b) => a.startMs - b.startMs);
   // A failed/cancelled build may have incomplete tasks; never fabricate an end time.
-  return { source: 'msbuild-file-log', clock: 'msbuild-cl-events', tasks, truncated: truncated || (completed && active.size > 0) };
+  return {
+    source: 'msbuild-file-log',
+    clock: 'msbuild-cl-events',
+    tasks,
+    truncated: truncated || (completed && active.size > 0),
+  };
 }
 
 export type MsbuildCompileCapture = {
@@ -133,11 +138,7 @@ export function beginMsbuildCompileTrace(
           const read = fs.readSync(fd, buffer, 0, size, 0);
           const end = buffer.lastIndexOf(10, read - 1);
           if (end < 0) return undefined;
-          return parseMsbuildCompileLog(
-            buffer.subarray(0, end).toString('utf8'),
-            stat.size > MAX_LOG_BYTES,
-            completed,
-          );
+          return parseMsbuildCompileLog(buffer.subarray(0, end).toString('utf8'), stat.size > MAX_LOG_BYTES, completed);
         } finally {
           fs.closeSync(fd);
         }
