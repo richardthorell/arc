@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FileText } from 'lucide-react';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -69,8 +69,10 @@ describe('generic workspace tab model', () => {
   it('opens Builds once without closing or mutating the level asset tab', () => {
     openEditorDocumentInStore(scene, false);
     render(<Harness />);
-    openWorkspaceView('builds', 'Builds');
-    openWorkspaceView('builds', 'Builds');
+    act(() => {
+      openWorkspaceView('builds', 'Builds');
+      openWorkspaceView('builds', 'Builds');
+    });
 
     expect(screen.getAllByRole('tab')).toHaveLength(2);
     const builds = screen.getByRole('tab', { name: 'Builds' });
@@ -95,8 +97,8 @@ describe('generic workspace tab model', () => {
     openWorkspaceView('builds', 'Builds');
     render(<Harness />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'modified.hlsl' }));
-    expect(screen.getByRole('tab', { name: 'modified.hlsl' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: /modified\.hlsl/ }));
+    expect(screen.getByRole('tab', { name: /modified\.hlsl/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'Builds' })).toHaveAttribute('aria-selected', 'false');
 
     fireEvent.click(screen.getByRole('button', { name: 'Close modified.hlsl' }));
@@ -106,8 +108,8 @@ describe('generic workspace tab model', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Builds' }));
     expect(screen.getByRole('tab', { name: 'Builds' })).toHaveAttribute('aria-selected', 'true');
-    activateEditorDocumentInStore('shader:dirty');
-    expect(screen.getByRole('tab', { name: 'modified.hlsl' })).toHaveAttribute('aria-selected', 'true');
+    act(() => activateEditorDocumentInStore('shader:dirty'));
+    expect(screen.getByRole('tab', { name: /modified\.hlsl/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('supports additional non-asset information views by ID', () => {
@@ -118,7 +120,7 @@ describe('generic workspace tab model', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(3);
     expect(screen.queryByRole('button', { name: 'Close Analysis' })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Analysis' })).toHaveAttribute('aria-selected', 'true');
-    closeWorkspaceView(viewTabId('analysis'));
+    act(() => closeWorkspaceView(viewTabId('analysis')));
     expect(screen.getByRole('tab', { name: 'Analysis' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Close Builds' }));
     expect(screen.getByRole('tab', { name: 'Analysis' })).toHaveAttribute('aria-selected', 'true');
