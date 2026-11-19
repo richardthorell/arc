@@ -104,11 +104,13 @@ export function BuildDashboard({
   onClose,
   onOpenDiagnostic,
   onCancel,
+  presentation = 'dialog',
 }: {
   snapshot: ArcBuildSnapshot | null;
   onClose: () => void;
   onOpenDiagnostic: (diagnostic: ArcBuildDiagnostic) => void;
   onCancel?: () => void;
+  presentation?: 'dialog' | 'workspace';
 }) {
   const api = window.arc?.build;
   const [monitor, setMonitor] = useState<BuildMonitorSnapshot | null>(null);
@@ -160,12 +162,13 @@ export function BuildDashboard({
   }, [api]);
 
   useEffect(() => {
+    if (presentation !== 'dialog') return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  }, [onClose, presentation]);
 
   useEffect(() => {
     const requestRef = overviewRequest;
@@ -297,14 +300,13 @@ export function BuildDashboard({
       `${item.file ?? ''} ${item.message}`.toLowerCase().includes(search.toLowerCase()),
   );
 
-  return createPortal(
-    <div
-      className="build-dashboard-backdrop"
-      onMouseDown={(event) => {
-        if (event.currentTarget === event.target) onClose();
-      }}
+  const monitorContent = (
+    <section
+      className="build-dashboard build-monitor"
+      role={presentation === 'dialog' ? 'dialog' : 'region'}
+      aria-modal={presentation === 'dialog' ? true : undefined}
+      aria-label="Build monitor"
     >
-      <section className="build-dashboard build-monitor" role="dialog" aria-modal="true" aria-label="Build monitor">
         <header className="build-monitor-header">
           <div className="build-monitor-heading">
             <Activity size={19} aria-hidden="true" />
@@ -595,7 +597,19 @@ export function BuildDashboard({
             )}
           </main>
         </div>
-      </section>
+    </section>
+  );
+
+  if (presentation === 'workspace') return <div className="build-monitor-workspace">{monitorContent}</div>;
+
+  return createPortal(
+    <div
+      className="build-dashboard-backdrop"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+    >
+      {monitorContent}
     </div>,
     document.body,
   );
