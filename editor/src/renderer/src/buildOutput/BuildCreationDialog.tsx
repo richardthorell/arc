@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { Hammer } from 'lucide-react';
 
 import type { CookWorkflowOptions } from '../../../common/projectWorkflowTypes';
-import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton, UiDialog, UiDropdown } from '../ui';
 import { platformOptions } from '../layout/MainToolbar';
 
@@ -39,8 +38,6 @@ export function BuildCreationDialog({
   hostPlatform,
   preferredPlatform,
   currentConfiguration,
-  documents,
-  saveDocument,
   onClose,
   onStarted,
   onError,
@@ -50,8 +47,6 @@ export function BuildCreationDialog({
   hostPlatform: string;
   preferredPlatform: string;
   currentConfiguration: string;
-  documents: readonly EditorDocument[];
-  saveDocument: (document: EditorDocument) => Promise<boolean>;
   onClose: () => void;
   onStarted?: () => void;
   onError: (message: string) => void;
@@ -64,13 +59,12 @@ export function BuildCreationDialog({
   const [platform, setPlatform] = useState(initialPlatform);
   const [target, setTarget] = useState(action === 'cook' ? '' : (saved.current?.target ?? ''));
   const [profile, setProfile] = useState(saved.current?.profile ?? currentConfiguration);
-  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const busy = useRef(false);
   const alive = useRef(true);
 
-  const dirty = documents.filter((document) => document.dirty);
   const legacyOnly = action === 'rebuild' || action === 'configure' || action === 'clean';
 
   useEffect(() => {
@@ -125,7 +119,7 @@ export function BuildCreationDialog({
   const selectedProfile = availableProfiles.some((item) => item.id === profile)
     ? profile
     : (availableProfiles[0]?.id ?? '');
-  const valid = Boolean(selectedTarget && selectedProfile && !saving && (selectedTarget === EDITOR_MODULE || options));
+  const valid = Boolean(selectedTarget && selectedProfile && !submitting && (selectedTarget === EDITOR_MODULE || options));
   const authoredSelection = authored.find(
     (item) => item.id === selectedProfile && item.targetId === selectedTarget && item.platform === selectedPlatform,
   );
@@ -148,18 +142,10 @@ export function BuildCreationDialog({
   const submit = async () => {
     if (!valid || blocked || busy.current) return;
     busy.current = true;
-    setSaving(true);
+    setSubmitting(true);
     setError('');
     try {
-      if (dirty.length) {
-        for (const document of dirty) {
-          if (!(await saveDocument(document))) {
-            throw new Error(`Could not save ${document.title}. Build did not start.`);
-          }
-          if (!alive.current) return;
-        }
-      }
-      // Revalidate the authoritative profile/SDK identity after saving.
+      // Revalidate the authoritative profile/SDK identity before dispatch.
       if (selectedTarget !== EDITOR_MODULE) {
         const latest = await window.arc.build.cookOptions();
         if (!alive.current) return;
@@ -208,7 +194,7 @@ export function BuildCreationDialog({
       if (alive.current) setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       busy.current = false;
-      if (alive.current) setSaving(false);
+      if (alive.current) setSubmitting(false);
     }
   };
 
@@ -228,7 +214,7 @@ export function BuildCreationDialog({
         <>
           <UiButton onClick={onClose}>Cancel</UiButton>
           <UiButton disabled={!valid || Boolean(blocked)} variant="primary" onClick={() => void submit()}>
-            <Hammer size={14} /> {saving ? 'Saving…' : actionLabel}
+            <Hammer size={14} /> {submitting ? 'Starting…' : actionLabel}
           </UiButton>
         </>
       }
@@ -239,7 +225,7 @@ export function BuildCreationDialog({
           <UiDropdown
             ariaLabel="Build platform"
             value={selectedPlatform}
-            disabled={legacyOnly || saving}
+            disabled={legacyOnly || submitting}
             options={platformChoices}
             onValueChange={(value) => {
               setPlatform(value);
@@ -253,7 +239,7 @@ export function BuildCreationDialog({
           <UiDropdown
             ariaLabel="Build target"
             value={selectedTarget}
-            disabled={legacyOnly || saving || !targets.length}
+            disabled={legacyOnly || submitting || !targets.length}
             options={targetOptions}
             onValueChange={(value) => {
               setTarget(value);
@@ -266,7 +252,7 @@ export function BuildCreationDialog({
           <UiDropdown
             ariaLabel="Build profile"
             value={selectedProfile}
-            disabled={saving || !availableProfiles.length}
+            disabled={submitting || !availableProfiles.length}
             options={availableProfiles.map((item) => ({ value: item.id, label: item.label }))}
             onValueChange={setProfile}
           />
