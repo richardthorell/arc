@@ -357,6 +357,7 @@ export function BuildDashboard({
       await refresh();
       setError(`Retry failed: ${String(reason)}`);
     } finally {
+      followNextRun.current = false;
       setRetrying(false);
     }
   };
@@ -374,6 +375,7 @@ export function BuildDashboard({
       await refresh();
       setError(`Build failed: ${String(reason)}`);
     } finally {
+      followNextRun.current = false;
       setRetrying(false);
     }
   };
