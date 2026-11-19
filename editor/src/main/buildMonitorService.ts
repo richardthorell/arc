@@ -18,8 +18,8 @@ const commandStages: Record<string, string> = {
   building: 'Compile',
   cleaning: 'Clean',
 };
-const terminal = (state: string): state is 'succeeded' | 'failed' | 'cancelled' =>
-  state === 'succeeded' || state === 'failed' || state === 'cancelled';
+const terminal = (state: string): state is 'succeeded' | 'failed' | 'cancelled' | 'interrupted' =>
+  state === 'succeeded' || state === 'failed' || state === 'cancelled' || state === 'interrupted';
 const elapsed = (start: string, end: string): number => Math.max(0, Date.parse(end) - Date.parse(start));
 
 /**
@@ -215,6 +215,13 @@ export class BuildMonitorService {
     run.errorCount = snapshot.diagnostics.filter((item) => item.severity === 'error').length;
 
     if (finished) {
+      // Preserve the actual error in the durable summary, even when the
+      // command failed without a parseable source-file diagnostic.
+      if (snapshot.state === 'failed') {
+        run.error =
+          [...snapshot.diagnostics].reverse().find((item) => item.severity === 'error')?.message ??
+          'Build command failed. Open the output to see the tool error.';
+      }
       // The legacy service sends a cancel state before its child exits. The
       // history record is the authoritative terminal event and exit duration.
       const completed = snapshot.history?.find((item) => item.runId === run!.id);
@@ -246,6 +253,13 @@ export class BuildMonitorService {
         profile: workflow.plan.profile,
         targetId: workflow.plan.targetId,
         platform: workflow.plan.platform,
+        request: {
+          action: workflow.plan.action,
+          profile: workflow.plan.profile,
+          targetId: workflow.plan.targetId,
+          destination: workflow.plan.destination,
+          sessionId: workflow.plan.sessionId,
+        },
         state: 'running',
         startedAt: workflow.startedAt ?? this.now(),
         stages: workflow.stages.map((stage) => ({

@@ -482,6 +482,8 @@ const arcApi = {
       ipcRenderer.invoke('buildMonitor:history', offset, limit),
     historyDetails: (runId: string, logCursor = 0, eventCursor = 0): Promise<BuildHistoryDetail | null> =>
       ipcRenderer.invoke('buildMonitor:historyDetails', runId, logCursor, eventCursor),
+    revealArtifact: (runId: string, artifactPath: string): Promise<string> =>
+      ipcRenderer.invoke('buildMonitor:revealArtifact', runId, artifactPath),
     onMonitorEvent: (callback: (event: BuildMonitorEvent) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, event: BuildMonitorEvent) => callback(event);
       ipcRenderer.on('buildMonitor:event', listener);

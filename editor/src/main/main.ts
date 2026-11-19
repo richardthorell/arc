@@ -31,6 +31,7 @@ import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { BuildMonitorService } from './buildMonitorService';
+import { resolveBuildArtifactPath } from './buildArtifactAccess';
 import { ProjectSettingsService } from './projectSettingsService';
 import { webpDimensions } from './projectThumbnail';
 import type { ProjectSettingsApplyRequest } from '../common/projectSettingsTypes';
@@ -1449,6 +1450,20 @@ void app.whenReady().then(async () => {
   ipcMain.handle('buildMonitor:historyDetails', (_event, id: string, logCursor?: number, eventCursor?: number) => {
     buildMonitorProject();
     return buildMonitor.historyDetails(id, logCursor, eventCursor);
+  });
+  ipcMain.handle('buildMonitor:revealArtifact', async (_event, runId: string, artifactPath: string) => {
+    // Only a path recorded by the current project's persisted run can be
+    // opened. Never let renderer-supplied paths turn into arbitrary shell access.
+    const project = projectService?.active();
+    if (!project || typeof runId !== 'string' || typeof artifactPath !== 'string')
+      throw new Error('No active project artifact');
+    buildMonitorProject();
+    const detail = buildMonitor.historyDetails(runId);
+    if (!detail) throw new Error('Build run not found for this project');
+    const resolved = resolveBuildArtifactPath(project.projectRoot, detail.run.artifacts, artifactPath);
+    if (fs.statSync(resolved).isDirectory()) return shell.openPath(resolved);
+    shell.showItemInFolder(resolved);
+    return '';
   });
   ipcMain.handle('workflow:cookOptions', () => buildService?.workflows.options() ?? null);
   ipcMain.handle('workflow:execute', (_event, request: WorkflowRequest, authority?: string) => {

@@ -13,6 +13,12 @@ import {
   Search,
   X,
   XCircle,
+  CirclePause,
+  RotateCcw,
+  FolderOpen,
+  Copy,
+  PackageCheck,
+  Hammer,
 } from 'lucide-react';
 
 import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/buildTypes';
@@ -21,6 +27,14 @@ import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorSnapshot } from '.
 import { BuildStageTimeline } from './BuildStageTimeline';
 import { BuildTargetGraphPanel } from './BuildTargetGraphPanel';
 import { BuildCompileTasksPanel } from './BuildCompileTasksPanel';
+import {
+  availableBuildPlatforms,
+  buildDisplayState,
+  buildDuration,
+  buildFailureReason,
+  canRetryBuild,
+  filterBuildRuns,
+} from './buildMonitorPresentation';
 
 const MAX_DISPLAY_CHUNKS = 1200;
 const MAX_DISPLAY_EVENTS = 1600;
@@ -89,7 +103,9 @@ function Status({ state }: { state: BuildMonitorRun['state'] | 'idle' }) {
           ? XCircle
           : state === 'cancelled'
             ? Ban
-            : Clock3;
+            : state === 'interrupted'
+              ? CirclePause
+              : Clock3;
   return (
     <span className={`build-monitor-status is-${state}`}>
       <Icon size={14} aria-hidden="true" />
@@ -127,12 +143,17 @@ export function BuildDashboard({
   const [severity, setSeverity] = useState<'all' | 'error' | 'warning'>('all');
   const [stream, setStream] = useState<'all' | 'stdout' | 'stderr'>('all');
   const [elapsed, setElapsed] = useState(Date.now());
+  const [historyStatus, setHistoryStatus] = useState<BuildMonitorRun['state'] | 'all'>('all');
+  const [historyPlatform, setHistoryPlatform] = useState('all');
+  const [historySearch, setHistorySearch] = useState('');
+  const [retrying, setRetrying] = useState(false);
   const projectRef = useRef<string | null | undefined>(undefined);
   const overviewRequest = useRef(0);
   const selectedRef = useRef<string | null>(null);
   const detailRef = useRef<DetailView | null>(null);
   const detailRequest = useRef(0);
   const reading = useRef(false);
+  const followNextRun = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!api) {
@@ -181,6 +202,12 @@ export function BuildDashboard({
       }, 150);
     };
     const unsubscribe = api?.onMonitorEvent((event) => {
+      // Only an explicit Build or Retry action may change the user's current
+      // selection. Ordinary background runs never steal focus from history.
+      if (event.kind === 'run-started' && followNextRun.current) {
+        followNextRun.current = false;
+        setSelectedRunId(event.runId);
+      }
       if (
         event.kind === 'run-started' ||
         event.kind === 'stage-changed' ||
@@ -250,6 +277,8 @@ export function BuildDashboard({
   }, [api]);
 
   const runs = history?.runs ?? [];
+  const matchingRuns = filterBuildRuns(runs, historyStatus, historyPlatform, historySearch);
+  const platforms = availableBuildPlatforms(runs);
   const activeId = monitor?.activeRunId ?? runs.find((run) => run.state === 'running')?.id;
   const selected =
     monitor?.runs.find((run) => run.id === selectedRunId) ?? runs.find((run) => run.id === selectedRunId) ?? null;
@@ -285,9 +314,7 @@ export function BuildDashboard({
     }
   };
 
-  const visibleTime = selected
-    ? (selected.durationMs ?? (active ? Math.max(0, elapsed - Date.parse(selected.startedAt)) : undefined))
-    : undefined;
+  const visibleTime = selected ? buildDuration(selected, elapsed) : undefined;
   const output = (detail?.logs ?? []).filter(
     (chunk) => (stream === 'all' || chunk.stream === stream) && chunk.text.toLowerCase().includes(search.toLowerCase()),
   );
@@ -300,6 +327,79 @@ export function BuildDashboard({
       (severity === 'all' || item.severity === severity) &&
       `${item.file ?? ''} ${item.message}`.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const firstError = diagnostics.find((item) => item.severity === 'error');
+  const lastStderr = detail?.logs
+    .filter((chunk) => chunk.stream === 'stderr')
+    .flatMap((chunk) => chunk.text.split(/\r?\n/))
+    .filter(Boolean)
+    .at(-1);
+  const failure = selected ? buildFailureReason(selected, firstError?.message, lastStderr) : null;
+  const anyActiveRun = Boolean(activeId);
+
+  const retrySelected = async () => {
+    if (!api || !selected || anyActiveRun || !canRetryBuild(selected) || retrying) return;
+    setRetrying(true);
+    setError('');
+    followNextRun.current = true;
+    try {
+      if (selected.source === 'workflow') {
+        if (!selected.request) throw new Error('This older workflow has no saved retry settings');
+        await api.executeWorkflow(selected.request);
+      } else {
+        const action = selected.action;
+        if (action !== 'build' && action !== 'configure' && action !== 'clean') return;
+        await api.execute({ action, configuration: selected.configuration });
+      }
+      await refresh();
+    } catch (reason) {
+      followNextRun.current = false;
+      await refresh();
+      setError(`Retry failed: ${String(reason)}`);
+    } finally {
+      followNextRun.current = false;
+      setRetrying(false);
+    }
+  };
+
+  const startCodeBuild = async () => {
+    if (!api || anyActiveRun || retrying) return;
+    setRetrying(true);
+    setError('');
+    followNextRun.current = true;
+    try {
+      await api.execute({ action: 'build', configuration: snapshot?.configuration });
+      await refresh();
+    } catch (reason) {
+      followNextRun.current = false;
+      await refresh();
+      setError(`Build failed: ${String(reason)}`);
+    } finally {
+      followNextRun.current = false;
+      setRetrying(false);
+    }
+  };
+
+  const revealArtifact = async (path: string) => {
+    if (!api || !selected) return;
+    try {
+      const result = await api.revealArtifact(selected.id, path);
+      if (result) setError(result);
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
+  const copyFailure = async () => {
+    if (!selected || !failure) return;
+    try {
+      await navigator.clipboard.writeText(
+        [selected.action, selected.configuration, selected.platform ?? 'Project', failure].join(' · '),
+      );
+    } catch (reason) {
+      setError(`Unable to copy details: ${String(reason)}`);
+    }
+  };
 
   const monitorContent = (
     <section
@@ -317,6 +417,26 @@ export function BuildDashboard({
           </div>
         </div>
         <div className="build-monitor-actions">
+          <button
+            type="button"
+            onClick={() => void startCodeBuild()}
+            disabled={anyActiveRun || retrying}
+            aria-label="Start code build"
+            title="Build the current project code"
+          >
+            <Hammer size={14} /> Build code
+          </button>
+          {selected && canRetryBuild(selected) && (
+            <button
+              type="button"
+              onClick={() => void retrySelected()}
+              aria-label="Retry selected build"
+              title="Retry this build with its recorded configuration"
+              disabled={anyActiveRun || retrying}
+            >
+              <RotateCcw size={15} /> {retrying ? 'Retrying…' : 'Retry'}
+            </button>
+          )}
           {active && (selected?.source === 'workflow' || onCancel) && (
             <button type="button" onClick={() => void cancelSelected()} className="build-monitor-cancel">
               <Ban size={14} /> Cancel build
@@ -342,12 +462,49 @@ export function BuildDashboard({
         <aside className="build-monitor-sidebar" aria-label="Build history">
           <div className="build-monitor-sidebar-title">
             <strong>Build history</strong>
-            <span>{history?.total ?? 0}</span>
+            <span>
+              {matchingRuns.length} / {history?.total ?? 0}
+            </span>
           </div>
-          {activeId && (
+          <div className="build-monitor-history-filters">
+            <input
+              aria-label="Search build history"
+              type="search"
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.target.value)}
+              placeholder="Search builds"
+            />
+            <div>
+              <select
+                aria-label="Filter build status"
+                value={historyStatus}
+                onChange={(event) => setHistoryStatus(event.target.value as typeof historyStatus)}
+              >
+                <option value="all">All results</option>
+                <option value="running">Running</option>
+                <option value="succeeded">Succeeded</option>
+                <option value="failed">Failed</option>
+                <option value="interrupted">Interrupted</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <select
+                aria-label="Filter build platform"
+                value={historyPlatform}
+                onChange={(event) => setHistoryPlatform(event.target.value)}
+              >
+                <option value="all">All platforms</option>
+                {platforms.map((platform) => (
+                  <option key={platform} value={platform}>
+                    {platform}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {activeId && matchingRuns.some((run) => run.id === activeId) && (
             <div className="build-monitor-sidebar-group">
               <small>RUNNING NOW</small>
-              {runs
+              {matchingRuns
                 .filter((run) => run.id === activeId)
                 .map((run) => (
                   <button
@@ -357,7 +514,7 @@ export function BuildDashboard({
                     aria-current={selectedRunId === run.id ? 'true' : undefined}
                     onClick={() => setSelectedRunId(run.id)}
                   >
-                    <Status state={run.state} />
+                    <Status state={buildDisplayState(run)} />
                     <strong>
                       {run.action} · {run.configuration}
                     </strong>
@@ -368,7 +525,7 @@ export function BuildDashboard({
           )}
           <div className="build-monitor-sidebar-group">
             <small>PREVIOUS BUILDS</small>
-            {runs
+            {matchingRuns
               .filter((run) => run.id !== activeId)
               .map((run) => (
                 <button
@@ -378,18 +535,24 @@ export function BuildDashboard({
                   aria-current={selectedRunId === run.id ? 'true' : undefined}
                   onClick={() => setSelectedRunId(run.id)}
                 >
-                  <Status state={run.state} />
+                  <Status state={buildDisplayState(run)} />
                   <strong>
                     {run.action} · {run.configuration}
                   </strong>
                   <span>{time(run.startedAt)}</span>
                   <span>
-                    {duration(run.durationMs)} · {run.platform ?? run.source}
+                    {duration(buildDuration(run, elapsed))} · {run.platform ?? run.source}
                   </span>
                 </button>
               ))}
-            {!runs.length && (
-              <p className="build-monitor-empty">{loading ? 'Loading history…' : 'No recorded builds yet.'}</p>
+            {!matchingRuns.length && (
+              <p className="build-monitor-empty">
+                {loading
+                  ? 'Loading history…'
+                  : runs.length
+                    ? 'No builds match these filters.'
+                    : 'No recorded builds yet.'}
+              </p>
             )}
           </div>
         </aside>
@@ -416,8 +579,54 @@ export function BuildDashboard({
                     {selected.targetId ? ` · ${selected.targetId}` : ''}
                   </p>
                 </div>
-                <Status state={selected.state} />
+                <Status state={buildDisplayState(selected)} />
               </div>
+              {failure && (
+                <section
+                  className={`build-monitor-problem is-${buildDisplayState(selected)}`}
+                  aria-label="Build result details"
+                >
+                  <div className="build-monitor-problem-heading">
+                    {buildDisplayState(selected) === 'interrupted' ? (
+                      <CirclePause size={18} />
+                    ) : (
+                      <AlertCircle size={18} />
+                    )}
+                    <strong>
+                      {buildDisplayState(selected) === 'interrupted'
+                        ? 'Build interrupted'
+                        : buildDisplayState(selected) === 'cancelled'
+                          ? 'Build cancelled'
+                          : 'Build failed'}
+                    </strong>
+                    {selected.errorCount === 0 && buildDisplayState(selected) === 'failed' && (
+                      <small>No compiler diagnostics recorded</small>
+                    )}
+                  </div>
+                  <p>{failure}</p>
+                  <div className="build-monitor-problem-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTab(firstError ? 'diagnostics' : 'output');
+                        setSearch('');
+                        setStream(firstError ? 'all' : 'stderr');
+                        document.querySelector('.build-monitor-output')?.scrollIntoView?.({ block: 'start' });
+                      }}
+                    >
+                      <FileText size={14} /> {firstError ? 'View diagnostics' : 'View error output'}
+                    </button>
+                    <button type="button" onClick={() => void copyFailure()}>
+                      <Copy size={14} /> Copy details
+                    </button>
+                    {canRetryBuild(selected) && (
+                      <button type="button" disabled={anyActiveRun || retrying} onClick={() => void retrySelected()}>
+                        <RotateCcw size={14} /> Retry
+                      </button>
+                    )}
+                  </div>
+                </section>
+              )}
               <div className="build-monitor-metrics" aria-label="Build summary">
                 <div>
                   <small>Duration</small>
@@ -448,22 +657,35 @@ export function BuildDashboard({
                   <span>Elapsed time · actual stage timing, not completion estimates</span>
                 </div>
                 <BuildStageTimeline run={selected} nowMs={elapsed} />
-                {selected.error && (
-                  <p role="alert" className="build-monitor-stage-error">
-                    {selected.error}
-                  </p>
-                )}
               </section>
-              <BuildTargetGraphPanel key={selected.id} run={selected} nowMs={elapsed} />
-              <BuildCompileTasksPanel
-                key={selected.id}
-                run={selected}
-                onFilterOutput={(outputName) => {
-                  setSearch(outputName);
-                  setStream('all');
-                  setTab('output');
-                }}
-              />
+
+              {Boolean(selected.artifacts?.length) && (
+                <section className="build-monitor-artifacts" aria-label="Build artifacts">
+                  <div className="build-monitor-section-title">
+                    <h4>
+                      <PackageCheck size={15} /> Build artifacts
+                    </h4>
+                    <span>{selected.artifacts?.length} published</span>
+                  </div>
+                  {selected.artifacts?.map((artifact, index) => (
+                    <div className="build-monitor-artifact" key={`${artifact.kind}-${artifact.path}-${index}`}>
+                      <div>
+                        <strong>
+                          {artifact.kind} · {artifact.targetId}
+                        </strong>
+                        <code title={artifact.path}>{artifact.path}</code>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Reveal ${artifact.kind} artifact`}
+                        onClick={() => void revealArtifact(artifact.path)}
+                      >
+                        <FolderOpen size={14} /> Reveal
+                      </button>
+                    </div>
+                  ))}
+                </section>
+              )}
               <section className="build-monitor-output" aria-label="Build logs and diagnostics">
                 <div className="build-monitor-output-header">
                   <div className="build-monitor-tabs" role="tablist" aria-label="Output category">
@@ -581,6 +803,23 @@ export function BuildDashboard({
                   )}
                 </footer>
               </section>
+              {(selected.targetGraph || selected.compileTrace) && (
+                <details className="build-monitor-advanced">
+                  <summary>Target dependencies and compile performance</summary>
+                  {selected.targetGraph && <BuildTargetGraphPanel key={selected.id} run={selected} nowMs={elapsed} />}
+                  {selected.compileTrace && (
+                    <BuildCompileTasksPanel
+                      key={selected.id}
+                      run={selected}
+                      onFilterOutput={(outputName) => {
+                        setSearch(outputName);
+                        setStream('all');
+                        setTab('output');
+                      }}
+                    />
+                  )}
+                </details>
+              )}
             </>
           ) : (
             <div className="build-monitor-welcome">

@@ -413,6 +413,48 @@ describe('BuildMonitorService BM1 event stream', () => {
     expect(monitor.snapshot().runs.map((run) => run.id)).toEqual(['command-b']);
   });
 
+  it('retains complete workflow retry inputs from the authoritative plan', () => {
+    const monitor = new BuildMonitorService();
+    monitor.observeWorkflow(workflow('running', [{ stage: 'validate', state: 'running' }]), 'project-a');
+    expect(monitor.snapshot().runs[0].request).toEqual({
+      action: 'build',
+      profile: 'windows-shipping',
+      targetId: 'windows-x64-vulkan',
+      destination: 'none',
+      sessionId: '',
+    });
+  });
+
+  it('keeps command failure details even when the diagnostic count is zero', () => {
+    const monitor = new BuildMonitorService();
+    monitor.observeCommand(command(), 'project-a');
+    monitor.observeCommand(
+      command({
+        state: 'failed',
+        diagnostics: [],
+        history: [
+          {
+            id: 1,
+            runId: 'command-001',
+            kind: 'build',
+            configuration: 'RelWithDebInfo',
+            startedAt: '2026-11-16T12:00:00.000Z',
+            durationMs: 2500,
+            result: 'failed',
+            warningCount: 0,
+            errorCount: 0,
+          },
+        ],
+      }),
+      'project-a',
+    );
+    expect(monitor.snapshot().runs[0]).toMatchObject({
+      state: 'failed',
+      errorCount: 0,
+      error: 'Build command failed. Open the output to see the tool error.',
+    });
+  });
+
   it('does not break builds if an observer throws', () => {
     const monitor = new BuildMonitorService(() => {
       throw new Error('renderer closed');
