@@ -34,10 +34,12 @@ export function BuildToolbar({
   snapshot,
   workflow,
   onCreate,
+  launchError,
 }: {
   snapshot: ArcBuildSnapshot | null;
   workflow: WorkflowExecutionSnapshot | null;
   onCreate: (action: BuildDialogAction) => void;
+  launchError?: string;
 }) {
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState('');
