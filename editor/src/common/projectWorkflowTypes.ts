@@ -106,6 +106,14 @@ export type WorkflowExecutionSnapshot = {
 
 export type CookWorkflowOptions = {
   authority: string;
-  profiles: Array<{ id: string; targetId: string; platform: string; label: string }>;
+  profiles: Array<{
+    id: string;
+    targetId: string;
+    platform: string;
+    label: string;
+    /** Capability of the current Editor executor, not of the standalone CLI. */
+    editorBuildAvailable?: boolean;
+    editorBuildReason?: string;
+  }>;
   unavailableReason?: string;
 };
