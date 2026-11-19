@@ -40,6 +40,7 @@ const options: CookWorkflowOptions = {
 const cookOptions = vi.fn();
 const executeWorkflow = vi.fn();
 const execute = vi.fn();
+
 beforeEach(() => {
   localStorage.clear();
   cookOptions.mockResolvedValue(options);
@@ -56,11 +57,7 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-function open(
-  action: BuildDialogAction = 'build',
-  platform = 'android',
-  projectKey = 'Game A',
-) {
+function open(action: BuildDialogAction = 'build', platform = 'android', projectKey = 'Game A') {
   const onClose = vi.fn();
   const onError = vi.fn();
   const view = render(
@@ -86,7 +83,9 @@ describe('Build project configuration', () => {
     const { onClose } = open('build', 'windows');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
     expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('Windows');
-    expect(screen.getByRole('button', { name: 'Build platform' }).querySelector('[data-platform-icon="windows"]')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Build platform' }).querySelector('[data-platform-icon="windows"]'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Build target' })).toHaveTextContent('windows-x64-vulkan');
     expect(screen.getByRole('button', { name: 'Build profile' })).toHaveTextContent('Windows Shipping');
     expect(screen.queryByRole('button', { name: /device/i })).not.toBeInTheDocument();
