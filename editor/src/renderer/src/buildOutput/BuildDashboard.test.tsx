@@ -134,7 +134,7 @@ describe('Build Monitor workspace presentation', () => {
     expect(screen.queryByRole('button', { name: 'Close build monitor' })).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
-    expect(api.cancelWorkflow).not.toHaveBeenCalled();
+    expect(api.monitorSnapshot).toHaveBeenCalled();
   });
 });
 
