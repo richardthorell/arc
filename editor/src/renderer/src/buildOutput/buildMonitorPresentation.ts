@@ -3,7 +3,7 @@ import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
 export const buildDuration = (run: BuildMonitorRun, nowMs: number): number | undefined => {
   // A persisted interrupted build has no trustworthy process-end timestamp.
   // Never count idle time between editor sessions as compile duration.
-  if (run.state === 'interrupted') return undefined;
+  if (run.state === 'interrupted' || run.error?.startsWith('Interrupted:')) return undefined;
   if (run.durationMs !== undefined) return Number.isFinite(run.durationMs) ? run.durationMs : undefined;
   if (run.state !== 'running') return undefined;
   const started = Date.parse(run.startedAt);
