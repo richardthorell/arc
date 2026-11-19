@@ -1,4 +1,5 @@
-import { Activity } from 'lucide-react';
+import { useState } from 'react';
+import { Activity, ChevronRight } from 'lucide-react';
 
 import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
 
@@ -23,13 +24,21 @@ function duration(ms: number): string {
   return ms < 1000 ? String(ms) + ' ms' : (ms / 1000).toFixed(2) + ' s';
 }
 
-/** Native Ninja intervals are relative to Ninja start, NOT the editor command clock. */
-export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
+/** Native intervals are relative to their own tool clock, not the editor command clock. */
+export function BuildCompileTasksPanel({
+  run,
+  onFilterOutput,
+}: {
+  run: BuildMonitorRun;
+  onFilterOutput?: (output: string) => void;
+}) {
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const trace = run.compileTrace;
   if (!trace) return null;
 
   const source = SOURCE_LABELS[trace.source];
   const tasks = trace.tasks.slice(0, 256);
+  const selected = selectedIndex === null ? null : (tasks[selectedIndex] ?? null);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
   const measuredLabel = `${tasks.length} measured · ${source.generator}`;
   return (
@@ -51,9 +60,17 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
           <div className="build-monitor-compile-list" role="list" aria-label="Measured compile tasks">
             {tasks.map((task, index) => (
               <div className="build-monitor-compile-row" role="listitem" key={task.output + ':' + index}>
-                <span className="build-monitor-compile-name" title={task.output}>
-                  {task.output}
-                </span>
+                <button
+                  type="button"
+                  className="build-monitor-compile-name build-monitor-compile-select"
+                  title={task.sourceFile ?? task.output}
+                  aria-label={`Inspect compile task: ${task.sourceFile ?? task.output}`}
+                  aria-expanded={selectedIndex === index}
+                  onClick={() => setSelectedIndex(selectedIndex === index ? null : index)}
+                >
+                  <ChevronRight size={12} aria-hidden="true" />
+                  <span>{task.sourceFile ?? task.output}</span>
+                </button>
                 <div className="build-monitor-target-track">
                   <span
                     className="build-monitor-compile-bar"
@@ -69,6 +86,34 @@ export function BuildCompileTasksPanel({ run }: { run: BuildMonitorRun }) {
               </div>
             ))}
           </div>
+          {selected && (
+            <div className="build-monitor-compile-detail" aria-label="Compilation task details">
+              <div className="build-monitor-compile-detail-heading">
+                <strong>Selected compilation task</strong>
+                <span>{duration(selected.durationMs)} measured</span>
+              </div>
+              <dl>
+                <dt>Source</dt>
+                <dd>{selected.sourceFile ?? 'Not available from this native compiler task'}</dd>
+                <dt>CMake target</dt>
+                <dd>{selected.targetName ?? 'Not verified in the tracked target graph'}</dd>
+                <dt>Native task</dt>
+                <dd>{selected.output}</dd>
+              </dl>
+              {trace.source === 'ninja-log' && onFilterOutput && (
+                <button
+                  type="button"
+                  className="build-monitor-compile-filter"
+                  onClick={() => onFilterOutput(selected.output)}
+                >
+                  Find output text in build logs
+                </button>
+              )}
+              <p className="build-monitor-target-note">
+                Log search matches recorded text only; it does not establish a per-task timestamp correlation.
+              </p>
+            </div>
+          )}
         </>
       ) : (
         <p className="build-monitor-empty">{source.empty}</p>

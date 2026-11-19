@@ -12,6 +12,7 @@ import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
 import type { WindowsBuildEnvironment } from './windowsBuildWorkflow';
 import { EditorCommandTargetGraph } from './editorCommandTargetGraph';
 import { beginNinjaCompileTrace } from './ninjaCompileTasks';
+import { enrichCompileTrace } from './compileTaskAttribution';
 import { beginMsbuildCompileTrace } from './msbuildCompileTasks';
 
 type HostBridge = {
@@ -284,7 +285,8 @@ export class BuildService {
         trackGraph?.finish();
         try {
           const compileTrace = msbuildTrace?.finish() ?? finishNinjaTrace?.();
-          if (compileTrace) this.update({ compileTrace });
+          if (compileTrace)
+            this.update({ compileTrace: enrichCompileTrace(project, compileTrace, this.snapshotValue.targetGraph) });
         } catch {
           // Native telemetry must not affect compilation or cancellation.
         }

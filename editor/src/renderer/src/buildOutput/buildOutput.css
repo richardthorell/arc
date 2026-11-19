@@ -1055,3 +1055,81 @@
     gap: 6px;
   }
 }
+
+/* BM7.3 — source/task inspection uses a deliberate click, not inferred logs. */
+.build-monitor-compile-select {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.build-monitor-compile-select > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.build-monitor-compile-select[aria-expanded='true'] {
+  color: #8ccef8;
+}
+
+.build-monitor-compile-select[aria-expanded='true'] > svg {
+  transform: rotate(90deg);
+}
+
+.build-monitor-compile-detail {
+  margin-top: 12px;
+  padding: 12px;
+  background: #101e29;
+  border: 1px solid #304353;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+.build-monitor-compile-detail-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: #d0e0ec;
+  font-size: 12px;
+}
+
+.build-monitor-compile-detail dl {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0 0 10px;
+  font-size: 11px;
+}
+
+.build-monitor-compile-detail dt {
+  color: #8faabb;
+}
+
+.build-monitor-compile-detail dd {
+  margin: 0;
+  color: #c5d8e7;
+  font-family: var(--arc-font-monospace, ui-monospace, SFMono-Regular, Consolas, monospace);
+}
+
+.build-monitor-compile-filter {
+  border: 1px solid #365c76;
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: #1e3a4c;
+  color: #d0eafa;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.build-monitor-compile-detail > .build-monitor-target-note {
+  margin: 9px 0 0;
+}

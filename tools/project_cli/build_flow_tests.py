@@ -83,6 +83,10 @@ add_custom_target(FirstBuildSmoke ALL
     )
     assert any(line.startswith("CMAKE_BUILD_TYPE:") and line.endswith("=RelWithDebInfo")
                for line in cache.splitlines()), "The first build lost its selected configuration"
+    # BM7.3: Ninja can only join measured object outputs to source files when
+    # the configure step writes CMake's native compilation database.
+    assert any(line.startswith("CMAKE_EXPORT_COMPILE_COMMANDS:") and line.endswith("=ON")
+               for line in cache.splitlines()), "Source drill-down compilation database is disabled"
 
     # Subsequent builds are incremental; the cache and generated build system
     # are reused rather than demanding manual Configure.

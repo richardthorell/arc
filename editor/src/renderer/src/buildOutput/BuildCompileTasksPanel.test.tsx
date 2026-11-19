@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
 import { BuildCompileTasksPanel } from './BuildCompileTasksPanel';
@@ -56,6 +56,40 @@ describe('BM7.1 compilation timeline', () => {
     expect(screen.getByText('CL task #19 (node 2)')).toBeInTheDocument();
     expect(screen.getByText(/One CL task may compile multiple source files/)).toBeInTheDocument();
     expect(screen.getByText('600 ms')).toBeInTheDocument();
+  });
+
+  it('opens verified source details and only filters Ninja logs on explicit request', () => {
+    const value = run();
+    value.compileTrace!.tasks[0].sourceFile = 'Source/a.cpp';
+    value.compileTrace!.tasks[0].targetName = 'a';
+    const onFilterOutput = vi.fn();
+    render(<BuildCompileTasksPanel run={value} onFilterOutput={onFilterOutput} />);
+    const toggle = screen.getByRole('button', { name: 'Inspect compile task: Source/a.cpp' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Selected compilation task')).toBeInTheDocument();
+    expect(screen.getByText('Source/a.cpp', { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.getByText('a', { selector: 'dd' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Find output text in build logs' }));
+    expect(onFilterOutput).toHaveBeenCalledWith('CMakeFiles/a.dir/a.cpp.obj');
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Selected compilation task')).not.toBeInTheDocument();
+  });
+
+  it('does not fabricate per-file MSBuild metadata or correlate CL task IDs to output', () => {
+    const value = run();
+    value.compileTrace = {
+      source: 'msbuild-file-log',
+      clock: 'msbuild-cl-events',
+      truncated: false,
+      tasks: [{ output: 'CL task #7 (node 2)', startMs: 0, endMs: 80, durationMs: 80 }],
+    };
+    const onFilterOutput = vi.fn();
+    render(<BuildCompileTasksPanel run={value} onFilterOutput={onFilterOutput} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect compile task: CL task #7 (node 2)' }));
+    expect(screen.getByText('Not available from this native compiler task')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Find output text in build logs' })).not.toBeInTheDocument();
   });
 
   it('does not render for generators without measured native data', () => {

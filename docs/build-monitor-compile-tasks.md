@@ -30,3 +30,15 @@ The option is forwarded only for Visual Studio generators and only when `--msbui
 ## Limitations and next PRs
 
 Both Ninja object records and MSBuild CL task intervals are now available for **normal editor commands**. They are post-build measurements rather than live task events. Makefiles, Android workflow builds, source-file mapping, target attribution, per-task log filtering, before/after run comparisons, and per-source timing inside MSBuild CL invocations remain follow-ups.
+
+
+## BM7.3 — source and target attribution, task drill-down
+
+Normal `arc-project configure/build` requests `CMAKE_EXPORT_COMPILE_COMMANDS=ON`. On Ninja builds, CMake generates `Build/default/compile_commands.json` with compiler source files and concrete object outputs. After BM7.1 has measured the object tasks, the editor joins them to the current compilation database by **exact normalized object output**. It only associates project-relative source paths; duplicate or ambiguous output entries are left unmapped. A target name appears only when the object output names a `CMakeFiles/<target>.dir/` path **and** that target is present in the BM6 codemodel graph.
+
+- Clicking a native compile interval expands a measured duration, exact native output/task, and source/target metadata where recorded. Older history remains readable without attribution fields.
+- For Ninja entries, **Find output text in build logs** searches the selected run's already persisted raw output for the exact object-output string. This is a text match, not timestamp correlation or a guarantee that compiler output exists for that task.
+- MSBuild `CL` tasks remain **unattributed**, since one `CL` task may compile multiple source files. Their measured task intervals and inspection remain available, but per-file source names and task log shortcuts are intentionally not fabricated.
+- Enrichment reads only a bounded, regular, non-symlinked compilation database (up to 8 MiB / 25,000 entries), limits the persisted trace to roughly 32 KiB, and never interrupts compilation.
+
+Follow-ups: per-source timing inside MSBuild `CL` invocations, direct task-ID log correlation (if reliable native events become available), makefile-specific instrumentation, and historical compile-task comparisons.

@@ -5,6 +5,10 @@ export type BuildCompileTask = {
   startMs: number;
   endMs: number;
   durationMs: number;
+  /** Project-relative path from an unambiguous CMake compilation-database entry. */
+  sourceFile?: string;
+  /** CMake codemodel-verified target, when part of the tracked graph. */
+  targetName?: string;
 };
 
 export type BuildCompileTrace = {
