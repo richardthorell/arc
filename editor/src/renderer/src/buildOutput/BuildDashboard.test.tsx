@@ -150,7 +150,15 @@ describe('Build Monitor command controls', () => {
     render(
       <BuildDashboard
         presentation="workspace"
-        snapshot={{ configuration: 'Debug' } as never}
+        snapshot={{
+          revision: 1,
+          state: 'idle',
+          configuration: 'Debug',
+          buildRequired: true,
+          reloadRequired: false,
+          restartRequired: false,
+          diagnostics: [],
+        }}
         onClose={vi.fn()}
         onOpenDiagnostic={vi.fn()}
       />,
