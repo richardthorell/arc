@@ -2,6 +2,7 @@ import { AlertTriangle, Circle, GitBranch } from 'lucide-react';
 
 import type { EditorRuntimeState, StartupState } from '../app/workbenchTypes';
 import { useEditorActivityProgress } from '../jobs/editorActivityProgress';
+import { BuildActivityTray } from './BuildActivityTray';
 import type { EditorJobProgress } from '../jobs/editorJobProgress';
 import { useEditorJobProgress } from '../jobs/editorJobProgress';
 
@@ -15,6 +16,8 @@ type UiStatusBarProps = {
   jobProgress?: EditorJobProgress | null;
   runtimeState?: EditorRuntimeState;
   runtimeError?: string;
+  projectKey?: string;
+  onOpenBuilds?: () => void;
 };
 
 export function UiStatusBar({
@@ -24,6 +27,8 @@ export function UiStatusBar({
   jobProgress,
   runtimeState = 'stopped',
   runtimeError,
+  projectKey = 'no-project',
+  onOpenBuilds,
 }: UiStatusBarProps) {
   useEditorActivityProgress(startupState, activeScene, jobProgress === undefined);
   const trackedJobs = useEditorJobProgress();
@@ -52,6 +57,7 @@ export function UiStatusBar({
       </span>
       {aiControl && <span className="status-ai-control">{aiControl}</span>}
       <span className="status-spacer" />
+      {onOpenBuilds && <BuildActivityTray projectKey={projectKey} onOpenBuilds={onOpenBuilds} />}
       {jobs && (
         <span className="status-jobs" title={statusText}>
           <span className="status-job-label">{statusText}</span>
