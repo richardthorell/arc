@@ -1450,6 +1450,31 @@ void app.whenReady().then(async () => {
     buildMonitorProject();
     return buildMonitor.historyDetails(id, logCursor, eventCursor);
   });
+  ipcMain.handle('buildMonitor:revealArtifact', async (_event, runId: string, artifactPath: string) => {
+    // Only a path recorded by the current project's persisted run can be
+    // opened. Never let renderer-supplied paths turn into arbitrary shell access.
+    const project = projectService?.active();
+    if (!project || typeof runId !== 'string' || typeof artifactPath !== 'string')
+      throw new Error('No active project artifact');
+    buildMonitorProject();
+    const detail = buildMonitor.historyDetails(runId);
+    const listed = detail?.run.artifacts?.some(
+      (item) => item.path === artifactPath || item.manifestPath === artifactPath,
+    );
+    if (!listed) throw new Error('Artifact does not belong to the active project build');
+    const root = fs.realpathSync(project.projectRoot);
+    const candidate = path.isAbsolute(artifactPath) ? path.normalize(artifactPath) : path.resolve(root, artifactPath);
+    const relative = path.relative(root, candidate);
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+      throw new Error('Artifact path escapes the active project');
+    const resolved = fs.realpathSync(candidate);
+    const actual = path.relative(root, resolved);
+    if (!actual || actual === '..' || actual.startsWith(`..${path.sep}`) || path.isAbsolute(actual))
+      throw new Error('Artifact path resolves outside the active project');
+    if (fs.statSync(resolved).isDirectory()) return shell.openPath(resolved);
+    shell.showItemInFolder(resolved);
+    return '';
+  });
   ipcMain.handle('workflow:cookOptions', () => buildService?.workflows.options() ?? null);
   ipcMain.handle('workflow:execute', (_event, request: WorkflowRequest, authority?: string) => {
     if (!buildService) throw new Error('Build service unavailable');
