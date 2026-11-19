@@ -380,19 +380,12 @@ describe('BuildMonitorService BM1 event stream', () => {
     monitor.observeCommand(command(), 'project-a');
     monitor.observeCommand(command({ compileTrace: trace }), 'project-a');
     monitor.observeCommand(command({ compileTrace: trace }), 'project-a');
-    const second = {
-      ...trace,
-      tasks: [
-        ...trace.tasks,
-        { output: 'CMakeFiles/game.dir/other.cpp.o', startMs: 10, endMs: 50, durationMs: 40 },
-      ],
-    };
+    const nextTask = { output: 'CMakeFiles/game.dir/other.cpp.o', startMs: 10, endMs: 50, durationMs: 40 };
+    const second = { ...trace, tasks: [...trace.tasks, nextTask] };
     monitor.observeCommand(command({ compileTrace: second }), 'project-a');
     monitor.observeCommand(command({ compileTrace: second }), 'project-a');
-    const attributed = {
-      ...second,
-      tasks: [{ ...second.tasks[0], sourceFile: 'Source/main.cpp' }, second.tasks[1]],
-    };
+    const sourceTask = { ...second.tasks[0], sourceFile: 'Source/main.cpp' };
+    const attributed = { ...second, tasks: [sourceTask, nextTask] };
     monitor.observeCommand(command({ compileTrace: attributed }), 'project-a');
     const changes = monitor.snapshot().events.filter((event) => event.kind === 'compile-trace-changed');
     expect(changes).toMatchObject([
