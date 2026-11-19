@@ -8,6 +8,8 @@ import { UiButton, UiDialog, UiDropdown } from '../ui';
 
 import type { BuildDialogAction } from './BuildToolbar';
 
+import './BuildCreationDialog.css';
+
 const EDITOR_MODULE = 'editor-module';
 const configurations = ['Debug', 'RelWithDebInfo', 'Release'] as const;
 type BuildPreference = { platform: string; target: string; profile: string };
