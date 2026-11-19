@@ -55,7 +55,6 @@ import { closeWorkspaceView, openWorkspaceView, resetWorkspaceViews, useWorkspac
 import type { EditorDocument } from '../editors/editorTypes';
 import { LevelEditor } from '../editors/level/LevelEditor';
 import { LevelEditorToolbar } from '../editors/level/LevelEditorToolbar';
-import { CookWorkflowDialog } from '../buildOutput/CookWorkflowDialog';
 import type { WorkflowExecutionSnapshot } from '../../../common/projectWorkflowTypes';
 import { useAndroidTargets } from './useAndroidTargets';
 import { flattenScene } from '../services/editorHostTypes';
@@ -87,7 +86,7 @@ import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
 import { BuildDashboard } from '../buildOutput/BuildDashboard';
 import { BuildToolbar, type BuildDialogAction } from '../buildOutput/BuildToolbar';
 import { BuildCreationDialog } from '../buildOutput/BuildCreationDialog';
-import { detectHostTargetPlatform } from '../layout/MainToolbar';
+import { detectHostTargetPlatform, EDITOR_VIEWPORT_TARGET_ID } from '../layout/MainToolbar';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
@@ -430,7 +429,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const runtimeInspectionRevision = useRef(0);
   const [projectComponentSchemas, setProjectComponentSchemas] = useState<HostProjectComponentSchema[]>([]);
   const [buildSnapshot, setBuildSnapshot] = useState<ArcBuildSnapshot | null>(null);
-  const [cookPlatform, setCookPlatform] = useState<string | null>(null);
   const [cookSnapshot, setCookSnapshot] = useState<WorkflowExecutionSnapshot | null>(null);
   const [buildDialogAction, setBuildDialogAction] = useState<BuildDialogAction | null>(null);
   useEffect(() => {
@@ -451,9 +449,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       unsubscribe?.();
     };
   }, []);
-  useEffect(() => {
-    setCookPlatform(null);
-  }, [project?.root]);
   const [selectedSnapshotLoading, setSelectedSnapshotLoading] = useState(false);
   const selectedSnapshotRevision = useRef(0);
   const hostEventRefreshTimer = useRef<number | null>(null);
@@ -736,7 +731,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     editorFocused: true,
     viewportFocused,
     textInputFocused: false,
-    modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen || cookPlatform !== null,
+    modalOpen: commandPaletteOpen || settingsOpen || createTerrainOpen,
     playing: runtimeWorldActive,
     hasSelection: Boolean(selectedEntityId && selectedEntityId !== worldSelectionId),
     canUndo: !runtimeWorldActive && documentState.canUndo,
@@ -830,6 +825,16 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
     if (runtimeWorldActive && playWorldBlockedCommands.has(command)) {
       setLastCommand(`${registration.label} is unavailable while inspecting the Play World`);
+      return;
+    }
+
+    // Keyboard shortcuts must not launch a local session for a remote target.
+    if (
+      command === 'scene.play' &&
+      runtimeState.state === 'stopped' &&
+      (targetPlatform !== detectHostTargetPlatform() || selectedPlayTarget !== EDITOR_VIEWPORT_TARGET_ID)
+    ) {
+      setLastCommand('Remote and standalone Play will be available when the runtime launch adapter is connected.');
       return;
     }
 
@@ -1574,6 +1579,33 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return 'windows';
   });
 
+  const [playTargetByPlatform, setPlayTargetByPlatform] = useState<Record<string, string>>(() => {
+    try {
+      const value: unknown = JSON.parse(window.localStorage.getItem('arc.editor.play-targets.v1') ?? '{}');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+      return Object.fromEntries(
+        Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+      );
+    } catch {
+      return {};
+    }
+  });
+  const selectedPlayTarget =
+    playTargetByPlatform[targetPlatform] ??
+    (targetPlatform === detectHostTargetPlatform() ? EDITOR_VIEWPORT_TARGET_ID : '');
+
+  const selectPlayTarget = (deviceId: string) => {
+    setPlayTargetByPlatform((current) => {
+      const next = { ...current, [targetPlatform]: deviceId };
+      try {
+        window.localStorage.setItem('arc.editor.play-targets.v1', JSON.stringify(next));
+      } catch {
+        // In-memory selection remains valid when preferences cannot be stored.
+      }
+      return next;
+    });
+  };
+
   const androidTargets = useAndroidTargets(
     targetPlatform === 'android' && activeDocument?.kind === 'level' && !settingsOpen,
     project?.root ?? '',
@@ -1651,38 +1683,9 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             setTargetPlatform(platform);
             window.localStorage.setItem('arc.editor.target-platform.v1', platform);
           }}
-          buildSnapshot={buildSnapshot}
-          cooking={Boolean(
-            cookSnapshot?.planning ||
-            cookSnapshot?.run?.state === 'running' ||
-            cookSnapshot?.run?.state === 'cancelling',
-          )}
-          onOpenBuildDashboard={() => {
-            if (
-              cookSnapshot?.planning ||
-              cookSnapshot?.run?.state === 'running' ||
-              cookSnapshot?.run?.state === 'cancelling'
-            ) {
-              setCookPlatform(cookSnapshot.run?.plan.platform ?? targetPlatform);
-              return;
-            }
-            openWorkspaceView('builds', 'Builds');
-          }}
-          onBuildAction={(action) => {
-            if (action === 'cook') {
-              setCookPlatform(targetPlatform);
-              return;
-            }
-            openWorkspaceView('builds', 'Builds');
-            void window.arc.build
-              .execute({ action })
-              .then(setBuildSnapshot)
-              .catch((reason: unknown) => {
-                setLastCommand(reason instanceof Error ? reason.message : String(reason));
-              });
-          }}
+          targetDevice={targetPlatform === detectHostTargetPlatform() ? selectedPlayTarget : undefined}
+          onTargetDeviceChange={selectPlayTarget}
           runtimeState={runtimeState.state}
-          runtimeError={runtimeState.error}
           authoringDisabled={runtimeWorldActive}
           timeScale={runtimeState.timeScale}
           onTimeScaleChange={(value) => {
@@ -1943,18 +1946,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return renderLeftPanel(panel);
   };
 
-  const saveBuildDocument = async (document: EditorDocument): Promise<boolean> => {
-    if (document.readOnly) return false;
-    if (document.kind !== 'level') return (await editorRegistry[document.kind].save?.(document)) ?? false;
-    if (runtimeWorldActive || (document.path ?? '') !== documentState.activeScenePath) return false;
-    if (!document.path) {
-      const result = await window.arc.dialog.saveScene();
-      return !result.canceled && Boolean((result.response as HostResponse | undefined)?.succeeded);
-    }
-    const response = (await window.arc.host.command('scene.save')) as HostResponse;
-    return response.succeeded;
-  };
-
   const showDetachedPlayBar = runtimeWorldActive && !activeView && activeDocument?.kind !== 'level';
 
   return (
@@ -1971,15 +1962,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           currentConfiguration={buildSnapshot?.configuration ?? 'RelWithDebInfo'}
           onClose={() => setBuildDialogAction(null)}
           onError={setLastCommand}
-        />
-      )}
-      {cookPlatform && (
-        <CookWorkflowDialog
-          key={`${project?.root}:${cookPlatform}`}
-          platform={cookPlatform}
-          documents={editorDocuments}
-          onClose={() => setCookPlatform(null)}
-          saveDocument={saveBuildDocument}
         />
       )}
       <MenuBar
