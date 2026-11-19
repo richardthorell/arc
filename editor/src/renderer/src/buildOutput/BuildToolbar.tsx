@@ -5,7 +5,7 @@ import './BuildToolbar.css';
 
 import type { ArcBuildSnapshot } from '../../../common/buildTypes';
 import type { WorkflowExecutionSnapshot } from '../../../common/projectWorkflowTypes';
-import { UiButton, UiSplitButton, type UiSplitButtonOption } from '../ui';
+import { UiButton, UiEditorToolbar, UiSplitButton, type UiSplitButtonOption } from '../ui';
 
 export type BuildDialogAction = 'build' | 'rebuild' | 'cook' | 'configure' | 'clean';
 
@@ -68,47 +68,57 @@ export function BuildToolbar({
     }
   };
 
+  const buildAction = busy ? (
+    <UiButton
+      className="builds-toolbar-stop"
+      variant="danger"
+      disabled={cancelling}
+      onClick={() => void stop()}
+      type="button"
+    >
+      <Square size={13} fill="currentColor" />
+      {cancelling ? 'Stopping...' : 'Stop'}
+    </UiButton>
+  ) : (
+    <UiSplitButton
+      className="builds-toolbar-build"
+      label="Build..."
+      ariaLabel="Create build"
+      menuAriaLabel="Build operations"
+      icon={<Hammer size={14} />}
+      options={actions}
+      onClick={() => onCreate('build')}
+      onOptionSelect={(action) => {
+        if (action !== 'package') onCreate(action);
+      }}
+    />
+  );
+
+  const progressLabel = workflow?.planning
+    ? 'Planning build'
+    : workflowBusy(workflow)
+      ? (workflow?.run?.stages.find((stage) => stage.state === 'running')?.stage ?? 'Building')
+      : (snapshot?.state ?? 'Building');
+
   return (
-    <div className="builds-editor-toolbar" aria-label="Builds toolbar">
-      {busy ? (
-        <UiButton
-          className="builds-toolbar-stop"
-          variant="danger"
-          disabled={cancelling}
-          onClick={() => void stop()}
-          type="button"
-        >
-          <Square size={13} fill="currentColor" />
-          {cancelling ? 'Stopping...' : 'Stop'}
-        </UiButton>
-      ) : (
-        <UiSplitButton
-          label="Build..."
-          ariaLabel="Create build"
-          menuAriaLabel="Build operations"
-          icon={<Hammer size={14} />}
-          options={actions}
-          onClick={() => onCreate('build')}
-          onOptionSelect={(action) => {
-            if (action !== 'package') onCreate(action);
-          }}
-        />
-      )}
-      {busy && (
-        <span className="builds-toolbar-progress" role="status">
-          {workflow?.planning
-            ? 'Planning build'
-            : workflowBusy(workflow)
-              ? (workflow?.run?.stages.find((stage) => stage.state === 'running')?.stage ?? 'Building')
-              : (snapshot?.state ?? 'Building')}
-        </span>
-      )}
-      <span className="builds-toolbar-spacer" />
-      {displayedError && (
-        <span className="builds-toolbar-error" role="alert">
-          {displayedError}
-        </span>
-      )}
-    </div>
+    <UiEditorToolbar
+      aria-label="Builds toolbar"
+      className="builds-editor-toolbar"
+      left={
+        displayedError ? (
+          <span className="builds-toolbar-error" role="alert" title={displayedError}>
+            {displayedError}
+          </span>
+        ) : undefined
+      }
+      center={
+        busy ? (
+          <span className="builds-toolbar-progress" role="status">
+            {progressLabel}
+          </span>
+        ) : undefined
+      }
+      right={buildAction}
+    />
   );
 }
