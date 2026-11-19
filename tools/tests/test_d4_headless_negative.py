@@ -53,10 +53,11 @@ class D4ServerNegativeTests(unittest.TestCase):
             negative.inventory_file(self.root, self.manifest, "plugin")
 
     def test_all_negative_cases_mutate_independent_copies(self) -> None:
+        artifacts = self.root.parent / "negative-results"
         with mock.patch.object(negative, "check_expected_failure") as check:
-            negative.run(self.root, self.root / "artifacts", 5)
+            negative.run(self.root, artifacts, 5)
         self.assertEqual(check.call_count, 5)
-        self.assertEqual(json.loads((self.root / "artifacts/negative-results.json").read_text())["passed"].__len__(), 5)
+        self.assertEqual(len(json.loads((artifacts / "negative-results.json").read_text())["passed"]), 5)
         self.assertEqual(verify_distribution(self.root)["role"], "server")
 
     def test_wrong_failure_does_not_count_as_rejection(self) -> None:
