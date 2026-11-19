@@ -17,7 +17,7 @@ const MAX_PAGE_SIZE = 100;
 const PAGE_BYTES = 256 * 1024;
 const CHUNK_CHARS = 12 * 1024;
 const safeId = (value: string): boolean => /^[a-zA-Z0-9_-]{1,100}$/u.test(value);
-const terminal = (state: string): boolean => ['succeeded', 'failed', 'cancelled'].includes(state);
+const terminal = (state: string): boolean => ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(state);
 
 function contained(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
@@ -134,22 +134,28 @@ export class BuildHistoryStore {
           )
           .slice(0, MAX_RUNS);
       }
-      let interrupted = false;
+      let recovered = false;
       for (const run of this.runs) {
-        if (terminal(run.state)) continue;
-        interrupted = true;
-        run.state = 'failed';
-        run.completedAt = new Date().toISOString();
-        run.durationMs = Math.max(0, Date.parse(run.completedAt) - Date.parse(run.startedAt));
-        run.error = 'Interrupted: editor closed before build completion';
+        // Upgrade previously recovered histories that incorrectly assigned the
+        // next editor startup time as the completion time (e.g. 1401 minutes).
+        const legacyInterrupted = run.state === 'failed' && run.error?.startsWith('Interrupted:');
+        if (terminal(run.state) && !legacyInterrupted) continue;
+        recovered = true;
+        run.state = 'interrupted';
+        run.error = 'Editor closed before the build completed';
+        // We don't know when the process actually stopped. Inventing an end
+        // timestamp or elapsed time would mislead users, especially after days.
+        run.completedAt = undefined;
+        run.durationMs = undefined;
         for (const stage of run.stages ?? []) {
-          if (stage.state === 'running') {
-            stage.state = 'failed';
-            stage.completedAt = run.completedAt;
+          if (stage.state === 'running' || (legacyInterrupted && stage.state === 'failed')) {
+            stage.state = 'interrupted';
+            stage.completedAt = undefined;
+            stage.durationMs = undefined;
           }
         }
       }
-      if (interrupted) this.writeIndex();
+      if (recovered) this.writeIndex();
     } catch (error) {
       this.storageError = String(error);
       this.root = null;
