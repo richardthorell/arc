@@ -84,6 +84,30 @@ describe('BM7.2 native MSBuild CL task intervals', () => {
     expect(capture?.finish()).toBeUndefined();
   });
 
+  it('reads only completed CL intervals during a running build without deleting the log', () => {
+    const { project } = fixture('Visual Studio 17 2022');
+    const capture = beginMsbuildCompileTrace(project, runId, 'win32');
+    expect(capture).not.toBeNull();
+    const filename = capture!.args[1];
+    expect(capture?.snapshot()).toBeUndefined();
+
+    fs.writeFileSync(
+      filename,
+      '12:00:00.000 1>  Task "CL" (TaskId:9)\n' +
+        '12:00:00.100 2>  Task "CL" (TaskId:10)\n',
+    );
+    expect(capture?.snapshot()).toMatchObject({ tasks: [], truncated: false });
+    fs.appendFileSync(filename, '12:00:00.320 2>  Done executing task "CL". (TaskId:10)\n');
+    expect(capture?.snapshot()).toMatchObject({
+      tasks: [{ output: 'CL task #10 (node 2)', startMs: 0, endMs: 220, durationMs: 220 }],
+      truncated: false,
+    });
+    expect(fs.existsSync(filename)).toBe(true);
+    fs.appendFileSync(filename, '12:00:00.600 1>  Done executing task "CL". (TaskId:9)\n');
+    expect(capture?.finish()?.tasks).toHaveLength(2);
+    expect(fs.existsSync(filename)).toBe(false);
+  });
+
   it('does not attach MSBuild flags for Ninja, non-Windows hosts, or invalid run identities', () => {
     const { project } = fixture('Ninja');
     expect(beginMsbuildCompileTrace(project, runId, 'win32')).toBeNull();
