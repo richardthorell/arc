@@ -9,6 +9,7 @@ import { configuredTargetPlatformsForProject, MainToolbar } from './MainToolbar'
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   resetSettingsDialogRequest();
 });
 
@@ -22,7 +23,7 @@ describe('MainToolbar runtime controls', () => {
         onTargetPlatformChange={onTargetPlatformChange}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play platform' }));
     expect(screen.getByRole('option', { name: /Android/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('option', { name: /Android/ }));
     expect(onTargetPlatformChange).not.toHaveBeenCalled();
@@ -50,7 +51,7 @@ describe('MainToolbar runtime controls', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Step' })).toBeDisabled();
-    expect(screen.getByTestId('toolbar-runtime-state')).toHaveTextContent('Authoring World');
+    expect(screen.queryByTestId('toolbar-runtime-state')).not.toBeInTheDocument();
 
     rerender(<MainToolbar onCommand={vi.fn()} runtimeState="running" timeScale={2} />);
     expect(screen.getByRole('button', { name: 'Play' })).toHaveClass('is-active');
@@ -58,7 +59,7 @@ describe('MainToolbar runtime controls', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Step' })).toBeDisabled();
-    expect(screen.getByTestId('toolbar-runtime-state')).toHaveTextContent('Play World: Running');
+    expect(screen.queryByTestId('toolbar-runtime-state')).not.toBeInTheDocument();
 
     rerender(<MainToolbar onCommand={vi.fn()} runtimeState="paused" timeScale={2} />);
     expect(screen.getByRole('button', { name: 'Resume' })).toBeEnabled();
@@ -175,29 +176,33 @@ describe('MainToolbar runtime controls', () => {
     expect(configuredTargetPlatformsForProject({ targetPlatforms: [], cookProfiles: [] }, 'macos')).toEqual(['macos']);
   });
 
-  it('shows only project platforms, opens platform settings, and exposes the target device next to it', () => {
+  it('keeps only platform and Play-target selectors on the right and opens project platform settings', () => {
     const onCommand = vi.fn();
     const onTargetPlatformChange = vi.fn();
     const onTargetDeviceChange = vi.fn();
-    const onBuildAction = vi.fn();
-    render(
+    const { rerender } = render(
       <MainToolbar
         configuredTargetPlatforms={['windows', 'android']}
         onCommand={onCommand}
-        onBuildAction={onBuildAction}
         onTargetDeviceChange={onTargetDeviceChange}
         onTargetPlatformChange={onTargetPlatformChange}
         targetDevice="pixel-9"
-        targetDevices={[
-          { id: 'pixel-9', label: 'Pixel 9', platform: 'android' },
-          { id: 'local-windows', label: 'This Computer', platform: 'windows' },
-        ]}
+        targetDevices={[{ id: 'pixel-9', label: 'Pixel 9', platform: 'android' }]}
         targetPlatform="android"
       />,
     );
+    expect(screen.getByRole('button', { name: 'Play platform' })).toHaveTextContent('Android');
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9');
+    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Play' })).toHaveAttribute(
+      'title',
+      expect.stringContaining('Remote Play'),
+    );
+    expect(screen.queryByRole('button', { name: 'Build Editor Code' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open build dashboard' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Authoring World')).not.toBeInTheDocument();
+    expect(screen.queryByText('Play World: Running')).not.toBeInTheDocument();
 
-    expect(screen.getByRole('button', { name: 'Target platform' })).toHaveTextContent('Android');
-    expect(screen.getByRole('button', { name: 'Target device' })).toHaveTextContent('Pixel 9');
     void act(() =>
       window.dispatchEvent(
         new CustomEvent('arc-editor-settings-changed', {
@@ -218,82 +223,89 @@ describe('MainToolbar runtime controls', () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Play platform' }));
     expect(screen.getByRole('option', { name: /Windows/ })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Android/ })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Linux/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Xbox/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('separator')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('option', { name: /Platform Settings/ }));
     expect(requestedSettingsDialogKind()).toBe('projectSettings');
     expect(onCommand).toHaveBeenCalledWith('settings.open');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Target platform' }));
-    fireEvent.click(screen.getByRole('option', { name: /Windows/ }));
-    expect(onTargetPlatformChange).toHaveBeenCalledWith('windows');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Target device' }));
-    fireEvent.click(screen.getByRole('option', { name: /Pixel 9/ }));
-    expect(onTargetDeviceChange).toHaveBeenCalledWith('pixel-9');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Build Editor Code' }));
-    expect(onBuildAction).toHaveBeenCalledWith('build');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Build actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /Rebuild/ }));
-    expect(onBuildAction).toHaveBeenCalledWith('rebuild');
-    fireEvent.click(screen.getByRole('button', { name: 'Build actions' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Cook Content Only' }));
-    expect(onBuildAction).toHaveBeenCalledWith('cook');
+    rerender(
+      <MainToolbar
+        configuredTargetPlatforms={['windows', 'android']}
+        onCommand={onCommand}
+        targetPlatform="windows"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Editor Viewport');
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
   });
 
-  it('shows running cook progress without routing it to an editor build', () => {
-    const onBuildAction = vi.fn();
-    render(<MainToolbar onCommand={vi.fn()} cooking onBuildAction={onBuildAction} onOpenBuildDashboard={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Open build dashboard' })).toHaveTextContent('cooking');
-    fireEvent.click(screen.getByRole('button', { name: 'Cook progress' }));
-    expect(onBuildAction).toHaveBeenCalledWith('cook');
-    fireEvent.click(screen.getByRole('button', { name: 'Build actions' }));
-    expect(screen.getByRole('menuitem', { name: 'Build Editor Code' })).toBeDisabled();
-  });
+  it('defaults to the editor viewport, remembers local selections, and never launches remotely via Play', () => {
+    const onCommand = vi.fn();
+    const { rerender } = render(
+      <MainToolbar configuredTargetPlatforms={['windows', 'android']} onCommand={onCommand} targetPlatform="windows" />,
+    );
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(play).toBeEnabled();
+    fireEvent.click(play);
+    expect(onCommand).toHaveBeenCalledWith('scene.play');
 
-  it('shows a compact build monitor and opens the dashboard on demand', () => {
-    const onOpenBuildDashboard = vi.fn();
-    const { rerender } = render(<MainToolbar onCommand={vi.fn()} onOpenBuildDashboard={onOpenBuildDashboard} />);
-    const monitor = screen.getByRole('button', { name: 'Open build dashboard' });
-    expect(monitor).toHaveTextContent('Idle');
-    fireEvent.click(monitor);
-    expect(onOpenBuildDashboard).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
+    fireEvent.click(screen.getByRole('option', { name: /This Computer \(Standalone\)/ }));
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('This Computer (Standalone)');
+    expect(play).toBeDisabled();
+    expect(localStorage.getItem('arc.editor.play-targets.v1')).toContain('standalone');
 
     rerender(
       <MainToolbar
-        onCommand={vi.fn()}
-        onOpenBuildDashboard={onOpenBuildDashboard}
-        buildSnapshot={{
-          revision: 2,
-          state: 'failed',
-          configuration: 'Debug',
-          buildRequired: true,
-          reloadRequired: false,
-          restartRequired: false,
-          diagnostics: [],
-          history: [
-            {
-              id: 1,
-              kind: 'build',
-              configuration: 'Debug',
-              startedAt: '2026-11-10T10:00:00.000Z',
-              durationMs: 1000,
-              result: 'failed',
-              warningCount: 0,
-              errorCount: 1,
-            },
-          ],
-        }}
+        configuredTargetPlatforms={['windows', 'android']}
+        onCommand={onCommand}
+        targetPlatform="android"
+        targetDevices={[{ id: 'device:pixel', label: 'Pixel 9', platform: 'android' }]}
       />,
     );
-    expect(monitor).toHaveTextContent('failed');
-    expect(monitor.querySelector('.toolbar-build-mini-chart .is-failed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Select a target');
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Pixel 9' }));
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9');
+    expect(play).toBeDisabled();
+
+    rerender(<MainToolbar configuredTargetPlatforms={['windows', 'android']} onCommand={onCommand} targetPlatform="windows" />);
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('This Computer (Standalone)');
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Editor Viewport' }));
+    expect(play).toBeEnabled();
+    expect(onCommand).toHaveBeenCalledTimes(1);
   });
+
+  it('retains a missing device choice instead of automatically selecting a different target', () => {
+    render(
+      <MainToolbar
+        configuredTargetPlatforms={['android']}
+        onCommand={vi.fn()}
+        targetPlatform="android"
+        targetDevice="device:missing"
+        targetDevices={[{ id: 'device:available', label: 'Pixel 9', platform: 'android' }]}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Selected target unavailable');
+    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
+    expect(screen.getByRole('option', { name: 'Pixel 9' })).toBeEnabled();
+  });
+
+  it('locks Play destination changes while a local runtime is active', () => {
+    const { rerender } = render(
+      <MainToolbar onCommand={vi.fn()} runtimeState="running" targetPlatform="windows" />,
+    );
+    expect(screen.getByRole('button', { name: 'Play platform' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Play target' })).toBeDisabled();
+    rerender(<MainToolbar onCommand={vi.fn()} runtimeState="stopped" targetPlatform="windows" />);
+    expect(screen.getByRole('button', { name: 'Play target' })).toBeEnabled();
+  });
+
 });
