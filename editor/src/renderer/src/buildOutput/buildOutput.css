@@ -540,6 +540,11 @@
   background: #deb367;
 }
 
+.build-stage-timeline-state.is-interrupted,
+.build-stage-timeline-bar.is-interrupted {
+  background: #d3a36b;
+}
+
 .build-stage-timeline-track {
   position: relative;
   min-width: 0;
