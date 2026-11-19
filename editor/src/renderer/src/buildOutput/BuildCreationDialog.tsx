@@ -110,7 +110,17 @@ export function BuildCreationDialog({
     ? profile
     : availableProfiles[0]?.id ?? '';
   const valid = Boolean(selectedTarget && selectedProfile && !saving && (selectedTarget === EDITOR_MODULE || options));
-  const blocked = selectedTarget !== EDITOR_MODULE ? options?.unavailableReason : undefined;
+  const authoredSelection = authored.find(
+    (item) => item.id === selectedProfile && item.targetId === selectedTarget && item.platform === selectedPlatform,
+  );
+  const blocked =
+    selectedTarget === EDITOR_MODULE
+      ? undefined
+      : options?.unavailableReason ??
+        (action === 'build' && !authoredSelection?.editorBuildAvailable
+          ? authoredSelection?.editorBuildReason ??
+            'This platform/profile cannot be packaged by the current Editor build adapter.'
+          : undefined);
   const actionLabel = {
     build: 'Build',
     rebuild: 'Rebuild',
@@ -240,7 +250,9 @@ export function BuildCreationDialog({
           <p className="build-create-summary">
             {selectedPlatform} · {selectedTarget} · {selectedProfile}
             <br />
-            Includes code compilation, content cooking and packaging for Build. No deployment.
+            {action === 'cook'
+              ? 'Cooks saved content only; no compilation, packaging or deployment.'
+              : 'Build includes compilation, cooking and packaging. No deployment.'}
           </p>
         )}
         {dirty.length > 0 && (
