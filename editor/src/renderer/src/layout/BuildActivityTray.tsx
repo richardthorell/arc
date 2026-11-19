@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, Ban, CheckCircle2, ChevronUp, LoaderCircle, XCircle } from 'lucide-react';
+import { Activity, Ban, CheckCircle2, ChevronUp, CirclePause, LoaderCircle, XCircle } from 'lucide-react';
 
 import type { BuildMonitorRun, BuildMonitorSnapshot } from '../../../common/buildMonitorTypes';
 
@@ -82,7 +82,7 @@ export function BuildActivityTray({ projectKey, onOpenBuilds }: BuildActivityTra
   const recentRun = activeRun ?? monitor?.runs.at(-1) ?? null;
   const state = activeRun?.state ?? recentRun?.state ?? 'idle';
   const Icon =
-    state === 'running' ? LoaderCircle : state === 'failed' ? XCircle : state === 'succeeded' ? CheckCircle2 : Activity;
+    state === 'running' ? LoaderCircle : state === 'failed' ? XCircle : state === 'succeeded' ? CheckCircle2 : state === 'interrupted' ? CirclePause : Activity;
   const runningStage = activeRun?.stages.find((stage) => stage.state === 'running')?.name;
   const label =
     state === 'running'
