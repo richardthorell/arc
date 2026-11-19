@@ -12,9 +12,29 @@ import type { BuildDialogAction } from './BuildToolbar';
 const options: CookWorkflowOptions = {
   authority: 'project-sdk-version-1',
   profiles: [
-    { id: 'android-debug', platform: 'android', targetId: 'android-arm64-vulkan', label: 'Android Debug · ASTC' },
-    { id: 'android-shipping', platform: 'android', targetId: 'android-arm64-vulkan', label: 'Android Shipping' },
-    { id: 'windows-dev', platform: 'windows', targetId: 'windows-x64-vulkan', label: 'Windows Development' },
+    {
+      id: 'android-debug',
+      platform: 'android',
+      targetId: 'android-arm64-vulkan',
+      label: 'Android Debug · ASTC',
+      editorBuildAvailable: false,
+      editorBuildReason: 'Android editor packaged builds are not available yet',
+    },
+    {
+      id: 'android-shipping',
+      platform: 'android',
+      targetId: 'android-arm64-vulkan',
+      label: 'Android Shipping',
+      editorBuildAvailable: false,
+      editorBuildReason: 'Android editor packaged builds are not available yet',
+    },
+    {
+      id: 'windows-shipping',
+      platform: 'windows',
+      targetId: 'windows-x64-vulkan',
+      label: 'Windows Shipping',
+      editorBuildAvailable: true,
+    },
   ],
 };
 
@@ -65,24 +85,36 @@ function open(
 }
 
 describe('Build project configuration', () => {
-  it('builds Android from an authored profile without a connected device or Run destination', async () => {
-    const { onClose } = open();
+  it('builds an available Windows package with authored profile and no device', async () => {
+    localStorage.setItem(
+      'arc.build.dialog.v1:Game A',
+      JSON.stringify({ platform: 'windows', target: 'windows-x64-vulkan', profile: 'windows-shipping' }),
+    );
+    const { onClose } = open('build', 'windows');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
-    expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('android');
-    expect(screen.getByRole('button', { name: 'Build target' })).toHaveTextContent('android-arm64-vulkan');
-    expect(screen.getByRole('button', { name: 'Build profile' })).toHaveTextContent('Android Debug');
+    expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('windows');
+    expect(screen.getByRole('button', { name: 'Build target' })).toHaveTextContent('windows-x64-vulkan');
+    expect(screen.getByRole('button', { name: 'Build profile' })).toHaveTextContent('Windows Shipping');
     expect(screen.queryByRole('button', { name: /device/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Build' }));
     await waitFor(() =>
       expect(executeWorkflow).toHaveBeenCalledWith(
-        { action: 'build', profile: 'android-debug', targetId: 'android-arm64-vulkan', destination: 'none', sessionId: '' },
+        { action: 'build', profile: 'windows-shipping', targetId: 'windows-x64-vulkan', destination: 'none', sessionId: '' },
         options.authority,
       ),
     );
     expect(onClose).toHaveBeenCalledOnce();
     expect(execute).not.toHaveBeenCalled();
   });
+
+  it('shows why an Android build is unavailable without blocking Android cooking', async () => {
+    open();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Android editor packaged builds are not available yet');
+    expect(screen.getByRole('button', { name: 'Build' })).toBeDisabled();
+    expect(executeWorkflow).not.toHaveBeenCalled();
+  });
+
 
   it('preserves editor code actions as host-only and respects chosen configuration', async () => {
     open('rebuild', 'android');
@@ -108,20 +140,20 @@ describe('Build project configuration', () => {
   });
 
   it('requires saving modified assets before dispatch and prevents failed-save builds', async () => {
-    const { saveDocument } = open('build', 'android', [dirty]);
+    const { saveDocument } = open('cook', 'android', [dirty]);
     saveDocument.mockResolvedValue(false);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not save Unsaved Material');
     expect(executeWorkflow).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
   });
 
   it('refuses stale SDK/project profiles and does not dispatch a stale plan', async () => {
-    const { onClose } = open();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    const { onClose } = open('cook');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
     cookOptions.mockResolvedValue({ ...options, authority: 'changed-sdk' });
-    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Project or SDK changed');
     expect(executeWorkflow).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
