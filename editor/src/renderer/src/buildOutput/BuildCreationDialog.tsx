@@ -110,6 +110,7 @@ export function BuildCreationDialog({
     : platforms.includes(platform)
       ? platform
       : (platforms[0] ?? hostPlatform);
+  const platformLabel = platformChoices.find((item) => item.value === selectedPlatform)?.label ?? selectedPlatform;
   const availableTargets = Array.from(
     new Set(authored.filter((item) => item.platform === selectedPlatform).map((item) => item.targetId)),
   );
@@ -273,7 +274,7 @@ export function BuildCreationDialog({
         </label>
         {selectedTarget !== EDITOR_MODULE && selectedProfile && (
           <p className="build-create-summary">
-            {platformChoices.find((item) => item.value === selectedPlatform)?.label ?? selectedPlatform} · {selectedTarget} · {selectedProfile}
+            {platformLabel} · {selectedTarget} · {selectedProfile}
             <br />
             {action === 'cook'
               ? 'Cooks saved content only; no compilation, packaging or deployment.'
