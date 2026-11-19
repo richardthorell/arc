@@ -44,6 +44,7 @@ export type BuildMonitorEvent =
   | (EventBase & { kind: 'run-started'; run: BuildMonitorRun })
   | (EventBase & { kind: 'stage-changed'; stage: BuildMonitorStage })
   | (EventBase & { kind: 'target-graph-changed'; revision: number })
+  | (EventBase & { kind: 'compile-trace-changed'; taskCount: number; source: BuildCompileTrace['source'] })
   | (EventBase & { kind: 'output'; text: string })
   | (EventBase & { kind: 'diagnostic'; diagnostic: ArcBuildDiagnostic })
   | (EventBase & { kind: 'run-completed'; run: BuildMonitorRun });
