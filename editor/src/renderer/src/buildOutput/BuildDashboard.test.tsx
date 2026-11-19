@@ -208,6 +208,10 @@ describe('Build Monitor actionable workflow', () => {
   it('filters build history and safely requests reveal for published workflow artifacts', async () => {
     const built: BuildMonitorRun = {
       ...current,
+      platform: 'android',
+      targetId: 'android-arm64-vulkan',
+      profile: 'android-debug',
+      configuration: 'Debug',
       state: 'succeeded',
       completedAt: '2026-11-16T10:02:00.000Z',
       durationMs: 120000,
@@ -243,6 +247,8 @@ describe('Build Monitor actionable workflow', () => {
     await waitFor(() =>
       expect(api.revealArtifact).toHaveBeenCalledWith('current-run', 'Build/Packages/Android/game.apk'),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry selected build' }));
+    await waitFor(() => expect(api.executeWorkflow).toHaveBeenCalledWith(built.request));
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter build status' }), { target: { value: 'failed' } });
     expect(screen.getByRole('button', { name: /cook · Debug/ })).toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter build platform' }), { target: { value: 'android' } });
