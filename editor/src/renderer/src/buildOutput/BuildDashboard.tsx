@@ -182,7 +182,8 @@ export function BuildDashboard({
         event.kind === 'run-started' ||
         event.kind === 'stage-changed' ||
         event.kind === 'run-completed' ||
-        event.kind === 'target-graph-changed'
+        event.kind === 'target-graph-changed' ||
+        event.kind === 'compile-trace-changed'
       ) {
         scheduleRefresh();
       }
