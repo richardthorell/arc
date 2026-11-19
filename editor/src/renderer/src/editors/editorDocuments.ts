@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
+import { deactivateWorkspaceView } from '../app/workspaceTabs';
 import type { EditorDocument, EditorDocumentKind } from './editorTypes';
 
 export type EditorDocumentsState = {
@@ -104,14 +105,19 @@ export const getEditorDocumentsSnapshot = () => sharedState;
 export const getActiveEditorDocument = () =>
   sharedState.documents.find((entry) => entry.id === sharedState.activeDocumentId) ?? null;
 
-export const openEditorDocumentInStore = (document: EditorDocument, allowMultiple = true) =>
+export const openEditorDocumentInStore = (document: EditorDocument, allowMultiple = true) => {
   publish(openEditorDocument(sharedState, document, allowMultiple));
+  deactivateWorkspaceView();
+};
 
 export const syncSingletonEditorDocumentInStore = (kind: EditorDocumentKind, document: EditorDocument | null) =>
   publish(syncSingletonEditorDocument(sharedState, kind, document));
 
-export const activateEditorDocumentInStore = (documentId: string) =>
+export const activateEditorDocumentInStore = (documentId: string) => {
+  if (!sharedState.documents.some((document) => document.id === documentId)) return;
   publish(activateEditorDocument(sharedState, documentId));
+  deactivateWorkspaceView();
+};
 
 export const closeEditorDocumentInStore = (documentId: string) => publish(closeEditorDocument(sharedState, documentId));
 
