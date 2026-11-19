@@ -226,6 +226,38 @@ describe('Build Monitor BM3', () => {
     expect(screen.queryByText('unrelated compiler output')).not.toBeInTheDocument();
   });
 
+  it('refreshes measured live tasks when the compile-trace event is published', async () => {
+    let currentMonitor = monitor;
+    const monitorSnapshot = vi.fn().mockImplementation(async () => currentMonitor);
+    const { handlers } = mockApi({ monitorSnapshot });
+    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    await screen.findByText('build log for current-run');
+    expect(screen.queryByRole('region', { name: 'Compilation task timeline' })).not.toBeInTheDocument();
+
+    const traced: BuildMonitorRun = {
+      ...current,
+      source: 'command',
+      compileTrace: {
+        source: 'ninja-log',
+        clock: 'ninja-invocation',
+        truncated: false,
+        tasks: [{ output: 'CMakeFiles/game.dir/live.cpp.o', startMs: 0, endMs: 80, durationMs: 80 }],
+      },
+    };
+    currentMonitor = { ...monitor, revision: monitor.revision + 1, runs: [previous, traced] };
+    handlers[0]({
+      kind: 'compile-trace-changed',
+      runId: current.id,
+      timestamp: current.startedAt,
+      sequence: 12,
+      source: 'ninja-log',
+      taskCount: 1,
+    });
+    await waitFor(() => expect(monitorSnapshot).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('1 measured · Ninja · live')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Inspect compile task: CMakeFiles/game.dir/live.cpp.o' })).toBeInTheDocument();
+  });
+
   it('reports a storage error without crashing and shows an empty state', async () => {
     mockApi({
       monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, runs: [], activeRunId: null }),
