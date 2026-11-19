@@ -16,6 +16,12 @@
   --arc-toolbar-height: 0px;
 }
 
+/* Only the Builds tool view gets a native editor toolbar; other utility views
+   still reserve a zero-height toolbar slot. */
+.workbench-shell.is-builds-view {
+  --arc-toolbar-height: 38px;
+}
+
 .workspace-view-session {
   grid-area: 1 / 1;
   position: relative;
