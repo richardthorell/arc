@@ -58,7 +58,12 @@ function Harness() {
           else closeDocument(id);
         }}
       />
-      <WorkspaceToolbarHost document={activeDocument} activeView={activeView} registry={registry} buildsToolbar={<span>Build actions</span>} />
+      <WorkspaceToolbarHost
+        document={activeDocument}
+        activeView={activeView}
+        registry={registry}
+        buildsToolbar={<span>Build actions</span>}
+      />
     </>
   );
 }
