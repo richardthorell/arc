@@ -174,9 +174,13 @@ export function BuildCreationDialog({
 
       // IPC dispatches into the main-process service. Do not await the entire
       // build in a dialog: closing it must not terminate or pause execution.
+      const executeCodeOperation = () => {
+        if (action === 'cook') throw new Error('Cooking requires an authored content target');
+        return window.arc.build.execute({ action, configuration: selectedProfile });
+      };
       const pending =
         selectedTarget === EDITOR_MODULE
-          ? window.arc.build.execute({ action, configuration: selectedProfile })
+          ? executeCodeOperation()
           : window.arc.build.executeWorkflow(
               {
                 action: action === 'cook' ? 'cook' : 'build',
