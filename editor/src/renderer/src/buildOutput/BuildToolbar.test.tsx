@@ -45,6 +45,23 @@ function setup(snapshot: ArcBuildSnapshot | null = idle, active: WorkflowExecuti
 }
 
 describe('Builds-only action toolbar', () => {
+  it('uses shared toolbar regions and positions Build/Stop on the left', () => {
+    const { onCreate, rerender } = setup();
+    const toolbar = screen.getByRole('toolbar', { name: 'Builds toolbar' });
+    expect(toolbar).toHaveClass('main-toolbar', 'ui-editor-toolbar', 'builds-editor-toolbar');
+    expect(toolbar.querySelectorAll('[data-toolbar-region]')).toHaveLength(3);
+    expect(toolbar.querySelector('[data-toolbar-region="left"]')).toContainElement(
+      screen.getByRole('button', { name: 'Create build' }),
+    );
+
+    rerender(<BuildToolbar snapshot={idle} workflow={workflow} onCreate={onCreate} launchError="Build failed" />);
+    expect(toolbar.querySelector('[data-toolbar-region="left"]')).toContainElement(
+      screen.getByRole('button', { name: 'Stop' }),
+    );
+    expect(toolbar.querySelector('[data-toolbar-region="center"]')).toContainElement(screen.getByRole('status'));
+    expect(toolbar.querySelector('[data-toolbar-region="right"]')).toContainElement(screen.getByRole('alert'));
+  });
+
   it('opens Build... from its primary button and distinct operation dialogs from dropdown', () => {
     const { onCreate } = setup();
     fireEvent.click(screen.getByRole('button', { name: 'Create build' }));
