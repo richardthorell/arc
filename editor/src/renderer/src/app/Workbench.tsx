@@ -1984,7 +1984,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           else closeDocument(tabId);
         }}
       />
-      {!activeView && <EditorToolbarHost document={activeDocument} registry={editorRegistry} />}
+      {/* Keep the toolbar DOM slot mounted even for workspace views.
+          Its grid track is zero-height for tools, but removing the element
+          shifts the workspace and status bar into the wrong rows. */}
+      <EditorToolbarHost document={activeView ? null : activeDocument} registry={editorRegistry} />
       <div className="play-session-host">
         {showDetachedPlayBar && (
           <PlaySessionBar
