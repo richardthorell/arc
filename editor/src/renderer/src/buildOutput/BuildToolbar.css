@@ -16,10 +16,10 @@
 .builds-editor-toolbar .builds-toolbar-action-slot {
   display: inline-flex;
   align-items: center;
-  width: 132px;
-  min-width: 132px;
+  width: 120px;
+  min-width: 120px;
   height: var(--arc-control-height);
-  flex: 0 0 132px;
+  flex: 0 0 120px;
 }
 
 .builds-editor-toolbar .builds-toolbar-action-slot > .ui-split-button,
@@ -72,11 +72,3 @@
   font-size: var(--arc-text-sm);
 }
 
-.builds-toolbar-error {
-  min-width: 0;
-  max-width: 100%;
-  color: var(--arc-color-danger);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
