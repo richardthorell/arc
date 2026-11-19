@@ -44,6 +44,11 @@
   color: var(--arc-color-success);
 }
 
+.build-activity-trigger.is-interrupted,
+.build-activity-result.is-interrupted {
+  color: #e5b878;
+}
+
 .build-activity-trigger.is-running,
 .build-activity-result.is-running {
   color: var(--arc-color-accent-hover);
