@@ -18,7 +18,6 @@ import {
   FolderOpen,
   Copy,
   PackageCheck,
-  Hammer,
 } from 'lucide-react';
 
 import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/buildTypes';
