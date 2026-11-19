@@ -389,10 +389,11 @@ describe('BuildMonitorService BM1 event stream', () => {
     };
     monitor.observeCommand(command({ compileTrace: second }), 'project-a');
     monitor.observeCommand(command({ compileTrace: second }), 'project-a');
-    monitor.observeCommand(
-      command({ compileTrace: { ...second, tasks: [{ ...second.tasks[0], sourceFile: 'Source/main.cpp' }, second.tasks[1]] } }),
-      'project-a',
-    );
+    const attributed = {
+      ...second,
+      tasks: [{ ...second.tasks[0], sourceFile: 'Source/main.cpp' }, second.tasks[1]],
+    };
+    monitor.observeCommand(command({ compileTrace: attributed }), 'project-a');
     const changes = monitor.snapshot().events.filter((event) => event.kind === 'compile-trace-changed');
     expect(changes).toMatchObject([
       { kind: 'compile-trace-changed', runId: 'command-001', taskCount: 1 },
