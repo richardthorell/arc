@@ -1159,7 +1159,6 @@
   margin: 9px 0 0;
 }
 
-
 /* BM8: failure-first Builds workspace — important actions precede optional telemetry. */
 .build-monitor-status.is-interrupted {
   color: #e5b878;

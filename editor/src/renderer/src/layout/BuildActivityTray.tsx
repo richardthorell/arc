@@ -82,7 +82,15 @@ export function BuildActivityTray({ projectKey, onOpenBuilds }: BuildActivityTra
   const recentRun = activeRun ?? monitor?.runs.at(-1) ?? null;
   const state = activeRun?.state ?? recentRun?.state ?? 'idle';
   const Icon =
-    state === 'running' ? LoaderCircle : state === 'failed' ? XCircle : state === 'succeeded' ? CheckCircle2 : state === 'interrupted' ? CirclePause : Activity;
+    state === 'running'
+      ? LoaderCircle
+      : state === 'failed'
+        ? XCircle
+        : state === 'succeeded'
+          ? CheckCircle2
+          : state === 'interrupted'
+            ? CirclePause
+            : Activity;
   const runningStage = activeRun?.stages.find((stage) => stage.state === 'running')?.name;
   const label =
     state === 'running'

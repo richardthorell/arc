@@ -51,7 +51,8 @@ export const filterBuildRuns = (
     if (status !== 'all' && buildDisplayState(run) !== status) return false;
     if (platform !== 'all' && (run.platform ?? 'Project') !== platform) return false;
     if (!term) return true;
-    return [run.action, run.configuration, run.profile, run.targetId, run.platform, run.error, run.id]
-      .some((value) => value?.toLowerCase().includes(term));
+    return [run.action, run.configuration, run.profile, run.targetId, run.platform, run.error, run.id].some((value) =>
+      value?.toLowerCase().includes(term),
+    );
   });
 };

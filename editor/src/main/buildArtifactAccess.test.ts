@@ -16,14 +16,16 @@ const fixture = () => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, 'apk');
   fs.writeFileSync(manifest, '{}');
-  const artifacts: WorkflowArtifact[] = [{
-    kind: 'package',
-    path: 'Build/Packages/Game.apk',
-    manifestPath: 'Build/Packages/arc-distribution.json',
-    buildId: 'run-1',
-    targetId: 'android-arm64-vulkan',
-    profile: 'android-debug',
-  }];
+  const artifacts: WorkflowArtifact[] = [
+    {
+      kind: 'package',
+      path: 'Build/Packages/Game.apk',
+      manifestPath: 'Build/Packages/arc-distribution.json',
+      buildId: 'run-1',
+      targetId: 'android-arm64-vulkan',
+      profile: 'android-debug',
+    },
+  ];
   return { root, file, manifest, artifacts };
 };
 
@@ -45,12 +47,12 @@ describe('Build artifact reveal authorization', () => {
   it('rejects traversal and paths that leave the active project', () => {
     const { root, artifacts } = fixture();
     const parent = path.dirname(root);
-    expect(() =>
-      resolveBuildArtifactPath(root, [{ ...artifacts[0], path: '../other.txt' }], '../other.txt'),
-    ).toThrow('escapes the active project');
-    expect(() =>
-      resolveBuildArtifactPath(root, [{ ...artifacts[0], path: parent }], parent),
-    ).toThrow('escapes the active project');
+    expect(() => resolveBuildArtifactPath(root, [{ ...artifacts[0], path: '../other.txt' }], '../other.txt')).toThrow(
+      'escapes the active project',
+    );
+    expect(() => resolveBuildArtifactPath(root, [{ ...artifacts[0], path: parent }], parent)).toThrow(
+      'escapes the active project',
+    );
   });
 
   it('rejects a recorded symlink that resolves outside the project', () => {
@@ -62,7 +64,11 @@ describe('Build artifact reveal authorization', () => {
     const link = path.join(root, 'Build', 'Packages', 'linked.apk');
     fs.symlinkSync(path.join(outside, 'other.apk'), link);
     expect(() =>
-      resolveBuildArtifactPath(root, [{ ...artifacts[0], path: 'Build/Packages/linked.apk' }], 'Build/Packages/linked.apk'),
+      resolveBuildArtifactPath(
+        root,
+        [{ ...artifacts[0], path: 'Build/Packages/linked.apk' }],
+        'Build/Packages/linked.apk',
+      ),
     ).toThrow('resolves outside the active project');
   });
 });

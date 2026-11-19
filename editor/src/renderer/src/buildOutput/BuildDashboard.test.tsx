@@ -165,9 +165,7 @@ describe('Build Monitor actionable workflow', () => {
     );
     expect(screen.getByText('No compiler diagnostics recorded')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry selected build' }));
-    await waitFor(() =>
-      expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'RelWithDebInfo' }),
-    );
+    await waitFor(() => expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'RelWithDebInfo' }));
     expect(screen.getByRole('button', { name: 'View error output' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Target dependency graph' })).not.toBeInTheDocument();
   });
@@ -178,15 +176,23 @@ describe('Build Monitor actionable workflow', () => {
       state: 'succeeded',
       completedAt: '2026-11-16T10:02:00.000Z',
       durationMs: 120000,
-      artifacts: [{
-        kind: 'package',
-        path: 'Build/Packages/Android/game.apk',
-        manifestPath: 'Build/Packages/Android/distribution.json',
-        buildId: 'current-run',
-        targetId: 'android-arm64-vulkan',
+      artifacts: [
+        {
+          kind: 'package',
+          path: 'Build/Packages/Android/game.apk',
+          manifestPath: 'Build/Packages/Android/distribution.json',
+          buildId: 'current-run',
+          targetId: 'android-arm64-vulkan',
+          profile: 'android-debug',
+        },
+      ],
+      request: {
+        action: 'build',
         profile: 'android-debug',
-      }],
-      request: { action: 'build', profile: 'android-debug', targetId: 'android-arm64-vulkan', destination: 'none', sessionId: '' },
+        targetId: 'android-arm64-vulkan',
+        destination: 'none',
+        sessionId: '',
+      },
     };
     const { api } = mockApi({
       monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [built] }),
@@ -199,7 +205,9 @@ describe('Build Monitor actionable workflow', () => {
       'Build/Packages/Android/game.apk',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Reveal package artifact' }));
-    await waitFor(() => expect(api.revealArtifact).toHaveBeenCalledWith('current-run', 'Build/Packages/Android/game.apk'));
+    await waitFor(() =>
+      expect(api.revealArtifact).toHaveBeenCalledWith('current-run', 'Build/Packages/Android/game.apk'),
+    );
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter build status' }), { target: { value: 'failed' } });
     expect(screen.getByRole('button', { name: /cook · Debug/ })).toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter build platform' }), { target: { value: 'android' } });

@@ -22,9 +22,7 @@ export function resolveBuildArtifactPath(
     throw new Error('Artifact does not belong to the selected build');
 
   const root = fs.realpathSync(projectRoot);
-  const candidate = path.isAbsolute(requestedPath)
-    ? path.normalize(requestedPath)
-    : path.resolve(root, requestedPath);
+  const candidate = path.isAbsolute(requestedPath) ? path.normalize(requestedPath) : path.resolve(root, requestedPath);
   if (!within(root, candidate)) throw new Error('Artifact path escapes the active project');
 
   const real = fs.realpathSync(candidate);

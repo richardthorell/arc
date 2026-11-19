@@ -424,7 +424,9 @@ export function BuildDashboard({
         <aside className="build-monitor-sidebar" aria-label="Build history">
           <div className="build-monitor-sidebar-title">
             <strong>Build history</strong>
-            <span>{matchingRuns.length} / {history?.total ?? 0}</span>
+            <span>
+              {matchingRuns.length} / {history?.total ?? 0}
+            </span>
           </div>
           <div className="build-monitor-history-filters">
             <input
@@ -454,7 +456,9 @@ export function BuildDashboard({
               >
                 <option value="all">All platforms</option>
                 {platforms.map((platform) => (
-                  <option key={platform} value={platform}>{platform}</option>
+                  <option key={platform} value={platform}>
+                    {platform}
+                  </option>
                 ))}
               </select>
             </div>
@@ -505,7 +509,11 @@ export function BuildDashboard({
               ))}
             {!matchingRuns.length && (
               <p className="build-monitor-empty">
-                {loading ? 'Loading history…' : runs.length ? 'No builds match these filters.' : 'No recorded builds yet.'}
+                {loading
+                  ? 'Loading history…'
+                  : runs.length
+                    ? 'No builds match these filters.'
+                    : 'No recorded builds yet.'}
               </p>
             )}
           </div>
@@ -536,9 +544,16 @@ export function BuildDashboard({
                 <Status state={buildDisplayState(selected)} />
               </div>
               {failure && (
-                <section className={`build-monitor-problem is-${buildDisplayState(selected)}`} aria-label="Build result details">
+                <section
+                  className={`build-monitor-problem is-${buildDisplayState(selected)}`}
+                  aria-label="Build result details"
+                >
                   <div className="build-monitor-problem-heading">
-                    {buildDisplayState(selected) === 'interrupted' ? <CirclePause size={18} /> : <AlertCircle size={18} />}
+                    {buildDisplayState(selected) === 'interrupted' ? (
+                      <CirclePause size={18} />
+                    ) : (
+                      <AlertCircle size={18} />
+                    )}
                     <strong>
                       {buildDisplayState(selected) === 'interrupted'
                         ? 'Build interrupted'
@@ -567,11 +582,7 @@ export function BuildDashboard({
                       <Copy size={14} /> Copy details
                     </button>
                     {canRetryBuild(selected) && (
-                      <button
-                        type="button"
-                        disabled={anyActiveRun || retrying}
-                        onClick={() => void retrySelected()}
-                      >
+                      <button type="button" disabled={anyActiveRun || retrying} onClick={() => void retrySelected()}>
                         <RotateCcw size={14} /> Retry
                       </button>
                     )}
@@ -608,19 +619,22 @@ export function BuildDashboard({
                   <span>Elapsed time · actual stage timing, not completion estimates</span>
                 </div>
                 <BuildStageTimeline run={selected} nowMs={elapsed} />
-
               </section>
 
               {Boolean(selected.artifacts?.length) && (
                 <section className="build-monitor-artifacts" aria-label="Build artifacts">
                   <div className="build-monitor-section-title">
-                    <h4><PackageCheck size={15} /> Build artifacts</h4>
+                    <h4>
+                      <PackageCheck size={15} /> Build artifacts
+                    </h4>
                     <span>{selected.artifacts?.length} published</span>
                   </div>
                   {selected.artifacts?.map((artifact, index) => (
                     <div className="build-monitor-artifact" key={`${artifact.kind}-${artifact.path}-${index}`}>
                       <div>
-                        <strong>{artifact.kind} · {artifact.targetId}</strong>
+                        <strong>
+                          {artifact.kind} · {artifact.targetId}
+                        </strong>
                         <code title={artifact.path}>{artifact.path}</code>
                       </div>
                       <button
@@ -754,9 +768,7 @@ export function BuildDashboard({
               {(selected.targetGraph || selected.compileTrace) && (
                 <details className="build-monitor-advanced">
                   <summary>Target dependencies and compile performance</summary>
-                  {selected.targetGraph && (
-                    <BuildTargetGraphPanel key={selected.id} run={selected} nowMs={elapsed} />
-                  )}
+                  {selected.targetGraph && <BuildTargetGraphPanel key={selected.id} run={selected} nowMs={elapsed} />}
                   {selected.compileTrace && (
                     <BuildCompileTasksPanel
                       key={selected.id}
