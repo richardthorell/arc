@@ -433,7 +433,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [cookPlatform, setCookPlatform] = useState<string | null>(null);
   const [cookSnapshot, setCookSnapshot] = useState<WorkflowExecutionSnapshot | null>(null);
   const [buildDialogAction, setBuildDialogAction] = useState<BuildDialogAction | null>(null);
-  const [buildLaunchError, setBuildLaunchError] = useState('');
   useEffect(() => {
     let active = true;
     let eventReceived = false;
@@ -1973,10 +1972,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           documents={editorDocuments}
           saveDocument={saveBuildDocument}
           onClose={() => setBuildDialogAction(null)}
-          onError={(message) => {
-            setBuildLaunchError(message);
-            setLastCommand(message);
-          }}
+          onError={setLastCommand}
         />
       )}
       {cookPlatform && (
@@ -2021,11 +2017,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
             <BuildToolbar
               snapshot={buildSnapshot}
               workflow={cookSnapshot}
-              launchError={buildLaunchError}
-              onCreate={(action) => {
-                setBuildLaunchError('');
-                setBuildDialogAction(action);
-              }}
+              onCreate={setBuildDialogAction}
+              onError={setLastCommand}
             />
           ) : null
         }
