@@ -247,7 +247,11 @@ describe('MainToolbar runtime controls', () => {
   it('defaults to the editor viewport, remembers local selections, and never launches remotely via Play', () => {
     const onCommand = vi.fn();
     const { rerender } = render(
-      <MainToolbar configuredTargetPlatforms={['windows', 'android']} onCommand={onCommand} targetPlatform="windows" />,
+      <MainToolbar
+        configuredTargetPlatforms={['windows', 'android']}
+        onCommand={onCommand}
+        targetPlatform="windows"
+      />,
     );
     const play = screen.getByRole('button', { name: 'Play' });
     expect(play).toBeEnabled();
@@ -274,7 +278,13 @@ describe('MainToolbar runtime controls', () => {
     expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Pixel 9');
     expect(play).toBeDisabled();
 
-    rerender(<MainToolbar configuredTargetPlatforms={['windows', 'android']} onCommand={onCommand} targetPlatform="windows" />);
+    rerender(
+      <MainToolbar
+        configuredTargetPlatforms={['windows', 'android']}
+        onCommand={onCommand}
+        targetPlatform="windows"
+      />,
+    );
     expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('This Computer (Standalone)');
     fireEvent.click(screen.getByRole('button', { name: 'Play target' }));
     fireEvent.click(screen.getByRole('option', { name: 'Editor Viewport' }));
@@ -307,5 +317,4 @@ describe('MainToolbar runtime controls', () => {
     rerender(<MainToolbar onCommand={vi.fn()} runtimeState="stopped" targetPlatform="windows" />);
     expect(screen.getByRole('button', { name: 'Play target' })).toBeEnabled();
   });
-
 });
