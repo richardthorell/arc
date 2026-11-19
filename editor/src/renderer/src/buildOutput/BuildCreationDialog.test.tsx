@@ -98,7 +98,8 @@ describe('Build project configuration', () => {
     );
     const { onClose } = open('build', 'windows');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
-    expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('windows');
+    expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('Windows');
+    expect(screen.getByRole('button', { name: 'Build platform' }).querySelector('[data-platform-icon="windows"]')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Build target' })).toHaveTextContent('windows-x64-vulkan');
     expect(screen.getByRole('button', { name: 'Build profile' })).toHaveTextContent('Windows Shipping');
     expect(screen.queryByRole('button', { name: /device/i })).not.toBeInTheDocument();
@@ -118,6 +119,49 @@ describe('Build project configuration', () => {
     );
     expect(onClose).toHaveBeenCalledOnce();
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('uses friendly platform names and the main toolbar brand icons', async () => {
+    cookOptions.mockResolvedValueOnce({
+      ...options,
+      profiles: [
+        ...options.profiles,
+        { id: 'ios-debug', platform: 'ios', targetId: 'ios-arm64-metal', label: 'iOS Debug' },
+      ],
+    });
+    open('cook');
+    const platform = screen.getByRole('button', { name: 'Build platform' });
+    await waitFor(() => expect(platform).toHaveTextContent('Android'));
+    expect(platform.querySelector('[data-platform-icon="android"]')).toBeInTheDocument();
+
+    fireEvent.click(platform);
+    const android = screen.getByRole('option', { name: 'Android' });
+    const windows = screen.getByRole('option', { name: 'Windows' });
+    const ios = screen.getByRole('option', { name: 'iOS' });
+    expect(android.querySelector('[data-platform-icon="android"]')).toBeInTheDocument();
+    expect(windows.querySelector('[data-platform-icon="windows"]')).toBeInTheDocument();
+    expect(ios.querySelector('[data-platform-icon="ios"]')).toBeInTheDocument();
+
+    fireEvent.click(ios);
+    expect(platform).toHaveTextContent('iOS');
+    expect(platform.querySelector('[data-platform-icon="ios"]')).toBeInTheDocument();
+  });
+
+  it('does not show unnecessary intro or loading copy while profiles resolve', async () => {
+    let resolveProfiles!: (result: CookWorkflowOptions) => void;
+    cookOptions.mockImplementationOnce(
+      () =>
+        new Promise<CookWorkflowOptions>((resolve) => {
+          resolveProfiles = resolve;
+        }),
+    );
+    open('cook');
+    expect(screen.queryByText(/Choose what to build/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Loading available project profiles/i)).not.toBeInTheDocument();
+
+    await act(async () => resolveProfiles(options));
+    expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('Android');
+    expect(screen.queryByText(/Loading available project profiles/i)).not.toBeInTheDocument();
   });
 
   it('shows why an Android build is unavailable without blocking Android cooking', async () => {
