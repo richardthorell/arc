@@ -40,8 +40,9 @@ function setup(snapshot: ArcBuildSnapshot | null = idle, active: WorkflowExecuti
     value: { build: { execute, cancelWorkflow } },
   });
   const onCreate = vi.fn();
-  const result = render(<BuildToolbar snapshot={snapshot} workflow={active} onCreate={onCreate} />);
-  return { onCreate, ...result };
+  const onError = vi.fn();
+  const result = render(<BuildToolbar snapshot={snapshot} workflow={active} onCreate={onCreate} onError={onError} />);
+  return { onCreate, onError, ...result };
 }
 
 describe('Builds-only action toolbar', () => {
@@ -54,12 +55,13 @@ describe('Builds-only action toolbar', () => {
       screen.getByRole('button', { name: 'Create build' }),
     );
 
-    rerender(<BuildToolbar snapshot={idle} workflow={workflow} onCreate={onCreate} launchError="Build failed" />);
+    rerender(<BuildToolbar snapshot={idle} workflow={workflow} onCreate={onCreate} />);
     expect(toolbar.querySelector('[data-toolbar-region="left"]')).toContainElement(
       screen.getByRole('button', { name: 'Stop' }),
     );
-    expect(toolbar.querySelector('[data-toolbar-region="center"]')).toContainElement(screen.getByRole('status'));
-    expect(toolbar.querySelector('[data-toolbar-region="right"]')).toContainElement(screen.getByRole('alert'));
+    expect(toolbar.querySelector('[data-toolbar-region="center"]')).toBeEmptyDOMElement();
+    expect(toolbar.querySelector('[data-toolbar-region="right"]')).toContainElement(screen.getByRole('status'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('keeps one action-width slot when Build changes to Stop and back', () => {
@@ -101,10 +103,12 @@ describe('Builds-only action toolbar', () => {
     expect(screen.getByRole('button', { name: 'Create build' })).toBeInTheDocument();
   });
 
-  it('displays an asynchronous Build launch error after the configuration dialog closes', () => {
-    const { rerender, onCreate } = setup();
-    rerender(<BuildToolbar snapshot={idle} workflow={null} onCreate={onCreate} launchError="SDK changed" />);
-    expect(screen.getByRole('alert')).toHaveTextContent('SDK changed');
+  it('reports cancellation errors through the workbench callback without showing toolbar error text', async () => {
+    cancelWorkflow.mockRejectedValueOnce(new Error('Cancel failed'));
+    const { onError } = setup(idle, workflow);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith('Cancel failed'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('cancels the legacy command build only when it is actually active', async () => {
