@@ -18,6 +18,7 @@ import {
   FolderOpen,
   Copy,
   PackageCheck,
+  Hammer,
 } from 'lucide-react';
 
 import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/buildTypes';
@@ -152,6 +153,7 @@ export function BuildDashboard({
   const detailRef = useRef<DetailView | null>(null);
   const detailRequest = useRef(0);
   const reading = useRef(false);
+  const followNextRun = useRef(false);
 
   const refresh = useCallback(async () => {
     if (!api) {
@@ -200,6 +202,12 @@ export function BuildDashboard({
       }, 150);
     };
     const unsubscribe = api?.onMonitorEvent((event) => {
+      // Only an explicit Build or Retry action may change the user's current
+      // selection. Ordinary background runs never steal focus from history.
+      if (event.kind === 'run-started' && followNextRun.current) {
+        followNextRun.current = false;
+        setSelectedRunId(event.runId);
+      }
       if (
         event.kind === 'run-started' ||
         event.kind === 'stage-changed' ||
@@ -333,6 +341,7 @@ export function BuildDashboard({
     if (!api || !selected || anyActiveRun || !canRetryBuild(selected) || retrying) return;
     setRetrying(true);
     setError('');
+    followNextRun.current = true;
     try {
       if (selected.source === 'workflow') {
         if (!selected.request) throw new Error('This older workflow has no saved retry settings');
@@ -344,8 +353,26 @@ export function BuildDashboard({
       }
       await refresh();
     } catch (reason) {
+      followNextRun.current = false;
       await refresh();
       setError(`Retry failed: ${String(reason)}`);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const startCodeBuild = async () => {
+    if (!api || anyActiveRun || retrying) return;
+    setRetrying(true);
+    setError('');
+    followNextRun.current = true;
+    try {
+      await api.execute({ action: 'build', configuration: snapshot?.configuration });
+      await refresh();
+    } catch (reason) {
+      followNextRun.current = false;
+      await refresh();
+      setError(`Build failed: ${String(reason)}`);
     } finally {
       setRetrying(false);
     }
@@ -388,6 +415,15 @@ export function BuildDashboard({
           </div>
         </div>
         <div className="build-monitor-actions">
+          <button
+            type="button"
+            onClick={() => void startCodeBuild()}
+            disabled={anyActiveRun || retrying}
+            aria-label="Start code build"
+            title="Build the current project code"
+          >
+            <Hammer size={14} /> Build code
+          </button>
           {selected && canRetryBuild(selected) && (
             <button
               type="button"
