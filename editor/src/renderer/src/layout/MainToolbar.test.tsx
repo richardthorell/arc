@@ -41,10 +41,21 @@ describe('MainToolbar runtime controls', () => {
       ),
     );
     expect(screen.getByRole('option', { name: /Android/ })).toBeEnabled();
-    expect(screen.getByRole('option', { name: /Windows/ })).toBeDisabled();
+    expect(screen.getByRole('option', { name: /Windows/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('option', { name: /Android/ }));
     expect(onTargetPlatformChange).toHaveBeenCalledWith('android');
   });
+  it('always provides local Editor Viewport for projects configured only for Android', () => {
+    render(<MainToolbar configuredTargetPlatforms={['android']} onCommand={vi.fn()} targetPlatform="windows" />);
+    expect(screen.getByRole('button', { name: 'Play platform' })).toHaveTextContent('Windows');
+    expect(screen.getByRole('button', { name: 'Play target' })).toHaveTextContent('Editor Viewport');
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play platform' }));
+    expect(screen.getByRole('option', { name: /Windows/ })).toBeEnabled();
+    expect(screen.getByRole('option', { name: /Android/ })).toBeInTheDocument();
+  });
+
   it('renders host-authoritative playback state and enables only valid controls', () => {
     const { rerender } = render(<MainToolbar onCommand={vi.fn()} runtimeState="stopped" timeScale={2} />);
 
