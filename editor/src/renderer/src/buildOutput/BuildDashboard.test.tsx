@@ -141,6 +141,33 @@ describe('Build Monitor workspace presentation', () => {
   });
 });
 
+describe('Build Monitor command controls', () => {
+  it('allows starting a code build with the project-selected configuration when idle', async () => {
+    const { api } = mockApi({
+      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [previous] }),
+      history: vi.fn().mockResolvedValue({ ...page, runs: [previous] }),
+    });
+    render(
+      <BuildDashboard
+        presentation="workspace"
+        snapshot={{ configuration: 'Debug' } as never}
+        onClose={vi.fn()}
+        onOpenDiagnostic={vi.fn()}
+      />,
+    );
+    await screen.findByText('build log for older-run');
+    fireEvent.click(screen.getByRole('button', { name: 'Start code build' }));
+    await waitFor(() => expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'Debug' }));
+  });
+
+  it('disables new code builds while a workflow is already running', async () => {
+    mockApi();
+    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    await screen.findByText('build log for current-run');
+    expect(screen.getByRole('button', { name: 'Start code build' })).toBeDisabled();
+  });
+});
+
 describe('Build Monitor actionable workflow', () => {
   it('shows a failed command reason with zero compiler diagnostics and retries the recorded configuration', async () => {
     const failed: BuildMonitorRun = {
