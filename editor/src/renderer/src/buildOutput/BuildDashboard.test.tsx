@@ -255,7 +255,9 @@ describe('Build Monitor BM3', () => {
     });
     await waitFor(() => expect(monitorSnapshot).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('1 measured · Ninja · live')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Inspect compile task: CMakeFiles/game.dir/live.cpp.o' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Inspect compile task: CMakeFiles/game.dir/live.cpp.o' }),
+    ).toBeInTheDocument();
   });
 
   it('reports a storage error without crashing and shows an empty state', async () => {
