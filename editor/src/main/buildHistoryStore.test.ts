@@ -115,11 +115,40 @@ describe('BuildHistoryStore (BM2)', () => {
     const next = new BuildHistoryStore();
     next.activate(project);
     expect(next.list().runs[0]).toMatchObject({
-      state: 'failed',
-      error: 'Interrupted: editor closed before build completion',
-      stages: [{ state: 'failed' }],
+      state: 'interrupted',
+      error: 'Editor closed before the build completed',
+      stages: [{ state: 'interrupted' }],
     });
+    expect(next.list().runs[0].completedAt).toBeUndefined();
+    expect(next.list().runs[0].durationMs).toBeUndefined();
     expect(next.details('interrupted')?.logs.items[0]).toMatchObject({ text: 'work before crash' });
+  });
+
+  it('repairs old restart-time durations for already recorded interruptions', () => {
+    const project = createProject();
+    const initial = new BuildHistoryStore();
+    initial.activate(project);
+    const previouslyRecovered = run('legacy-interruption');
+    previouslyRecovered.state = 'failed';
+    previouslyRecovered.error = 'Interrupted: editor closed before build completion';
+    previouslyRecovered.completedAt = '2026-11-19T12:00:00.000Z';
+    previouslyRecovered.durationMs = 1401 * 60_000;
+    previouslyRecovered.stages[0].state = 'failed';
+    previouslyRecovered.stages[0].completedAt = previouslyRecovered.completedAt;
+    initial.saveRun(previouslyRecovered);
+
+    const reopened = new BuildHistoryStore();
+    reopened.activate(project);
+    const recovered = reopened.list().runs[0];
+    expect(recovered.state).toBe('interrupted');
+    expect(recovered.durationMs).toBeUndefined();
+    expect(recovered.completedAt).toBeUndefined();
+    expect(recovered.stages[0].state).toBe('interrupted');
+
+    // Reopening it again must not assign another fictitious duration.
+    const second = new BuildHistoryStore();
+    second.activate(project);
+    expect(second.list().runs[0].durationMs).toBeUndefined();
   });
 
   it('keeps project histories separate and rejects arbitrary filesystem reads', () => {
