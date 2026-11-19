@@ -174,7 +174,7 @@ describe('Build project configuration', () => {
   it('preserves editor code actions as host-only and respects chosen configuration', async () => {
     open('rebuild', 'android');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Rebuild' })).toBeEnabled());
-    expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('windows');
+    expect(screen.getByRole('button', { name: 'Build platform' })).toHaveTextContent('Windows');
     expect(screen.getByRole('button', { name: 'Build target' })).toHaveTextContent('Editor module');
     expect(screen.getByRole('button', { name: 'Build profile' })).toHaveTextContent('RelWithDebInfo');
     fireEvent.click(screen.getByRole('button', { name: 'Rebuild' }));
@@ -198,6 +198,18 @@ describe('Build project configuration', () => {
         options.authority,
       ),
     );
+  });
+
+  it('saves dirty documents automatically without a save checkbox before starting cooking', async () => {
+    const { saveDocument } = open('cook', 'android', [dirty]);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Save 1 modified document/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
+    await waitFor(() => expect(saveDocument).toHaveBeenCalledWith(dirty));
+    await waitFor(() => expect(executeWorkflow).toHaveBeenCalledOnce());
+    expect(saveDocument.mock.invocationCallOrder[0]).toBeLessThan(executeWorkflow.mock.invocationCallOrder[0]);
   });
 
   it('requires saving modified assets before dispatch and prevents failed-save builds', async () => {
