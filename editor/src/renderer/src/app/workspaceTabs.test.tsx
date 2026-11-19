@@ -15,6 +15,7 @@ import {
 } from '../editors/editorDocuments';
 import type { EditorDocument } from '../editors/editorTypes';
 import { WorkspaceTabs } from '../editors/WorkspaceTabs';
+import { WorkspaceToolbarHost } from '../editors/WorkspaceToolbarHost';
 import {
   closeWorkspaceView,
   openWorkspaceView,
@@ -43,19 +44,22 @@ const scene: EditorDocument = {
 };
 
 function Harness() {
-  const { documents, activeDocumentId, activateDocument, closeDocument } = useEditorDocuments();
-  const { tabs, activeTabId, activateTab } = useWorkspaceTabs(documents, activeDocumentId);
+  const { documents, activeDocumentId, activeDocument, activateDocument, closeDocument } = useEditorDocuments();
+  const { tabs, activeTabId, activeView, activateTab } = useWorkspaceTabs(documents, activeDocumentId);
   return (
-    <WorkspaceTabs
-      tabs={tabs}
-      activeTabId={activeTabId}
-      registry={registry}
-      onActivate={(id) => activateTab(id, activateDocument)}
-      onClose={(id) => {
-        if (id.startsWith('view:')) closeWorkspaceView(id);
-        else closeDocument(id);
-      }}
-    />
+    <>
+      <WorkspaceTabs
+        tabs={tabs}
+        activeTabId={activeTabId}
+        registry={registry}
+        onActivate={(id) => activateTab(id, activateDocument)}
+        onClose={(id) => {
+          if (id.startsWith('view:')) closeWorkspaceView(id);
+          else closeDocument(id);
+        }}
+      />
+      <WorkspaceToolbarHost document={activeDocument} activeView={activeView} registry={registry} />
+    </>
   );
 }
 
@@ -78,10 +82,14 @@ describe('generic workspace tab model', () => {
     const builds = screen.getByRole('tab', { name: 'Builds' });
     expect(builds).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: 'World' })).toHaveAttribute('aria-selected', 'false');
+    // Even though the Builds view has no asset toolbar, the workbench grid
+    // must retain its toolbar element or the status bar moves above content.
+    expect(document.querySelector('.editor-toolbar-host')).toHaveClass('editor-toolbar-host-empty');
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Builds' }));
     expect(screen.queryByRole('tab', { name: 'Builds' })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'World' })).toHaveAttribute('aria-selected', 'true');
+    expect(document.querySelector('.editor-toolbar-host')).toHaveAttribute('data-editor-kind', 'level');
     expect(getEditorDocumentsSnapshot().documents).toEqual([scene]);
   });
 
