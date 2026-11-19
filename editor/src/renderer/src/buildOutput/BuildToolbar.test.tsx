@@ -72,6 +72,12 @@ describe('Builds-only action toolbar', () => {
     expect(screen.getByRole('button', { name: 'Create build' })).toBeInTheDocument();
   });
 
+  it('displays an asynchronous Build launch error after the configuration dialog closes', () => {
+    const { rerender, onCreate } = setup();
+    rerender(<BuildToolbar snapshot={idle} workflow={null} onCreate={onCreate} launchError="SDK changed" />);
+    expect(screen.getByRole('alert')).toHaveTextContent('SDK changed');
+  });
+
   it('cancels the legacy command build only when it is actually active', async () => {
     setup({ ...idle, state: 'building' });
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
