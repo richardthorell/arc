@@ -484,14 +484,18 @@ export function MainToolbar({
       ? [
           {
             value: effectiveTargetDevice,
-            label: requestedTargetDevice && requestedTargetDevice !== '__choose__' ? 'Selected target unavailable' : 'Select a target',
+            label:
+              requestedTargetDevice && requestedTargetDevice !== '__choose__'
+                ? 'Selected target unavailable'
+                : 'Select a target',
             icon: <Smartphone size={14} />,
             disabled: true,
           },
         ]
       : []),
   ];
-  const playInEditor = effectiveTargetPlatform === hostPlatform && effectiveTargetDevice === EDITOR_VIEWPORT_TARGET_ID;
+  const playInEditor =
+    effectiveTargetPlatform === hostPlatform && effectiveTargetDevice === EDITOR_VIEWPORT_TARGET_ID;
   const playTargetUnavailableReason = playInEditor
     ? undefined
     : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
