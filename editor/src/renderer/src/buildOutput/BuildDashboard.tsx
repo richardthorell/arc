@@ -344,8 +344,8 @@ export function BuildDashboard({
       }
       await refresh();
     } catch (reason) {
-      setError(String(reason));
       await refresh();
+      setError(`Retry failed: ${String(reason)}`);
     } finally {
       setRetrying(false);
     }
