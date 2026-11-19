@@ -415,10 +415,7 @@ describe('BuildMonitorService BM1 event stream', () => {
 
   it('retains complete workflow retry inputs from the authoritative plan', () => {
     const monitor = new BuildMonitorService();
-    monitor.observeWorkflow(
-      workflow('running', [{ stage: 'validate', state: 'running' }]),
-      'project-a',
-    );
+    monitor.observeWorkflow(workflow('running', [{ stage: 'validate', state: 'running' }]), 'project-a');
     expect(monitor.snapshot().runs[0].request).toEqual({
       action: 'build',
       profile: 'windows-shipping',
@@ -435,17 +432,19 @@ describe('BuildMonitorService BM1 event stream', () => {
       command({
         state: 'failed',
         diagnostics: [],
-        history: [{
-          id: 1,
-          runId: 'command-001',
-          kind: 'build',
-          configuration: 'RelWithDebInfo',
-          startedAt: '2026-11-16T12:00:00.000Z',
-          durationMs: 2500,
-          result: 'failed',
-          warningCount: 0,
-          errorCount: 0,
-        }],
+        history: [
+          {
+            id: 1,
+            runId: 'command-001',
+            kind: 'build',
+            configuration: 'RelWithDebInfo',
+            startedAt: '2026-11-16T12:00:00.000Z',
+            durationMs: 2500,
+            result: 'failed',
+            warningCount: 0,
+            errorCount: 0,
+          },
+        ],
       }),
       'project-a',
     );
