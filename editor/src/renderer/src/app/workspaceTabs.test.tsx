@@ -70,6 +70,18 @@ afterEach(() => {
 });
 
 describe('generic workspace tab model', () => {
+  it('keeps a toolbar grid slot even when Builds is the only open view', () => {
+    const view = {
+      type: 'view' as const,
+      id: viewTabId('builds'),
+      viewId: 'builds',
+      title: 'Builds',
+      closeable: true,
+    };
+    const result = render(<WorkspaceToolbarHost document={null} activeView={view} registry={registry} />);
+    expect(result.container.firstElementChild).toHaveClass('editor-toolbar-host', 'editor-toolbar-host-empty');
+  });
+
   it('opens Builds once without closing or mutating the level asset tab', () => {
     openEditorDocumentInStore(scene, false);
     render(<Harness />);
