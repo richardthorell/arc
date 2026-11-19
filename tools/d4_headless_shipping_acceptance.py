@@ -15,6 +15,7 @@ import subprocess
 import sys
 
 from d3_shipping_acceptance import command
+from d4_headless_negative import run as run_negative
 from verify_relocated_package import SmokeFailure, smoke, verify_distribution
 
 
@@ -99,6 +100,10 @@ def run(args: argparse.Namespace) -> None:
     for label, distribution, zipped in (("directory", release, None), ("zip", None, archive)):
         smoke(distribution, zipped, args.timeout, [],
               artifacts / label, expected_output="Server stopped after 10 simulation ticks")
+
+    # D4.2: the real relocated server must reject corrupt/missing content,
+    # missing native dependencies, incompatible engine identity and bad flags.
+    run_negative(release, artifacts / "negative", args.timeout)
 
     shutil.copyfile(release / "arc-distribution.json", artifacts / "server-distribution.json")
     (artifacts / "server-result.json").write_text(json.dumps({
