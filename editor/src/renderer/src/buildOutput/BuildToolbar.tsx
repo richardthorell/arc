@@ -45,6 +45,7 @@ export function BuildToolbar({
   const [error, setError] = useState('');
   const busy = codeBusy(snapshot) || workflowBusy(workflow);
   const cancelling = stopping || workflow?.run?.state === 'cancelling';
+  const displayedError = error || launchError;
 
   useEffect(() => {
     if (!busy) setStopping(false);
@@ -103,9 +104,9 @@ export function BuildToolbar({
         </span>
       )}
       <span className="builds-toolbar-spacer" />
-      {error && (
+      {displayedError && (
         <span className="builds-toolbar-error" role="alert">
-          {error}
+          {displayedError}
         </span>
       )}
     </div>
