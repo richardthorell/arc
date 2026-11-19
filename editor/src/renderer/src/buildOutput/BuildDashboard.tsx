@@ -337,43 +337,25 @@ export function BuildDashboard({
   const failure = selected ? buildFailureReason(selected, firstError?.message, lastStderr) : null;
   const anyActiveRun = Boolean(activeId);
 
-  const retrySelected = async () => {
-    if (!api || !selected || anyActiveRun || !canRetryBuild(selected) || retrying) return;
+  const retrySelected = async (run: BuildMonitorRun) => {
+    if (!api || anyActiveRun || !canRetryBuild(run) || retrying) return;
     setRetrying(true);
     setError('');
     followNextRun.current = true;
     try {
-      if (selected.source === 'workflow') {
-        if (!selected.request) throw new Error('This older workflow has no saved retry settings');
-        await api.executeWorkflow(selected.request);
+      if (run.source === 'workflow') {
+        if (!run.request) throw new Error('This older workflow has no saved retry settings');
+        await api.executeWorkflow(run.request);
       } else {
-        const action = selected.action;
+        const action = run.action;
         if (action !== 'build' && action !== 'configure' && action !== 'clean') return;
-        await api.execute({ action, configuration: selected.configuration });
+        await api.execute({ action, configuration: run.configuration });
       }
       await refresh();
     } catch (reason) {
       followNextRun.current = false;
       await refresh();
       setError(`Retry failed: ${String(reason)}`);
-    } finally {
-      followNextRun.current = false;
-      setRetrying(false);
-    }
-  };
-
-  const startCodeBuild = async () => {
-    if (!api || anyActiveRun || retrying) return;
-    setRetrying(true);
-    setError('');
-    followNextRun.current = true;
-    try {
-      await api.execute({ action: 'build', configuration: snapshot?.configuration });
-      await refresh();
-    } catch (reason) {
-      followNextRun.current = false;
-      await refresh();
-      setError(`Build failed: ${String(reason)}`);
     } finally {
       followNextRun.current = false;
       setRetrying(false);
@@ -417,27 +399,17 @@ export function BuildDashboard({
           </div>
         </div>
         <div className="build-monitor-actions">
-          <button
-            type="button"
-            onClick={() => void startCodeBuild()}
-            disabled={anyActiveRun || retrying}
-            aria-label="Start code build"
-            title="Build the current project code"
-          >
-            <Hammer size={14} /> Build code
-          </button>
-          {selected && canRetryBuild(selected) && (
+          {presentation === 'dialog' && selected && canRetryBuild(selected) && (
             <button
               type="button"
-              onClick={() => void retrySelected()}
+              onClick={() => void retrySelected(selected)}
               aria-label="Retry selected build"
-              title="Retry this build with its recorded configuration"
               disabled={anyActiveRun || retrying}
             >
-              <RotateCcw size={15} /> {retrying ? 'Retrying…' : 'Retry'}
+              <RotateCcw size={15} /> Retry
             </button>
           )}
-          {active && (selected?.source === 'workflow' || onCancel) && (
+          {presentation === 'dialog' && active && (selected?.source === 'workflow' || onCancel) && (
             <button type="button" onClick={() => void cancelSelected()} className="build-monitor-cancel">
               <Ban size={14} /> Cancel build
             </button>
@@ -528,22 +500,31 @@ export function BuildDashboard({
             {matchingRuns
               .filter((run) => run.id !== activeId)
               .map((run) => (
-                <button
-                  key={run.id}
-                  type="button"
-                  className={`build-monitor-history-row${selectedRunId === run.id ? ' is-selected' : ''}`}
-                  aria-current={selectedRunId === run.id ? 'true' : undefined}
-                  onClick={() => setSelectedRunId(run.id)}
-                >
-                  <Status state={buildDisplayState(run)} />
-                  <strong>
-                    {run.action} · {run.configuration}
-                  </strong>
-                  <span>{time(run.startedAt)}</span>
-                  <span>
-                    {duration(buildDuration(run, elapsed))} · {run.platform ?? run.source}
-                  </span>
-                </button>
+                <div className="build-monitor-history-entry" key={run.id}>
+                  <button
+                    type="button"
+                    className={`build-monitor-history-row${selectedRunId === run.id ? ' is-selected' : ''}`}
+                    aria-current={selectedRunId === run.id ? 'true' : undefined}
+                    onClick={() => setSelectedRunId(run.id)}
+                  >
+                    <Status state={buildDisplayState(run)} />
+                    <strong>{run.action} · {run.configuration}</strong>
+                    <span>{time(run.startedAt)}</span>
+                    <span>{duration(buildDuration(run, elapsed))} · {run.platform ?? run.source}</span>
+                  </button>
+                  {canRetryBuild(run) && (
+                    <button
+                      type="button"
+                      className="build-monitor-history-retry"
+                      aria-label={`Retry build ${run.id}`}
+                      title="Retry with this build's recorded settings"
+                      disabled={anyActiveRun || retrying}
+                      onClick={() => void retrySelected(run)}
+                    >
+                      <RotateCcw size={13} /> Retry
+                    </button>
+                  )}
+                </div>
               ))}
             {!matchingRuns.length && (
               <p className="build-monitor-empty">
@@ -619,8 +600,12 @@ export function BuildDashboard({
                     <button type="button" onClick={() => void copyFailure()}>
                       <Copy size={14} /> Copy details
                     </button>
-                    {canRetryBuild(selected) && (
-                      <button type="button" disabled={anyActiveRun || retrying} onClick={() => void retrySelected()}>
+                    {presentation === 'dialog' && canRetryBuild(selected) && (
+                      <button
+                        type="button"
+                        disabled={anyActiveRun || retrying}
+                        onClick={() => void retrySelected(selected)}
+                      >
                         <RotateCcw size={14} /> Retry
                       </button>
                     )}
