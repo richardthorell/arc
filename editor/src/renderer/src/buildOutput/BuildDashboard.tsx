@@ -329,9 +329,11 @@ export function BuildDashboard({
           >
             <RefreshCw size={16} />
           </button>
-          <button type="button" onClick={onClose} aria-label="Close build monitor" title="Close">
-            <X size={17} />
-          </button>
+          {presentation === 'dialog' && (
+            <button type="button" onClick={onClose} aria-label="Close build monitor" title="Close">
+              <X size={17} />
+            </button>
+          )}
         </div>
       </header>
 
