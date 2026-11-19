@@ -1969,8 +1969,6 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           hostPlatform={detectHostTargetPlatform()}
           preferredPlatform={targetPlatform}
           currentConfiguration={buildSnapshot?.configuration ?? 'RelWithDebInfo'}
-          documents={editorDocuments}
-          saveDocument={saveBuildDocument}
           onClose={() => setBuildDialogAction(null)}
           onError={setLastCommand}
         />
