@@ -41,7 +41,13 @@ const options: CookWorkflowOptions = {
 const cookOptions = vi.fn();
 const executeWorkflow = vi.fn();
 const execute = vi.fn();
-const dirty: EditorDocument = { id: 'material:dirty', kind: 'material', title: 'Unsaved Material', dirty: true, readOnly: false };
+const dirty: EditorDocument = {
+  id: 'material:dirty',
+  kind: 'material',
+  title: 'Unsaved Material',
+  dirty: true,
+  readOnly: false,
+};
 
 beforeEach(() => {
   localStorage.clear();
@@ -100,7 +106,13 @@ describe('Build project configuration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Build' }));
     await waitFor(() =>
       expect(executeWorkflow).toHaveBeenCalledWith(
-        { action: 'build', profile: 'windows-shipping', targetId: 'windows-x64-vulkan', destination: 'none', sessionId: '' },
+        {
+          action: 'build',
+          profile: 'windows-shipping',
+          targetId: 'windows-x64-vulkan',
+          destination: 'none',
+          sessionId: '',
+        },
         options.authority,
       ),
     );
@@ -114,7 +126,6 @@ describe('Build project configuration', () => {
     expect(screen.getByRole('button', { name: 'Build' })).toBeDisabled();
     expect(executeWorkflow).not.toHaveBeenCalled();
   });
-
 
   it('preserves editor code actions as host-only and respects chosen configuration', async () => {
     open('rebuild', 'android');
@@ -133,7 +144,13 @@ describe('Build project configuration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
     await waitFor(() =>
       expect(executeWorkflow).toHaveBeenCalledWith(
-        { action: 'cook', profile: 'android-debug', targetId: 'android-arm64-vulkan', destination: 'none', sessionId: '' },
+        {
+          action: 'cook',
+          profile: 'android-debug',
+          targetId: 'android-arm64-vulkan',
+          destination: 'none',
+          sessionId: '',
+        },
         options.authority,
       ),
     );

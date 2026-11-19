@@ -56,13 +56,12 @@ export function BuildCreationDialog({
   onError: (message: string) => void;
 }) {
   const saved = useRef(loadPreference(projectKey));
-  const initialPlatform = action === 'build' || action === 'cook'
-    ? saved.current?.platform ?? preferredPlatform
-    : hostPlatform;
+  const initialPlatform =
+    action === 'build' || action === 'cook' ? (saved.current?.platform ?? preferredPlatform) : hostPlatform;
 
   const [options, setOptions] = useState<CookWorkflowOptions | null>(null);
   const [platform, setPlatform] = useState(initialPlatform);
-  const [target, setTarget] = useState(action === 'cook' ? '' : saved.current?.target ?? '');
+  const [target, setTarget] = useState(action === 'cook' ? '' : (saved.current?.target ?? ''));
   const [profile, setProfile] = useState(saved.current?.profile ?? currentConfiguration);
   const [saving, setSaving] = useState(false);
   const [saveChanges, setSaveChanges] = useState(true);
@@ -93,7 +92,11 @@ export function BuildCreationDialog({
 
   const authored = options?.profiles ?? [];
   const platforms = Array.from(new Set([...authored.map((item) => item.platform), hostPlatform]));
-  const selectedPlatform = legacyOnly ? hostPlatform : platforms.includes(platform) ? platform : platforms[0] ?? hostPlatform;
+  const selectedPlatform = legacyOnly
+    ? hostPlatform
+    : platforms.includes(platform)
+      ? platform
+      : (platforms[0] ?? hostPlatform);
   const availableTargets = Array.from(
     new Set(authored.filter((item) => item.platform === selectedPlatform).map((item) => item.targetId)),
   );
@@ -101,14 +104,14 @@ export function BuildCreationDialog({
     ...(action !== 'cook' && selectedPlatform === hostPlatform ? [EDITOR_MODULE] : []),
     ...(legacyOnly ? [] : availableTargets),
   ];
-  const selectedTarget = targets.includes(target) ? target : targets[0] ?? '';
+  const selectedTarget = targets.includes(target) ? target : (targets[0] ?? '');
   const availableProfiles =
     selectedTarget === EDITOR_MODULE
       ? configurations.map((configuration) => ({ id: configuration, label: configuration }))
       : authored.filter((item) => item.platform === selectedPlatform && item.targetId === selectedTarget);
   const selectedProfile = availableProfiles.some((item) => item.id === profile)
     ? profile
-    : availableProfiles[0]?.id ?? '';
+    : (availableProfiles[0]?.id ?? '');
   const valid = Boolean(selectedTarget && selectedProfile && !saving && (selectedTarget === EDITOR_MODULE || options));
   const authoredSelection = authored.find(
     (item) => item.id === selectedProfile && item.targetId === selectedTarget && item.platform === selectedPlatform,
@@ -116,11 +119,11 @@ export function BuildCreationDialog({
   const blocked =
     selectedTarget === EDITOR_MODULE
       ? undefined
-      : options?.unavailableReason ??
+      : (options?.unavailableReason ??
         (action === 'build' && !authoredSelection?.editorBuildAvailable
-          ? authoredSelection?.editorBuildReason ??
-            'This platform/profile cannot be packaged by the current Editor build adapter.'
-          : undefined);
+          ? (authoredSelection?.editorBuildReason ??
+            'This platform/profile cannot be packaged by the current Editor build adapter.')
+          : undefined));
   const actionLabel = {
     build: 'Build',
     rebuild: 'Rebuild',
@@ -147,9 +150,12 @@ export function BuildCreationDialog({
         const latest = await window.arc.build.cookOptions();
         if (!options || latest.authority !== options.authority)
           throw new Error('Project or SDK changed. Reopen Build to refresh profiles.');
-        if (!latest.profiles.some((item) =>
-          item.id === selectedProfile && item.targetId === selectedTarget && item.platform === selectedPlatform,
-        ))
+        if (
+          !latest.profiles.some(
+            (item) =>
+              item.id === selectedProfile && item.targetId === selectedTarget && item.platform === selectedPlatform,
+          )
+        )
           throw new Error('The selected build profile is no longer available.');
       }
 

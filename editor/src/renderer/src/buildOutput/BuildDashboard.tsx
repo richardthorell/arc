@@ -507,9 +507,13 @@ export function BuildDashboard({
                     onClick={() => setSelectedRunId(run.id)}
                   >
                     <Status state={buildDisplayState(run)} />
-                    <strong>{run.action} · {run.configuration}</strong>
+                    <strong>
+                      {run.action} · {run.configuration}
+                    </strong>
                     <span>{time(run.startedAt)}</span>
-                    <span>{duration(buildDuration(run, elapsed))} · {run.platform ?? run.source}</span>
+                    <span>
+                      {duration(buildDuration(run, elapsed))} · {run.platform ?? run.source}
+                    </span>
                   </button>
                   {canRetryBuild(run) && (
                     <button

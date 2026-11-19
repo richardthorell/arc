@@ -1,13 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  Hammer,
-  RefreshCw,
-  Settings2,
-  Square,
-  Trash2,
-  Flame,
-  Package,
-} from 'lucide-react';
+import { Hammer, RefreshCw, Settings2, Square, Trash2, Flame, Package } from 'lucide-react';
 
 import './BuildToolbar.css';
 
@@ -35,11 +27,7 @@ const codeBusy = (snapshot: ArcBuildSnapshot | null) =>
   snapshot?.state === 'building' || snapshot?.state === 'configuring' || snapshot?.state === 'cleaning';
 
 const workflowBusy = (snapshot: WorkflowExecutionSnapshot | null) =>
-  Boolean(
-    snapshot?.planning ||
-      snapshot?.run?.state === 'running' ||
-      snapshot?.run?.state === 'cancelling',
-  );
+  Boolean(snapshot?.planning || snapshot?.run?.state === 'running' || snapshot?.run?.state === 'cancelling');
 
 /** Builds-only editor toolbar. The actual process lives in Electron, not this component. */
 export function BuildToolbar({
@@ -108,12 +96,16 @@ export function BuildToolbar({
           {workflow?.planning
             ? 'Planning build'
             : workflowBusy(workflow)
-              ? workflow?.run?.stages.find((stage) => stage.state === 'running')?.stage ?? 'Building'
-              : snapshot?.state ?? 'Building'}
+              ? (workflow?.run?.stages.find((stage) => stage.state === 'running')?.stage ?? 'Building')
+              : (snapshot?.state ?? 'Building')}
         </span>
       )}
       <span className="builds-toolbar-spacer" />
-      {error && <span className="builds-toolbar-error" role="alert">{error}</span>}
+      {error && (
+        <span className="builds-toolbar-error" role="alert">
+          {error}
+        </span>
+      )}
     </div>
   );
 }
