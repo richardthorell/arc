@@ -2,10 +2,12 @@ import type { ArcBuildDiagnostic } from './buildTypes';
 import type { WorkflowArtifact } from './projectWorkflowTypes';
 import type { BuildTargetGraph } from './buildTargetTypes';
 import type { BuildCompileTrace } from './buildCompileTypes';
+import type { WorkflowRequest } from './projectWorkflowTypes';
 
 /** Unified, project-scoped build observation contract. BM1 is in-memory; BM2 adds disk persistence. */
 export type BuildMonitorSource = 'command' | 'workflow';
-export type BuildMonitorResult = 'running' | 'succeeded' | 'failed' | 'cancelled';
+/** Interrupted is a recovered editor shutdown, not a compiler failure or a user cancellation. */
+export type BuildMonitorResult = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
 export type BuildMonitorStageState = 'pending' | BuildMonitorResult;
 
 export type BuildMonitorStage = {
@@ -35,6 +37,8 @@ export type BuildMonitorRun = {
   errorCount: number;
   error?: string;
   artifacts?: WorkflowArtifact[];
+  /** Exact workflow selection, retained for safe one-click retry after re-planning. */
+  request?: WorkflowRequest;
   targetGraph?: BuildTargetGraph;
   compileTrace?: BuildCompileTrace;
 };
