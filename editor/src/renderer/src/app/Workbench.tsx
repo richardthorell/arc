@@ -85,6 +85,9 @@ import { CreateTerrainDialog } from '../terrain/CreateTerrainDialog';
 import { ConsolePanel } from '../console/ConsolePanel';
 import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
 import { BuildDashboard } from '../buildOutput/BuildDashboard';
+import { BuildToolbar, type BuildDialogAction } from '../buildOutput/BuildToolbar';
+import { BuildCreationDialog } from '../buildOutput/BuildCreationDialog';
+import { detectHostTargetPlatform } from '../layout/MainToolbar';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
@@ -429,6 +432,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   const [buildSnapshot, setBuildSnapshot] = useState<ArcBuildSnapshot | null>(null);
   const [cookPlatform, setCookPlatform] = useState<string | null>(null);
   const [cookSnapshot, setCookSnapshot] = useState<WorkflowExecutionSnapshot | null>(null);
+  const [buildDialogAction, setBuildDialogAction] = useState<BuildDialogAction | null>(null);
   useEffect(() => {
     let active = true;
     let eventReceived = false;
@@ -1939,29 +1943,45 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     return renderLeftPanel(panel);
   };
 
+  const saveBuildDocument = async (document: EditorDocument): Promise<boolean> => {
+    if (document.readOnly) return false;
+    if (document.kind !== 'level') return (await editorRegistry[document.kind].save?.(document)) ?? false;
+    if (runtimeWorldActive || (document.path ?? '') !== documentState.activeScenePath) return false;
+    if (!document.path) {
+      const result = await window.arc.dialog.saveScene();
+      return !result.canceled && Boolean((result.response as HostResponse | undefined)?.succeeded);
+    }
+    const response = (await window.arc.host.command('scene.save')) as HostResponse;
+    return response.succeeded;
+  };
+
   const showDetachedPlayBar = runtimeWorldActive && !activeView && activeDocument?.kind !== 'level';
 
   return (
     <main
-      className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}${activeView ? ' is-workspace-view' : ''}`}
+      className={`workbench-shell${showDetachedPlayBar ? ' has-detached-play-bar' : ''}${activeView ? ' is-workspace-view' : ''}${activeView?.viewId === 'builds' ? ' is-builds-view' : ''}`}
     >
+      {buildDialogAction && (
+        <BuildCreationDialog
+          key={`${project?.root}:${buildDialogAction}`}
+          action={buildDialogAction}
+          projectKey={project?.root ?? 'no-project'}
+          hostPlatform={detectHostTargetPlatform()}
+          preferredPlatform={targetPlatform}
+          currentConfiguration={buildSnapshot?.configuration ?? 'RelWithDebInfo'}
+          documents={editorDocuments}
+          saveDocument={saveBuildDocument}
+          onClose={() => setBuildDialogAction(null)}
+          onError={(message) => setLastCommand(message)}
+        />
+      )}
       {cookPlatform && (
         <CookWorkflowDialog
           key={`${project?.root}:${cookPlatform}`}
           platform={cookPlatform}
           documents={editorDocuments}
           onClose={() => setCookPlatform(null)}
-          saveDocument={async (document) => {
-            if (document.readOnly) return false;
-            if (document.kind !== 'level') return (await editorRegistry[document.kind].save?.(document)) ?? false;
-            if (runtimeWorldActive || (document.path ?? '') !== documentState.activeScenePath) return false;
-            if (!document.path) {
-              const result = await window.arc.dialog.saveScene();
-              return !result.canceled && Boolean((result.response as HostResponse | undefined)?.succeeded);
-            }
-            const response = (await window.arc.host.command('scene.save')) as HostResponse;
-            return response.succeeded;
-          }}
+          saveDocument={saveBuildDocument}
         />
       )}
       <MenuBar
@@ -1988,7 +2008,20 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       {/* Keep the toolbar DOM slot mounted even for workspace views.
           Its grid track is zero-height for tools, but removing the element
           shifts the workspace and status bar into the wrong rows. */}
-      <WorkspaceToolbarHost document={activeDocument} activeView={activeView} registry={editorRegistry} />
+      <WorkspaceToolbarHost
+        document={activeDocument}
+        activeView={activeView}
+        registry={editorRegistry}
+        buildsToolbar={
+          activeView?.viewId === 'builds' ? (
+            <BuildToolbar
+              snapshot={buildSnapshot}
+              workflow={cookSnapshot}
+              onCreate={(action) => setBuildDialogAction(action)}
+            />
+          ) : null
+        }
+      />
       <div className="play-session-host">
         {showDetachedPlayBar && (
           <PlaySessionBar
