@@ -9,6 +9,8 @@ import {
   Package,
 } from 'lucide-react';
 
+import './BuildToolbar.css';
+
 import type { ArcBuildSnapshot } from '../../../common/buildTypes';
 import type { WorkflowExecutionSnapshot } from '../../../common/projectWorkflowTypes';
 import { UiButton, UiSplitButton, type UiSplitButtonOption } from '../ui';
