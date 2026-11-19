@@ -89,6 +89,9 @@ function mockApi(overrides: Record<string, unknown> = {}) {
   const handlers: Array<(event: BuildMonitorEvent) => void> = [];
   const api = {
     monitorSnapshot: vi.fn().mockResolvedValue(monitor),
+    execute: vi.fn().mockResolvedValue({}),
+    executeWorkflow: vi.fn().mockResolvedValue({}),
+    revealArtifact: vi.fn().mockResolvedValue(''),
     history: vi.fn().mockResolvedValue(page),
     historyDetails: vi
       .fn()
@@ -135,6 +138,72 @@ describe('Build Monitor workspace presentation', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
     expect(api.monitorSnapshot).toHaveBeenCalled();
+  });
+});
+
+describe('Build Monitor actionable workflow', () => {
+  it('shows a failed command reason with zero compiler diagnostics and retries the recorded configuration', async () => {
+    const failed: BuildMonitorRun = {
+      ...previous,
+      id: 'failed-command',
+      source: 'command',
+      action: 'build',
+      configuration: 'RelWithDebInfo',
+      state: 'failed',
+      errorCount: 0,
+      error: 'CMake configuration failed: no matching ARC SDK',
+      stages: [{ id: 'failed-command:compile', name: 'Compile', state: 'failed' }],
+    };
+    const { api } = mockApi({
+      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [failed] }),
+      history: vi.fn().mockResolvedValue({ ...page, total: 1, runs: [failed] }),
+      historyDetails: vi.fn().mockResolvedValue(makeDetails(failed)),
+    });
+    render(<BuildDashboard presentation="workspace" snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    expect(await screen.findByRole('region', { name: 'Build result details' })).toHaveTextContent(
+      'CMake configuration failed: no matching ARC SDK',
+    );
+    expect(screen.getByText('No compiler diagnostics recorded')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry selected build' }));
+    await waitFor(() =>
+      expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'RelWithDebInfo' }),
+    );
+    expect(screen.getByRole('button', { name: 'View error output' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Target dependency graph' })).not.toBeInTheDocument();
+  });
+
+  it('filters build history and safely requests reveal for published workflow artifacts', async () => {
+    const built: BuildMonitorRun = {
+      ...current,
+      state: 'succeeded',
+      completedAt: '2026-11-16T10:02:00.000Z',
+      durationMs: 120000,
+      artifacts: [{
+        kind: 'package',
+        path: 'Build/Packages/Android/game.apk',
+        manifestPath: 'Build/Packages/Android/distribution.json',
+        buildId: 'current-run',
+        targetId: 'android-arm64-vulkan',
+        profile: 'android-debug',
+      }],
+      request: { action: 'build', profile: 'android-debug', targetId: 'android-arm64-vulkan', destination: 'none', sessionId: '' },
+    };
+    const { api } = mockApi({
+      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [built] }),
+      history: vi.fn().mockResolvedValue({ ...page, runs: [built, previous] }),
+      historyDetails: vi.fn().mockImplementation(async (id: string) => makeDetails(id === built.id ? built : previous)),
+    });
+    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+
+    expect(await screen.findByRole('region', { name: 'Build artifacts' })).toHaveTextContent(
+      'Build/Packages/Android/game.apk',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reveal package artifact' }));
+    await waitFor(() => expect(api.revealArtifact).toHaveBeenCalledWith('current-run', 'Build/Packages/Android/game.apk'));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter build status' }), { target: { value: 'failed' } });
+    expect(screen.getByRole('button', { name: /cook · Debug/ })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter build platform' }), { target: { value: 'android' } });
+    expect(screen.getByText('No builds match these filters.')).toBeInTheDocument();
   });
 });
 
@@ -241,6 +310,7 @@ describe('Build Monitor BM3', () => {
     });
     render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
     expect(await screen.findByText('unrelated compiler output')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Target dependencies and compile performance'));
     fireEvent.click(screen.getByRole('tab', { name: 'Diagnostics' }));
     fireEvent.click(screen.getByRole('button', { name: 'Inspect compile task: Source/main.cpp' }));
     expect(screen.getByText('MyEditor', { selector: 'dd' })).toBeInTheDocument();
@@ -281,6 +351,7 @@ describe('Build Monitor BM3', () => {
       taskCount: 1,
     });
     await waitFor(() => expect(monitorSnapshot).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByText('Target dependencies and compile performance'));
     expect(await screen.findByText('1 measured · Ninja · live')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Inspect compile task: CMakeFiles/game.dir/live.cpp.o' }),
