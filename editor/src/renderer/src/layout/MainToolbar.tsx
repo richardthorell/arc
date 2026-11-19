@@ -24,12 +24,7 @@ import {
 import type { ArcProjectDescriptor } from '../../../common/projectTypes';
 import type { CommandId, EditorRuntimeState } from '../app/workbenchTypes';
 import { requestSettingsDialog } from '../settings/settingsDialogRoute';
-import {
-  UiButton,
-  UiDropdown,
-  UiIconButton,
-  type UiDropdownOption,
-} from '../ui';
+import { UiButton, UiDropdown, UiIconButton, type UiDropdownOption } from '../ui';
 import { PlatformBrandIcon } from './PlatformBrandIcon';
 import type { EditorSettingsSnapshot } from '../../../common/editorWorkflowTypes';
 import { platformUnavailableReason } from './platformAvailability';
