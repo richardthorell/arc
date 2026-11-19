@@ -60,7 +60,7 @@ export type EditorTargetDevice = {
 
 type PlatformMenuValue = EditorTargetPlatform | '__platform-settings__';
 
-const platformOptions: ReadonlyArray<UiDropdownOption<EditorTargetPlatform>> = [
+export const platformOptions: ReadonlyArray<UiDropdownOption<EditorTargetPlatform>> = [
   { value: 'windows', label: 'Windows', icon: <PlatformBrandIcon platform="windows" /> },
   { value: 'linux', label: 'Linux', icon: <PlatformBrandIcon platform="linux" /> },
   { value: 'macos', label: 'macOS', icon: <PlatformBrandIcon platform="macos" /> },
