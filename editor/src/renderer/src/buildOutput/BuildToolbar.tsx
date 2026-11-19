@@ -104,13 +104,7 @@ export function BuildToolbar({
     <UiEditorToolbar
       aria-label="Builds toolbar"
       className="builds-editor-toolbar"
-      left={
-        displayedError ? (
-          <span className="builds-toolbar-error" role="alert" title={displayedError}>
-            {displayedError}
-          </span>
-        ) : undefined
-      }
+      left={buildAction}
       center={
         busy ? (
           <span className="builds-toolbar-progress" role="status">
@@ -118,7 +112,13 @@ export function BuildToolbar({
           </span>
         ) : undefined
       }
-      right={buildAction}
+      right={
+        displayedError ? (
+          <span className="builds-toolbar-error" role="alert" title={displayedError}>
+            {displayedError}
+          </span>
+        ) : undefined
+      }
     />
   );
 }
