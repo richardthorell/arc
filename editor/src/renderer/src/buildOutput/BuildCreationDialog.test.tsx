@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CookWorkflowOptions } from '../../../common/projectWorkflowTypes';
@@ -164,6 +164,30 @@ describe('Build project configuration', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not save Unsaved Material');
     expect(executeWorkflow).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('does not dispatch when the Build dialog closes during an asynchronous save', async () => {
+    let complete!: (saved: boolean) => void;
+    const saveDocument = vi.fn(() => new Promise<boolean>((resolve) => { complete = resolve; }));
+    const view = render(
+      <BuildCreationDialog
+        action="cook"
+        projectKey="closing-game"
+        hostPlatform="windows"
+        preferredPlatform="android"
+        currentConfiguration="Debug"
+        documents={[dirty]}
+        saveDocument={saveDocument}
+        onClose={vi.fn()}
+        onError={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
+    await waitFor(() => expect(saveDocument).toHaveBeenCalledOnce());
+    view.unmount();
+    await act(async () => complete(true));
+    expect(executeWorkflow).not.toHaveBeenCalled();
   });
 
   it('refuses stale SDK/project profiles and does not dispatch a stale plan', async () => {
