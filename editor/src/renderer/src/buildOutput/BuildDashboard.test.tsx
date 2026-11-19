@@ -131,8 +131,8 @@ describe('Build Monitor workspace presentation', () => {
     expect(await screen.findByText('build log for current-run')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Close build monitor' }));
-    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Close build monitor' })).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
     expect(api.cancelWorkflow).not.toHaveBeenCalled();
   });
