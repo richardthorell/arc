@@ -168,7 +168,12 @@ describe('Build project configuration', () => {
 
   it('does not dispatch when the Build dialog closes during an asynchronous save', async () => {
     let complete!: (saved: boolean) => void;
-    const saveDocument = vi.fn(() => new Promise<boolean>((resolve) => { complete = resolve; }));
+    const saveDocument = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          complete = resolve;
+        }),
+    );
     const view = render(
       <BuildCreationDialog
         action="cook"
@@ -188,6 +193,16 @@ describe('Build project configuration', () => {
     view.unmount();
     await act(async () => complete(true));
     expect(executeWorkflow).not.toHaveBeenCalled();
+  });
+
+  it('does not start a workflow if the project options disappear before dispatch', async () => {
+    const { onClose } = open('cook');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cook Content' })).toBeEnabled());
+    cookOptions.mockResolvedValueOnce(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Cook Content' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Project or SDK changed');
+    expect(executeWorkflow).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('refuses stale SDK/project profiles and does not dispatch a stale plan', async () => {
