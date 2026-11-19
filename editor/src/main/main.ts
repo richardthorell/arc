@@ -31,6 +31,7 @@ import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { BuildMonitorService } from './buildMonitorService';
+import { resolveBuildArtifactPath } from './buildArtifactAccess';
 import { ProjectSettingsService } from './projectSettingsService';
 import { webpDimensions } from './projectThumbnail';
 import type { ProjectSettingsApplyRequest } from '../common/projectSettingsTypes';
@@ -1458,19 +1459,8 @@ void app.whenReady().then(async () => {
       throw new Error('No active project artifact');
     buildMonitorProject();
     const detail = buildMonitor.historyDetails(runId);
-    const listed = detail?.run.artifacts?.some(
-      (item) => item.path === artifactPath || item.manifestPath === artifactPath,
-    );
-    if (!listed) throw new Error('Artifact does not belong to the active project build');
-    const root = fs.realpathSync(project.projectRoot);
-    const candidate = path.isAbsolute(artifactPath) ? path.normalize(artifactPath) : path.resolve(root, artifactPath);
-    const relative = path.relative(root, candidate);
-    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
-      throw new Error('Artifact path escapes the active project');
-    const resolved = fs.realpathSync(candidate);
-    const actual = path.relative(root, resolved);
-    if (!actual || actual === '..' || actual.startsWith(`..${path.sep}`) || path.isAbsolute(actual))
-      throw new Error('Artifact path resolves outside the active project');
+    if (!detail) throw new Error('Build run not found for this project');
+    const resolved = resolveBuildArtifactPath(project.projectRoot, detail.run.artifacts, artifactPath);
     if (fs.statSync(resolved).isDirectory()) return shell.openPath(resolved);
     shell.showItemInFolder(resolved);
     return '';
