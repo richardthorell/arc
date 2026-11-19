@@ -1350,3 +1350,49 @@
   outline: 2px solid #60abdd;
   outline-offset: 2px;
 }
+
+/* Retry belongs to a specific historical run, not the global Build toolbar. */
+.build-monitor-history-entry {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-bottom: 4px;
+}
+
+.build-monitor-history-entry .build-monitor-history-row {
+  margin-bottom: 0;
+}
+
+.build-monitor-history-retry {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 8px 6px 0;
+  padding: 3px 7px;
+  border: 1px solid #345063;
+  border-radius: 4px;
+  background: #1a2c38;
+  color: #9ebad0;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.build-monitor-history-retry:hover:not(:disabled) {
+  background: #263d4c;
+  color: #fff;
+}
+
+.build-monitor-history-retry:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .build-monitor-history-entry {
+    flex: 0 0 208px;
+  }
+  .build-monitor-history-entry .build-monitor-history-row {
+    flex: 1 1 auto;
+  }
+}
