@@ -5,6 +5,7 @@ import { Hammer } from 'lucide-react';
 import type { CookWorkflowOptions } from '../../../common/projectWorkflowTypes';
 import type { EditorDocument } from '../editors/editorTypes';
 import { UiButton, UiDialog, UiDropdown } from '../ui';
+import { platformOptions } from '../layout/MainToolbar';
 
 import type { BuildDialogAction } from './BuildToolbar';
 
@@ -95,6 +96,15 @@ export function BuildCreationDialog({
 
   const authored = options?.profiles ?? [];
   const platforms = Array.from(new Set([...authored.map((item) => item.platform), hostPlatform]));
+  // Use the same display names and brand icons as the main editor toolbar.
+  // Preserve the native platform IDs for profile lookup and workflow execution.
+  const platformChoices = platforms.map(
+    (item) =>
+      platformOptions.find((option) => option.value === item) ?? {
+        value: item,
+        label: item,
+      },
+  );
   const selectedPlatform = legacyOnly
     ? hostPlatform
     : platforms.includes(platform)
@@ -224,14 +234,13 @@ export function BuildCreationDialog({
       }
     >
       <div className="build-create-fields">
-        <p>Choose what to {action === 'clean' ? 'clean' : 'build'}. Device selection belongs to Run, not Build.</p>
         <label>
           <span>Platform</span>
           <UiDropdown
             ariaLabel="Build platform"
             value={selectedPlatform}
             disabled={legacyOnly || saving}
-            options={platforms.map((item) => ({ value: item, label: item }))}
+            options={platformChoices}
             onValueChange={(value) => {
               setPlatform(value);
               setTarget('');
@@ -264,7 +273,7 @@ export function BuildCreationDialog({
         </label>
         {selectedTarget !== EDITOR_MODULE && selectedProfile && (
           <p className="build-create-summary">
-            {selectedPlatform} · {selectedTarget} · {selectedProfile}
+            {platformChoices.find((item) => item.value === selectedPlatform)?.label ?? selectedPlatform} · {selectedTarget} · {selectedProfile}
             <br />
             {action === 'cook'
               ? 'Cooks saved content only; no compilation, packaging or deployment.'
@@ -285,7 +294,6 @@ export function BuildCreationDialog({
         {dirty.length > 0 && !saveChanges && (
           <p className="build-create-hint">Unsaved changes will not be included in cooked content.</p>
         )}
-        {loading && <p role="status">Loading available project profiles…</p>}
         {!selectedTarget && !loading && <p role="alert">No compatible build target is configured for this platform.</p>}
         {blocked && <p role="alert">{blocked}</p>}
         {error && <p role="alert">{error}</p>}
