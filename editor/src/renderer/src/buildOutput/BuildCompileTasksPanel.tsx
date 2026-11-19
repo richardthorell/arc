@@ -40,7 +40,7 @@ export function BuildCompileTasksPanel({
   const tasks = trace.tasks.slice(0, 256);
   const selected = selectedIndex === null ? null : (tasks[selectedIndex] ?? null);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
-  const measuredLabel = `${tasks.length} measured · ${source.generator}`;
+  const measuredLabel = `${tasks.length} measured · ${source.generator}${run.state === 'running' ? ' · live' : ''}`;
   return (
     <section className="build-monitor-targets build-monitor-compiles" aria-label="Compilation task timeline">
       <div className="build-monitor-section-title">
@@ -50,6 +50,9 @@ export function BuildCompileTasksPanel({
         <span>{measuredLabel}</span>
       </div>
       <p className="build-monitor-target-note">{source.note}</p>
+      {run.state === 'running' && (
+        <p className="build-monitor-target-note">Completed tasks appear as the native tool flushes timing records.</p>
+      )}
       {tasks.length ? (
         <>
           <div className="build-monitor-compile-heading" aria-hidden="true">
