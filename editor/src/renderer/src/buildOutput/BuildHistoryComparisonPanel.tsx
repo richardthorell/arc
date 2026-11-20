@@ -35,7 +35,7 @@ export function BuildHistoryComparisonPanel({
   const baseline = choice === 'latest' ? candidates[0] : candidates.find((run) => run.id === choice);
   const value = baseline ? compareBuildHistory(current, baseline) : null;
   const onBaselineChange = (event: ChangeEvent<HTMLSelectElement>) => setChoice(event.target.value);
-  const showNinjaTasks = current.compileTrace?.source === 'ninja-log' && baseline?.compileTrace?.source === 'ninja-log';
+  const ninjaTasks = current.compileTrace?.source === 'ninja-log' && baseline?.compileTrace?.source === 'ninja-log';
   const emptyMessage = 'No earlier successful build matches this action, configuration, target and profile.';
   const caveat = 'Differences may reflect code changes, incremental caching or machine load. These observations do not establish a statistically significant performance regression.';
   return (
@@ -100,7 +100,7 @@ export function BuildHistoryComparisonPanel({
                   </table>
                 </div>
               )}
-              {showNinjaTasks && (
+              {ninjaTasks && (
                 <div className="build-monitor-comparison-table-wrap">
                   <h5>Matching Ninja object tasks ({value.matchedObjects})</h5>
                   {value.objects.length > 0 ? (
@@ -134,7 +134,8 @@ export function BuildHistoryComparisonPanel({
               )}
               {current.compileTrace?.source === 'msbuild-file-log' && (
                 <p className="build-monitor-target-note">
-                  Per-task MSBuild comparisons are omitted: CL task IDs and source grouping are not stable across builds.
+                  Per-task MSBuild comparisons are omitted: CL task IDs and source grouping are not stable across
+                  builds.
                 </p>
               )}
             </>
