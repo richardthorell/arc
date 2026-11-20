@@ -16,6 +16,7 @@ import sys
 
 from d3_shipping_acceptance import command
 from d4_headless_negative import run as run_negative
+from d4_headless_stop_acceptance import verify_external_stop
 from verify_relocated_package import SmokeFailure, smoke, verify_distribution
 
 
@@ -132,6 +133,10 @@ def run(args: argparse.Namespace) -> None:
     report = verify_server_report(artifacts / "json-report" / "stdout.txt", ticks=10)
     if report["engineVersion"] != args.engine:
         raise SmokeFailure(f"server reported incompatible engineVersion: {report['engineVersion']}")
+
+    # D4.4: exercise a long-running production process and request graceful
+    # termination from outside the packaged distribution.
+    verify_external_stop(release, artifacts / "external-stop", timeout=args.timeout)
 
     # D4.2: the real relocated server must reject corrupt/missing content,
     # missing native dependencies, incompatible engine identity and bad flags.
