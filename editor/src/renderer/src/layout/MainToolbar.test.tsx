@@ -307,6 +307,29 @@ describe('MainToolbar runtime controls', () => {
     expect(screen.getByRole('option', { name: 'Pixel 9' })).toBeEnabled();
   });
 
+  it('enables Windows Standalone only with the Development launcher and routes Stop while connected', () => {
+    const onCommand = vi.fn();
+    const props = {
+      onCommand,
+      targetPlatform: 'windows' as const,
+      targetDevice: 'standalone',
+      enableStandalonePlay: true,
+    };
+    const { rerender } = render(<MainToolbar {...props} />);
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+    expect(onCommand).toHaveBeenCalledWith('scene.play');
+    rerender(<MainToolbar {...props} standaloneSessionState="connected" />);
+    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Play target' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(onCommand).toHaveBeenCalledWith('scene.stop');
+    rerender(<MainToolbar {...props} standaloneSessionState="stopped" />);
+    expect(screen.getByRole('button', { name: 'Play' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Play target' })).toBeEnabled();
+  });
+
   it('locks Play destination changes while a local runtime is active', () => {
     const { rerender } = render(<MainToolbar onCommand={vi.fn()} runtimeState="running" targetPlatform="windows" />);
     expect(screen.getByRole('button', { name: 'Play platform' })).toBeDisabled();
