@@ -261,7 +261,7 @@ export class BuildService {
         if (this.stopCompilePolling === stopPolling) this.stopCompilePolling = null;
       };
       const publishMeasured = (trace: ReturnType<NonNullable<typeof finishNinjaTrace>>, final: boolean) => {
-        if (!trace || (!final && !trace.tasks.length)) return;
+        if (!trace || (!final && !trace.tasks.length && !trace.activeTasks?.length)) return;
         if (epoch !== this.projectEpoch || this.snapshotValue.runId !== runId) return;
         const enriched = enrichCompileTrace(project, trace, this.snapshotValue.targetGraph);
         if (JSON.stringify(enriched) !== JSON.stringify(this.snapshotValue.compileTrace))
