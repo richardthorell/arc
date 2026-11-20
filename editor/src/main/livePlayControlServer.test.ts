@@ -262,6 +262,42 @@ describe('Live Play L1.2a editor control endpoint', () => {
     expect(newRun.status().lastError).toBe('identity_mismatch');
   });
 
+  it('does not let unauthenticated or competing peers invalidate an already-connected session', async () => {
+    const server = await start();
+    const active = await handshake(server);
+    const handoff = server.launchHandoff();
+
+    const rejected = await connect(handoff.port);
+    rejected.write(Buffer.alloc(32, 0));
+    await rejected.closed;
+    expect(server.status().state).toBe('connected');
+    expect(server.status().lastError).toBeNull();
+
+    const competing = await connect(handoff.port);
+    competing.write(handoff.secret);
+    competing.write(
+      frame('hello', { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe'] }, 2),
+    );
+    await competing.closed;
+    expect(server.status().state).toBe('connected');
+    active.write(frame('session.state', { state: 'running', tick: 1, revision: 1 }, 2));
+    await expect.poll(() => server.status().lastReceivedSequence).toBe(2);
+    expect(server.sendHeartbeat()).toBe(true);
+  });
+
+  it('enforces the capabilities actually negotiated with the native client', async () => {
+    const server = await start();
+    const handoff = server.launchHandoff();
+    const peer = await connect(handoff.port);
+    peer.write(handoff.secret);
+    peer.write(frame('hello', { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe'] }));
+    const welcome = JSON.parse((await peer.next()).toString('utf8')) as LivePlayMessage;
+    expect(welcome).toMatchObject({ payload: { capabilities: ['session.observe'] } });
+    peer.write(frame('hierarchy.snapshot', { worldRevision: 1, entities: [], complete: true }, 2));
+    await peer.closed;
+    expect(server.status().lastError).toBe('permission_denied');
+  });
+
   it('tears down connections and invalidates the launch secret on Stop', async () => {
     const server = await start();
     const handoff = server.launchHandoff();
