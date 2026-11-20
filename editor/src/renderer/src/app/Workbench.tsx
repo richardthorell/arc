@@ -1731,8 +1731,14 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           targetDevice={targetPlatform === detectHostTargetPlatform() ? selectedPlayTarget : undefined}
           onTargetDeviceChange={selectPlayTarget}
           runtimeState={runtimeState.state}
-          enableStandalonePlay={detectHostTargetPlatform() === 'windows' && targetPlatform === 'windows' && !runtimeWorldActive}
-          targetDeviceTitle={externalPlay.state !== 'stopped' ? `Standalone: ${externalPlay.state}${externalPlay.error ? ` — ${externalPlay.error}` : ''}` : undefined}
+          enableStandalonePlay={
+            detectHostTargetPlatform() === 'windows' && targetPlatform === 'windows' && !runtimeWorldActive
+          }
+          targetDeviceTitle={
+            externalPlay.state !== 'stopped'
+              ? `Standalone: ${externalPlay.state}${externalPlay.error ? ` — ${externalPlay.error}` : ''}`
+              : undefined
+          }
           standaloneSessionState={externalPlay.state}
           authoringDisabled={runtimeWorldActive}
           timeScale={runtimeState.timeScale}
