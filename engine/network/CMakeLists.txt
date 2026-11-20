@@ -21,7 +21,7 @@ if(ARC_BUILD_LIVE_PLAY_DEV OR (BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS))
     arc_configure_first_party_target(arc-live-play-dev)
     target_compile_features(arc-live-play-dev PUBLIC cxx_std_20)
     target_include_directories(arc-live-play-dev PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>")
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/dev/include>")
     target_link_libraries(arc-live-play-dev PRIVATE arc-third-party-json)
     add_library(arc::live-play-dev ALIAS arc-live-play-dev)
     if(WIN32)
