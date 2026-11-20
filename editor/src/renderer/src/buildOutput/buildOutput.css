@@ -1437,3 +1437,110 @@
 .build-monitor-compile-sources li {
   margin-bottom: 3px;
 }
+
+/* BM8.1 — compare only measured, compatible historical builds. */
+.build-monitor-comparison {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #324657;
+  border-radius: 5px;
+  background: #12202a;
+}
+
+.build-monitor-comparison-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+  color: #a6bdcb;
+  font-size: 12px;
+}
+
+.build-monitor-comparison-picker select {
+  flex: 1 1 260px;
+  min-width: 180px;
+  max-width: 100%;
+  padding: 7px 9px;
+  border: 1px solid #41586a;
+  border-radius: 4px;
+  background: #1a2c39;
+  color: #d4e5ed;
+}
+
+.build-monitor-comparison-total {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 14px;
+}
+
+.build-monitor-comparison-total > div {
+  min-width: 0;
+  padding: 10px;
+  background: #1a2d39;
+  border-radius: 4px;
+}
+
+.build-monitor-comparison-total small,
+.build-monitor-comparison-total strong {
+  display: block;
+}
+
+.build-monitor-comparison-total small {
+  margin-bottom: 5px;
+  color: #93adbf;
+}
+
+.build-monitor-comparison-total strong {
+  color: #d8e7ef;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.build-monitor-comparison-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 10px 0 14px;
+}
+
+.build-monitor-comparison-table-wrap h5 {
+  margin: 0 0 8px;
+  color: #c5deef;
+  font-size: 12px;
+}
+
+.build-monitor-comparison-table-wrap table {
+  width: 100%;
+  min-width: 390px;
+  border-collapse: collapse;
+  font-size: 11px;
+  text-align: left;
+}
+
+.build-monitor-comparison-table-wrap th,
+.build-monitor-comparison-table-wrap td {
+  padding: 7px 8px;
+  border-bottom: 1px solid #304555;
+  color: #bfd4df;
+}
+
+.build-monitor-comparison-table-wrap th:first-child {
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+
+.build-monitor-comparison-table-wrap thead th {
+  color: #92b8cc;
+  font-weight: 600;
+}
+
+.build-monitor-comparison > .build-monitor-target-note {
+  margin: 10px 0 0;
+}
+
+@media (max-width: 540px) {
+  .build-monitor-comparison-total {
+    grid-template-columns: 1fr;
+  }
+}
