@@ -247,19 +247,20 @@ describe('Live Play L1 wire contract', () => {
     );
     expect(reconnect).toMatchObject({ accepted: true, nextSequence: 31 });
     expect(
-      receiveLivePlayFrame(frame('hierarchy.snapshot', { worldRevision: 40, entities: [], complete: true }, 'runtime', 35), {
-        ...runtimeContext,
-        lastSequence: 24,
-      }).accepted,
+      receiveLivePlayFrame(
+        frame('hierarchy.snapshot', { worldRevision: 40, entities: [], complete: true }, 'runtime', 35),
+        {
+          ...runtimeContext,
+          lastSequence: 24,
+        },
+      ).accepted,
     ).toBe(true);
   });
 
   it('exchanges content generation status without embedding any cooked blob bytes', () => {
     expect(
-      receiveLivePlayFrame(
-        frame('content.generation', { generation: 4, status: 'active' }, 'runtime'),
-        runtimeContext,
-      ).accepted,
+      receiveLivePlayFrame(frame('content.generation', { generation: 4, status: 'active' }, 'runtime'), runtimeContext)
+        .accepted,
     ).toBe(true);
     expect(
       livePlayMessageSchema.safeParse({
