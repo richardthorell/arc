@@ -25,7 +25,6 @@ function clockMs(line: string): number | null {
   return ((h * 60 + m) * 60 + s) * 1000 + milliseconds;
 }
 
-
 type ClEvent = {
   start: number;
   label: string;
