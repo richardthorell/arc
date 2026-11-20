@@ -21,9 +21,18 @@ if(ARC_BUILD_LIVE_PLAY_DEV OR (BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS))
     arc_configure_first_party_target(arc-live-play-dev)
     target_compile_features(arc-live-play-dev PUBLIC cxx_std_20)
     target_include_directories(arc-live-play-dev PUBLIC
-        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/dev/include>")
-    target_link_libraries(arc-live-play-dev PRIVATE arc-third-party-json)
+        "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/dev/include>"
+        "$<INSTALL_INTERFACE:include>")
+    # JSON is header-only and required when compiling the static archive, not
+    # when linking an installed Development game against its compiled objects.
+    target_link_libraries(arc-live-play-dev PRIVATE "$<BUILD_INTERFACE:arc-third-party-json>")
     add_library(arc::live-play-dev ALIAS arc-live-play-dev)
+    set_target_properties(arc-live-play-dev PROPERTIES EXPORT_NAME LivePlayDev)
+    install(TARGETS arc-live-play-dev EXPORT ARCTargets
+        ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+        COMPONENT sdk-development)
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dev/include/"
+        DESTINATION include COMPONENT sdk-development)
     if(WIN32)
         target_link_libraries(arc-live-play-dev PUBLIC ws2_32)
     endif()
