@@ -22,6 +22,7 @@ const authority = {
 const editorContext: LivePlayReceiveContext = {
   authority,
   authenticated: true,
+  expectedSchemaHash: hash,
   peerRole: 'editor',
   lastSequence: 0,
   grantedCapabilities: ['session.observe', 'session.control', 'entity.inspect', 'entity.edit'],
@@ -165,7 +166,14 @@ describe('Live Play L1 wire contract', () => {
 
   it('rejects unsupported protocol/schema, negative or unsafe sequence, and oversized arrays', () => {
     const valid = JSON.parse(frame('hello', hello, 'runtime')) as Record<string, unknown>;
-    expect(livePlayMessageSchema.safeParse({ ...valid, protocolVersion: 2 }).success).toBe(false);
+    expect(receiveLivePlayFrame(JSON.stringify({ ...valid, protocolVersion: 2 }), runtimeContext)).toEqual({
+      accepted: false,
+      code: 'unsupported_version',
+    });
+    expect(receiveLivePlayFrame(JSON.stringify({ ...valid, payload: { ...hello, schemaHash: 'b'.repeat(64) } }), runtimeContext)).toEqual({
+      accepted: false,
+      code: 'schema_mismatch',
+    });
     expect(livePlayMessageSchema.safeParse({ ...valid, sequence: -1 }).success).toBe(false);
     expect(livePlayMessageSchema.safeParse({ ...valid, sequence: Number.MAX_SAFE_INTEGER + 1 }).success).toBe(false);
     expect(
@@ -174,6 +182,15 @@ describe('Live Play L1 wire contract', () => {
         payload: { ...hello, capabilities: Array.from({ length: 100 }, () => 'entity.inspect') },
       }).success,
     ).toBe(false);
+  });
+
+  it('rejects handshake attempts to elevate negotiated capabilities', () => {
+    expect(
+      receiveLivePlayFrame(
+        frame('hello.accepted', { capabilities: ['entity.edit'], lastReceivedSequence: 0 }, 'runtime'),
+        runtimeContext,
+      ),
+    ).toEqual({ accepted: false, code: 'permission_denied' });
   });
 
   it('rejects remote control without permission and messages sent in the wrong direction', () => {
