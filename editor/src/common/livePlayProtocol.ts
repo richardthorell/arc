@@ -8,7 +8,11 @@ export const LIVE_PLAY_PROTOCOL = 'arc.live-play';
 export const LIVE_PLAY_VERSION = 1;
 export const LIVE_PLAY_MAX_FRAME_BYTES = 64 * 1024;
 
-const id = z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/u);
+const id = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9._:-]+$/u);
 const guid = z.string().regex(/^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu);
 const revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const positiveSequence = revision.refine((value) => value > 0, 'Sequence must be positive');
@@ -30,7 +34,11 @@ export const livePlayEntitySchema = z.discriminatedUnion('kind', [
 export type LivePlayEntity = z.infer<typeof livePlayEntitySchema>;
 
 const component = z.object({ typeId: id, schemaVersion: z.number().int().positive().max(65535) }).strict();
-const propertyPath = z.string().min(1).max(128).regex(/^[A-Za-z][A-Za-z0-9_.]*$/u);
+const propertyPath = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z][A-Za-z0-9_.]*$/u);
 const value = z.union([
   z.string().max(2048),
   z.number().finite(),
@@ -61,7 +69,10 @@ const errorCode = z.enum([
   'busy',
 ]);
 const error = z.object({ code: errorCode, message: z.string().max(512) }).strict();
-const capabilities = z.array(livePlayCapabilitySchema).max(5).refine((items) => new Set(items).size === items.length);
+const capabilities = z
+  .array(livePlayCapabilitySchema)
+  .max(5)
+  .refine((items) => new Set(items).size === items.length);
 
 const envelope = z
   .object({
@@ -202,11 +213,10 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
   ),
   message(
     'command.ack',
-    z
-      .discriminatedUnion('status', [
-        z.object({ status: z.literal('applied'), requestId: id, appliedRevision: revision }).strict(),
-        z.object({ status: z.literal('rejected'), requestId: id, error }).strict(),
-      ]),
+    z.discriminatedUnion('status', [
+      z.object({ status: z.literal('applied'), requestId: id, appliedRevision: revision }).strict(),
+      z.object({ status: z.literal('rejected'), requestId: id, error }).strict(),
+    ]),
   ),
 ]);
 export type LivePlayMessage = z.infer<typeof livePlayMessageSchema>;
@@ -243,8 +253,7 @@ export type LivePlayRejectCode =
   | 'permission_denied';
 
 export type LivePlayReceiveResult =
-  | { accepted: true; message: LivePlayMessage; nextSequence: number }
-  | { accepted: false; code: LivePlayRejectCode };
+  { accepted: true; message: LivePlayMessage; nextSequence: number } | { accepted: false; code: LivePlayRejectCode };
 
 const editorOnly = new Set<LivePlayMessageType>([
   'session.command',
