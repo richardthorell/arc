@@ -44,7 +44,7 @@ def _sha(value: Any, field: str) -> str:
 
 
 def _safe_name(value: Any, field: str) -> str:
-    if not isinstance(value, str) or not _NAME.fullmatch(value) or value in {".", ".."}:
+    if not isinstance(value, str) or len(value) > 255 or not _NAME.fullmatch(value) or value in {".", ".."}:
         raise ContractError(f"{field} is an unsafe name")
     return value
 
