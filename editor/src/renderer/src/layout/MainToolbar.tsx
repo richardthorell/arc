@@ -498,7 +498,9 @@ export function MainToolbar({
   const playInEditor = effectiveTargetPlatform === hostPlatform && effectiveTargetDevice === EDITOR_VIEWPORT_TARGET_ID;
   const standaloneSelected = effectiveTargetPlatform === 'windows' && effectiveTargetDevice === STANDALONE_TARGET_ID;
   const standalonePlayable = enableStandalonePlay && standaloneSelected;
-  const standaloneSessionActive = standaloneSessionState !== 'stopped' && standaloneSessionState !== 'failed';
+  // Even a failed/disconnected transport may leave an owned child alive:
+  // keep Stop available until the process/session owner has cleaned it up.
+  const standaloneSessionActive = standaloneSessionState !== 'stopped';
   const playTargetUnavailableReason =
     playInEditor || standalonePlayable
       ? undefined
