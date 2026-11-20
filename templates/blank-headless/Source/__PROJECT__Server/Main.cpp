@@ -116,6 +116,7 @@ int main(int argc, char** argv)
     bool json_report = false;
     fs::path distribution_root;
     fs::path data_root;
+    fs::path stop_file;
 
     for (int index = 1; index < argc; ++index)
     {
@@ -144,6 +145,8 @@ int main(int argc, char** argv)
             distribution_root = fs::path(argv[++index]);
         else if (argument == "--data-root" && index + 1 < argc)
             data_root = fs::path(argv[++index]);
+        else if (argument == "--stop-file" && index + 1 < argc)
+            stop_file = fs::path(argv[++index]);
         else
         {
             std::cerr << "Unknown or incomplete server option: " << argument << '\n';
@@ -152,9 +155,10 @@ int main(int argc, char** argv)
     }
 
     if ((!distribution_root.empty() && !distribution_root.is_absolute()) ||
-        (!data_root.empty() && !data_root.is_absolute()))
+        (!data_root.empty() && !data_root.is_absolute()) ||
+        (!stop_file.empty() && (!stop_file.is_absolute() || stop_file != stop_file.lexically_normal())))
     {
-        std::cerr << "Distribution and data roots must be absolute paths\n";
+        std::cerr << "Distribution, data and stop-file paths must be absolute and normalized\n";
         return 2;
     }
 
@@ -256,16 +260,25 @@ int main(int argc, char** argv)
                                                .native_files = &native_files};
     {{PROJECT_TOKEN}}::register_server(request.registrations);
 
+    bool external_stop_requested = false;
     auto result = project::run_packaged_headless_server({.runtime = std::move(request),
                                                          .maximum_ticks = maximum_ticks,
                                                          .sleep_to_clock = sleep_to_clock,
-                                                         .stop_requested = [] { return stop_signal != 0; }});
+                                                         .stop_requested = [&]
+                                                         {
+                                                             if (stop_signal != 0) return true;
+                                                             if (stop_file.empty()) return false;
+                                                             std::error_code error;
+                                                             external_stop_requested = fs::exists(stop_file, error) && !error;
+                                                             return external_stop_requested;
+                                                         }});
     if (!result)
     {
         std::cerr << result.error().field << ": " << result.error().message << '\n';
         return 1;
     }
     const char* reason = stop_signal != 0 ? "signal"
+                          : external_stop_requested ? "external-stop"
                           : maximum_ticks != 0 && result.value() >= maximum_ticks ? "tick-limit"
                                                                                   : "runtime-stop";
     if (json_report)
