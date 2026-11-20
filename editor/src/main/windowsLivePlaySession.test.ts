@@ -75,7 +75,13 @@ describe('Windows Live Play published artifact authority', () => {
       buildId: 'fixture-build-42',
     });
     expect(() =>
-      resolvePublishedWindowsLivePlay(fixture.projectRoot, fixture.packageOutput, projectGuid, 'other-profile', targetId),
+      resolvePublishedWindowsLivePlay(
+        fixture.projectRoot,
+        fixture.packageOutput,
+        projectGuid,
+        'other-profile',
+        targetId,
+      ),
     ).toThrow(/Build the selected Windows profile/);
     expect(() =>
       resolvePublishedWindowsLivePlay(
@@ -114,15 +120,17 @@ describe('Windows Live Play published artifact authority', () => {
 // A real child process exercises WindowsLivePlaySession's protected inherited
 // stdio channel, actual localhost TCP handshake, state notification and Stop.
 // The native C++ client has its own cross-language TCP acceptance in CTest.
-it.skipIf(process.platform === 'win32')('attaches to a child process without secrets in argv and cleans up Stop', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-live-play-child-'));
-  folders.push(root);
-  const executable = path.join(root, 'ExampleGame.exe');
-  fs.symlinkSync(process.execPath, executable);
-  const script = path.join(root, 'runtime.cjs');
-  fs.writeFileSync(
-    script,
-    `
+it.skipIf(process.platform === 'win32')(
+  'attaches to a child process without secrets in argv and cleans up Stop',
+  async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-live-play-child-'));
+    folders.push(root);
+    const executable = path.join(root, 'ExampleGame.exe');
+    fs.symlinkSync(process.execPath, executable);
+    const script = path.join(root, 'runtime.cjs');
+    fs.writeFileSync(
+      script,
+      `
 const net = require('node:net');
 let chunks = [];
 process.stdin.on('data', (part) => chunks.push(part));
@@ -157,20 +165,25 @@ process.stdin.on('end', () => {
   setInterval(() => {}, 1000);
 });
 `,
-  );
-  const states: string[] = [];
-  const seen: string[] = [];
-  const session = new WindowsLivePlaySession((snapshot) => states.push(snapshot.state), (message) => seen.push(message.type), 'win32');
-  sessions.push(session);
-  const snapshot = await session.start({ executable, cwd: root, context: sessionContext(), args: [script] });
-  expect(snapshot.state).toBe('connected');
-  await vi.waitFor(() => expect(seen).toContain('session.state'), { timeout: 3000 });
-  expect(states).toContain('connected');
-  expect(snapshot.pid).toBeTypeOf('number');
-  await session.stop();
-  expect(session.snapshot()).toMatchObject({ state: 'stopped', pid: null, sessionId: null });
-  expect(states.at(-1)).toBe('stopped');
-});
+    );
+    const states: string[] = [];
+    const seen: string[] = [];
+    const session = new WindowsLivePlaySession(
+      (snapshot) => states.push(snapshot.state),
+      (message) => seen.push(message.type),
+      'win32',
+    );
+    sessions.push(session);
+    const snapshot = await session.start({ executable, cwd: root, context: sessionContext(), args: [script] });
+    expect(snapshot.state).toBe('connected');
+    await vi.waitFor(() => expect(seen).toContain('session.state'), { timeout: 3000 });
+    expect(states).toContain('connected');
+    expect(snapshot.pid).toBeTypeOf('number');
+    await session.stop();
+    expect(session.snapshot()).toMatchObject({ state: 'stopped', pid: null, sessionId: null });
+    expect(states.at(-1)).toBe('stopped');
+  },
+);
 
 it('fails closed on missing or non-Windows host executable', async () => {
   const session = new WindowsLivePlaySession();
