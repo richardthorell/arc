@@ -18,8 +18,9 @@ cmake -S . -B build-dev -DARC_BUILD_LIVE_PLAY_DEV=ON
 cmake --build build-dev --target arc-live-play-dev
 ```
 
-The build target is available as `arc::live-play-dev` in-tree or as the
-`ARC::LivePlayDev` SDK-development export. Default `arc-network`,
+The build target is available as `arc::live-play-dev` **in-tree only**.
+Exporting it through the installed SDK is deferred until the private JSON
+library dependency can be correctly packaged with it. Default `arc-network`,
 `arc-runtime` and packaged client/server builds **do not** link this target.
 Engine test builds compile it separately to prevent Windows/Android source
 regressions. The library uses WinSock2 on Windows and POSIX sockets on Android/
