@@ -133,7 +133,7 @@ async function handshake(server: LivePlayControlServer, sequence = 1): Promise<T
   peer.write(
     frame(
       'hello',
-      { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe', 'entity.inspect'] },
+      { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe', 'entity.inspect', 'content.observe'] },
       sequence,
     ),
   );
@@ -143,7 +143,7 @@ async function handshake(server: LivePlayControlServer, sequence = 1): Promise<T
     sender: 'editor',
     sessionId: authority.sessionId,
     instanceId: authority.instanceId,
-    payload: { capabilities: ['session.observe', 'entity.inspect'] },
+    payload: { capabilities: ['session.observe', 'entity.inspect', 'content.observe'] },
   });
   return peer;
 }
