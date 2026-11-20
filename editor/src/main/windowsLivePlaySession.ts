@@ -128,6 +128,9 @@ export class WindowsLivePlaySession {
         session.rejectConnected = reject;
         session.connectedTimer = setTimeout(() => reject(new Error('Development game did not connect to the editor')), connectionTimeoutMs);
       });
+      // Attach the rejection handler before the one-shot pipe write: a child
+      // that dies mid-handoff may reject its connection promise immediately.
+      void attached.catch(() => {});
       await writeLivePlayNativeHandoff(child.stdin, server, context);
       child.stdin.end();
       await attached;
@@ -187,10 +190,13 @@ export class WindowsLivePlaySession {
     const child = session.process;
     if (child && child.exitCode === null && child.signalCode === null) {
       child.kill();
-      await Promise.race([
-        new Promise<void>((resolve) => child.once('close', () => resolve())),
-        new Promise<void>((resolve) => setTimeout(resolve, 2500)),
-      ]);
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 2500);
+        child.once('close', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }
     await session.server.stop();
