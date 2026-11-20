@@ -43,19 +43,32 @@ constexpr auto read_timeout_ms = 5000u;
 #if defined(_WIN32)
 using socket_type = SOCKET;
 constexpr auto invalid_socket = INVALID_SOCKET;
-socket_type native_socket(std::intptr_t value) { return static_cast<socket_type>(value); }
-void close_socket(socket_type s) { if (s != invalid_socket) closesocket(s); }
+socket_type native_socket(std::intptr_t value)
+{
+    return static_cast<socket_type>(value);
+}
+void close_socket(socket_type s)
+{
+    if (s != invalid_socket) closesocket(s);
+}
 #else
 using socket_type = int;
 constexpr auto invalid_socket = -1;
-socket_type native_socket(std::intptr_t value) { return static_cast<socket_type>(value); }
-void close_socket(socket_type s) { if (s != invalid_socket) ::close(s); }
+socket_type native_socket(std::intptr_t value)
+{
+    return static_cast<socket_type>(value);
+}
+void close_socket(socket_type s)
+{
+    if (s != invalid_socket) ::close(s);
+}
 #endif
 
 void erase_bytes(void* memory, std::size_t bytes) noexcept
 {
     volatile auto* pointer = static_cast<volatile std::uint8_t*>(memory);
-    while (bytes--) *pointer++ = 0;
+    while (bytes--)
+        *pointer++ = 0;
 }
 
 bool safe_number(const json& object, std::string_view key, std::uint64_t& out)
@@ -69,9 +82,8 @@ bool safe_number(const json& object, std::string_view key, std::uint64_t& out)
 bool token(std::string_view value)
 {
     if (value.empty() || value.size() > 128) return false;
-    return std::all_of(value.begin(), value.end(), [](unsigned char c) {
-        return std::isalnum(c) || c == '.' || c == '_' || c == ':' || c == '-';
-    });
+    return std::all_of(value.begin(), value.end(),
+                       [](unsigned char c) { return std::isalnum(c) || c == '.' || c == '_' || c == ':' || c == '-'; });
 }
 
 bool guid(std::string_view value)
@@ -88,8 +100,7 @@ bool guid(std::string_view value)
 bool hash(std::string_view value)
 {
     return value.size() == 64 &&
-           std::all_of(value.begin(), value.end(),
-                       [](unsigned char c) { return std::isxdigit(c) != 0; });
+           std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
 }
 
 bool field(const json& object, const char* key, std::string& out)
@@ -135,7 +146,8 @@ bool read_pipe(std::uintptr_t handle, void* data, std::size_t length)
     {
 #if defined(_WIN32)
         DWORD amount = 0;
-        if (!ReadFile(reinterpret_cast<HANDLE>(handle), target, static_cast<DWORD>(length), &amount, nullptr) || !amount)
+        if (!ReadFile(reinterpret_cast<HANDLE>(handle), target, static_cast<DWORD>(length), &amount, nullptr) ||
+            !amount)
             return false;
 #else
         const auto amount = ::read(static_cast<int>(handle), target, length);
@@ -157,8 +169,7 @@ bool read_exact(socket_type s, void* destination, std::size_t bytes, std::uint32
         const auto now = std::chrono::steady_clock::now();
         if (now >= deadline) return false;
         const auto remain = std::chrono::duration_cast<std::chrono::microseconds>(deadline - now);
-        timeval timeout{static_cast<long>(remain.count() / 1000000),
-                        static_cast<long>(remain.count() % 1000000)};
+        timeval timeout{static_cast<long>(remain.count() / 1000000), static_cast<long>(remain.count() % 1000000)};
         fd_set readable;
         FD_ZERO(&readable);
         FD_SET(s, &readable);
@@ -195,10 +206,8 @@ bool send_frame(socket_type s, const void* input, std::size_t bytes)
 {
     if (bytes == 0 || bytes > maximum_frame_bytes) return false;
     const std::array<std::uint8_t, 4> header{
-        static_cast<std::uint8_t>((bytes >> 24) & 255),
-        static_cast<std::uint8_t>((bytes >> 16) & 255),
-        static_cast<std::uint8_t>((bytes >> 8) & 255),
-        static_cast<std::uint8_t>(bytes & 255)};
+        static_cast<std::uint8_t>((bytes >> 24) & 255), static_cast<std::uint8_t>((bytes >> 16) & 255),
+        static_cast<std::uint8_t>((bytes >> 8) & 255), static_cast<std::uint8_t>(bytes & 255)};
     return send_exact(s, header.data(), header.size()) && send_exact(s, input, bytes);
 }
 
@@ -215,9 +224,9 @@ bool read_frame(socket_type s, std::string& content, std::uint32_t timeout_ms)
 
 bool valid_authority(const launch_handoff& handoff)
 {
-    if (!handoff.port || !guid(handoff.project_guid) || !token(handoff.build_id) ||
-        !token(handoff.target_profile) || !token(handoff.session_id) || !token(handoff.instance_id) ||
-        !hash(handoff.schema_hash)) return false;
+    if (!handoff.port || !guid(handoff.project_guid) || !token(handoff.build_id) || !token(handoff.target_profile) ||
+        !token(handoff.session_id) || !token(handoff.instance_id) || !hash(handoff.schema_hash))
+        return false;
     std::set<std::string> unique;
     for (const auto& capability : handoff.capabilities)
         if (!known_capability(capability) || !unique.insert(capability).second) return false;
@@ -255,9 +264,8 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
     }
     const auto parsed = json::parse(payload, nullptr, false);
     erase_bytes(payload.data(), payload.size());
-    if (parsed.is_discarded() ||
-        !exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile",
-                             "sessionId", "instanceId", "schemaHash", "capabilities"}))
+    if (parsed.is_discarded() || !exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile",
+                                                      "sessionId", "instanceId", "schemaHash", "capabilities"}))
     {
         error = "Invalid Live Play launch handoff schema";
         return false;
@@ -265,13 +273,10 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
     std::uint64_t port = 0;
     std::string secret;
     launch_handoff candidate;
-    if (!safe_number(parsed, "port", port) || port == 0 || port > 65535 ||
-        !field(parsed, "secret", secret) || secret.size() != 64 ||
-        !field(parsed, "projectGuid", candidate.project_guid) ||
-        !field(parsed, "buildId", candidate.build_id) ||
-        !field(parsed, "targetProfile", candidate.target_profile) ||
-        !field(parsed, "sessionId", candidate.session_id) ||
-        !field(parsed, "instanceId", candidate.instance_id) ||
+    if (!safe_number(parsed, "port", port) || port == 0 || port > 65535 || !field(parsed, "secret", secret) ||
+        secret.size() != 64 || !field(parsed, "projectGuid", candidate.project_guid) ||
+        !field(parsed, "buildId", candidate.build_id) || !field(parsed, "targetProfile", candidate.target_profile) ||
+        !field(parsed, "sessionId", candidate.session_id) || !field(parsed, "instanceId", candidate.instance_id) ||
         !field(parsed, "schemaHash", candidate.schema_hash) ||
         !parse_capabilities(parsed.at("capabilities"), candidate.capabilities))
     {
@@ -282,7 +287,8 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
     candidate.port = static_cast<std::uint16_t>(port);
     for (std::size_t i = 0; i < secret_bytes; ++i)
     {
-        const auto digit = [](char c) -> int {
+        const auto digit = [](char c) -> int
+        {
             if (c >= '0' && c <= '9') return c - '0';
             if (c >= 'a' && c <= 'f') return c - 'a' + 10;
             if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -316,9 +322,15 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
     return true;
 }
 
-client::~client() noexcept { close(); }
+client::~client() noexcept
+{
+    close();
+}
 
-bool client::connected() const noexcept { return socket_ != -1; }
+bool client::connected() const noexcept
+{
+    return socket_ != -1;
+}
 
 void client::close() noexcept
 {
@@ -387,10 +399,7 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
         return false;
     }
     const json hello = {
-        {"schemaHash", handoff.schema_hash},
-        {"lastReceivedSequence", 0},
-        {"capabilities", handoff.capabilities}
-    };
+        {"schemaHash", handoff.schema_hash}, {"lastReceivedSequence", 0}, {"capabilities", handoff.capabilities}};
     if (!send_message("hello", hello.dump(), error))
     {
         close();
@@ -408,13 +417,13 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
     std::uint64_t sequence = 0;
     std::string type;
     std::string sender;
-    if (result.is_discarded() || !exact_keys(result, {"protocol", "protocolVersion", "sender", "projectGuid",
-        "buildId", "targetProfile", "sessionId", "instanceId", "messageId", "sequence", "type", "payload"}) ||
+    if (result.is_discarded() ||
+        !exact_keys(result, {"protocol", "protocolVersion", "sender", "projectGuid", "buildId", "targetProfile",
+                             "sessionId", "instanceId", "messageId", "sequence", "type", "payload"}) ||
         !result.at("protocol").is_string() || result.at("protocol") != "arc.live-play" ||
         !result.at("protocolVersion").is_number_integer() || result.at("protocolVersion") != protocol_version ||
-        !field(result, "sender", sender) || sender != "editor" ||
-        !field(result, "type", type) || type != "hello.accepted" ||
-        !safe_number(result, "sequence", sequence) || sequence != 1 ||
+        !field(result, "sender", sender) || sender != "editor" || !field(result, "type", type) ||
+        type != "hello.accepted" || !safe_number(result, "sequence", sequence) || sequence != 1 ||
         !result.at("messageId").is_string() || !token(result.at("messageId").get<std::string>()) ||
         result.at("projectGuid") != project_guid_ || result.at("buildId") != build_id_ ||
         result.at("targetProfile") != target_profile_ || result.at("sessionId") != session_id_ ||
@@ -435,7 +444,8 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
         return false;
     }
     for (const auto& capability : negotiated_capabilities_)
-        if (std::find(handoff.capabilities.begin(), handoff.capabilities.end(), capability) == handoff.capabilities.end())
+        if (std::find(handoff.capabilities.begin(), handoff.capabilities.end(), capability) ==
+            handoff.capabilities.end())
         {
             error = "Live Play editor escalated capabilities";
             close();
@@ -447,18 +457,35 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
 
 bool client::send_message(std::string_view type, const std::string& payload_json, std::string& error)
 {
-    if (!connected()) { error = "Live Play runtime is disconnected"; return false; }
+    if (!connected())
+    {
+        error = "Live Play runtime is disconnected";
+        return false;
+    }
     const std::uint64_t sequence = outbound_sequence_ + 1;
-    if (sequence > maximum_js_safe_integer) { error = "Live Play sequence exhausted"; return false; }
+    if (sequence > maximum_js_safe_integer)
+    {
+        error = "Live Play sequence exhausted";
+        return false;
+    }
     json payload = json::parse(payload_json, nullptr, false);
-    if (payload.is_discarded()) { error = "Invalid outbound Live Play payload"; return false; }
-    const json object = {
-        {"protocol", "arc.live-play"}, {"protocolVersion", protocol_version},
-        {"sender", "runtime"}, {"projectGuid", project_guid_}, {"buildId", build_id_},
-        {"targetProfile", target_profile_}, {"sessionId", session_id_}, {"instanceId", instance_id_},
-        {"messageId", "runtime-" + std::to_string(sequence)}, {"sequence", sequence},
-        {"type", std::string(type)}, {"payload", std::move(payload)}
-    };
+    if (payload.is_discarded())
+    {
+        error = "Invalid outbound Live Play payload";
+        return false;
+    }
+    const json object = {{"protocol", "arc.live-play"},
+                         {"protocolVersion", protocol_version},
+                         {"sender", "runtime"},
+                         {"projectGuid", project_guid_},
+                         {"buildId", build_id_},
+                         {"targetProfile", target_profile_},
+                         {"sessionId", session_id_},
+                         {"instanceId", instance_id_},
+                         {"messageId", "runtime-" + std::to_string(sequence)},
+                         {"sequence", sequence},
+                         {"type", std::string(type)},
+                         {"payload", std::move(payload)}};
     const auto serialized = object.dump();
     if (!send_frame(native_socket(socket_), serialized.data(), serialized.size()))
     {
@@ -473,10 +500,17 @@ bool client::send_message(std::string_view type, const std::string& payload_json
 bool client::send_state(std::string_view state, std::uint64_t tick, std::uint64_t revision, std::string& error)
 {
     if (state != "starting" && state != "running" && state != "paused" && state != "stopped" && state != "faulted")
-    { error = "Unsupported Live Play state"; return false; }
+    {
+        error = "Unsupported Live Play state";
+        return false;
+    }
     if (tick > maximum_js_safe_integer || revision > maximum_js_safe_integer)
-    { error = "Live Play revision exceeds wire precision"; return false; }
-    return send_message("session.state", json{{"state", std::string(state)}, {"tick", tick}, {"revision", revision}}.dump(), error);
+    {
+        error = "Live Play revision exceeds wire precision";
+        return false;
+    }
+    return send_message("session.state",
+                        json{{"state", std::string(state)}, {"tick", tick}, {"revision", revision}}.dump(), error);
 }
 
 bool client::send_heartbeat(std::string& error)
@@ -487,24 +521,46 @@ bool client::send_heartbeat(std::string& error)
 bool client::send_ack(std::string_view request_id, std::uint64_t applied_revision, std::string& error)
 {
     if (!token(request_id) || applied_revision > maximum_js_safe_integer)
-    { error = "Invalid Live Play command ACK"; return false; }
-    return send_message("command.ack",
-        json{{"status", "applied"}, {"requestId", std::string(request_id)}, {"appliedRevision", applied_revision}}.dump(), error);
+    {
+        error = "Invalid Live Play command ACK";
+        return false;
+    }
+    return send_message(
+        "command.ack",
+        json{{"status", "applied"}, {"requestId", std::string(request_id)}, {"appliedRevision", applied_revision}}
+            .dump(),
+        error);
 }
 
 bool client::send_content_generation(std::uint64_t generation, std::string_view status, std::string& error)
 {
     if (status != "available" && status != "active" && status != "rejected")
-    { error = "Invalid Live Play content generation state"; return false; }
-    if (generation > maximum_js_safe_integer) { error = "Live Play generation exceeds wire precision"; return false; }
+    {
+        error = "Invalid Live Play content generation state";
+        return false;
+    }
+    if (generation > maximum_js_safe_integer)
+    {
+        error = "Live Play generation exceeds wire precision";
+        return false;
+    }
     if (std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "content.observe") ==
-        negotiated_capabilities_.end()) { error = "Content observation is not negotiated"; return false; }
-    return send_message("content.generation", json{{"generation", generation}, {"status", std::string(status)}}.dump(), error);
+        negotiated_capabilities_.end())
+    {
+        error = "Content observation is not negotiated";
+        return false;
+    }
+    return send_message("content.generation", json{{"generation", generation}, {"status", std::string(status)}}.dump(),
+                        error);
 }
 
 bool client::receive_frame(std::string& result, std::uint32_t timeout_ms, std::string& error)
 {
-    if (!connected()) { error = "Live Play runtime is disconnected"; return false; }
+    if (!connected())
+    {
+        error = "Live Play runtime is disconnected";
+        return false;
+    }
     fd_set readable;
     FD_ZERO(&readable);
     const auto s = native_socket(socket_);
@@ -533,15 +589,15 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
     const auto parsed = json::parse(text, nullptr, false);
     std::string sender, type, message_id;
     std::uint64_t sequence = 0;
-    if (parsed.is_discarded() || !exact_keys(parsed, {"protocol", "protocolVersion", "sender", "projectGuid",
-        "buildId", "targetProfile", "sessionId", "instanceId", "messageId", "sequence", "type", "payload"}) ||
+    if (parsed.is_discarded() ||
+        !exact_keys(parsed, {"protocol", "protocolVersion", "sender", "projectGuid", "buildId", "targetProfile",
+                             "sessionId", "instanceId", "messageId", "sequence", "type", "payload"}) ||
         parsed.at("protocol") != "arc.live-play" || parsed.at("protocolVersion") != protocol_version ||
-        !field(parsed, "sender", sender) || sender != "editor" ||
-        !field(parsed, "type", type) || !field(parsed, "messageId", message_id) || !token(message_id) ||
-        !safe_number(parsed, "sequence", sequence) || sequence <= inbound_sequence_ ||
-        parsed.at("projectGuid") != project_guid_ || parsed.at("buildId") != build_id_ ||
-        parsed.at("targetProfile") != target_profile_ || parsed.at("sessionId") != session_id_ ||
-        parsed.at("instanceId") != instance_id_)
+        !field(parsed, "sender", sender) || sender != "editor" || !field(parsed, "type", type) ||
+        !field(parsed, "messageId", message_id) || !token(message_id) || !safe_number(parsed, "sequence", sequence) ||
+        sequence <= inbound_sequence_ || parsed.at("projectGuid") != project_guid_ ||
+        parsed.at("buildId") != build_id_ || parsed.at("targetProfile") != target_profile_ ||
+        parsed.at("sessionId") != session_id_ || parsed.at("instanceId") != instance_id_)
     {
         error = "Live Play inbound identity, direction, or sequence mismatch";
         close();
@@ -562,6 +618,9 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
     return incoming_message{std::move(type), std::move(message_id), sequence, std::move(text)};
 }
 
-std::uint64_t client::last_received_sequence() const noexcept { return inbound_sequence_; }
+std::uint64_t client::last_received_sequence() const noexcept
+{
+    return inbound_sequence_;
+}
 
 } // namespace arc::network::live_play_dev
