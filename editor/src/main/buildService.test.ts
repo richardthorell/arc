@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ArcProjectCandidate } from '../common/projectTypes';
 import { BuildService } from './buildService';
+import * as msbuild from './msbuildCompileTasks';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
@@ -172,6 +173,11 @@ describe('BuildService command history', () => {
         }),
       );
 
+      // Ninja creates its log during the native compilation invocation.
+      fs.writeFileSync(
+        path.join(buildDir, '.ninja_log'),
+        '# ninja log v5\n10\t80\t123\tCMakeFiles/MyEditor.dir/main.cpp.obj\tcommand-hash\n',
+      );
       child.emit('close', 0);
       await expect(pending).resolves.toMatchObject({ state: 'succeeded' });
       expect(service.snapshot().targetGraph).toMatchObject({
@@ -181,10 +187,54 @@ describe('BuildService command history', () => {
         nodes: [{ name: 'MyEditor', artifactObservedAt: expect.any(String) }],
       });
       expect(service.snapshot().targetGraph?.nodes[0]).not.toHaveProperty('satisfiedAt');
+      expect(service.snapshot().compileTrace).toMatchObject({
+        source: 'ninja-log',
+        clock: 'ninja-invocation',
+        tasks: [{ output: 'CMakeFiles/MyEditor.dir/main.cpp.obj', durationMs: 70 }],
+      });
       expect(publish.mock.calls.some(([entry]) => entry.targetGraph?.revision === 1)).toBe(true);
       expect(host.command).toHaveBeenCalledOnce();
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('forwards native MSBuild telemetry flags without changing failed command reporting', async () => {
+    const capture = vi.spyOn(msbuild, 'beginMsbuildCompileTrace').mockReturnValue({
+      args: ['--msbuild-timing-log', '/project/.arc-monitor/trace.log'],
+      finish: () => ({
+        source: 'msbuild-file-log',
+        clock: 'msbuild-cl-events',
+        truncated: false,
+        tasks: [{ output: 'CL task #7', startMs: 0, endMs: 200, durationMs: 200 }],
+      }),
+    });
+    try {
+      const { service, process: child } = setup();
+      const pending = service.execute({ action: 'build', configuration: 'Debug' });
+      expect(spawn).toHaveBeenCalledWith(
+        process.execPath,
+        [
+          'build',
+          '--project',
+          activeProject.descriptorPath,
+          '--config',
+          'Debug',
+          '--msbuild-timing-log',
+          '/project/.arc-monitor/trace.log',
+        ],
+        expect.objectContaining({ cwd: activeProject.projectRoot }),
+      );
+      child.emit('close', 1);
+      await expect(pending).rejects.toThrow('code 1');
+      expect(service.snapshot().compileTrace).toEqual({
+        source: 'msbuild-file-log',
+        clock: 'msbuild-cl-events',
+        truncated: false,
+        tasks: [{ output: 'CL task #7', startMs: 0, endMs: 200, durationMs: 200 }],
+      });
+    } finally {
+      capture.mockRestore();
     }
   });
 

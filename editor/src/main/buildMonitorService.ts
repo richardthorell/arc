@@ -188,6 +188,13 @@ export class BuildMonitorService {
       this.event({ kind: 'target-graph-changed', runId: run.id, revision: snapshot.targetGraph.revision });
     }
 
+    // BM7.1: persist the bounded post-build Ninja timing trace. The trace is
+    // relative to the native invocation, not the editor command's start time.
+    if (snapshot.compileTrace && !run.compileTrace) {
+      run.compileTrace = structuredClone(snapshot.compileTrace);
+      this.history.saveRun(run);
+    }
+
     const cursor = this.diagnosticCursor.get(run.id) ?? 0;
     for (const diagnostic of snapshot.diagnostics) {
       if (diagnostic.sequence <= cursor) continue;

@@ -20,6 +20,7 @@ import type { BuildHistoryDetail, BuildHistoryPage, BuildRawLogChunk } from '../
 import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorSnapshot } from '../../../common/buildMonitorTypes';
 import { BuildStageTimeline } from './BuildStageTimeline';
 import { BuildTargetGraphPanel } from './BuildTargetGraphPanel';
+import { BuildCompileTasksPanel } from './BuildCompileTasksPanel';
 
 const MAX_DISPLAY_CHUNKS = 1200;
 const MAX_DISPLAY_EVENTS = 1600;
@@ -449,6 +450,7 @@ export function BuildDashboard({
                   )}
                 </section>
                 <BuildTargetGraphPanel key={selected.id} run={selected} nowMs={elapsed} />
+                <BuildCompileTasksPanel run={selected} />
                 <section className="build-monitor-output" aria-label="Build logs and diagnostics">
                   <div className="build-monitor-output-header">
                     <div className="build-monitor-tabs" role="tablist" aria-label="Output category">

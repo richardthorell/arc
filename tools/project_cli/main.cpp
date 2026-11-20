@@ -269,6 +269,18 @@ int handle_engine(const arguments& args, bool json_output)
     return 0;
 }
 
+// Native MSBuild telemetry is opt-in. Ninja, Makefiles, and other CMake
+// generators must not receive MSBuild-specific build-tool arguments.
+bool uses_visual_studio_generator(const std::filesystem::path& directory)
+{
+    std::ifstream cache(directory / "CMakeCache.txt");
+    std::string line;
+    constexpr std::string_view prefix = "CMAKE_GENERATOR:INTERNAL=";
+    while (std::getline(cache, line))
+        if (line.rfind(prefix, 0) == 0) return line.substr(prefix.size()).rfind("Visual Studio ", 0) == 0;
+    return false;
+}
+
 int configure_or_build(const arguments& args, bool build, bool json_output)
 {
     const auto descriptor_path = descriptor_from(args);
@@ -413,6 +425,29 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
         {
             command.push_back("--target");
             command.push_back(*target);
+        }
+        // BM7.2: collect native CL task start/finish events in a dedicated,
+        // non-appended MSBuild file log. The editor supplies a unique path in
+        // this build directory; prevent MSBuild option injection and log
+        // writes to arbitrary or symlinked project files.
+        if (const auto logfile = args.option("--msbuild-timing-log");
+            logfile && uses_visual_studio_generator(build_directory))
+        {
+            const auto folder = std::filesystem::absolute(build_directory / ".arc-monitor").lexically_normal();
+            const auto target = std::filesystem::path(*logfile).lexically_normal();
+            const auto name = target.filename().string();
+            std::error_code error;
+            if (logfile->find_first_of(";\r\n") != std::string::npos || !target.is_absolute() ||
+                name.rfind("arc-msbuild-", 0) != 0 || target.extension() != ".log" ||
+                !std::filesystem::is_directory(folder) || std::filesystem::is_symlink(folder) ||
+                !std::filesystem::equivalent(target.parent_path(), folder, error) || error ||
+                std::filesystem::exists(target) || std::filesystem::is_symlink(target))
+                return fail(json_output, "Invalid MSBuild timing log path; expected an unused .arc-monitor log", 2);
+            command.push_back("--");
+            const std::string logger_options =
+                "-flp:LogFile=" + target.string() +
+                ";Verbosity=diagnostic;EnableMPLogging;ShowTimestamp;NoItemAndPropertyList;Encoding=UTF-8";
+            command.push_back(logger_options);
         }
         std::string output;
         const int code = run_process(cmake, command, context.value().root, &output, json_output);

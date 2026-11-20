@@ -11,6 +11,8 @@ import { CookWorkflowService } from './cookWorkflowService';
 import type { WorkflowExecutionSnapshot } from '../common/projectWorkflowTypes';
 import type { WindowsBuildEnvironment } from './windowsBuildWorkflow';
 import { EditorCommandTargetGraph } from './editorCommandTargetGraph';
+import { beginNinjaCompileTrace } from './ninjaCompileTasks';
+import { beginMsbuildCompileTrace } from './msbuildCompileTasks';
 
 type HostBridge = {
   command(
@@ -87,6 +89,8 @@ export class BuildService {
     this.update({
       history: [],
       runId: undefined,
+      compileTrace: undefined,
+      targetGraph: undefined,
       state: 'idle',
       diagnostics: [],
       buildRequired: false,
@@ -212,7 +216,7 @@ export class BuildService {
     if (!tool || !fs.existsSync(tool)) throw new Error('ARC project build tool is unavailable');
     const project = this.activeProject();
     if (!project) throw new Error('No project is open');
-    const effective = arguments_;
+    const effective = [...arguments_];
     const startedMs = Date.now();
     const runId = randomUUID();
     const kind: ArcBuildRun['kind'] =
@@ -226,6 +230,7 @@ export class BuildService {
       completedAt: undefined,
       command: `${tool} ${effective.join(' ')}`,
       targetGraph: undefined,
+      compileTrace: undefined,
     });
     const epoch = this.projectEpoch;
     const trackGraph =
@@ -236,6 +241,11 @@ export class BuildService {
           })
         : null;
     trackGraph?.prepare();
+    // Ninja's log is append-only across incremental invocations. Capture a
+    // cursor before spawn to exclude older builds from this run's timeline.
+    const finishNinjaTrace = state === 'building' ? beginNinjaCompileTrace(project) : null;
+    const msbuildTrace = state === 'building' ? beginMsbuildCompileTrace(project, runId) : null;
+    if (msbuildTrace) effective.push(...msbuildTrace.args);
     await new Promise<void>((resolve, reject) => {
       const child = spawn(tool, effective, { cwd: project.projectRoot, shell: false, windowsHide: true });
       this.process = child;
@@ -262,6 +272,7 @@ export class BuildService {
       child.stderr.on('data', (data: Buffer) => consume(data, 'error'));
       child.on('error', (error) => {
         failedToStart = true;
+        msbuildTrace?.finish();
         this.process = null;
         this.append('error', error.message, 'compiler');
         this.recordRun(kind, configuration, startedMs, 'failed');
@@ -271,6 +282,12 @@ export class BuildService {
       child.on('close', (code) => {
         if (failedToStart) return;
         trackGraph?.finish();
+        try {
+          const compileTrace = msbuildTrace?.finish() ?? finishNinjaTrace?.();
+          if (compileTrace) this.update({ compileTrace });
+        } catch {
+          // Native telemetry must not affect compilation or cancellation.
+        }
         if (pending.info.trim()) this.parseLine(pending.info, code === 0 ? 'info' : 'error');
         if (pending.error.trim()) this.parseLine(pending.error, 'error');
         this.process = null;

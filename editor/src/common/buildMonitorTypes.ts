@@ -1,6 +1,7 @@
 import type { ArcBuildDiagnostic } from './buildTypes';
 import type { WorkflowArtifact } from './projectWorkflowTypes';
 import type { BuildTargetGraph } from './buildTargetTypes';
+import type { BuildCompileTrace } from './buildCompileTypes';
 
 /** Unified, project-scoped build observation contract. BM1 is in-memory; BM2 adds disk persistence. */
 export type BuildMonitorSource = 'command' | 'workflow';
@@ -35,6 +36,7 @@ export type BuildMonitorRun = {
   error?: string;
   artifacts?: WorkflowArtifact[];
   targetGraph?: BuildTargetGraph;
+  compileTrace?: BuildCompileTrace;
 };
 
 type EventBase = { sequence: number; runId: string; stageId?: string; timestamp: string };
