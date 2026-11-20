@@ -865,7 +865,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       }
       return;
     }
-    if (command === 'scene.stop' && externalPlay.state !== 'stopped' && externalPlay.state !== 'failed') {
+    if (command === 'scene.stop' && externalPlay.state !== 'stopped') {
       try {
         await window.arc.livePlay.stop();
       } catch (error) {
@@ -1731,7 +1731,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           targetDevice={targetPlatform === detectHostTargetPlatform() ? selectedPlayTarget : undefined}
           onTargetDeviceChange={selectPlayTarget}
           runtimeState={runtimeState.state}
-          enableStandalonePlay={targetPlatform === 'windows' && !runtimeWorldActive}
+          enableStandalonePlay={detectHostTargetPlatform() === 'windows' && targetPlatform === 'windows' && !runtimeWorldActive}
+          targetDeviceTitle={externalPlay.state !== 'stopped' ? `Standalone: ${externalPlay.state}${externalPlay.error ? ` — ${externalPlay.error}` : ''}` : undefined}
           standaloneSessionState={externalPlay.state}
           authoringDisabled={runtimeWorldActive}
           timeScale={runtimeState.timeScale}
