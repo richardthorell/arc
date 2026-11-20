@@ -171,7 +171,8 @@ describe('BM7.2 native MSBuild CL task intervals', () => {
       durationMs: 300,
     });
     expect(finished?.activeTasks).toEqual([{ output: 'CL task #22 (node 2)' }]);
-    expect(parseMsbuildCompileLog(lines.join('\n'), false, true, project.projectRoot, build)?.activeTasks).toBeUndefined();
+    const final = parseMsbuildCompileLog(lines.join('\n'), false, true, project.projectRoot, build);
+    expect(final?.activeTasks).toBeUndefined();
   });
 
   it('does not claim source ownership for ambiguous nodes or paths outside the project', () => {
