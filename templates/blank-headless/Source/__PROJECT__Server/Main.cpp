@@ -98,13 +98,24 @@ int main(int argc, char** argv)
 
     std::uint64_t maximum_ticks{};
     bool sleep_to_clock = true;
+    bool json_report = false;
     fs::path distribution_root;
     fs::path data_root;
 
     for (int index = 1; index < argc; ++index)
     {
         const std::string_view argument(argv[index]);
-        if (argument == "--no-sleep")
+        if (argument == "--version")
+        {
+            // Compiled-in identity; does not depend on an installed SDK or
+            // on the current working directory.
+            std::cout << "ARC server engine {{ENGINE_VERSION}} ("
+                      << ARC_SERVER_BUILD_CONFIGURATION << ")\n";
+            return 0;
+        }
+        else if (argument == "--report-json")
+            json_report = true;
+        else if (argument == "--no-sleep")
             sleep_to_clock = false;
         else if (argument == "--ticks" && index + 1 < argc)
         {
@@ -230,6 +241,21 @@ int main(int argc, char** argv)
         std::cerr << result.error().field << ": " << result.error().message << '\n';
         return 1;
     }
-    std::cout << "Server stopped after " << result.value() << " simulation ticks\n";
+    const char* reason = stop_signal != 0 ? "signal"
+                          : maximum_ticks != 0 && result.value() >= maximum_ticks ? "tick-limit"
+                                                                                  : "runtime-stop";
+    if (json_report)
+    {
+        // Machine-readable stdout for external supervisors and CI. Values are
+        // fixed engine/configuration literals and numeric simulation counters.
+        std::cout << "{\"event\":\"server.stopped\",\"role\":\"server\","
+                  << "\"engineVersion\":\"{{ENGINE_VERSION}}\","
+                  << "\"configuration\":\"" << ARC_SERVER_BUILD_CONFIGURATION << "\","
+                  << "\"reason\":\"" << reason << "\","
+                  << "\"requestedTicks\":" << maximum_ticks << ","
+                  << "\"completedTicks\":" << result.value() << "}\n";
+    }
+    else
+        std::cout << "Server stopped after " << result.value() << " simulation ticks\n";
     return 0;
 }

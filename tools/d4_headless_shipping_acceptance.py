@@ -40,6 +40,28 @@ def verify_headless_distribution(root: Path) -> dict:
     return manifest
 
 
+def verify_server_report(path: Path, *, ticks: int, configuration: str = "Shipping") -> dict:
+    """Validate the actual packaged server's machine-readable shutdown event."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if len(lines) != 1:
+            raise ValueError("expected one JSON event line")
+        report = json.loads(lines[0])
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise SmokeFailure(f"invalid server shutdown report: {exc}") from exc
+    required = {
+        "event": "server.stopped", "role": "server",
+        "configuration": configuration, "reason": "tick-limit",
+        "requestedTicks": ticks, "completedTicks": ticks,
+    }
+    for name, expected in required.items():
+        if report.get(name) != expected:
+            raise SmokeFailure(f"invalid server shutdown report {name}: expected {expected!r}, got {report.get(name)!r}")
+    if not report.get("engineVersion"):
+        raise SmokeFailure("server shutdown report is missing engineVersion")
+    return report
+
+
 def run(args: argparse.Namespace) -> None:
     workspace = args.workspace.resolve()
     artifacts = args.artifacts.resolve()
@@ -100,6 +122,16 @@ def run(args: argparse.Namespace) -> None:
     for label, distribution, zipped in (("directory", release, None), ("zip", None, archive)):
         smoke(distribution, zipped, args.timeout, [],
               artifacts / label, expected_output="Server stopped after 10 simulation ticks")
+
+    # D4.3: verify compiled version reporting and deterministic lifecycle
+    # metadata through the relocated production executable, not a mock host.
+    smoke(release, None, args.timeout, ["--version"], artifacts / "version",
+          expected_output=f"ARC server engine {args.engine} (Shipping)")
+    smoke(release, None, args.timeout, ["--ticks", "10", "--no-sleep", "--report-json"],
+          artifacts / "json-report", expected_output='"event":"server.stopped"')
+    report = verify_server_report(artifacts / "json-report" / "stdout.txt", ticks=10)
+    if report["engineVersion"] != args.engine:
+        raise SmokeFailure(f"server reported incompatible engineVersion: {report['engineVersion']}")
 
     # D4.2: the real relocated server must reject corrupt/missing content,
     # missing native dependencies, incompatible engine identity and bad flags.
