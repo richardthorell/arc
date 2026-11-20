@@ -45,6 +45,7 @@ export function BuildCompileTasksPanel({
   const selected = selectedIndex === null ? null : (tasks[selectedIndex] ?? null);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
   const measuredLabel = `${tasks.length} measured · ${source.generator}${run.state === 'running' ? ' · live' : ''}`;
+  const activeLabel = `${inFlight.length} MSBuild CL ${inFlight.length === 1 ? 'task' : 'tasks'} in progress`;
   return (
     <section className="build-monitor-targets build-monitor-compiles" aria-label="Compilation task timeline">
       <div className="build-monitor-section-title">
@@ -140,7 +141,7 @@ export function BuildCompileTasksPanel({
       )}
       {inFlight.length > 0 && (
         <div className="build-monitor-compile-active" aria-label="Active compiler tasks">
-          <strong>{inFlight.length} MSBuild CL task{inFlight.length === 1 ? '' : 's'} in progress</strong>
+          <strong>{activeLabel}</strong>
           <p className="build-monitor-target-note">Started by MSBuild; no end timestamp or duration recorded yet.</p>
           <ul>
             {inFlight.map((task) => (
