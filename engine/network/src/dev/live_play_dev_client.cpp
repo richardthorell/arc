@@ -457,7 +457,7 @@ bool client::send_message(std::string_view type, const std::string& payload_json
         {"sender", "runtime"}, {"projectGuid", project_guid_}, {"buildId", build_id_},
         {"targetProfile", target_profile_}, {"sessionId", session_id_}, {"instanceId", instance_id_},
         {"messageId", "runtime-" + std::to_string(sequence)}, {"sequence", sequence},
-        {"type", type}, {"payload", std::move(payload)}
+        {"type", std::string(type)}, {"payload", std::move(payload)}
     };
     const auto serialized = object.dump();
     if (!send_frame(native_socket(socket_), serialized.data(), serialized.size()))
@@ -476,7 +476,7 @@ bool client::send_state(std::string_view state, std::uint64_t tick, std::uint64_
     { error = "Unsupported Live Play state"; return false; }
     if (tick > maximum_js_safe_integer || revision > maximum_js_safe_integer)
     { error = "Live Play revision exceeds wire precision"; return false; }
-    return send_message("session.state", json{{"state", state}, {"tick", tick}, {"revision", revision}}.dump(), error);
+    return send_message("session.state", json{{"state", std::string(state)}, {"tick", tick}, {"revision", revision}}.dump(), error);
 }
 
 bool client::send_heartbeat(std::string& error)
@@ -489,7 +489,7 @@ bool client::send_ack(std::string_view request_id, std::uint64_t applied_revisio
     if (!token(request_id) || applied_revision > maximum_js_safe_integer)
     { error = "Invalid Live Play command ACK"; return false; }
     return send_message("command.ack",
-        json{{"status", "applied"}, {"requestId", request_id}, {"appliedRevision", applied_revision}}.dump(), error);
+        json{{"status", "applied"}, {"requestId", std::string(request_id)}, {"appliedRevision", applied_revision}}.dump(), error);
 }
 
 bool client::send_content_generation(std::uint64_t generation, std::string_view status, std::string& error)
@@ -499,7 +499,7 @@ bool client::send_content_generation(std::uint64_t generation, std::string_view 
     if (generation > maximum_js_safe_integer) { error = "Live Play generation exceeds wire precision"; return false; }
     if (std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "content.observe") ==
         negotiated_capabilities_.end()) { error = "Content observation is not negotiated"; return false; }
-    return send_message("content.generation", json{{"generation", generation}, {"status", status}}.dump(), error);
+    return send_message("content.generation", json{{"generation", generation}, {"status", std::string(status)}}.dump(), error);
 }
 
 bool client::receive_frame(std::string& result, std::uint32_t timeout_ms, std::string& error)
