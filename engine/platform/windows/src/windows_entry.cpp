@@ -18,6 +18,11 @@
 #include <system_error>
 #include <utility>
 #endif
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+#include <arc/network/live_play_dev_client.h>
+#include <atomic>
+#include <thread>
+#endif
 
 #include <windows.h>
 #include <windowsx.h>
@@ -344,6 +349,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     namespace fs = std::filesystem;
     namespace project = arc::project;
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    namespace live = arc::network::live_play_dev;
+    auto handoff_pipe = GetStdHandle(STD_INPUT_HANDLE);
+    if (!handoff_pipe || handoff_pipe == INVALID_HANDLE_VALUE || GetFileType(handoff_pipe) != FILE_TYPE_PIPE)
+        return boot_failure("Development Live Play requires a protected inherited stdin pipe");
+    live::launch_handoff handoff;
+    std::string connection_error;
+    const bool received = live::read_launch_handoff(reinterpret_cast<std::uintptr_t>(handoff_pipe),
+                                                    handoff, connection_error);
+    CloseHandle(handoff_pipe);
+    if (!received) return boot_failure(connection_error);
+    auto live_client = std::make_unique<live::client>();
+    if (!live_client->connect(handoff, connection_error))
+        return boot_failure(connection_error);
+    if (!live_client->send_state("starting", 0, 0, connection_error))
+        return boot_failure(connection_error);
+#endif
     auto definition = arc::platform::windows::configure_packaged_client();
     const fs::path executable = executable_path();
     const fs::path storage = writable_data_root(definition.expected.project_guid);
@@ -374,6 +396,41 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     auto started = project::start_packaged_runtime(std::move(request));
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    // The network worker owns the client; socket timeouts cannot stall rendering,
+    // input dispatch, scene simulation or the editor's Authoring World.
+    std::atomic<std::uint64_t> live_ticks{0};
+    std::atomic<int> live_phase{1}; // running=1, paused=2
+    std::jthread live_worker([client = std::move(live_client), &live_ticks,
+                              &live_phase](std::stop_token stop) mutable
+    {
+        std::string error;
+        int last_phase = 0;
+        auto last_heartbeat = std::chrono::steady_clock::now();
+        while (!stop.stop_requested() && client->connected())
+        {
+            const int phase = live_phase.load();
+            if (phase != last_phase)
+            {
+                if (!client->send_state(phase == 2 ? "paused" : "running",
+                                        live_ticks.load(), live_ticks.load(), error))
+                    break;
+                last_phase = phase;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            if (now - last_heartbeat >= std::chrono::seconds(1))
+            {
+                if (!client->send_heartbeat(error)) break;
+                last_heartbeat = now;
+            }
+            static_cast<void>(client->poll(150, error));
+            if (!error.empty()) break;
+        }
+        if (client->connected())
+            static_cast<void>(client->send_state("stopped", live_ticks.load(), live_ticks.load(), error));
+        client->close();
+    });
+#endif
     // This exercises the real Shipping bootstrap and startup scene on CI
     // without requiring a GPU or opening a window. Normal launches are unchanged.
     if (command_line && std::string_view(command_line) == "--ci-smoke")
@@ -489,6 +546,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         }
         else if (session->state() == project::packaged_runtime_state::suspended)
             Sleep(8);
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+        live_phase.store(session->state() == project::packaged_runtime_state::suspended ? 2 : 1);
+        ++live_ticks;
+#endif
 #else
         if (runtime.running()) runtime.tick();
 #endif
@@ -497,6 +558,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     state.runtime = nullptr;
     state.session = nullptr;
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    live_worker.request_stop();
+    live_worker.join();
+#endif
     auto stopped = session->shutdown();
     if (!stopped && state.failure.empty()) state.failure = stopped.error().field + ": " + stopped.error().message;
     if (!state.failure.empty()) return boot_failure(state.failure);
