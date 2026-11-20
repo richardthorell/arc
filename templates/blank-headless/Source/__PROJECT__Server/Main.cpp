@@ -35,6 +35,21 @@ void on_stop_signal(int)
     stop_signal = 1;
 }
 
+#if defined(_WIN32)
+// Windows console control events are not reliably translated into C runtime
+// SIGINT/SIGTERM. Handle Ctrl+C and Ctrl+Break explicitly; never perform
+// engine teardown or I/O from the console-handler thread.
+BOOL WINAPI on_console_control(DWORD event)
+{
+    if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT)
+    {
+        stop_signal = 1;
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
 bool parse_ticks(std::string_view text, std::uint64_t& value)
 {
     const char* const begin = text.data();
@@ -201,8 +216,17 @@ int main(int argc, char** argv)
         return 2;
     }
 
+#if defined(_WIN32)
+    if (!SetConsoleCtrlHandler(on_console_control, TRUE))
+    {
+        std::cerr << "Cannot register Windows console stop handler\n";
+        return 2;
+    }
+    std::signal(SIGTERM, on_stop_signal);
+#else
     std::signal(SIGINT, on_stop_signal);
     std::signal(SIGTERM, on_stop_signal);
+#endif
 
     arc::jobs::job_system jobs{{.worker_count = 1, .run_inline = false, .io_worker_count = 2,
                                 .enable_render_thread = false}};
