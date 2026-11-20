@@ -103,7 +103,13 @@ describe('BM8.1 compatible build history selection', () => {
         clock: 'ninja-invocation',
         truncated: false,
         tasks: [
-          { output: 'CMakeFiles/arc.dir/main.cpp.o', sourceFile: 'Source/main.cpp', startMs: 0, endMs: 130, durationMs: 130 },
+          {
+            output: 'CMakeFiles/arc.dir/main.cpp.o',
+            sourceFile: 'Source/main.cpp',
+            startMs: 0,
+            endMs: 130,
+            durationMs: 130,
+          },
           { output: 'CMakeFiles/arc.dir/other.cpp.o', startMs: 0, endMs: 75, durationMs: 75 },
           { output: 'same-object.o', startMs: 0, endMs: 20, durationMs: 20 },
           { output: 'same-object.o', startMs: 0, endMs: 30, durationMs: 30 },
@@ -159,6 +165,7 @@ describe('BM8.1 compatible build history selection', () => {
   });
 
   it('refuses incompatible direct comparisons, even if a caller bypasses baseline selection', () => {
-    expect(compareBuildHistory(run(), run({ id: 'bad', startedAt: earlier, configuration: 'Shipping' }))).toBeNull();
+    const mismatched = run({ id: 'bad', startedAt: earlier, configuration: 'Shipping' });
+    expect(compareBuildHistory(run(), mismatched)).toBeNull();
   });
 });
