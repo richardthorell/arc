@@ -103,8 +103,7 @@ export class LivePlayControlServer {
     if (this.server) throw new Error('Live Play control server is already started');
     // Validate trusted launch authority before opening even a loopback port.
     const sample = this.message('heartbeat', { lastReceivedSequence: 0 });
-    if (!livePlayMessageSchema.safeParse(sample).success)
-      throw new Error('Invalid Live Play launch authority');
+    if (!livePlayMessageSchema.safeParse(sample).success) throw new Error('Invalid Live Play launch authority');
     if (
       !/^[a-f\d]{64}$/iu.test(this.options.schemaHash) ||
       new Set(this.options.grantedCapabilities).size !== this.options.grantedCapabilities.length
