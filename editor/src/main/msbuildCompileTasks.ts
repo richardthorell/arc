@@ -39,7 +39,8 @@ function safeSource(raw: string, projectRoot?: string, buildRoot?: string): stri
   if (value.length > 1024 || /[\0\r\n;]/u.test(value) || !/\.(?:c|cc|cpp|cxx|ixx)$/iu.test(value)) return null;
   const absolute = path.resolve(buildRoot, value);
   const relative = path.relative(path.resolve(projectRoot), absolute);
-  if (!relative || relative.length > 240 || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return null;
+  const inside = relative && relative.length <= 240 && relative !== '..' && !relative.startsWith('..' + path.sep);
+  if (!inside || path.isAbsolute(relative)) return null;
   return relative.replace(/\\/g, '/');
 }
 
@@ -50,7 +51,9 @@ function logMessage(line: string): { message: string; node: string } {
   return { message: (match ? withoutTime.slice(match[0].length) : withoutTime).trim(), node: match?.[1] ?? '' };
 }
 
-function taskSources(task: ClEvent): { sourceFiles?: string[]; sourceFilesTruncated?: boolean; sourceFile?: string } {
+type SourceFields = { sourceFiles?: string[]; sourceFilesTruncated?: boolean; sourceFile?: string };
+
+function taskSources(task: ClEvent): SourceFields {
   const sources = task.sources;
   return {
     ...(sources.length ? { sourceFiles: sources } : {}),
@@ -153,7 +156,9 @@ export function parseMsbuildCompileLog(
   for (const task of intervals) {
     if (!Number.isFinite(base)) break;
     const sourceFields = taskSources(task.task);
-    const size = Buffer.byteLength(task.task.label, 'utf8') + Buffer.byteLength(JSON.stringify(sourceFields), 'utf8') + 96;
+    const labelBytes = Buffer.byteLength(task.task.label, 'utf8');
+    const sourceBytes = Buffer.byteLength(JSON.stringify(sourceFields), 'utf8');
+    const size = labelBytes + sourceBytes + 96;
     if (tasks.length >= MAX_TASKS || bytes + size > MAX_TRACE_BYTES) {
       truncated = true;
       break;
