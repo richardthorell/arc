@@ -53,8 +53,8 @@ bool safe_name(std::string_view value) noexcept
     const auto alnum = [](unsigned char c)
     { return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
     if (!alnum(static_cast<unsigned char>(value.front()))) return false;
-    return std::all_of(value.begin(), value.end(), [&](unsigned char c)
-                       { return alnum(c) || c == '.' || c == '_' || c == '-'; });
+    return std::all_of(value.begin(), value.end(),
+                       [&](unsigned char c) { return alnum(c) || c == '.' || c == '_' || c == '-'; });
 }
 
 bool suffix(std::string_view value, std::string_view ending) noexcept
@@ -114,13 +114,12 @@ remote_content_parse_result failure(std::string message)
 } // namespace
 
 remote_content_parse_result parse_remote_content_release(std::string_view bytes,
-                                                           const remote_content_expectations& expected)
+                                                         const remote_content_expectations& expected)
 {
     if (bytes.empty() || bytes.size() > max_descriptor_bytes)
         return failure("release descriptor exceeds metadata limits");
     const auto document = json::parse(bytes.begin(), bytes.end(), nullptr, false);
-    if (!document.is_object())
-        return failure("release descriptor must be valid JSON object");
+    if (!document.is_object()) return failure("release descriptor must be valid JSON object");
 
     const auto format = string_field(document, "format");
     const auto version = unsigned_field(document, "formatVersion");
@@ -186,9 +185,8 @@ remote_content_parse_result parse_remote_content_release(std::string_view bytes,
     return {.release = std::move(release), .error = {}};
 }
 
-remote_content_feed_action remote_content_reconnect(std::uint64_t last_acknowledged,
-                                                     std::uint64_t oldest_available,
-                                                     std::uint64_t newest_available) noexcept
+remote_content_feed_action remote_content_reconnect(std::uint64_t last_acknowledged, std::uint64_t oldest_available,
+                                                    std::uint64_t newest_available) noexcept
 {
     if (newest_available < oldest_available) return remote_content_feed_action::invalid;
     if (last_acknowledged > newest_available) return remote_content_feed_action::reject_regression;

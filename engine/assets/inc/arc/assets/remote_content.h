@@ -74,8 +74,8 @@ struct remote_content_parse_result
  * project/engine/build/target must exactly match the runtime expectations;
  * generation must be strictly greater than minimum_generation.
  */
-[[nodiscard]] remote_content_parse_result parse_remote_content_release(
-    std::string_view json_bytes, const remote_content_expectations& expected);
+[[nodiscard]] remote_content_parse_result parse_remote_content_release(std::string_view json_bytes,
+                                                                       const remote_content_expectations& expected);
 
 enum class remote_content_feed_action : std::uint8_t
 {
@@ -87,8 +87,8 @@ enum class remote_content_feed_action : std::uint8_t
 };
 
 /** Decide whether the optional dev change feed can replay from last ACK. */
-[[nodiscard]] remote_content_feed_action remote_content_reconnect(
-    std::uint64_t last_acknowledged, std::uint64_t oldest_available,
-    std::uint64_t newest_available) noexcept;
+[[nodiscard]] remote_content_feed_action remote_content_reconnect(std::uint64_t last_acknowledged,
+                                                                  std::uint64_t oldest_available,
+                                                                  std::uint64_t newest_available) noexcept;
 
 } // namespace arc::assets
