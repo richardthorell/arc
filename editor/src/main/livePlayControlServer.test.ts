@@ -1,7 +1,16 @@
 import { createConnection, type Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LIVE_PLAY_PROTOCOL, LIVE_PLAY_VERSION, type LivePlayCapability, type LivePlayMessage } from '../common/livePlayProtocol';
-import { LivePlayControlServer, type LivePlayControlOptions, type LivePlayControlStatus } from './livePlayControlServer';
+import {
+  LIVE_PLAY_PROTOCOL,
+  LIVE_PLAY_VERSION,
+  type LivePlayCapability,
+  type LivePlayMessage,
+} from '../common/livePlayProtocol';
+import {
+  LivePlayControlServer,
+  type LivePlayControlOptions,
+  type LivePlayControlStatus,
+} from './livePlayControlServer';
 
 const authority = {
   projectGuid: '11111111-1111-1111-1111-111111111111',
@@ -153,9 +162,7 @@ describe('Live Play L1.2a editor control endpoint', () => {
     expect(server.status().state).toBe('connected');
     peer.write(frame('session.state', { state: 'running', tick: 7, revision: 3 }, 2));
     peer.write(frame('content.generation', { generation: 1, status: 'active' }, 3));
-    await expect
-      .poll(() => received.map((entry) => entry.type))
-      .toEqual(['session.state', 'content.generation']);
+    await expect.poll(() => received.map((entry) => entry.type)).toEqual(['session.state', 'content.generation']);
     expect(server.status().lastReceivedSequence).toBe(3);
     expect(statuses.some((entry) => entry.state === 'connected')).toBe(true);
     expect(server.sendHeartbeat()).toBe(true);
@@ -275,9 +282,7 @@ describe('Live Play L1.2a editor control endpoint', () => {
 
     const competing = await connect(handoff.port);
     competing.write(handoff.secret);
-    competing.write(
-      frame('hello', { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe'] }, 2),
-    );
+    competing.write(frame('hello', { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe'] }, 2));
     await competing.closed;
     expect(server.status().state).toBe('connected');
     active.write(frame('session.state', { state: 'running', tick: 1, revision: 1 }, 2));
