@@ -44,7 +44,7 @@ def verify_external_stop(distribution: Path, artifacts: Path, timeout: float = 2
         env = os.environ.copy()
         env.pop("ELECTRON_RUN_AS_NODE", None)
         env["ARC_SERVER_DATA_ROOT"] = str(writable)
-        command = [str(entry), "--report-json", "--stop-file", str(stop_file), "--no-sleep"]
+        command = [str(entry), "--report-json", "--stop-file", str(stop_file)]
         process = subprocess.Popen(command, cwd=working, env=env, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, text=True, errors="replace")
         try:
@@ -54,7 +54,7 @@ def verify_external_stop(distribution: Path, artifacts: Path, timeout: float = 2
             if process.poll() is not None:
                 stdout, stderr = process.communicate()
                 raise SmokeFailure(f"server exited before stop request ({process.returncode}): {stdout} {stderr}")
-            stop_file.write_text("stop\\n", encoding="utf-8")
+            stop_file.write_text("stop\n", encoding="utf-8")
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired as exc:
             process.kill()
@@ -69,7 +69,7 @@ def verify_external_stop(distribution: Path, artifacts: Path, timeout: float = 2
         (artifacts / "launch.json").write_text(json.dumps({
             "exitCode": process.returncode, "requestedStop": "file",
             "stopFile": str(stop_file), "timeoutSeconds": timeout,
-        }, indent=2) + "\\n", encoding="utf-8")
+        }, indent=2) + "\n", encoding="utf-8")
         if process.returncode != 0:
             raise SmokeFailure(f"server rejected external stop with exit {process.returncode}: {stderr}")
         try:
