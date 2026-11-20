@@ -39,6 +39,9 @@ export function BuildCompileTasksPanel({
   const source = SOURCE_LABELS[trace.source];
   const tasks = trace.tasks.slice(0, 256);
   const inFlight = run.state === 'running' ? (trace.activeTasks ?? []) : [];
+  const hasMsbuildSources =
+    trace.source === 'msbuild-file-log' &&
+    (tasks.some((task) => task.sourceFiles?.length) || inFlight.some((task) => task.sourceFiles?.length));
   const selected = selectedIndex === null ? null : (tasks[selectedIndex] ?? null);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
   const measuredLabel = `${tasks.length} measured · ${source.generator}${run.state === 'running' ? ' · live' : ''}`;
@@ -150,7 +153,7 @@ export function BuildCompileTasksPanel({
           </ul>
         </div>
       )}
-      {trace.source === 'msbuild-file-log' && (tasks.some((task) => task.sourceFiles?.length) || inFlight.some((task) => task.sourceFiles?.length)) && (
+      {hasMsbuildSources && (
         <p className="build-monitor-target-note">
           Source inputs come from MSBuild CL task parameters. Durations apply to whole CL tasks, not individual files.
         </p>
