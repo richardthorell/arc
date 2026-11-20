@@ -45,17 +45,6 @@ def main() -> int:
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
         return 1
-    if not args.fix:
-        focused = [
-            "engine/network/inc/arc/network/live_play_dev_client.h",
-            "engine/network/src/dev/live_play_dev_client.cpp",
-            "engine/network/test_support/live_play_dev_tests.cpp",
-        ]
-        subprocess.check_call([args.clang_format, "-i", *focused], cwd=root)
-        print("LIVE_PLAY_NATIVE_FORMAT_DIFF_START", flush=True)
-        subprocess.check_call(["git", "diff", "--", *focused], cwd=root)
-        print("LIVE_PLAY_NATIVE_FORMAT_DIFF_END", flush=True)
-        return 0
     if args.fix:
         command = [args.clang_format, "-i", *map(str, sources)]
     else:
