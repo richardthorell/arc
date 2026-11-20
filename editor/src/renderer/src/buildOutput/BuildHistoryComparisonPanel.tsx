@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { GitCompareArrows } from 'lucide-react';
 
 import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
@@ -34,6 +34,10 @@ export function BuildHistoryComparisonPanel({
   const candidates = comparisonBaselines(current, historyRuns);
   const baseline = choice === 'latest' ? candidates[0] : candidates.find((run) => run.id === choice);
   const value = baseline ? compareBuildHistory(current, baseline) : null;
+  const onBaselineChange = (event: ChangeEvent<HTMLSelectElement>) => setChoice(event.target.value);
+  const showNinjaTasks = current.compileTrace?.source === 'ninja-log' && baseline?.compileTrace?.source === 'ninja-log';
+  const emptyMessage = 'No earlier successful build matches this action, configuration, target and profile.';
+  const caveat = 'Differences may reflect code changes, incremental caching or machine load. These observations do not establish a statistically significant performance regression.';
   return (
     <section className="build-monitor-comparison" aria-label="Build performance comparison">
       <div className="build-monitor-section-title">
@@ -46,11 +50,7 @@ export function BuildHistoryComparisonPanel({
         <>
           <label className="build-monitor-comparison-picker">
             Compare with
-            <select
-              aria-label="Comparison baseline"
-              value={choice}
-              onChange={(event) => setChoice(event.target.value)}
-            >
+            <select aria-label="Comparison baseline" value={choice} onChange={onBaselineChange}>
               <option value="latest">Latest comparable successful build</option>
               {candidates.map((run) => (
                 <option value={run.id} key={run.id}>
@@ -100,7 +100,7 @@ export function BuildHistoryComparisonPanel({
                   </table>
                 </div>
               )}
-              {current.compileTrace?.source === 'ninja-log' && baseline.compileTrace?.source === 'ninja-log' && (
+              {showNinjaTasks && (
                 <div className="build-monitor-comparison-table-wrap">
                   <h5>Matching Ninja object tasks ({value.matchedObjects})</h5>
                   {value.objects.length > 0 ? (
@@ -125,10 +125,10 @@ export function BuildHistoryComparisonPanel({
                       </tbody>
                     </table>
                   ) : (
-                    <p className="build-monitor-target-note">No matching measured object outputs between these runs.</p>
+                    <p className="build-monitor-target-note">No matching object outputs between these runs.</p>
                   )}
                   {value.matchedObjects > value.objects.length && (
-                    <p className="build-monitor-target-note">Showing the eight largest increases in task duration.</p>
+                    <p className="build-monitor-target-note">Showing the eight largest task duration increases.</p>
                   )}
                 </div>
               )}
@@ -141,14 +141,9 @@ export function BuildHistoryComparisonPanel({
           )}
         </>
       ) : (
-        <p className="build-monitor-empty">
-          No earlier successful build matches this action, configuration, target and profile.
-        </p>
+        <p className="build-monitor-empty">{emptyMessage}</p>
       )}
-      <p className="build-monitor-target-note">
-        Differences may reflect code changes, incremental caching or machine load. These observations do not establish a
-        statistically significant performance regression.
-      </p>
+      <p className="build-monitor-target-note">{caveat}</p>
     </section>
   );
 }
