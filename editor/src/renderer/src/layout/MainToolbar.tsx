@@ -502,7 +502,7 @@ export function MainToolbar({
   const standaloneSessionActive = standaloneSessionState !== 'stopped' && standaloneSessionState !== 'failed';
   const playTargetUnavailableReason = playInEditor || standalonePlayable
     ? undefined
-    : 'This Play destination is not available yet. Select Editor Viewport or Windows Standalone.';
+    : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
 
   const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
     ...playablePlatforms.flatMap((platform) => {
