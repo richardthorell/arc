@@ -42,6 +42,7 @@ type Peer = {
   buffer: Buffer;
   authenticated: boolean;
   ready: boolean;
+  capabilities: readonly LivePlayCapability[];
 };
 
 const maxUnauthenticatedPeers = 4;
@@ -127,12 +128,23 @@ export class LivePlayControlServer {
       });
       const address = server.address();
       if (!address || typeof address === 'string') throw new Error('No Live Play TCP listener port');
+      server.on('error', () => {
+        // An established listener can fail independently of any connected peer.
+        this.lastError = 'listener_failed';
+        this.state = 'error';
+        this.notify();
+        for (const peer of this.peers) peer.socket.destroy();
+      });
       this.port = address.port;
       this.state = 'waiting';
       this.notify();
     } catch (error) {
       this.server = null;
-      server.close();
+      try {
+        server.close();
+      } catch {
+        // An unsuccessful listen may never have opened a server handle.
+      }
       this.secret.fill(0);
       this.port = null;
       this.state = 'error';
@@ -200,7 +212,7 @@ export class LivePlayControlServer {
     }
     socket.setNoDelay(true);
     socket.setTimeout(this.options.handshakeTimeoutMs ?? 5000);
-    const peer: Peer = { socket, buffer: Buffer.alloc(0), authenticated: false, ready: false };
+    const peer: Peer = { socket, buffer: Buffer.alloc(0), authenticated: false, ready: false, capabilities: [] };
     this.peers.add(peer);
     socket.on('data', (chunk: Buffer) => this.read(peer, chunk));
     socket.on('timeout', () => this.reject(peer, 'timeout'));
@@ -271,10 +283,11 @@ export class LivePlayControlServer {
       const capabilities = item.payload.capabilities.filter((cap) => this.options.grantedCapabilities.includes(cap));
       const accepted = this.message('hello.accepted', {
         capabilities,
-        lastReceivedSequence: this.lastReceivedSequence,
+        lastReceivedSequence: result.nextSequence,
       });
       if (!this.send(peer, accepted)) return;
       this.lastReceivedSequence = result.nextSequence;
+      peer.capabilities = capabilities;
       peer.ready = true;
       this.activePeer = peer;
       peer.socket.setTimeout(this.options.idleTimeoutMs ?? 30000);
@@ -295,7 +308,7 @@ export class LivePlayControlServer {
         : item.type === 'content.generation'
           ? 'content.observe'
           : 'session.observe';
-    if (!this.options.grantedCapabilities.includes(required)) {
+    if (!peer.capabilities.includes(required)) {
       this.reject(peer, 'permission_denied');
       return;
     }
@@ -311,9 +324,13 @@ export class LivePlayControlServer {
   private reject(peer: Peer, reason: string): void {
     if (peer.socket.destroyed) return;
     // Only safe, enumerated reasons. Secrets and JSON payloads never enter status/logs.
-    this.lastError = reason;
-    this.state = 'error';
-    this.notify();
+    // A rejected competing or unauthenticated peer must not disrupt an
+    // already connected, authoritative Development runtime session.
+    if (!this.activePeer || this.activePeer === peer) {
+      this.lastError = reason;
+      this.state = 'error';
+      this.notify();
+    }
     peer.socket.destroy();
   }
 }
