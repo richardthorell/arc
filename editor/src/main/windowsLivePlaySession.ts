@@ -13,6 +13,8 @@ export type WindowsLivePlayLaunch = {
   executable: string;
   cwd: string;
   context: NativeLivePlayLaunchContext;
+  /** Main-process-only non-secret arguments (empty for normal game launches). */
+  args?: readonly string[];
 };
 
 type Session = {
@@ -42,6 +44,7 @@ export class WindowsLivePlaySession {
   constructor(
     private readonly publish: (snapshot: WindowsLivePlaySnapshot) => void = () => {},
     private readonly onMessage: (message: LivePlayMessage) => void = () => {},
+    private readonly platform: NodeJS.Platform = process.platform,
   ) {}
 
   snapshot(): WindowsLivePlaySnapshot {
@@ -58,11 +61,11 @@ export class WindowsLivePlaySession {
   }
 
   async start(input: WindowsLivePlayLaunch): Promise<WindowsLivePlaySnapshot> {
-    if (process.platform !== 'win32') throw new Error('Windows standalone Play is only supported on Windows');
+    if (this.platform !== 'win32') throw new Error('Windows standalone Play is only supported on Windows');
     if (this.current) throw new Error('A Windows Live Play session is already active');
     const executable = fs.realpathSync(input.executable);
     const cwd = fs.realpathSync(input.cwd);
-    if (!fs.statSync(executable).isFile() || path.extname(executable).toLowerCase() !== '.exe')
+    if (!fs.statSync(executable).isFile() || path.extname(input.executable).toLowerCase() !== '.exe')
       throw new Error('The Development game executable is invalid');
     if (!fs.statSync(cwd).isDirectory()) throw new Error('The Development game directory is invalid');
 
@@ -101,7 +104,7 @@ export class WindowsLivePlaySession {
 
       // stdin is a private inherited anonymous pipe on Windows
       // (STARTF_USESTDHANDLES). No password-bearing argv, env, path, or log.
-      const child = spawn(executable, [], {
+      const child = spawn(executable, [...(input.args ?? [])], {
         cwd,
         shell: false,
         windowsHide: false,
