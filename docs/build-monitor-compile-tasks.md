@@ -55,3 +55,14 @@ While a normal editor **Build/Rebuild** command runs, the main process checks na
 **Live means flushed native measurements**, not a predicted build percentage. Some generators/logger configurations buffer their timing files and may only expose task records after process exit. No task is treated as complete until the native tool supplies measured start/end records. MSBuild remains task-level, not per-source timing.
 
 Follow-ups: explicit compiler start/in-flight task events from supported native providers, per-translation-unit MSBuild instrumentation, and historical task-duration comparisons.
+
+## BM7.5 — MSBuild source inputs and active CL tasks
+
+Visual Studio/MSBuild diagnostic logger records can include `CL` task parameter `Sources` values. BM7.5 correlates those parameters with **currently active CL tasks on the same MSBuild logging node**, preserving attribution even when separate nodes interleave their output.
+
+- A completed CL task can list its project-relative source inputs. One source may be shown as the task's associated `sourceFile`; multiple inputs are displayed as a list, **not** individual compilation timings. Source paths outside the project and ambiguous concurrent node associations are ignored.
+- A live log snapshot now includes `activeTasks`: CL tasks that have started but have no matching finish record. They appear below the measured timeline with **no duration, end time or completion status**. Completed builds drop the active list, while missing final task pairs still mark the final trace truncated.
+- Source metadata is bounded to eight inputs per task, and active-task records have a separate count/byte cap. The raw MSBuild log is still removed after finishing, and only the bounded structured trace is persisted.
+- If MSBuild does not emit source parameters in its logger mode, ARC keeps the CL timing and shows no source attribution rather than guessing from compiler command lines, incremental `.tlog` files, or a CMake target name.
+
+**Per-translation-unit wall time is still unsupported for MSVC.** The `CL` task's measured elapsed time can include multiple translation units, `/MP` parallelism and task overhead. MSVC's `/Bt` flag reports compiler component times, not independently verified per-file wall-clock intervals, and its historical diagnostic format is undocumented; ARC does not turn it on automatically. A future backend can use a supported per-source event provider where available.
