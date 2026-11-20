@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -193,6 +194,10 @@ public:
             check(credential.size() == secret_bytes &&
                   static_cast<unsigned char>(credential[0]) == 0x11, "Incorrect raw credential framing");
             const auto hello = json::parse(read_packet(peer));
+            std::ifstream fixture_file(ARC_LIVE_PLAY_WIRE_VECTOR_PATH);
+            check(static_cast<bool>(fixture_file), "Cannot open cross-language golden protocol fixtures");
+            const auto fixtures = json::parse(fixture_file);
+            check(hello == fixtures.at("hello"), "Native hello does not match TypeScript v1 golden frame");
             check(hello.at("protocol") == "arc.live-play" && hello.at("protocolVersion") == 1,
                   "Native hello protocol mismatch");
             check(hello.at("sender") == "runtime" && hello.at("type") == "hello", "Native hello wrong direction");
@@ -224,6 +229,8 @@ public:
                 heartbeat["messageId"] = "editor-heartbeat-2";
                 heartbeat["sequence"] = 2;
                 heartbeat["payload"] = {{"lastReceivedSequence", 2}};
+                check(heartbeat == fixtures.at("editorHeartbeat"),
+                      "Mock editor heartbeat does not match TypeScript v1 golden frame");
                 send_packet(peer, heartbeat.dump());
                 const auto response = json::parse(read_packet(peer));
                 check(response.at("type") == "heartbeat", "Native heartbeat response not received");
