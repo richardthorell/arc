@@ -26,6 +26,7 @@ import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorSnapshot } from '.
 import { BuildStageTimeline } from './BuildStageTimeline';
 import { BuildTargetGraphPanel } from './BuildTargetGraphPanel';
 import { BuildCompileTasksPanel } from './BuildCompileTasksPanel';
+import { BuildHistoryComparisonPanel } from './BuildHistoryComparisonPanel';
 import {
   availableBuildPlatforms,
   buildDisplayState,
@@ -647,6 +648,9 @@ export function BuildDashboard({
                 <BuildStageTimeline run={selected} nowMs={elapsed} />
               </section>
 
+              {selected.state === 'succeeded' && (
+                <BuildHistoryComparisonPanel key={selected.id} current={selected} historyRuns={runs} />
+              )}
               {Boolean(selected.artifacts?.length) && (
                 <section className="build-monitor-artifacts" aria-label="Build artifacts">
                   <div className="build-monitor-section-title">
