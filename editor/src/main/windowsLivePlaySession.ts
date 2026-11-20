@@ -3,20 +3,10 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { LivePlayMessage } from '../common/livePlayProtocol';
+import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
 import type { NativeLivePlayLaunchContext } from './livePlayNativeHandoff';
 import { writeLivePlayNativeHandoff } from './livePlayNativeHandoff';
 import { LivePlayControlServer, type LivePlayControlStatus } from './livePlayControlServer';
-
-export type WindowsLivePlayState = 'stopped' | 'starting' | 'connected' | 'disconnected' | 'failed' | 'stopping';
-
-export type WindowsLivePlaySnapshot = {
-  state: WindowsLivePlayState;
-  sessionId: string | null;
-  instanceId: string | null;
-  pid: number | null;
-  lastReceivedSequence: number;
-  error: string | null;
-};
 
 /** Trusted main-process input, never a renderer-supplied executable or argv. */
 export type WindowsLivePlayLaunch = {
