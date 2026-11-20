@@ -23,6 +23,11 @@ if(ARC_BUILD_LIVE_PLAY_DEV OR (BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS))
     target_include_directories(arc-live-play-dev PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>")
     target_link_libraries(arc-live-play-dev PRIVATE arc-third-party-json)
+    add_library(arc::live-play-dev ALIAS arc-live-play-dev)
+    set_target_properties(arc-live-play-dev PROPERTIES EXPORT_NAME LivePlayDev)
+    install(TARGETS arc-live-play-dev EXPORT ARCTargets
+        ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+        COMPONENT sdk-development)
     if(WIN32)
         target_link_libraries(arc-live-play-dev PUBLIC ws2_32)
     endif()
