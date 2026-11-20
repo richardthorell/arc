@@ -45,13 +45,6 @@ def main() -> int:
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
         return 1
-    if not args.fix:
-        focus = ["engine/platform/windows/src/windows_entry.cpp"]
-        subprocess.check_call([args.clang_format, "-i", *focus], cwd=root)
-        print("L12C_NATIVE_FORMAT_DIFF_START", flush=True)
-        subprocess.check_call(["git", "diff", "--", *focus], cwd=root)
-        print("L12C_NATIVE_FORMAT_DIFF_END", flush=True)
-        return 0
     if args.fix:
         command = [args.clang_format, "-i", *map(str, sources)]
     else:
