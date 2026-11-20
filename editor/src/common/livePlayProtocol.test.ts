@@ -70,7 +70,10 @@ describe('Live Play L1 wire contract', () => {
     const editorHello = receiveLivePlayFrame(frame('hello', hello, 'editor'), editorContext);
     expect(editorHello).toMatchObject({ accepted: true, nextSequence: 1 });
 
-    const nativeHello = receiveLivePlayFrame(frame('hello', { ...hello, capabilities: ['entity.inspect'] }, 'runtime'), runtimeContext);
+    const nativeHello = receiveLivePlayFrame(
+      frame('hello', { ...hello, capabilities: ['entity.inspect'] }, 'runtime'),
+      runtimeContext,
+    );
     expect(nativeHello).toMatchObject({ accepted: true, nextSequence: 1 });
 
     const nativeAccepted = receiveLivePlayFrame(
@@ -104,7 +107,12 @@ describe('Live Play L1 wire contract', () => {
     expect(inspect.accepted).toBe(true);
     expect(
       receiveLivePlayFrame(
-        frame('component.inspect.result', { ...inspection, runtimeRevision: 11, properties: [{ path: 'position', value: [3, 4, 5] }] }, 'runtime', 3),
+        frame(
+          'component.inspect.result',
+          { ...inspection, runtimeRevision: 11, properties: [{ path: 'position', value: [3, 4, 5] }] },
+          'runtime',
+          3,
+        ),
         { ...runtimeContext, lastSequence: 2 },
       ),
     ).toMatchObject({ accepted: true, nextSequence: 3 });
@@ -170,7 +178,12 @@ describe('Live Play L1 wire contract', () => {
       accepted: false,
       code: 'unsupported_version',
     });
-    expect(receiveLivePlayFrame(JSON.stringify({ ...valid, payload: { ...hello, schemaHash: 'b'.repeat(64) } }), runtimeContext)).toEqual({
+    expect(
+      receiveLivePlayFrame(
+        JSON.stringify({ ...valid, payload: { ...hello, schemaHash: 'b'.repeat(64) } }),
+        runtimeContext,
+      ),
+    ).toEqual({
       accepted: false,
       code: 'schema_mismatch',
     });
@@ -204,7 +217,12 @@ describe('Live Play L1 wire contract', () => {
       accepted: false,
       code: 'wrong_direction',
     });
-    expect(receiveLivePlayFrame(frame('hierarchy.snapshot', { worldRevision: 0, entities: [], complete: true }, 'editor'), editorContext)).toEqual({
+    expect(
+      receiveLivePlayFrame(
+        frame('hierarchy.snapshot', { worldRevision: 0, entities: [], complete: true }, 'editor'),
+        editorContext,
+      ),
+    ).toEqual({
       accepted: false,
       code: 'wrong_direction',
     });
