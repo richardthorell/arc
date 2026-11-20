@@ -60,7 +60,7 @@ struct remote_content_release
     std::vector<remote_content_chunk> chunks;
 };
 
-struct remote_content_parse_result
+struct [[nodiscard]] remote_content_parse_result
 {
     std::optional<remote_content_release> release;
     std::string error;
