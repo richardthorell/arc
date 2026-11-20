@@ -142,6 +142,7 @@ def _is_cooker_related(path: str) -> bool:
         or path in {
             "tools/d3_shipping_acceptance.py",
             "tools/d4_headless_shipping_acceptance.py",
+            "tools/tests/test_d4_server_lifecycle_report.py",
             "tools/d4_headless_negative.py",
             "tools/tests/test_d4_headless_negative.py",
             "tools/tests/test_d4_headless_shipping_acceptance.py",
