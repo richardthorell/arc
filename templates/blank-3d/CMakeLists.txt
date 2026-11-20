@@ -31,6 +31,11 @@ if(WIN32)
   option(ARC_ENABLE_LIVE_PLAY_DEV "Attach game runtime to ARC Editor in Development" OFF)
   set(arc_windows_entry ARC::PlatformWindowsPackagedEntry)
   if(ARC_ENABLE_LIVE_PLAY_DEV)
+    # Fail closed: an accidentally enabled Development bridge must never
+    # be linked into a Shipping executable, even on multi-config generators.
+    if(CMAKE_BUILD_TYPE STREQUAL "Shipping" OR "Shipping" IN_LIST CMAKE_CONFIGURATION_TYPES)
+      message(FATAL_ERROR "ARC_ENABLE_LIVE_PLAY_DEV cannot be used with Shipping configurations")
+    endif()
     if(NOT TARGET ARC::PlatformWindowsLivePlayEntry OR NOT TARGET ARC::LivePlayDev)
       message(FATAL_ERROR "ARC SDK has no Development Live Play entrypoint. Rebuild SDK with ARC_BUILD_LIVE_PLAY_DEV=ON")
     endif()
