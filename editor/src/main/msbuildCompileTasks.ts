@@ -8,6 +8,8 @@ import { editorCommandBuildDirectory } from './editorCommandTargetGraph';
 const MAX_LOG_BYTES = 16 * 1024 * 1024;
 const MAX_TASKS = 256;
 const MAX_TRACE_BYTES = 24 * 1024;
+const MAX_ACTIVE_TASKS = 24;
+const MAX_SOURCE_FILES = 8;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MSBUILD_LOG_DIR = '.arc-monitor';
 
@@ -23,6 +25,40 @@ function clockMs(line: string): number | null {
   return ((h * 60 + m) * 60 + s) * 1000 + milliseconds;
 }
 
+
+type ClEvent = {
+  start: number;
+  label: string;
+  sources: string[];
+  sourceFilesTruncated: boolean;
+};
+
+function safeSource(raw: string, projectRoot?: string, buildRoot?: string): string | null {
+  if (!projectRoot || !buildRoot) return null;
+  const value = raw.trim().replace(/^["']|["']$/g, '');
+  if (value.length > 1024 || /[\0\r\n;]/u.test(value) || !/\.(?:c|cc|cpp|cxx|ixx)$/iu.test(value)) return null;
+  const absolute = path.resolve(buildRoot, value);
+  const relative = path.relative(path.resolve(projectRoot), absolute);
+  if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return null;
+  return relative.replace(/\\/g, '/');
+}
+
+/** The multi-process file logger prefixes messages with timestamps and/or node IDs. */
+function logMessage(line: string): { message: string; node: string } {
+  const withoutTime = line.replace(/^\s*(?:\d{4}-\d{2}-\d{2}[ T])?\d{1,2}:\d{2}:\d{2}(?:\.\d{1,7})?\s+/u, '');
+  const match = /^\s*(\d+)>\s*/u.exec(withoutTime);
+  return { message: (match ? withoutTime.slice(match[0].length) : withoutTime).trim(), node: match?.[1] ?? '' };
+}
+
+function taskSources(task: ClEvent): { sourceFiles?: string[]; sourceFilesTruncated?: boolean; sourceFile?: string } {
+  const sources = task.sources;
+  return {
+    ...(sources.length ? { sourceFiles: sources } : {}),
+    ...(task.sourceFilesTruncated ? { sourceFilesTruncated: true } : {}),
+    ...(sources.length === 1 && !task.sourceFilesTruncated ? { sourceFile: sources[0] } : {}),
+  };
+}
+
 /** Parses MSBuild's real TaskStarted/TaskFinished log messages, not console receive times.
  * A single CL task can compile multiple sources, so these are measured CL
  * invocation intervals and MUST NOT be labelled per-source/object timings.
@@ -31,18 +67,52 @@ export function parseMsbuildCompileLog(
   content: string,
   clipped = false,
   completed = true,
+  projectRoot?: string,
+  buildRoot?: string,
 ): BuildCompileTrace | undefined {
-  const active = new Map<string, { start: number; label: string }>();
-  const intervals: Array<{ start: number; end: number; label: string }> = [];
+  const active = new Map<string, ClEvent>();
+  const intervals: Array<{ start: number; end: number; task: ClEvent }> = [];
   const startPattern = /\bTask "CL"\s*\(TaskId:\s*(\d+)\)/;
   const endPattern = /\bDone executing task "CL"\.\s*\(TaskId:\s*(\d+)\)/;
   let day = 0;
   let lastClock: number | undefined;
   let observed = false;
+  let sourceOwner: string | null = null;
   for (const line of content.split(/\r?\n/)) {
     const start = startPattern.exec(line);
     const end = endPattern.exec(line);
-    if (!start && !end) continue;
+    if (!start && !end) {
+      const { message, node } = logMessage(line);
+      const parameter = /\bTask Parameter:([A-Za-z]+)=\s*(.*)$/iu.exec(message);
+      if (parameter) {
+        sourceOwner = null;
+        if (parameter[1].toLowerCase() !== 'sources') continue;
+        // When multiple CL tasks run on the same node, an untagged Task
+        // Parameter line cannot be associated reliably with a specific task.
+        const candidates = [...active.entries()].filter(([key]) => !node || key.startsWith(node + ':'));
+        if (candidates.length !== 1) continue;
+        sourceOwner = candidates[0][0];
+        const value = safeSource(parameter[2], projectRoot, buildRoot);
+        if (value) active.get(sourceOwner)?.sources.push(value);
+        continue;
+      }
+      if (/\b(?:Task |Done executing task |Output Item\(s\):|Added Item\(s\):)/iu.test(message)) {
+        sourceOwner = null;
+        continue;
+      }
+      const task = sourceOwner ? active.get(sourceOwner) : undefined;
+      if (task && (!node || sourceOwner!.startsWith(node + ':'))) {
+        const value = safeSource(message, projectRoot, buildRoot);
+        if (value && !task.sources.includes(value)) {
+          if (task.sources.length < MAX_SOURCE_FILES) task.sources.push(value);
+          else task.sourceFilesTruncated = true;
+        } else if (message && !value) {
+          sourceOwner = null;
+        }
+      }
+      continue;
+    }
+    sourceOwner = null;
     const time = clockMs(line);
     if (time === null) continue;
     if (lastClock !== undefined && lastClock - time > DAY_MS / 2) day++;
@@ -55,13 +125,18 @@ export function parseMsbuildCompileLog(
     if (start) {
       observed = true;
       if (!active.has(key)) {
-        active.set(key, { start: at, label: 'CL task #' + taskId + (node ? ' (node ' + node + ')' : '') });
+        active.set(key, {
+          start: at,
+          label: 'CL task #' + taskId + (node ? ' (node ' + node + ')' : ''),
+          sources: [],
+          sourceFilesTruncated: false,
+        });
       }
     } else {
       const task = active.get(key);
       if (!task || at < task.start) continue;
       active.delete(key);
-      intervals.push({ start: task.start, end: at, label: task.label });
+      intervals.push({ start: task.start, end: at, task });
     }
   }
   if (!observed) return undefined;
@@ -71,25 +146,35 @@ export function parseMsbuildCompileLog(
   let truncated = clipped;
   for (const task of intervals) {
     if (!Number.isFinite(base)) break;
-    const size = Buffer.byteLength(task.label, 'utf8') + 96;
+    const sourceFields = taskSources(task.task);
+    const size = Buffer.byteLength(task.task.label, 'utf8') + Buffer.byteLength(JSON.stringify(sourceFields), 'utf8') + 96;
     if (tasks.length >= MAX_TASKS || bytes + size > MAX_TRACE_BYTES) {
       truncated = true;
       break;
     }
     bytes += size;
     tasks.push({
-      output: task.label,
+      output: task.task.label,
+      ...sourceFields,
       startMs: task.start - base,
       endMs: task.end - base,
       durationMs: task.end - task.start,
     });
   }
   tasks.sort((a, b) => a.startMs - b.startMs);
+  const activeTasks = completed
+    ? []
+    : [...active.values()].slice(0, MAX_ACTIVE_TASKS).map((task) => ({
+        output: task.label,
+        ...taskSources(task),
+      }));
+  if (!completed && active.size > MAX_ACTIVE_TASKS) truncated = true;
   // A failed/cancelled build may have incomplete tasks; never fabricate an end time.
   return {
     source: 'msbuild-file-log',
     clock: 'msbuild-cl-events',
     tasks,
+    ...(!completed && activeTasks.length ? { activeTasks } : {}),
     truncated: truncated || (completed && active.size > 0),
   };
 }
@@ -138,7 +223,13 @@ export function beginMsbuildCompileTrace(
           const read = fs.readSync(fd, buffer, 0, size, 0);
           const end = buffer.lastIndexOf(10, read - 1);
           if (end < 0) return undefined;
-          return parseMsbuildCompileLog(buffer.subarray(0, end).toString('utf8'), stat.size > MAX_LOG_BYTES, completed);
+          return parseMsbuildCompileLog(
+            buffer.subarray(0, end).toString('utf8'),
+            stat.size > MAX_LOG_BYTES,
+            completed,
+            project.projectRoot,
+            build,
+          );
         } finally {
           fs.closeSync(fd);
         }
