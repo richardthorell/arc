@@ -20,6 +20,7 @@ import type {
 } from '../common/editorWorkflowTypes';
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
+import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
 import type { BuildMonitorEvent, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
 import type { BuildHistoryDetail, BuildHistoryPage } from '../common/buildHistoryTypes';
 import type {
@@ -509,6 +510,16 @@ const arcApi = {
       const listener = (_event: Electron.IpcRendererEvent, snapshot: ArcBuildSnapshot) => callback(snapshot);
       ipcRenderer.on('build:state', listener);
       return () => ipcRenderer.removeListener('build:state', listener);
+    },
+  },
+  livePlay: {
+    snapshot: (): Promise<WindowsLivePlaySnapshot | null> => ipcRenderer.invoke('livePlay:snapshot'),
+    start: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:start'),
+    stop: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:stop'),
+    onState: (callback: (snapshot: WindowsLivePlaySnapshot) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, snapshot: WindowsLivePlaySnapshot) => callback(snapshot);
+      ipcRenderer.on('livePlay:state', listener);
+      return () => ipcRenderer.removeListener('livePlay:state', listener);
     },
   },
   host: {
