@@ -356,15 +356,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         return boot_failure("Development Live Play requires a protected inherited stdin pipe");
     live::launch_handoff handoff;
     std::string connection_error;
-    const bool received = live::read_launch_handoff(reinterpret_cast<std::uintptr_t>(handoff_pipe),
-                                                    handoff, connection_error);
+    const bool received =
+        live::read_launch_handoff(reinterpret_cast<std::uintptr_t>(handoff_pipe), handoff, connection_error);
     CloseHandle(handoff_pipe);
     if (!received) return boot_failure(connection_error);
     auto live_client = std::make_unique<live::client>();
-    if (!live_client->connect(handoff, connection_error))
-        return boot_failure(connection_error);
-    if (!live_client->send_state("starting", 0, 0, connection_error))
-        return boot_failure(connection_error);
+    if (!live_client->connect(handoff, connection_error)) return boot_failure(connection_error);
+    if (!live_client->send_state("starting", 0, 0, connection_error)) return boot_failure(connection_error);
 #endif
     auto definition = arc::platform::windows::configure_packaged_client();
     const fs::path executable = executable_path();
@@ -401,35 +399,35 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     // input dispatch, scene simulation or the editor's Authoring World.
     std::atomic<std::uint64_t> live_ticks{0};
     std::atomic<int> live_phase{1}; // running=1, paused=2
-    std::jthread live_worker([client = std::move(live_client), &live_ticks,
-                              &live_phase](std::stop_token stop) mutable
-    {
-        std::string error;
-        int last_phase = 0;
-        auto last_heartbeat = std::chrono::steady_clock::now();
-        while (!stop.stop_requested() && client->connected())
+    std::jthread live_worker(
+        [client = std::move(live_client), &live_ticks, &live_phase](std::stop_token stop) mutable
         {
-            const int phase = live_phase.load();
-            if (phase != last_phase)
+            std::string error;
+            int last_phase = 0;
+            auto last_heartbeat = std::chrono::steady_clock::now();
+            while (!stop.stop_requested() && client->connected())
             {
-                if (!client->send_state(phase == 2 ? "paused" : "running",
-                                        live_ticks.load(), live_ticks.load(), error))
-                    break;
-                last_phase = phase;
+                const int phase = live_phase.load();
+                if (phase != last_phase)
+                {
+                    if (!client->send_state(phase == 2 ? "paused" : "running", live_ticks.load(), live_ticks.load(),
+                                            error))
+                        break;
+                    last_phase = phase;
+                }
+                const auto now = std::chrono::steady_clock::now();
+                if (now - last_heartbeat >= std::chrono::seconds(1))
+                {
+                    if (!client->send_heartbeat(error)) break;
+                    last_heartbeat = now;
+                }
+                static_cast<void>(client->poll(150, error));
+                if (!error.empty()) break;
             }
-            const auto now = std::chrono::steady_clock::now();
-            if (now - last_heartbeat >= std::chrono::seconds(1))
-            {
-                if (!client->send_heartbeat(error)) break;
-                last_heartbeat = now;
-            }
-            static_cast<void>(client->poll(150, error));
-            if (!error.empty()) break;
-        }
-        if (client->connected())
-            static_cast<void>(client->send_state("stopped", live_ticks.load(), live_ticks.load(), error));
-        client->close();
-    });
+            if (client->connected())
+                static_cast<void>(client->send_state("stopped", live_ticks.load(), live_ticks.load(), error));
+            client->close();
+        });
 #endif
     // This exercises the real Shipping bootstrap and startup scene on CI
     // without requiring a GPU or opening a window. Normal launches are unchanged.
