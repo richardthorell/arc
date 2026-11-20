@@ -136,9 +136,7 @@ describe('BM7.1 compilation timeline', () => {
       clock: 'msbuild-cl-events',
       truncated: false,
       tasks: [],
-      activeTasks: [
-        { output: 'CL task #15 (node 2)', sourceFiles: ['Source/ui.cpp', 'Source/input.cpp'] },
-      ],
+      activeTasks: [{ output: 'CL task #15 (node 2)', sourceFiles: ['Source/ui.cpp', 'Source/input.cpp'] }],
     };
     const { rerender } = render(<BuildCompileTasksPanel run={value} />);
     const active = screen.getByLabelText('Active compiler tasks');
