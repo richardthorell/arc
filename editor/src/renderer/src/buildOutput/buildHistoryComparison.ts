@@ -1,5 +1,5 @@
 import type { BuildCompileTask } from '../../../common/buildCompileTypes';
-import type { BuildMonitorRun, BuildMonitorStage } from '../../../common/buildMonitorTypes';
+import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
 
 export type BuildTimingDelta = {
   beforeMs: number;
