@@ -39,7 +39,7 @@ function safeSource(raw: string, projectRoot?: string, buildRoot?: string): stri
   if (value.length > 1024 || /[\0\r\n;]/u.test(value) || !/\.(?:c|cc|cpp|cxx|ixx)$/iu.test(value)) return null;
   const absolute = path.resolve(buildRoot, value);
   const relative = path.relative(path.resolve(projectRoot), absolute);
-  if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return null;
+  if (!relative || relative.length > 240 || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) return null;
   return relative.replace(/\\/g, '/');
 }
 
@@ -93,7 +93,10 @@ export function parseMsbuildCompileLog(
         if (candidates.length !== 1) continue;
         sourceOwner = candidates[0][0];
         const value = safeSource(parameter[2], projectRoot, buildRoot);
-        if (value) active.get(sourceOwner)?.sources.push(value);
+        if (value) {
+          const current = active.get(sourceOwner);
+          if (current && !current.sources.includes(value)) current.sources.push(value);
+        }
         continue;
       }
       if (/\b(?:Task |Done executing task |Output Item\(s\):|Added Item\(s\):)/iu.test(message)) {
@@ -162,13 +165,25 @@ export function parseMsbuildCompileLog(
     });
   }
   tasks.sort((a, b) => a.startMs - b.startMs);
-  const activeTasks = completed
-    ? []
-    : [...active.values()].slice(0, MAX_ACTIVE_TASKS).map((task) => ({
+  const activeTasks: Array<{ output: string; sourceFiles?: string[]; sourceFilesTruncated?: boolean }> = [];
+  let activeBytes = 0;
+  if (!completed) {
+    for (const task of active.values()) {
+      const sources = taskSources(task);
+      const entry = {
         output: task.label,
-        ...taskSources(task),
-      }));
-  if (!completed && active.size > MAX_ACTIVE_TASKS) truncated = true;
+        ...(sources.sourceFiles ? { sourceFiles: sources.sourceFiles } : {}),
+        ...(sources.sourceFilesTruncated ? { sourceFilesTruncated: true } : {}),
+      };
+      const size = Buffer.byteLength(JSON.stringify(entry), 'utf8');
+      if (activeTasks.length >= MAX_ACTIVE_TASKS || activeBytes + size > 8 * 1024) {
+        truncated = true;
+        break;
+      }
+      activeBytes += size;
+      activeTasks.push(entry);
+    }
+  }
   // A failed/cancelled build may have incomplete tasks; never fabricate an end time.
   return {
     source: 'msbuild-file-log',
