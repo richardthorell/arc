@@ -496,13 +496,13 @@ export function MainToolbar({
       : []),
   ];
   const playInEditor = effectiveTargetPlatform === hostPlatform && effectiveTargetDevice === EDITOR_VIEWPORT_TARGET_ID;
-  const standaloneSelected =
-    effectiveTargetPlatform === 'windows' && effectiveTargetDevice === STANDALONE_TARGET_ID;
+  const standaloneSelected = effectiveTargetPlatform === 'windows' && effectiveTargetDevice === STANDALONE_TARGET_ID;
   const standalonePlayable = enableStandalonePlay && standaloneSelected;
   const standaloneSessionActive = standaloneSessionState !== 'stopped' && standaloneSessionState !== 'failed';
-  const playTargetUnavailableReason = playInEditor || standalonePlayable
-    ? undefined
-    : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
+  const playTargetUnavailableReason =
+    playInEditor || standalonePlayable
+      ? undefined
+      : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
 
   const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
     ...playablePlatforms.flatMap((platform) => {
@@ -539,7 +539,12 @@ export function MainToolbar({
           <UiIconButton
             active={runtimeState === 'running'}
             className="toolbar-button play"
-            disabled={runtimeState === 'running' || runtimeState === 'faulted' || standaloneSessionActive || (!playInEditor && !standalonePlayable)}
+            disabled={
+              runtimeState === 'running' ||
+              runtimeState === 'faulted' ||
+              standaloneSessionActive ||
+              (!playInEditor && !standalonePlayable)
+            }
             label={playLabel}
             title={playTargetUnavailableReason ?? playLabel}
             onClick={() => onCommand('scene.play')}
