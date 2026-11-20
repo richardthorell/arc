@@ -167,6 +167,8 @@ export type LivePlayReceiveContext = {
   authority: LivePlayAuthority;
   /** Connection authentication must complete before ANY frame is dispatched. */
   authenticated: boolean;
+  /** Expected native component schema hash, pinned by the trusted launch context. */
+  expectedSchemaHash: string;
   /** Role of the peer sending this frame, verified at connection handshake. */
   peerRole: 'editor' | 'runtime';
   /** Sender-specific highest accepted sequence; retained across reconnect. */
@@ -177,6 +179,8 @@ export type LivePlayReceiveContext = {
 
 export type LivePlayRejectCode =
   | 'frame_too_large'
+  | 'unsupported_version'
+  | 'schema_mismatch'
   | 'invalid_frame'
   | 'unauthenticated'
   | 'identity_mismatch'
@@ -216,7 +220,7 @@ function capabilityFor(type: LivePlayMessageType): LivePlayCapability | undefine
 
 /** Parse and authorize without mutating caller state or dispatching native commands. */
 export function receiveLivePlayFrame(frame: string, context: LivePlayReceiveContext): LivePlayReceiveResult {
-  if (new TextEncoder().encode(frame).byteLength > LIVE_PLAY_MAX_FRAME_BYTES)
+  if (frame.length > LIVE_PLAY_MAX_FRAME_BYTES || new TextEncoder().encode(frame).byteLength > LIVE_PLAY_MAX_FRAME_BYTES)
     return { accepted: false, code: 'frame_too_large' };
   if (!context.authenticated) return { accepted: false, code: 'unauthenticated' };
 
@@ -226,10 +230,16 @@ export function receiveLivePlayFrame(frame: string, context: LivePlayReceiveCont
   } catch {
     return { accepted: false, code: 'invalid_frame' };
   }
+  if (raw && typeof raw === 'object' && 'protocolVersion' in raw && raw.protocolVersion !== LIVE_PLAY_VERSION)
+    return { accepted: false, code: 'unsupported_version' };
   const parsed = livePlayMessageSchema.safeParse(raw);
   if (!parsed.success) return { accepted: false, code: 'invalid_frame' };
 
   const item = parsed.data;
+  if (item.type === 'hello' && item.payload.schemaHash !== context.expectedSchemaHash)
+    return { accepted: false, code: 'schema_mismatch' };
+  if (item.type === 'hello.accepted' && item.payload.capabilities.some((cap) => !context.grantedCapabilities.includes(cap)))
+    return { accepted: false, code: 'permission_denied' };
   const expected = context.authority;
   if (
     item.projectGuid.toLowerCase() !== expected.projectGuid.toLowerCase() ||
