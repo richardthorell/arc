@@ -105,6 +105,93 @@ describe('BM7.2 native MSBuild CL task intervals', () => {
     expect(fs.existsSync(filename)).toBe(false);
   });
 
+  it('associates only source inputs logged by the matching CL task, without per-file durations', () => {
+    const { project, build } = fixture('Visual Studio 17 2022');
+    const input = [
+      '21:15:02.100 1> Task "CL" (TaskId:17)',
+      '21:15:02.101 1> Task Parameter:Sources=',
+      '21:15:02.102 1> ../../Source/first.cpp',
+      '21:15:02.103 2> Task "CL" (TaskId:22)',
+      '21:15:02.104 2> Task Parameter:Sources=',
+      '21:15:02.105 2> ../../Source/other.cpp',
+      '21:15:02.106 1> ../../Source/second.cpp',
+      '21:15:02.175 2> Done executing task "CL". (TaskId:22)',
+      '21:15:02.250 1> Done executing task "CL". (TaskId:17)',
+      '',
+    ].join('\n');
+    const value = parseMsbuildCompileLog(input, false, true, project.projectRoot, build);
+    expect(value?.tasks).toEqual([
+      {
+        output: 'CL task #17 (node 1)',
+        sourceFiles: ['Source/first.cpp', 'Source/second.cpp'],
+        startMs: 0,
+        endMs: 150,
+        durationMs: 150,
+      },
+      {
+        output: 'CL task #22 (node 2)',
+        sourceFiles: ['Source/other.cpp'],
+        sourceFile: 'Source/other.cpp',
+        startMs: 3,
+        endMs: 75,
+        durationMs: 72,
+      },
+    ]);
+    expect(value?.activeTasks).toBeUndefined();
+  });
+
+  it('publishes in-flight native CL tasks without invented duration and removes them at completion', () => {
+    const { project, build } = fixture('Visual Studio 17 2022');
+    const lines = [
+      '21:15:02.100 1> Task "CL" (TaskId:17)',
+      '21:15:02.101 1> Task Parameter:Sources=../../Source/main.cpp',
+      '21:15:02.125 2> Task "CL" (TaskId:22)',
+      '',
+    ];
+    const current = parseMsbuildCompileLog(lines.join('\n'), false, false, project.projectRoot, build);
+    expect(current).toMatchObject({
+      tasks: [],
+      truncated: false,
+      activeTasks: [
+        { output: 'CL task #17 (node 1)', sourceFiles: ['Source/main.cpp'] },
+        { output: 'CL task #22 (node 2)' },
+      ],
+    });
+    expect(JSON.stringify(current)).not.toContain('durationMs');
+    const finished = parseMsbuildCompileLog(
+      [...lines.slice(0, -1), '21:15:02.400 1> Done executing task "CL". (TaskId:17)', ''].join('\n'),
+      false,
+      false,
+      project.projectRoot,
+      build,
+    );
+    expect(finished?.tasks[0]).toMatchObject({
+      output: 'CL task #17 (node 1)',
+      sourceFiles: ['Source/main.cpp'],
+      durationMs: 300,
+    });
+    expect(finished?.activeTasks).toEqual([{ output: 'CL task #22 (node 2)' }]);
+    const final = parseMsbuildCompileLog(lines.join('\n'), false, true, project.projectRoot, build);
+    expect(final?.activeTasks).toBeUndefined();
+  });
+
+  it('does not claim source ownership for ambiguous nodes or paths outside the project', () => {
+    const { project, build } = fixture('Visual Studio 17 2022');
+    const input = [
+      '10:00:00.000 1> Task "CL" (TaskId:17)',
+      '10:00:00.010 1> Task "CL" (TaskId:18)',
+      '10:00:00.020 1> Task Parameter:Sources=../../Source/ambiguous.cpp',
+      '10:00:00.030 2> Task Parameter:Sources=../../Source/wrong-node.cpp',
+      '10:00:00.040 1> Task Parameter:Sources=../../../../outside.cpp',
+      '10:00:00.050 1> Done executing task "CL". (TaskId:17)',
+      '10:00:00.060 1> Done executing task "CL". (TaskId:18)',
+      '',
+    ].join('\n');
+    const value = parseMsbuildCompileLog(input, false, true, project.projectRoot, build);
+    expect(value?.tasks).toHaveLength(2);
+    expect(value?.tasks.every((task) => task.sourceFiles === undefined)).toBe(true);
+  });
+
   it('does not attach MSBuild flags for Ninja, non-Windows hosts, or invalid run identities', () => {
     const { project } = fixture('Ninja');
     expect(beginMsbuildCompileTrace(project, runId, 'win32')).toBeNull();

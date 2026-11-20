@@ -300,6 +300,42 @@ describe('BuildService command history', () => {
     }
   });
 
+  it('publishes in-flight MSBuild CL tasks before any measured completion', async () => {
+    vi.useFakeTimers();
+    const live = {
+      source: 'msbuild-file-log' as const,
+      clock: 'msbuild-cl-events' as const,
+      truncated: false,
+      tasks: [],
+      activeTasks: [{ output: 'CL task #23 (node 1)', sourceFiles: ['Source/main.cpp'] }],
+    };
+    const complete = {
+      source: 'msbuild-file-log' as const,
+      clock: 'msbuild-cl-events' as const,
+      truncated: false,
+      tasks: [{ output: 'CL task #23 (node 1)', startMs: 0, endMs: 100, durationMs: 100 }],
+    };
+    const capture = vi.spyOn(msbuild, 'beginMsbuildCompileTrace').mockReturnValue({
+      args: [],
+      snapshot: () => live,
+      finish: () => complete,
+    });
+    try {
+      const { service, process: child } = setup();
+      const pending = service.execute({ action: 'build' });
+      await vi.advanceTimersByTimeAsync(750);
+      expect(service.snapshot().compileTrace).toEqual(live);
+      expect(service.snapshot().compileTrace?.tasks).toHaveLength(0);
+      child.emit('close', 1);
+      await expect(pending).rejects.toThrow('code 1');
+      expect(service.snapshot().compileTrace).toEqual(complete);
+      expect(service.snapshot().compileTrace?.activeTasks).toBeUndefined();
+    } finally {
+      capture.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('stops live compile polling immediately on cancellation', async () => {
     vi.useFakeTimers();
     const polling = vi.fn().mockReturnValue(undefined);

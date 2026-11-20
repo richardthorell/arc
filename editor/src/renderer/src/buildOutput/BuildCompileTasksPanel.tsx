@@ -38,9 +38,14 @@ export function BuildCompileTasksPanel({
 
   const source = SOURCE_LABELS[trace.source];
   const tasks = trace.tasks.slice(0, 256);
+  const inFlight = run.state === 'running' ? (trace.activeTasks ?? []) : [];
+  const hasMsbuildSources =
+    trace.source === 'msbuild-file-log' &&
+    (tasks.some((task) => task.sourceFiles?.length) || inFlight.some((task) => task.sourceFiles?.length));
   const selected = selectedIndex === null ? null : (tasks[selectedIndex] ?? null);
   const endMs = Math.max(1, ...tasks.map((task) => task.endMs));
   const measuredLabel = `${tasks.length} measured · ${source.generator}${run.state === 'running' ? ' · live' : ''}`;
+  const activeLabel = `${inFlight.length} MSBuild CL ${inFlight.length === 1 ? 'task' : 'tasks'} in progress`;
   return (
     <section className="build-monitor-targets build-monitor-compiles" aria-label="Compilation task timeline">
       <div className="build-monitor-section-title">
@@ -98,6 +103,19 @@ export function BuildCompileTasksPanel({
               <dl>
                 <dt>Source</dt>
                 <dd>{selected.sourceFile ?? 'Not available from this native compiler task'}</dd>
+                {selected.sourceFiles && (
+                  <>
+                    <dt>CL task inputs</dt>
+                    <dd>
+                      <ul className="build-monitor-compile-sources">
+                        {selected.sourceFiles.map((file) => (
+                          <li key={file}>{file}</li>
+                        ))}
+                      </ul>
+                      {selected.sourceFilesTruncated && <small>Additional source inputs omitted</small>}
+                    </dd>
+                  </>
+                )}
                 <dt>CMake target</dt>
                 <dd>{selected.targetName ?? 'Not verified in the tracked target graph'}</dd>
                 <dt>Native task</dt>
@@ -120,6 +138,26 @@ export function BuildCompileTasksPanel({
         </>
       ) : (
         <p className="build-monitor-empty">{source.empty}</p>
+      )}
+      {inFlight.length > 0 && (
+        <div className="build-monitor-compile-active" aria-label="Active compiler tasks">
+          <strong>{activeLabel}</strong>
+          <p className="build-monitor-target-note">Started by MSBuild; no end timestamp or duration recorded yet.</p>
+          <ul>
+            {inFlight.map((task) => (
+              <li key={task.output}>
+                <span>{task.output}</span>
+                {task.sourceFiles && <small>{task.sourceFiles.join(', ')}</small>}
+                {task.sourceFilesTruncated && <small>Additional source inputs omitted</small>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {hasMsbuildSources && (
+        <p className="build-monitor-target-note">
+          Source inputs come from MSBuild CL task parameters. Durations apply to whole CL tasks, not individual files.
+        </p>
       )}
       {trace.truncated && (
         <p className="build-monitor-target-note">

@@ -1396,3 +1396,44 @@
     flex: 1 1 auto;
   }
 }
+
+/* BM7.5 — unfinished CL tasks are distinct from measured intervals. */
+.build-monitor-compile-active {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #314758;
+  border-radius: 4px;
+  background: #152733;
+  font-size: 11px;
+}
+
+.build-monitor-compile-active > strong {
+  color: #c6ddec;
+}
+
+.build-monitor-compile-active .build-monitor-target-note {
+  margin: 5px 0 8px;
+}
+
+.build-monitor-compile-active ul,
+.build-monitor-compile-sources {
+  padding-left: 16px;
+  margin: 4px 0;
+}
+
+.build-monitor-compile-active li {
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+  color: #c0d7e6;
+}
+
+.build-monitor-compile-active li small {
+  display: block;
+  margin-top: 2px;
+  color: #97b0c2;
+  overflow-wrap: anywhere;
+}
+
+.build-monitor-compile-sources li {
+  margin-bottom: 3px;
+}

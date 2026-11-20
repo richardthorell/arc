@@ -103,6 +103,52 @@ describe('BM7.1 compilation timeline', () => {
     expect(screen.queryByText(/Completed tasks appear as the native tool flushes/)).not.toBeInTheDocument();
   });
 
+  it('shows CL task input files without assigning an individual source duration', () => {
+    const value = run();
+    value.compileTrace = {
+      source: 'msbuild-file-log',
+      clock: 'msbuild-cl-events',
+      truncated: false,
+      tasks: [
+        {
+          output: 'CL task #10 (node 1)',
+          startMs: 0,
+          endMs: 400,
+          durationMs: 400,
+          sourceFiles: ['Source/main.cpp', 'Source/math.cpp'],
+        },
+      ],
+    };
+    render(<BuildCompileTasksPanel run={value} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect compile task: CL task #10 (node 1)' }));
+    expect(screen.getByText('CL task inputs')).toBeInTheDocument();
+    expect(screen.getByText('Source/main.cpp')).toBeInTheDocument();
+    expect(screen.getByText('Source/math.cpp')).toBeInTheDocument();
+    expect(screen.getByText(/Durations apply to whole CL tasks, not individual files/)).toBeInTheDocument();
+    expect(screen.getByText('400 ms')).toBeInTheDocument();
+  });
+
+  it('shows active native CL tasks without durations and hides them when the run finishes', () => {
+    const value = run();
+    value.state = 'running';
+    value.compileTrace = {
+      source: 'msbuild-file-log',
+      clock: 'msbuild-cl-events',
+      truncated: false,
+      tasks: [],
+      activeTasks: [{ output: 'CL task #15 (node 2)', sourceFiles: ['Source/ui.cpp', 'Source/input.cpp'] }],
+    };
+    const { rerender } = render(<BuildCompileTasksPanel run={value} />);
+    const active = screen.getByLabelText('Active compiler tasks');
+    expect(active).toHaveTextContent('1 MSBuild CL task in progress');
+    expect(active).toHaveTextContent('CL task #15 (node 2)');
+    expect(active).toHaveTextContent('Source/ui.cpp');
+    expect(active).toHaveTextContent('no end timestamp or duration recorded yet');
+    rerender(<BuildCompileTasksPanel run={{ ...value, state: 'succeeded' }} />);
+    expect(screen.queryByLabelText('Active compiler tasks')).not.toBeInTheDocument();
+    expect(screen.getByText('0 measured · MSBuild')).toBeInTheDocument();
+  });
+
   it('does not render for generators without measured native data', () => {
     const value = run();
     value.compileTrace = undefined;
