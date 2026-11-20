@@ -116,9 +116,7 @@ export function BuildHistoryComparisonPanel({
                       <tbody>
                         {value.objects.map((task) => (
                           <tr key={task.output}>
-                            <th scope="row" title={task.output}>
-                              {task.sourceFile ?? task.output}
-                            </th>
+                            <th scope="row" title={task.output}>{task.sourceFile ?? task.output}</th>
                             <td>{timeMs(task.beforeMs)}</td>
                             <td>{timeMs(task.afterMs)}</td>
                             <td>{changeLabel(task)}</td>
