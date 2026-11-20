@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --write src/main/windowsLivePlaySession.ts src/main/windowsLivePlaySession.test.ts src/common/livePlaySessionTypes.ts src/main/main.ts src/preload/preload.ts src/renderer/src/app/Workbench.tsx src/renderer/src/layout/MainToolbar.tsx src/renderer/src/layout/MainToolbar.test.tsx && echo L12C_EDITOR_FORMAT_DIFF_START && git diff -- src/main/windowsLivePlaySession.ts src/main/windowsLivePlaySession.test.ts src/common/livePlaySessionTypes.ts src/main/main.ts src/preload/preload.ts src/renderer/src/app/Workbench.tsx src/renderer/src/layout/MainToolbar.tsx src/renderer/src/layout/MainToolbar.test.tsx && echo L12C_EDITOR_FORMAT_DIFF_END"
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
