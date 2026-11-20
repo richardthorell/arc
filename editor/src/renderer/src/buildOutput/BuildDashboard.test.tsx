@@ -231,6 +231,37 @@ describe('Build Monitor actionable workflow', () => {
   });
 });
 
+describe('Build Monitor BM8.1 comparison integration', () => {
+  it('compares a saved completed build against a compatible earlier history entry', async () => {
+    const built: BuildMonitorRun = {
+      ...current,
+      source: 'command',
+      state: 'succeeded',
+      completedAt: '2026-11-16T10:00:02.000Z',
+      durationMs: 2000,
+      stages: [{ id: 'current:compile', name: 'Compile', state: 'succeeded', durationMs: 1500 }],
+    };
+    const older: BuildMonitorRun = {
+      ...built,
+      id: 'comparison-old',
+      startedAt: '2026-11-15T10:00:00.000Z',
+      completedAt: '2026-11-15T10:00:01.000Z',
+      durationMs: 1000,
+      stages: [{ id: 'older:compile', name: 'Compile', state: 'succeeded', durationMs: 750 }],
+    };
+    mockApi({
+      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [older, built] }),
+      history: vi.fn().mockResolvedValue({ ...page, runs: [built, older], total: 2 }),
+      historyDetails: vi.fn().mockImplementation(async (id: string) => makeDetails(id === built.id ? built : older)),
+    });
+    render(<BuildDashboard presentation="workspace" snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    expect(await screen.findByText('build log for current-run')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Build performance comparison' })).toBeInTheDocument();
+    expect(screen.getByText('+1.00 s (+100.0%)')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Comparison baseline' })).toHaveValue('latest');
+  });
+});
+
 describe('Build Monitor BM3', () => {
   it('shows a current build, measured stages and a selectable archived failure with diagnostics', async () => {
     const { api } = mockApi();
