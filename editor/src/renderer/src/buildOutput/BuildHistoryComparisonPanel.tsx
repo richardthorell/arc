@@ -46,7 +46,11 @@ export function BuildHistoryComparisonPanel({
         <>
           <label className="build-monitor-comparison-picker">
             Compare with
-            <select aria-label="Comparison baseline" value={choice} onChange={(event) => setChoice(event.target.value)}>
+            <select
+              aria-label="Comparison baseline"
+              value={choice}
+              onChange={(event) => setChoice(event.target.value)}
+            >
               <option value="latest">Latest comparable successful build</option>
               {candidates.map((run) => (
                 <option value={run.id} key={run.id}>
@@ -112,7 +116,9 @@ export function BuildHistoryComparisonPanel({
                       <tbody>
                         {value.objects.map((task) => (
                           <tr key={task.output}>
-                            <th scope="row" title={task.output}>{task.sourceFile ?? task.output}</th>
+                            <th scope="row" title={task.output}>
+                              {task.sourceFile ?? task.output}
+                            </th>
                             <td>{timeMs(task.beforeMs)}</td>
                             <td>{timeMs(task.afterMs)}</td>
                             <td>{changeLabel(task)}</td>
@@ -137,7 +143,9 @@ export function BuildHistoryComparisonPanel({
           )}
         </>
       ) : (
-        <p className="build-monitor-empty">No earlier successful build matches this action, configuration, target and profile.</p>
+        <p className="build-monitor-empty">
+          No earlier successful build matches this action, configuration, target and profile.
+        </p>
       )}
       <p className="build-monitor-target-note">
         Differences may reflect code changes, incremental caching or machine load. These observations do not establish a
