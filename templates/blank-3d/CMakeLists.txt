@@ -10,7 +10,12 @@ endif()
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS Runtime Project Scene EditorModuleSDK PlatformWindows Vulkan)
+set(arc_components Runtime Project Scene EditorModuleSDK)
+if(WIN32)
+  list(APPEND arc_components PlatformWindows Vulkan)
+endif()
+find_package(ARC {{ENGINE_VERSION}} EXACT CONFIG REQUIRED COMPONENTS ${arc_components})
+unset(arc_components)
 
 add_library({{PROJECT_TOKEN}}Runtime STATIC Source/{{PROJECT_TOKEN}}Runtime/Runtime.cpp)
 target_compile_features({{PROJECT_TOKEN}}Runtime PUBLIC cxx_std_20)

@@ -331,7 +331,10 @@ int configure_or_build(const arguments& args, bool build, bool json_output)
                 }
             }
 #else
-            if (const char* value = std::getenv("ARC_DEVELOPMENT_SDK")) development = value;
+            // The CLI is single-threaded and the launcher fixes its environment before process creation.
+            // There is no standard POSIX replacement for getenv that improves this contract.
+            if (const char* value = std::getenv("ARC_DEVELOPMENT_SDK")) // NOLINT(concurrency-mt-unsafe)
+                development = value;
 #endif
             if (!development.empty())
             {
