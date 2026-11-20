@@ -95,8 +95,25 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
   message('hello.accepted', z.object({ capabilities, lastReceivedSequence: revision }).strict()),
   message('hello.rejected', z.object({ error }).strict()),
   message('heartbeat', z.object({ lastReceivedSequence: revision }).strict()),
-  message('session.state', z.object({ state: z.enum(['starting', 'running', 'paused', 'stopped', 'faulted']), tick: revision, revision }).strict()),
-  message('session.command', z.object({ action: z.enum(['pause', 'resume', 'stop', 'step']), ticks: z.number().int().min(1).max(256).optional() }).strict()),
+  message(
+    'session.state',
+    z
+      .object({
+        state: z.enum(['starting', 'running', 'paused', 'stopped', 'faulted']),
+        tick: revision,
+        revision,
+      })
+      .strict(),
+  ),
+  message(
+    'session.command',
+    z
+      .object({
+        action: z.enum(['pause', 'resume', 'stop', 'step']),
+        ticks: z.number().int().min(1).max(256).optional(),
+      })
+      .strict(),
+  ),
   message(
     'entity.property.set',
     z
@@ -111,10 +128,38 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
       })
       .strict(),
   ),
-  message('entity.create', z.object({ entityGuid: guid, parent: livePlayEntitySchema.nullable(), archetype: id, authoringRevision: revision }).strict()),
+  message(
+    'entity.create',
+    z
+      .object({
+        entityGuid: guid,
+        parent: livePlayEntitySchema.nullable(),
+        archetype: id,
+        authoringRevision: revision,
+      })
+      .strict(),
+  ),
   message('entity.delete', z.object({ entity: livePlayEntitySchema, expectedRuntimeRevision: revision }).strict()),
-  message('entity.reparent', z.object({ entity: livePlayEntitySchema, parent: livePlayEntitySchema.nullable(), expectedRuntimeRevision: revision }).strict()),
-  message('hierarchy.snapshot', z.object({ worldRevision: revision, entities: z.array(hierarchyEntity).max(128), complete: z.boolean() }).strict()),
+  message(
+    'entity.reparent',
+    z
+      .object({
+        entity: livePlayEntitySchema,
+        parent: livePlayEntitySchema.nullable(),
+        expectedRuntimeRevision: revision,
+      })
+      .strict(),
+  ),
+  message(
+    'hierarchy.snapshot',
+    z
+      .object({
+        worldRevision: revision,
+        entities: z.array(hierarchyEntity).max(128),
+        complete: z.boolean(),
+      })
+      .strict(),
+  ),
   message(
     'hierarchy.changed',
     z
@@ -143,9 +188,18 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
       })
       .strict(),
   ),
-  message('log.record', z.object({ level: z.enum(['debug', 'info', 'warning', 'error']), text: z.string().max(4096) }).strict()),
-  message('content.generation', z.object({ generation: revision, status: z.enum(['available', 'active', 'rejected']) }).strict()),
-  message('session.resync.request', z.object({ lastReceivedSequence: revision, reason: z.enum(['reconnected', 'gap', 'overflow']) }).strict()),
+  message(
+    'log.record',
+    z.object({ level: z.enum(['debug', 'info', 'warning', 'error']), text: z.string().max(4096) }).strict(),
+  ),
+  message(
+    'content.generation',
+    z.object({ generation: revision, status: z.enum(['available', 'active', 'rejected']) }).strict(),
+  ),
+  message(
+    'session.resync.request',
+    z.object({ lastReceivedSequence: revision, reason: z.enum(['reconnected', 'gap', 'overflow']) }).strict(),
+  ),
   message(
     'command.ack',
     z
@@ -211,7 +265,12 @@ const runtimeOnly = new Set<LivePlayMessageType>([
 ]);
 
 function capabilityFor(type: LivePlayMessageType): LivePlayCapability | undefined {
-  if (type === 'entity.property.set' || type === 'entity.create' || type === 'entity.delete' || type === 'entity.reparent')
+  if (
+    type === 'entity.property.set' ||
+    type === 'entity.create' ||
+    type === 'entity.delete' ||
+    type === 'entity.reparent'
+  )
     return 'entity.edit';
   if (type === 'component.inspect.request') return 'entity.inspect';
   if (type === 'session.command') return 'session.control';
@@ -220,7 +279,10 @@ function capabilityFor(type: LivePlayMessageType): LivePlayCapability | undefine
 
 /** Parse and authorize without mutating caller state or dispatching native commands. */
 export function receiveLivePlayFrame(frame: string, context: LivePlayReceiveContext): LivePlayReceiveResult {
-  if (frame.length > LIVE_PLAY_MAX_FRAME_BYTES || new TextEncoder().encode(frame).byteLength > LIVE_PLAY_MAX_FRAME_BYTES)
+  if (
+    frame.length > LIVE_PLAY_MAX_FRAME_BYTES ||
+    new TextEncoder().encode(frame).byteLength > LIVE_PLAY_MAX_FRAME_BYTES
+  )
     return { accepted: false, code: 'frame_too_large' };
   if (!context.authenticated) return { accepted: false, code: 'unauthenticated' };
 
@@ -238,7 +300,10 @@ export function receiveLivePlayFrame(frame: string, context: LivePlayReceiveCont
   const item = parsed.data;
   if (item.type === 'hello' && item.payload.schemaHash !== context.expectedSchemaHash)
     return { accepted: false, code: 'schema_mismatch' };
-  if (item.type === 'hello.accepted' && item.payload.capabilities.some((cap) => !context.grantedCapabilities.includes(cap)))
+  if (
+    item.type === 'hello.accepted' &&
+    item.payload.capabilities.some((cap) => !context.grantedCapabilities.includes(cap))
+  )
     return { accepted: false, code: 'permission_denied' };
   const expected = context.authority;
   if (
@@ -250,7 +315,10 @@ export function receiveLivePlayFrame(frame: string, context: LivePlayReceiveCont
   )
     return { accepted: false, code: 'identity_mismatch' };
   if (item.sender !== context.peerRole) return { accepted: false, code: 'wrong_direction' };
-  if ((item.sender === 'editor' && runtimeOnly.has(item.type)) || (item.sender === 'runtime' && editorOnly.has(item.type)))
+  if (
+    (item.sender === 'editor' && runtimeOnly.has(item.type)) ||
+    (item.sender === 'runtime' && editorOnly.has(item.type))
+  )
     return { accepted: false, code: 'wrong_direction' };
   if (!Number.isSafeInteger(context.lastSequence) || item.sequence <= context.lastSequence)
     return { accepted: false, code: 'replayed_sequence' };
