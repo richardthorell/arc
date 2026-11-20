@@ -77,7 +77,8 @@ export function parseMsbuildCompileLog(
   let day = 0;
   let lastClock: number | undefined;
   let observed = false;
-  let sourceOwner: string | null = null;
+  // Different MSBuild nodes may interleave their diagnostic source blocks.
+  const sourceOwners = new Map<string, string>();
   for (const line of content.split(/\r?\n/)) {
     const start = startPattern.exec(line);
     const end = endPattern.exec(line);
@@ -85,37 +86,38 @@ export function parseMsbuildCompileLog(
       const { message, node } = logMessage(line);
       const parameter = /\bTask Parameter:([A-Za-z]+)=\s*(.*)$/iu.exec(message);
       if (parameter) {
-        sourceOwner = null;
+        sourceOwners.delete(node);
         if (parameter[1].toLowerCase() !== 'sources') continue;
         // When multiple CL tasks run on the same node, an untagged Task
         // Parameter line cannot be associated reliably with a specific task.
         const candidates = [...active.entries()].filter(([key]) => !node || key.startsWith(node + ':'));
         if (candidates.length !== 1) continue;
-        sourceOwner = candidates[0][0];
+        const owner = candidates[0][0];
+        sourceOwners.set(node, owner);
         const value = safeSource(parameter[2], projectRoot, buildRoot);
         if (value) {
-          const current = active.get(sourceOwner);
+          const current = active.get(owner);
           if (current && !current.sources.includes(value)) current.sources.push(value);
         }
         continue;
       }
       if (/\b(?:Task |Done executing task |Output Item\(s\):|Added Item\(s\):)/iu.test(message)) {
-        sourceOwner = null;
+        sourceOwners.delete(node);
         continue;
       }
-      const task = sourceOwner ? active.get(sourceOwner) : undefined;
-      if (task && (!node || sourceOwner!.startsWith(node + ':'))) {
+      const owner = sourceOwners.get(node);
+      const task = owner ? active.get(owner) : undefined;
+      if (task) {
         const value = safeSource(message, projectRoot, buildRoot);
         if (value && !task.sources.includes(value)) {
           if (task.sources.length < MAX_SOURCE_FILES) task.sources.push(value);
           else task.sourceFilesTruncated = true;
         } else if (message && !value) {
-          sourceOwner = null;
+          sourceOwners.delete(node);
         }
       }
       continue;
     }
-    sourceOwner = null;
     const time = clockMs(line);
     if (time === null) continue;
     if (lastClock !== undefined && lastClock - time > DAY_MS / 2) day++;
@@ -125,6 +127,7 @@ export function parseMsbuildCompileLog(
     const node = /\b(\d+)>\s*/.exec(prefix)?.[1] ?? '';
     const taskId = (start ?? end)![1];
     const key = node + ':' + taskId;
+    sourceOwners.delete(node);
     if (start) {
       observed = true;
       if (!active.has(key)) {
