@@ -120,13 +120,19 @@ export class WindowsLivePlaySession {
       child.stderr.on('data', () => {});
       child.once('error', (error) => this.onProcessExit(session, error.message));
       child.once('close', (code, signal) =>
-        this.onProcessExit(session, `Game exited before/during Live Play (code ${String(code)}, signal ${String(signal)})`),
+        this.onProcessExit(
+          session,
+          `Game exited before/during Live Play (code ${String(code)}, signal ${String(signal)})`,
+        ),
       );
 
       const attached = new Promise<void>((resolve, reject) => {
         session.resolveConnected = resolve;
         session.rejectConnected = reject;
-        session.connectedTimer = setTimeout(() => reject(new Error('Development game did not connect to the editor')), connectionTimeoutMs);
+        session.connectedTimer = setTimeout(
+          () => reject(new Error('Development game did not connect to the editor')),
+          connectionTimeoutMs,
+        );
       });
       // Attach the rejection handler before the one-shot pipe write: a child
       // that dies mid-handoff may reject its connection promise immediately.
@@ -134,8 +140,7 @@ export class WindowsLivePlaySession {
       await writeLivePlayNativeHandoff(child.stdin, server, context);
       child.stdin.end();
       await attached;
-      if (session.stopRequested || this.current !== session)
-        throw new Error('Live Play was stopped during connection');
+      if (session.stopRequested || this.current !== session) throw new Error('Live Play was stopped during connection');
       return this.snapshot();
     } catch (error) {
       await this.stop();
@@ -200,7 +205,14 @@ export class WindowsLivePlaySession {
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }
     await session.server.stop();
-    this.update({ state: 'stopped', pid: null, sessionId: null, instanceId: null, lastReceivedSequence: 0, error: null });
+    this.update({
+      state: 'stopped',
+      pid: null,
+      sessionId: null,
+      instanceId: null,
+      lastReceivedSequence: 0,
+      error: null,
+    });
     return this.snapshot();
   }
 }
@@ -226,7 +238,8 @@ export function resolvePublishedWindowsLivePlay(
   const artifact = publication.artifacts?.find(
     (item) => item.kind === 'package' && item.profile === profile && item.targetId === targetId,
   );
-  if (!artifact?.path || !artifact.buildId) throw new Error('Build the selected Windows profile before standalone Play');
+  if (!artifact?.path || !artifact.buildId)
+    throw new Error('Build the selected Windows profile before standalone Play');
   const output = fs.realpathSync(artifact.path);
   const local = path.relative(recordRoot, output);
   if (!local || local === '..' || local.startsWith(`..${path.sep}`) || path.isAbsolute(local))
