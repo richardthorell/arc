@@ -37,7 +37,8 @@ export function BuildHistoryComparisonPanel({
   const onBaselineChange = (event: ChangeEvent<HTMLSelectElement>) => setChoice(event.target.value);
   const ninjaTasks = current.compileTrace?.source === 'ninja-log' && baseline?.compileTrace?.source === 'ninja-log';
   const emptyMessage = 'No earlier successful build matches this action, configuration, target and profile.';
-  const caveat = 'Differences may reflect code changes, incremental caching or machine load. These observations do not establish a statistically significant performance regression.';
+  const caveat =
+    'Differences may reflect code changes, incremental caching or machine load. These observations do not establish a statistically significant performance regression.';
   return (
     <section className="build-monitor-comparison" aria-label="Build performance comparison">
       <div className="build-monitor-section-title">
@@ -116,7 +117,9 @@ export function BuildHistoryComparisonPanel({
                       <tbody>
                         {value.objects.map((task) => (
                           <tr key={task.output}>
-                            <th scope="row" title={task.output}>{task.sourceFile ?? task.output}</th>
+                            <th scope="row" title={task.output}>
+                              {task.sourceFile ?? task.output}
+                            </th>
                             <td>{timeMs(task.beforeMs)}</td>
                             <td>{timeMs(task.afterMs)}</td>
                             <td>{changeLabel(task)}</td>
