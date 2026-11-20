@@ -33,6 +33,8 @@ if(ARC_BUILD_LIVE_PLAY_DEV OR (BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS))
         target_compile_features(arc-live-play-dev-tests PRIVATE cxx_std_20)
         target_link_libraries(arc-live-play-dev-tests PRIVATE
             arc-live-play-dev arc-third-party-json Threads::Threads)
+        target_compile_definitions(arc-live-play-dev-tests PRIVATE
+            ARC_LIVE_PLAY_WIRE_VECTOR_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test_support/live_play_wire_v1.json")
         add_test(NAME arc-live-play-dev-tests COMMAND arc-live-play-dev-tests)
     endif()
 endif()
