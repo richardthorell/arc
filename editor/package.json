@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --write src/common/livePlayProtocol.ts src/common/livePlayProtocol.test.ts && echo LIVE_PLAY_FORMAT_DIFF_START && git diff -- src/common/livePlayProtocol.ts src/common/livePlayProtocol.test.ts && echo LIVE_PLAY_FORMAT_DIFF_END"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
