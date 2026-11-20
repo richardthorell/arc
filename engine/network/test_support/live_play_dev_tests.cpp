@@ -33,11 +33,17 @@ using namespace arc::network::live_play_dev;
 #if defined(_WIN32)
 using native_socket = SOCKET;
 constexpr native_socket invalid_socket = INVALID_SOCKET;
-void close_socket(native_socket s) { if (s != invalid_socket) closesocket(s); }
+void close_socket(native_socket s)
+{
+    if (s != invalid_socket) closesocket(s);
+}
 #else
 using native_socket = int;
 constexpr native_socket invalid_socket = -1;
-void close_socket(native_socket s) { if (s != invalid_socket) ::close(s); }
+void close_socket(native_socket s)
+{
+    if (s != invalid_socket) ::close(s);
+}
 #endif
 
 void check(bool condition, const char* why)
@@ -74,10 +80,8 @@ void send_packet(native_socket s, const std::string& value)
     const std::size_t count = value.size();
     check(count <= maximum_frame_bytes, "test frame too large");
     const std::array<unsigned char, 4> prefix{
-        static_cast<unsigned char>((count >> 24) & 255),
-        static_cast<unsigned char>((count >> 16) & 255),
-        static_cast<unsigned char>((count >> 8) & 255),
-        static_cast<unsigned char>(count & 255)};
+        static_cast<unsigned char>((count >> 24) & 255), static_cast<unsigned char>((count >> 16) & 255),
+        static_cast<unsigned char>((count >> 8) & 255), static_cast<unsigned char>(count & 255)};
     send_bytes(s, prefix.data(), prefix.size());
     send_bytes(s, value.data(), count);
 }
@@ -96,17 +100,16 @@ std::string read_packet(native_socket s)
 
 std::string launch_record(std::uint16_t port)
 {
-    return json{
-        {"port", port},
-        {"secret", std::string(64, '1')},
-        {"projectGuid", "11111111-1111-1111-1111-111111111111"},
-        {"buildId", "dev-build-42"},
-        {"targetProfile", "windows-x64-vulkan"},
-        {"sessionId", "session-1"},
-        {"instanceId", "runtime-1"},
-        {"schemaHash", std::string(64, 'a')},
-        {"capabilities", {"session.observe", "content.observe"}}
-    }.dump();
+    return json{{"port", port},
+                {"secret", std::string(64, '1')},
+                {"projectGuid", "11111111-1111-1111-1111-111111111111"},
+                {"buildId", "dev-build-42"},
+                {"targetProfile", "windows-x64-vulkan"},
+                {"sessionId", "session-1"},
+                {"instanceId", "runtime-1"},
+                {"schemaHash", std::string(64, 'a')},
+                {"capabilities", {"session.observe", "content.observe"}}}
+        .dump();
 }
 
 launch_handoff inherited_handoff(std::uint16_t port)
@@ -114,10 +117,8 @@ launch_handoff inherited_handoff(std::uint16_t port)
     const auto record = launch_record(port);
     const std::size_t count = record.size();
     const std::array<unsigned char, 4> prefix{
-        static_cast<unsigned char>((count >> 24) & 255),
-        static_cast<unsigned char>((count >> 16) & 255),
-        static_cast<unsigned char>((count >> 8) & 255),
-        static_cast<unsigned char>(count & 255)};
+        static_cast<unsigned char>((count >> 24) & 255), static_cast<unsigned char>((count >> 16) & 255),
+        static_cast<unsigned char>((count >> 8) & 255), static_cast<unsigned char>(count & 255)};
     launch_handoff result;
     std::string error;
 #if defined(_WIN32)
@@ -125,9 +126,11 @@ launch_handoff inherited_handoff(std::uint16_t port)
     check(CreatePipe(&readable, &writable, nullptr, 0) == TRUE, "Could not create protected handoff pipe");
     DWORD sent = 0;
     check(WriteFile(writable, prefix.data(), static_cast<DWORD>(prefix.size()), &sent, nullptr) &&
-          sent == prefix.size(), "Could not write handoff prefix");
+              sent == prefix.size(),
+          "Could not write handoff prefix");
     check(WriteFile(writable, record.data(), static_cast<DWORD>(record.size()), &sent, nullptr) &&
-          sent == record.size(), "Could not write handoff record");
+              sent == record.size(),
+          "Could not write handoff record");
     CloseHandle(writable);
     const bool okay = read_launch_handoff(reinterpret_cast<std::uintptr_t>(readable), result, error);
     CloseHandle(readable);
@@ -182,7 +185,10 @@ public:
 #endif
     }
 
-    std::uint16_t port() const { return port_; }
+    std::uint16_t port() const
+    {
+        return port_;
+    }
 
     void serve(bool wrong_identity = false)
     {
@@ -191,8 +197,8 @@ public:
         try
         {
             const auto credential = read_packet(peer);
-            check(credential.size() == secret_bytes &&
-                  static_cast<unsigned char>(credential[0]) == 0x11, "Incorrect raw credential framing");
+            check(credential.size() == secret_bytes && static_cast<unsigned char>(credential[0]) == 0x11,
+                  "Incorrect raw credential framing");
             const auto hello = json::parse(read_packet(peer));
             std::ifstream fixture_file(ARC_LIVE_PLAY_WIRE_VECTOR_PATH);
             check(static_cast<bool>(fixture_file), "Cannot open cross-language golden protocol fixtures");
@@ -201,29 +207,25 @@ public:
             check(hello.at("protocol") == "arc.live-play" && hello.at("protocolVersion") == 1,
                   "Native hello protocol mismatch");
             check(hello.at("sender") == "runtime" && hello.at("type") == "hello", "Native hello wrong direction");
-            check(hello.at("projectGuid") == "11111111-1111-1111-1111-111111111111",
-                  "Native hello identity mismatch");
-            check(hello.at("payload").at("schemaHash") == std::string(64, 'a'),
-                  "Native hello schema hash mismatch");
-            check(hello.at("payload").at("capabilities") ==
-                  json::array({"session.observe", "content.observe"}), "Native hello capability mismatch");
+            check(hello.at("projectGuid") == "11111111-1111-1111-1111-111111111111", "Native hello identity mismatch");
+            check(hello.at("payload").at("schemaHash") == std::string(64, 'a'), "Native hello schema hash mismatch");
+            check(hello.at("payload").at("capabilities") == json::array({"session.observe", "content.observe"}),
+                  "Native hello capability mismatch");
             json accepted = hello;
             accepted["sender"] = "editor";
             accepted["sequence"] = 1;
             accepted["messageId"] = "editor-welcome";
             accepted["type"] = "hello.accepted";
-            accepted["payload"] = {
-                {"lastReceivedSequence", 1},
-                {"capabilities", {"session.observe", "content.observe"}}
-            };
+            accepted["payload"] = {{"lastReceivedSequence", 1},
+                                   {"capabilities", {"session.observe", "content.observe"}}};
             if (wrong_identity) accepted["sessionId"] = "incorrect-session";
             send_packet(peer, accepted.dump());
             if (!wrong_identity)
             {
                 const auto state = json::parse(read_packet(peer));
                 check(state.at("type") == "session.state", "Native state frame not received");
-                check(state.at("payload").at("state") == "running" &&
-                      state.at("payload").at("tick") == 7, "Native state data incorrect");
+                check(state.at("payload").at("state") == "running" && state.at("payload").at("tick") == 7,
+                      "Native state data incorrect");
                 json heartbeat = accepted;
                 heartbeat["type"] = "heartbeat";
                 heartbeat["messageId"] = "editor-heartbeat-2";
@@ -254,9 +256,18 @@ void test_successful_connection()
     fixture_server fixture;
     auto handoff = inherited_handoff(fixture.port());
     std::exception_ptr server_error;
-    std::jthread server([&] {
-        try { fixture.serve(); } catch (...) { server_error = std::current_exception(); }
-    });
+    std::jthread server(
+        [&]
+        {
+            try
+            {
+                fixture.serve();
+            }
+            catch (...)
+            {
+                server_error = std::current_exception();
+            }
+        });
 
     std::string error;
     client native;
@@ -278,9 +289,18 @@ void test_invalid_editor_identity()
     fixture_server fixture;
     auto handoff = inherited_handoff(fixture.port());
     std::exception_ptr server_error;
-    std::jthread server([&] {
-        try { fixture.serve(true); } catch (...) { server_error = std::current_exception(); }
-    });
+    std::jthread server(
+        [&]
+        {
+            try
+            {
+                fixture.serve(true);
+            }
+            catch (...)
+            {
+                server_error = std::current_exception();
+            }
+        });
 
     std::string error;
     client native;
