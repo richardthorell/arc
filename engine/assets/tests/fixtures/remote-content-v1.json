@@ -1,0 +1,30 @@
+{
+  "format": "arc.remote-content",
+  "formatVersion": 1,
+  "projectGuid": "11111111-2222-4333-8444-555555555555",
+  "engineVersion": "0.1.0",
+  "baseBuildId": "build-abc",
+  "target": {
+    "platform": "windows",
+    "architecture": "x86_64",
+    "renderer": "vulkan",
+    "cookProfile": "windows-x64-vulkan",
+    "textureFamily": "bc"
+  },
+  "generation": 5,
+  "complete": true,
+  "cookManifestName": "windows-x64-vulkan.arccookmanifest",
+  "cookManifest": {
+    "path": "objects/sha256/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size": 123
+  },
+  "chunks": [
+    {
+      "name": "startup-hash.arcpak",
+      "path": "objects/sha256/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "size": 456
+    }
+  ]
+}
