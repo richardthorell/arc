@@ -194,7 +194,12 @@ bool send_exact(socket_type s, const void* input, std::size_t bytes)
     while (bytes)
     {
         const auto chunk = static_cast<int>(std::min<std::size_t>(bytes, 65536));
+#if defined(MSG_NOSIGNAL)
+        // A disconnected editor must not terminate the game process via SIGPIPE.
+        const int sent = ::send(s, data, chunk, MSG_NOSIGNAL);
+#else
         const int sent = ::send(s, data, chunk, 0);
+#endif
         if (sent <= 0) return false;
         data += sent;
         bytes -= static_cast<std::size_t>(sent);
@@ -376,6 +381,11 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
         return false;
     }
     socket_ = static_cast<std::intptr_t>(s);
+#if defined(SO_NOSIGPIPE)
+    // macOS has SO_NOSIGPIPE rather than Linux/Android MSG_NOSIGNAL.
+    const int no_sigpipe = 1;
+    ::setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe));
+#endif
     sockaddr_in destination{};
     destination.sin_family = AF_INET;
     destination.sin_port = htons(handoff.port);
