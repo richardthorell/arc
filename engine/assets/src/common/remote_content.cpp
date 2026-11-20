@@ -75,7 +75,7 @@ std::optional<std::uint64_t> unsigned_field(const json& object, std::string_view
     if (!object.is_object()) return std::nullopt;
     const auto it = object.find(std::string(key));
     if (it == object.end() || !(it->is_number_unsigned() || it->is_number_integer())) return std::nullopt;
-    if (it->is_number_integer() && it->get<std::int64_t>() < 0) return std::nullopt;
+    if (!it->is_number_unsigned() && it->get<std::int64_t>() < 0) return std::nullopt;
     return it->get<std::uint64_t>();
 }
 
