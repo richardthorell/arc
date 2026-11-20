@@ -44,12 +44,7 @@ describe('BM8.1 historical build comparison', () => {
   });
 
   it('shows a clear empty state rather than comparing a differently configured build', () => {
-    render(
-      <BuildHistoryComparisonPanel
-        current={current}
-        historyRuns={[{ ...recent, configuration: 'Shipping' }]}
-      />,
-    );
+    render(<BuildHistoryComparisonPanel current={current} historyRuns={[{ ...recent, configuration: 'Shipping' }]} />);
     expect(screen.getByText(/No earlier successful build matches/)).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Comparison baseline' })).not.toBeInTheDocument();
   });
