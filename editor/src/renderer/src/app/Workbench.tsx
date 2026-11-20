@@ -856,11 +856,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
     // Standalone Play owns a separate Development process and must never
     // resume the in-editor Play World or save modified authoring documents.
-    if (
-      targetPlatform === 'windows' &&
-      selectedPlayTarget === STANDALONE_TARGET_ID &&
-      command === 'scene.play'
-    ) {
+    if (targetPlatform === 'windows' && selectedPlayTarget === STANDALONE_TARGET_ID && command === 'scene.play') {
       try {
         await window.arc.livePlay.start();
         setLastCommand('Connected to Windows standalone Development runtime');
