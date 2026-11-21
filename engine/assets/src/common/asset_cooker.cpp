@@ -287,8 +287,7 @@ cook_result asset_cooker::cook(const cook_request& request)
         {
             if (!document.is_object()) return std::nullopt;
             const auto format = document.find("format");
-            if (format == document.end() || !format->is_string() || *format != "arc.scene")
-                return std::nullopt;
+            if (format == document.end() || !format->is_string() || *format != "arc.scene") return std::nullopt;
             const auto scene = document.find("scene");
             if (scene == document.end() || !scene->is_object()) return std::nullopt;
             const auto id = scene->find("id");
