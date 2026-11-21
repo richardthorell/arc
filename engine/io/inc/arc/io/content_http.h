@@ -111,4 +111,34 @@ struct [[nodiscard]] content_http_fetch_result
 fetch_content_http(jobs::job_system& jobs, content_http_request request, content_http_limits limits = {},
                    jobs::cancellation_token cancellation = {});
 
+/** C9.2d2: a mutable release pointer is NOT an immutable SHA object.
+ * Only one fixed endpoint is allowed:
+ * releases/<project-guid>/<target-profile>/current.json
+ * The origin must pass the same strict HTTPS/loopback validation as C9.2b.
+ */
+struct content_http_release_request
+{
+    std::string origin;
+    std::string project_guid;
+    std::string target_profile;
+};
+
+/** Never treat a release pointer as immutable content or trust HTTP cache
+ * freshness. The native backend requests no-cache and rejects redirects.
+ */
+[[nodiscard]] content_http_validation validate_content_http_release_request(const content_http_release_request& request,
+                                                                            const content_http_limits& limits);
+
+[[nodiscard]] content_http_validation
+validate_content_http_release_response(const content_http_release_request& request,
+                                       const content_http_response& response, const content_http_limits& limits);
+
+/** Perform a bounded GET for the current release descriptor on an IO worker.
+ * Windows uses WinHTTP and OS TLS verification; unsupported platforms fail
+ * explicitly. A release is valid only after C9.1 parse_remote_content_release.
+ */
+[[nodiscard]] jobs::job_future<content_http_fetch_result>
+fetch_content_http_release(jobs::job_system& jobs, content_http_release_request request,
+                           content_http_limits limits = {}, jobs::cancellation_token cancellation = {});
+
 } // namespace arc::io
