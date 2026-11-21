@@ -131,7 +131,7 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
     const auto origin = split_origin(request.origin);
     if (origin.host.empty()) return failure(content_http_error_code::invalid_origin, "Invalid UTF-8 HTTP host");
 
-    http_handle session(WinHttpOpen(L"ARC remote content/1", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+    const auto proxy_mode = request.origin.starts_with("http://127.0.0.1") ||\n                                    request.origin.starts_with("http://localhost") ||\n                                    request.origin.starts_with("http://[::1]")\n                                ? WINHTTP_ACCESS_TYPE_NO_PROXY\n                                : WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;\n    http_handle session(WinHttpOpen(L"ARC remote content/1", proxy_mode,
                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) return failure(content_http_error_code::network_failure, "WinHTTP session unavailable");
     const auto timeout = static_cast<int>(std::min<std::int64_t>(limits.timeout.count(), 600000));
@@ -186,7 +186,7 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
     if (status == 404u) return failure(content_http_error_code::not_found, "Remote cooked object not found");
     if (status == 429u || status == 503u)
         return failure(content_http_error_code::rate_limited, "Remote cooked object temporarily unavailable");
-    if (status >= 300u && status < 400u || !result.redirect_location.empty())
+    if ((status >= 300u && status < 400u) || !result.redirect_location.empty())
         return failure(content_http_error_code::rejected_redirect, "Remote content redirect rejected");
     if (status != (request.range_start ? 206u : 200u))
         return failure(content_http_error_code::invalid_status, "HTTP status does not match requested content");
