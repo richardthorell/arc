@@ -27,12 +27,17 @@ if(ARC_BUILD_LIVE_PLAY_DEV OR (BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS))
     # when linking an installed Development game against its compiled objects.
     target_link_libraries(arc-live-play-dev PRIVATE "$<BUILD_INTERFACE:arc-third-party-json>")
     add_library(arc::live-play-dev ALIAS arc-live-play-dev)
-    set_target_properties(arc-live-play-dev PROPERTIES EXPORT_NAME LivePlayDev)
-    install(TARGETS arc-live-play-dev EXPORT ARCTargets
-        ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
-        COMPONENT sdk-development)
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dev/include/"
-        DESTINATION include COMPONENT sdk-development)
+    # Test-only builds may compile the bridge for native integration tests,
+    # but must not advertise an uninstalled static archive in the exported SDK.
+    # Only explicit Development SDK builds export the opt-in bridge.
+    if(ARC_BUILD_LIVE_PLAY_DEV)
+        set_target_properties(arc-live-play-dev PROPERTIES EXPORT_NAME LivePlayDev)
+        install(TARGETS arc-live-play-dev EXPORT ARCTargets
+            ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
+            COMPONENT sdk-development)
+        install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dev/include/"
+            DESTINATION include COMPONENT sdk-development)
+    endif()
     if(WIN32)
         target_link_libraries(arc-live-play-dev PUBLIC ws2_32)
     endif()

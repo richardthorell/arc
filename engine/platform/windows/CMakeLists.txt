@@ -112,8 +112,9 @@ install(TARGETS arc-platform-windows-packaged-entry EXPORT ARCTargets
     COMPONENT sdk)
 
 # A separate, opt-in Development entrypoint owns the editor-only native
-# client. The standard packaged entrypoint and Shipping SDK stay unchanged.
-if(TARGET arc-live-play-dev)
+# client. Test-only builds may also create arc-live-play-dev, but must not
+# export a Windows entry depending on a library absent from the installed SDK.
+if(ARC_BUILD_LIVE_PLAY_DEV AND TARGET arc-live-play-dev)
     add_library(arc-platform-windows-live-play-entry STATIC src/windows_entry.cpp)
     arc_configure_first_party_target(arc-platform-windows-live-play-entry)
     target_compile_features(arc-platform-windows-live-play-entry PUBLIC cxx_std_20)
