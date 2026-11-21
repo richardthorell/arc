@@ -17,6 +17,14 @@
 
 namespace arc::io
 {
+#if defined(ARC_CONTENT_HTTP_CURL) && defined(__linux__) && !defined(__ANDROID__)
+content_http_fetch_result curl_fetch_content_http(const content_http_request& request,
+                                                  const content_http_limits& limits,
+                                                  const jobs::cancellation_token& cancellation);
+content_http_fetch_result curl_fetch_content_http_release(const content_http_release_request& request,
+                                                          const content_http_limits& limits,
+                                                          const jobs::cancellation_token& cancellation);
+#endif
 namespace
 {
 
@@ -356,6 +364,8 @@ jobs::job_future<content_http_fetch_result> fetch_content_http(jobs::job_system&
                                       return failure(content_http_error_code::cancelled, "HTTP fetch cancelled");
 #if defined(_WIN32)
                                   return winhttp_fetch(request, limits, cancellation);
+#elif defined(ARC_CONTENT_HTTP_CURL) && defined(__linux__) && !defined(__ANDROID__)
+                                  return curl_fetch_content_http(request, limits, cancellation);
 #else
                                   return failure(content_http_error_code::transport_unavailable,
                                                  "Native HTTP/TLS backend not available for this platform");
@@ -380,6 +390,8 @@ jobs::job_future<content_http_fetch_result> fetch_content_http_release(jobs::job
                                       return failure(content_http_error_code::cancelled, "Release lookup cancelled");
 #if defined(_WIN32)
                                   return winhttp_fetch_release(request, limits, cancellation);
+#elif defined(ARC_CONTENT_HTTP_CURL) && defined(__linux__) && !defined(__ANDROID__)
+                                  return curl_fetch_content_http_release(request, limits, cancellation);
 #else
             return failure(content_http_error_code::transport_unavailable,
                            "Native release HTTP/TLS backend unavailable on this platform");
