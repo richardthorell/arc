@@ -33,6 +33,13 @@
   justify-content: center;
 }
 
+/* Keep the action menu compact and anchor its right edge below the arrow. */
+.builds-editor-toolbar .builds-toolbar-build .ui-split-button-menu {
+  right: 0;
+  width: min(288px, calc(100vw - 16px));
+  min-width: min(288px, calc(100vw - 16px));
+}
+
 /* Match the standard editor toolbar control height and typography. */
 .builds-editor-toolbar .builds-toolbar-build.ui-split-button,
 .builds-editor-toolbar .builds-toolbar-build.ui-split-button > .ui-button,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BuildCompileTrace } from './buildCompileTypes';
 import type { BuildTargetGraph } from './buildTargetTypes';
 
 export const workflowStageSchema = z.enum([
@@ -68,6 +69,14 @@ export type WorkflowArtifact = {
   profile: string;
 };
 export type WorkflowCapability = { available: boolean; reason?: string };
+export type WorkflowStageTaskProgress = {
+  id: string;
+  name: string;
+  state: 'running' | 'succeeded' | 'failed' | 'cancelled';
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+};
 export type WorkflowStageProgress = {
   stage: WorkflowStage;
   state: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -76,6 +85,8 @@ export type WorkflowStageProgress = {
   completedAt?: string;
   /** Monotonic duration measured at execution time. */
   durationMs?: number;
+  /** Authoritative nested operations executed by this stage. */
+  tasks?: WorkflowStageTaskProgress[];
 };
 
 export type WorkflowRun = {
@@ -91,6 +102,8 @@ export type WorkflowRun = {
   artifacts: WorkflowArtifact[];
   /** CMake File API graph for the requested target, when supported. */
   targetGraph?: BuildTargetGraph;
+  /** Native compiler intervals, retained on their native tool clock. */
+  compileTrace?: BuildCompileTrace;
   error?: string;
 };
 

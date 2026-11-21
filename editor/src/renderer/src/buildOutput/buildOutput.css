@@ -238,6 +238,38 @@
   font-size: 11px;
 }
 
+.build-monitor-sidebar-title > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.build-monitor-sidebar-title button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #8298a9;
+  background: transparent;
+  cursor: pointer;
+}
+
+.build-monitor-sidebar-title button:hover:not(:disabled),
+.build-monitor-sidebar-title button:focus-visible {
+  border-color: #3a5262;
+  color: #e47782;
+  background: #20323e;
+  outline: none;
+}
+
+.build-monitor-sidebar-title button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .build-monitor-sidebar-group {
   padding: 10px 8px;
 }
@@ -1542,5 +1574,819 @@
 @media (max-width: 540px) {
   .build-monitor-comparison-total {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Timeline-first Build Monitor. The stacked Gantt and output are the primary surfaces. */
+.build-monitor {
+  position: relative;
+}
+
+.build-monitor-layout {
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+
+.build-monitor-sidebar-title {
+  padding: 13px 12px 7px;
+}
+
+.build-monitor-sidebar-group {
+  padding: 7px 6px;
+}
+
+.build-monitor-history-row {
+  gap: 3px;
+  padding: 9px 10px;
+}
+
+.build-monitor-history-row .build-monitor-status {
+  font-size: 10px;
+}
+
+.build-monitor-content {
+  position: relative;
+  gap: 10px;
+  padding: 12px 14px 16px;
+  overflow: hidden;
+}
+
+.build-monitor-floating-close {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #354858;
+  border-radius: 5px;
+  color: #c6d3dd;
+  background: #1d2c38;
+  cursor: pointer;
+}
+
+.build-monitor-compact-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 42px;
+  padding: 5px 8px 8px;
+  border-bottom: 1px solid #2a3b48;
+}
+
+.build-monitor-compact-title,
+.build-monitor-compact-facts,
+.build-monitor-compact-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.build-monitor-compact-title {
+  flex: 1 1 auto;
+  text-transform: capitalize;
+}
+
+.build-monitor-compact-title strong {
+  color: #edf4fa;
+  font-size: 15px;
+}
+
+.build-monitor-compact-title > span {
+  color: #a2b5c4;
+  font-size: 14px;
+}
+
+.build-monitor-compact-title small {
+  overflow: hidden;
+  color: #7f96a8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-monitor-compact-facts {
+  flex: 0 0 auto;
+  color: #9db0bf;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.build-monitor-compact-facts > span:not(:last-child)::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin-left: 8px;
+  vertical-align: -2px;
+  background: #354754;
+}
+
+.build-monitor-compact-facts .is-error {
+  color: #f18a95;
+}
+
+.build-monitor-compact-facts .is-warning {
+  color: #dfb565;
+}
+
+.build-monitor-compact-actions {
+  flex: 0 0 auto;
+}
+
+.build-monitor-compact-actions button,
+.build-execution-toolbar button,
+.build-execution-task-detail button,
+.build-monitor-details header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 29px;
+  padding: 4px 8px;
+  border: 1px solid #354b5c;
+  border-radius: 4px;
+  color: #c7d6e1;
+  background: #1c2e3a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.build-monitor-compact-actions button:hover,
+.build-execution-toolbar button:hover,
+.build-execution-task-detail button:hover {
+  border-color: #4e91c5;
+  color: #fff;
+}
+
+.build-monitor-compact-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.build-monitor-compact-actions .build-monitor-cancel {
+  border-color: #70434b;
+  color: #f398a1;
+}
+
+.build-monitor-problem-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid #6d434a;
+  border-radius: 5px;
+  color: #edb1b5;
+  background: #2c2227;
+  font-size: 11px;
+}
+
+.build-monitor-problem-compact.is-interrupted,
+.build-monitor-problem-compact.is-cancelled {
+  border-color: #62533d;
+  color: #e4c18a;
+  background: #292620;
+}
+
+.build-monitor-problem-compact strong {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-monitor-problem-compact small {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.build-monitor-problem-compact button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.build-execution {
+  display: flex;
+  flex-direction: column;
+  flex: 3 1 0;
+  min-width: 0;
+  min-height: 260px;
+  max-height: none;
+  overflow: hidden;
+  border: 1px solid #2c3f4e;
+  border-radius: 6px;
+  background: #14212a;
+}
+
+.build-execution-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 41px;
+  padding: 6px 9px 6px 12px;
+  border-bottom: 1px solid #2a3d4a;
+  background: #182731;
+}
+
+.build-execution-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.build-execution-toolbar > div:first-child span,
+.build-execution-toolbar small {
+  color: #869eaf;
+  font-size: 10px;
+}
+
+.build-execution-toolbar small {
+  padding: 2px 5px;
+  border: 1px solid #765944;
+  border-radius: 8px;
+  color: #dfae77;
+}
+
+.build-execution-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: #101c24;
+}
+
+.build-stage-gantt {
+  padding: 12px;
+}
+
+.build-stage-gantt > header,
+.build-execution-timing-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.build-stage-gantt > header strong,
+.build-execution-timing-heading strong {
+  font-size: 11px;
+}
+
+.build-stage-gantt > header span,
+.build-execution-timing-heading span,
+.build-execution-timing-heading small {
+  color: #819aaa;
+  font-size: 10px;
+}
+
+.build-stage-gantt-grid {
+  display: grid;
+  grid-template-columns: minmax(115px, 15%) minmax(420px, 1fr);
+  border: 1px solid #263a47;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #111f28;
+}
+
+.build-stage-gantt-axis-label {
+  padding: 7px 10px;
+  border-right: 1px solid #263a47;
+  border-bottom: 1px solid #263a47;
+  color: #718a9c;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.build-timeline-axis {
+  position: relative;
+  height: 28px;
+  border-bottom: 1px solid #263a47;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), #2b414e 25%);
+}
+
+.build-timeline-axis span {
+  position: absolute;
+  top: 7px;
+  color: #718a9c;
+  font-size: 9px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.build-timeline-axis span:first-child {
+  transform: none;
+}
+
+.build-timeline-axis span:last-child {
+  transform: translateX(-100%);
+}
+
+.build-stage-gantt-row {
+  display: contents;
+}
+
+.build-stage-gantt-label {
+  display: grid;
+  grid-template-columns: 18px 7px minmax(0, 1fr);
+  gap: 2px 8px;
+  align-content: center;
+  min-height: 42px;
+  padding: 5px 10px;
+  border-right: 1px solid #263a47;
+  border-bottom: 1px solid #20323e;
+}
+
+.build-stage-gantt-label i {
+  grid-row: 1 / 3;
+  align-self: center;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #647b8c;
+}
+
+.build-stage-expand,
+.build-stage-expand-placeholder {
+  grid-row: 1 / 3;
+  align-self: center;
+  width: 18px;
+  height: 22px;
+}
+
+.build-stage-expand {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: #91a7b7;
+  background: transparent;
+  cursor: pointer;
+}
+
+.build-stage-expand:hover,
+.build-stage-expand:focus-visible {
+  color: #d4e5f0;
+  background: #263c4a;
+  outline: none;
+}
+
+.build-stage-gantt-label.is-task {
+  padding-left: 24px;
+  background: #14232d;
+}
+
+.build-stage-task-branch {
+  grid-row: 1 / 3;
+  align-self: stretch;
+  width: 12px;
+  margin-left: 2px;
+  border-bottom: 1px solid #4b6271;
+  border-left: 1px solid #4b6271;
+  transform: translateY(-50%);
+}
+
+.build-stage-gantt-track.is-task {
+  min-height: 38px;
+  background-color: #12212a;
+}
+
+.build-stage-gantt-track.is-task .build-stage-gantt-bar {
+  top: 9px;
+  height: 20px;
+}
+
+.build-stage-gantt-label i.is-running {
+  background: #5faee7;
+}
+
+.build-stage-gantt-label i.is-succeeded {
+  background: #65c793;
+}
+
+.build-stage-gantt-label i.is-failed {
+  background: #ef7e8a;
+}
+
+.build-stage-gantt-label i.is-cancelled,
+.build-stage-gantt-label i.is-interrupted {
+  background: #d8ac61;
+}
+
+.build-stage-gantt-label strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.build-stage-gantt-label small {
+  color: #7e96a7;
+  font-size: 9px;
+  text-transform: capitalize;
+}
+
+.build-stage-gantt-track {
+  position: relative;
+  min-height: 42px;
+  overflow: hidden;
+  border-bottom: 1px solid #20323e;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), #263b48 25%);
+}
+
+.build-stage-gantt-bar {
+  position: absolute;
+  top: 10px;
+  min-width: 3px;
+  height: 22px;
+  border: 1px solid #4f809e;
+  border-radius: 3px;
+  background: #315c78;
+}
+
+.build-stage-gantt-bar.is-running {
+  border-color: #79bceb;
+  background: repeating-linear-gradient(110deg, #579cda 0 7px, #3678ac 7px 14px);
+}
+
+.build-stage-gantt-bar.is-succeeded {
+  border-color: #58a67d;
+  background: #346f54;
+}
+
+.build-stage-gantt-bar.is-failed {
+  border-color: #ce6a77;
+  background: #713c48;
+}
+
+.build-stage-gantt-unavailable {
+  position: absolute;
+  top: 13px;
+  left: 9px;
+  color: #6f8798;
+  font-size: 10px;
+}
+
+.build-execution-timing,
+.build-execution-empty {
+  flex: 0 0 auto;
+  margin: 0;
+  border-top: 1px solid #2a3c49;
+  background: #172630;
+}
+
+.build-execution-empty {
+  padding: 11px 13px;
+  color: #829aaa;
+  font-size: 11px;
+}
+
+.build-execution-timing {
+  padding: 12px;
+}
+
+.build-execution-timing.is-child,
+.build-execution-empty.is-child {
+  margin-top: 10px;
+  margin-left: 18px;
+  border: 1px solid #2a3c49;
+  border-radius: 4px;
+}
+
+.build-execution-timing-heading > div,
+.build-execution-task-detail > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.build-execution-timing-heading > div {
+  justify-content: flex-start;
+}
+
+.build-execution-clock-note,
+.build-execution-active {
+  color: #819aaa;
+  font-size: 10px;
+}
+
+.build-compile-gantt {
+  display: grid;
+  grid-template-columns: minmax(115px, 15%) minmax(420px, 1fr);
+  border: 1px solid #263a47;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #111f28;
+}
+
+.build-hierarchical-gantt {
+  display: grid;
+  grid-template-columns: minmax(180px, 22%) minmax(420px, 1fr);
+  overflow: hidden;
+  border: 1px solid #263a47;
+  border-radius: 4px;
+  background: #111f28;
+}
+
+.build-stage-gantt-axis-label.is-nested {
+  padding-left: 29px;
+}
+
+.build-hierarchical-group {
+  display: contents;
+}
+
+.build-hierarchical-label {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 5px 9px 5px 22px;
+  border: 0;
+  border-right: 1px solid #263a47;
+  border-bottom: 1px solid #20323e;
+  color: #c2d0d9;
+  text-align: left;
+  background: #14232d;
+  cursor: pointer;
+}
+
+.build-hierarchical-label:hover,
+.build-hierarchical-label:focus-visible {
+  color: #e2edf3;
+  background: #1b303d;
+  outline: none;
+}
+
+.build-hierarchical-label span {
+  display: grid;
+  min-width: 0;
+}
+
+.build-hierarchical-label strong,
+.build-hierarchical-label small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-hierarchical-label strong {
+  font-size: 10px;
+}
+
+.build-hierarchical-label small {
+  color: #7790a1;
+  font-size: 9px;
+}
+
+.build-hierarchical-lanes {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid #20323e;
+  background: repeating-linear-gradient(90deg, #11202a 0, #11202a calc(25% - 1px), #2c414e 25%);
+  transition: height 120ms ease;
+}
+
+.build-hierarchical-lanes.is-collapsed::after {
+  position: absolute;
+  top: 17px;
+  right: 10px;
+  left: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: #2b4657;
+  content: '';
+}
+
+.build-compile-gantt-label {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-right: 1px solid #263a47;
+  color: #8ca2b2;
+  font-size: 10px;
+}
+
+.build-execution-lanes {
+  position: relative;
+  overflow: hidden;
+  background: repeating-linear-gradient(90deg, #11202a 0, #11202a calc(25% - 1px), #2c414e 25%);
+}
+
+.build-execution-task {
+  position: absolute;
+  min-width: 3px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #70b5e5;
+  border-radius: 3px;
+  background: #367cae;
+  cursor: pointer;
+  overflow: hidden;
+  color: #e2f3fc;
+  font-size: 9px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.build-execution-task span {
+  display: block;
+  overflow: hidden;
+  padding: 0 5px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+}
+
+.build-execution-task:hover,
+.build-execution-task:focus-visible {
+  z-index: 2;
+  outline: 2px solid #b1dffe;
+  outline-offset: 1px;
+  background: #4c9fd5;
+}
+
+.build-execution-task-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 9px;
+  margin-top: 7px;
+  padding: 7px 9px;
+  border: 1px solid #344a59;
+  border-radius: 4px;
+  background: #12212b;
+  font-size: 10px;
+}
+
+.build-execution-task-detail > div {
+  grid-column: 1 / -1;
+}
+
+.build-execution-task-detail code {
+  overflow: hidden;
+  color: #92b8cf;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-execution-task-detail dl {
+  display: contents;
+}
+
+.build-execution-task-detail dt {
+  color: #8099aa;
+}
+
+.build-execution-task-detail dd {
+  margin: 0;
+  color: #c3d8e5;
+}
+
+.build-execution-clock-note,
+.build-execution-active {
+  margin: 6px 0 0;
+}
+
+.build-execution-active {
+  display: grid;
+  gap: 4px;
+}
+
+.build-execution-active > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 7px;
+  border-radius: 3px;
+  background: #11212b;
+}
+
+.build-execution-active i {
+  width: 34px;
+  height: 5px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(110deg, #579cda 0 7px, #3678ac 7px 14px);
+}
+
+.build-execution-active code {
+  min-width: 0;
+  overflow: hidden;
+  color: #9fb9ca;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-monitor-output {
+  flex: 2 1 0;
+  min-height: 220px;
+  height: auto;
+  max-height: none;
+  resize: none;
+}
+
+.build-monitor-details {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 92%);
+  border-left: 1px solid #344957;
+  background: #111d25;
+  box-shadow: -14px 0 30px rgba(0, 0, 0, 0.35);
+}
+
+.build-monitor-details > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 45px;
+  padding: 7px 11px 7px 15px;
+  border-bottom: 1px solid #2d404d;
+  background: #1a2933;
+}
+
+.build-monitor-details > div {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  overflow: auto;
+}
+
+.build-monitor-details dl {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0;
+  padding: 11px;
+  border: 1px solid #304452;
+  border-radius: 5px;
+  color: #bfd0dc;
+  font-size: 11px;
+}
+
+.build-monitor-details dt {
+  color: #849aaa;
+}
+
+.build-monitor-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1050px) {
+  .build-monitor-compact-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .build-monitor-compact-title {
+    min-width: 48%;
+  }
+
+  .build-monitor-compact-actions {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 750px) {
+  .build-monitor-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 136px minmax(0, 1fr);
+  }
+
+  .build-execution {
+    min-height: 360px;
+  }
+
+  .build-monitor-content {
+    overflow: auto;
+  }
+
+  .build-monitor-output {
+    flex-basis: 300px;
+  }
+
+  .build-monitor-compact-facts {
+    flex-wrap: wrap;
   }
 }

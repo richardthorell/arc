@@ -107,10 +107,11 @@ export function BuildCreationDialog({
   const availableTargets = Array.from(
     new Set(authored.filter((item) => item.platform === selectedPlatform).map((item) => item.targetId)),
   );
-  const targets = [
-    ...(action !== 'cook' && selectedPlatform === hostPlatform ? [EDITOR_MODULE] : []),
-    ...(legacyOnly ? [] : availableTargets),
-  ];
+  // Primary Build and Cook actions always operate on an authored project
+  // target so they use the complete validate/configure/compile/cook/package
+  // workflow. Editor-module commands are intentionally limited to the
+  // separately named editor-code maintenance actions below.
+  const targets = legacyOnly ? [EDITOR_MODULE] : availableTargets;
   const selectedTarget = targets.includes(target) ? target : (targets[0] ?? '');
   const availableProfiles =
     selectedTarget === EDITOR_MODULE
@@ -189,6 +190,38 @@ export function BuildCreationDialog({
               },
               options?.authority,
             );
+      const outcome = pending.then(
+        () => ({ state: 'completed' as const }),
+        (reason: unknown) => ({ state: 'failed' as const, reason }),
+      );
+      let started = false;
+      // IPC execution resolves only when the complete workflow finishes. Keep
+      // this dialog until the main process confirms that it accepted the run,
+      // so planning failures remain actionable here instead of disappearing.
+      for (let attempt = 0; attempt < 30 && alive.current; attempt++) {
+        const immediate = await Promise.race([
+          outcome,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 50)),
+        ]);
+        if (immediate?.state === 'failed') throw immediate.reason;
+        if (immediate?.state === 'completed') {
+          started = true;
+          break;
+        }
+        const snapshot =
+          selectedTarget === EDITOR_MODULE
+            ? await window.arc.build.snapshot()
+            : await window.arc.build.workflowSnapshot();
+        started =
+          selectedTarget === EDITOR_MODULE
+            ? Boolean(
+                snapshot && ['building', 'configuring', 'cleaning'].includes('state' in snapshot ? snapshot.state : ''),
+              )
+            : Boolean(snapshot && ('planning' in snapshot ? snapshot.planning || snapshot.run : false));
+        if (started) break;
+      }
+      if (!alive.current) return;
+      if (!started) throw new Error('The build service did not confirm that the build started. Try again.');
       void pending.catch((reason: unknown) => onError(String(reason)));
       onStarted?.();
       onClose();

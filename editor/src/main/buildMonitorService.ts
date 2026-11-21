@@ -69,6 +69,15 @@ export class BuildMonitorService {
     return this.history.details(runId, logCursor, eventCursor);
   }
 
+  clearHistory(): void {
+    if (this.value.activeRunId) throw new Error('Build history cannot be cleared while a build is running');
+    this.history.clear();
+    this.value = { ...this.value, revision: this.value.revision + 1, runs: [], events: [] };
+    this.sequence = 0;
+    this.diagnosticCursor.clear();
+    this.outputCursor.clear();
+  }
+
   appendRaw(project: ArcProjectCandidate, runId: string, stream: 'stdout' | 'stderr', text: string): void {
     if (project.descriptor.guid !== this.value.projectGuid) return;
     this.history.appendRaw(runId, stream, text, this.now());
@@ -116,7 +125,7 @@ export class BuildMonitorService {
     run: BuildMonitorRun,
     stage: BuildMonitorStage,
     state: BuildMonitorStageState,
-    measured?: Pick<WorkflowStageProgress, 'startedAt' | 'completedAt' | 'durationMs'>,
+    measured?: Pick<WorkflowStageProgress, 'startedAt' | 'completedAt' | 'durationMs' | 'tasks'>,
   ): void {
     // Recover the runner's timestamps even if a transient event was missed.
     // The legacy command path still observes the main-process clock.
@@ -126,17 +135,20 @@ export class BuildMonitorService {
       measured?.completedAt ?? (terminal(state) ? (stage.completedAt ?? timestamp) : stage.completedAt);
     const durationMs =
       measured?.durationMs ?? (completedAt && startedAt ? elapsed(startedAt, completedAt) : stage.durationMs);
+    const tasks = measured?.tasks ? structuredClone(measured.tasks) : stage.tasks;
     if (
       stage.state === state &&
       stage.startedAt === startedAt &&
       stage.completedAt === completedAt &&
-      stage.durationMs === durationMs
+      stage.durationMs === durationMs &&
+      JSON.stringify(stage.tasks) === JSON.stringify(tasks)
     )
       return;
     stage.state = state;
     stage.startedAt = startedAt;
     stage.completedAt = completedAt;
     stage.durationMs = durationMs;
+    stage.tasks = tasks;
     this.history.saveRun(run);
     this.event({ kind: 'stage-changed', runId: run.id, stageId: stage.id, stage: structuredClone(stage) });
   }
@@ -276,6 +288,17 @@ export class BuildMonitorService {
       run.targetGraph = structuredClone(workflow.targetGraph);
       this.history.saveRun(run);
       this.event({ kind: 'target-graph-changed', runId: run.id, revision: workflow.targetGraph.revision });
+    }
+
+    if (workflow.compileTrace && JSON.stringify(workflow.compileTrace) !== JSON.stringify(run.compileTrace)) {
+      run.compileTrace = structuredClone(workflow.compileTrace);
+      this.history.saveRun(run);
+      this.event({
+        kind: 'compile-trace-changed',
+        runId: run.id,
+        source: workflow.compileTrace.source,
+        taskCount: workflow.compileTrace.tasks.length,
+      });
     }
 
     // Workflow stages come from the native planner and runner, never a UI guess.

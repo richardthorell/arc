@@ -212,7 +212,12 @@ describe('Windows Shipping workflow', () => {
   });
   it('prepares the exact development SDK configuration before configuring the project', async () => {
     const value = fixture({ development: true });
-    expect((await value.run()).state).toBe('succeeded');
+    const result = await value.run();
+    expect(result.state).toBe('succeeded');
+    expect(result.stages.find((stage) => stage.stage === 'configure')?.tasks).toMatchObject([
+      { id: 'development-sdk', name: 'Build ARC development SDK', state: 'succeeded' },
+      { id: 'cmake-configure', name: 'Configure project', state: 'succeeded' },
+    ]);
     const calls = value.runProcess.mock.calls.map(([request]) => request.args);
     expect(calls[0]).toEqual([
       '--build',

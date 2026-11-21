@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 import { UiButton, type UiButtonVariant } from './UiButton';
 
@@ -40,7 +40,33 @@ export function UiSplitButton<Value extends string = string>({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
   const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [menuOffset, setMenuOffset] = useState({ x: 0, y: 0 });
   const menuId = useId();
+
+  const positionMenu = useCallback(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const rect = menu.getBoundingClientRect();
+    const margin = 8;
+    let x = 0;
+    let y = 0;
+    if (rect.left < margin) x += margin - rect.left;
+    if (rect.right + x > window.innerWidth - margin) x -= rect.right + x - (window.innerWidth - margin);
+    if (rect.top < margin) y += margin - rect.top;
+    if (rect.bottom + y > window.innerHeight - margin) y -= rect.bottom + y - (window.innerHeight - margin);
+    setMenuOffset({ x, y });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setMenuOffset({ x: 0, y: 0 });
+      return;
+    }
+    positionMenu();
+    window.addEventListener('resize', positionMenu);
+    return () => window.removeEventListener('resize', positionMenu);
+  }, [open, positionMenu]);
 
   useEffect(() => {
     if (!open) return;
@@ -99,7 +125,13 @@ export function UiSplitButton<Value extends string = string>({
       </UiButton>
 
       {open && (
-        <div className="ui-split-button-menu" id={menuId} role="menu">
+        <div
+          ref={menuRef}
+          className="ui-split-button-menu"
+          id={menuId}
+          role="menu"
+          style={{ transform: `translate(${menuOffset.x}px, ${menuOffset.y}px)` }}
+        >
           {options.map((option) => (
             <UiButton
               className="ui-split-button-option"

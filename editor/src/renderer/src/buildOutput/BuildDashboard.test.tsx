@@ -92,6 +92,7 @@ function mockApi(overrides: Record<string, unknown> = {}) {
     execute: vi.fn().mockResolvedValue({}),
     executeWorkflow: vi.fn().mockResolvedValue({}),
     revealArtifact: vi.fn().mockResolvedValue(''),
+    clearHistory: vi.fn().mockResolvedValue(undefined),
     history: vi.fn().mockResolvedValue(page),
     historyDetails: vi
       .fn()
@@ -111,10 +112,28 @@ function mockApi(overrides: Record<string, unknown> = {}) {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe('Build Monitor workspace presentation', () => {
+  it('clears persisted history only after confirmation and while idle', async () => {
+    const clearHistory = vi.fn().mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockApi({
+      clearHistory,
+      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [previous] }),
+      history: vi.fn().mockResolvedValue({ ...page, total: 1, runs: [previous] }),
+      historyDetails: vi.fn().mockResolvedValue(makeDetails(previous)),
+    });
+    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    const button = await screen.findByRole('button', { name: 'Clear build history' });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(confirm).toHaveBeenCalledWith('Clear all build history for this project? This cannot be undone.');
+    await waitFor(() => expect(clearHistory).toHaveBeenCalledOnce());
+  });
+
   it('renders modelessly inside the document workspace without trapping Escape or cancelling the build', async () => {
     const { api } = mockApi();
     const onClose = vi.fn();
@@ -130,6 +149,7 @@ describe('Build Monitor workspace presentation', () => {
     );
 
     expect(screen.getByRole('region', { name: 'Build monitor' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Build Monitor' })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Build monitor' })).not.toBeInTheDocument();
     expect(await screen.findByText('build log for current-run')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -142,12 +162,12 @@ describe('Build Monitor workspace presentation', () => {
 });
 
 describe('Build Monitor workspace actions', () => {
-  it('leaves build execution to the Builds-only top toolbar', async () => {
+  it('leaves build initiation to the toolbar while exposing active-run cancellation', async () => {
     mockApi();
     render(<BuildDashboard presentation="workspace" snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
     await screen.findByText('build log for current-run');
     expect(screen.queryByRole('button', { name: 'Start code build' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Cancel build' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel build' })).toBeInTheDocument();
   });
 });
 
@@ -174,13 +194,13 @@ describe('Build Monitor actionable workflow', () => {
       'CMake configuration failed: no matching ARC SDK',
     );
     expect(screen.getByText('No compiler diagnostics recorded')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry build failed-command' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry selected build' }));
     await waitFor(() => expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'RelWithDebInfo' }));
     expect(screen.getByRole('button', { name: 'View error output' })).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'Target dependency graph' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toBeInTheDocument();
   });
 
-  it('filters build history and safely requests reveal for published workflow artifacts', async () => {
+  it('keeps history compact and reveals published workflow artifacts from details', async () => {
     const built: BuildMonitorRun = {
       ...current,
       platform: 'android',
@@ -215,6 +235,11 @@ describe('Build Monitor actionable workflow', () => {
     });
     render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
 
+    await screen.findByText('build log for current-run');
+    expect(screen.queryByRole('textbox', { name: 'Search build history' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Filter build status' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry build/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open build details' }));
     expect(await screen.findByRole('region', { name: 'Build artifacts' })).toHaveTextContent(
       'Build/Packages/Android/game.apk',
     );
@@ -224,10 +249,7 @@ describe('Build Monitor actionable workflow', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Retry selected build' }));
     await waitFor(() => expect(api.executeWorkflow).toHaveBeenCalledWith(built.request));
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter build status' }), { target: { value: 'failed' } });
     expect(screen.getByRole('button', { name: /cook · Debug/ })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter build platform' }), { target: { value: 'android' } });
-    expect(screen.getByText('No builds match these filters.')).toBeInTheDocument();
   });
 });
 
@@ -256,6 +278,7 @@ describe('Build Monitor BM8.1 comparison integration', () => {
     });
     render(<BuildDashboard presentation="workspace" snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
     expect(await screen.findByText('build log for current-run')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open build details' }));
     expect(screen.getByRole('region', { name: 'Build performance comparison' })).toBeInTheDocument();
     expect(screen.getByText('+1.00 s (+100.0%)')).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Comparison baseline' })).toHaveValue('latest');
@@ -272,7 +295,7 @@ describe('Build Monitor BM3', () => {
     expect(screen.getByRole('dialog', { name: 'Build monitor' })).toBeInTheDocument();
     expect(await screen.findByText('RUNNING NOW')).toBeInTheDocument();
     expect(await screen.findByText('build log for current-run')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Build stages' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toBeInTheDocument();
     expect(screen.getByText('configure')).toBeInTheDocument();
     expect(screen.getByText('compile')).toBeInTheDocument();
     expect(screen.getByText('package')).toBeInTheDocument();
@@ -333,6 +356,47 @@ describe('Build Monitor BM3', () => {
     expect(screen.getByRole('button', { name: /cook · Debug/ })).toHaveAttribute('aria-current', 'true');
   });
 
+  it('selects every newly started build and refreshes its details when it enters the monitor', async () => {
+    const started: BuildMonitorRun = {
+      ...current,
+      id: 'new-run',
+      startedAt: '2026-11-20T12:00:00.000Z',
+      stages: [
+        { id: 'new-run:validate', name: 'validate', state: 'running' },
+        { id: 'new-run:configure', name: 'configure', state: 'pending' },
+        { id: 'new-run:compile', name: 'compile', state: 'pending' },
+        { id: 'new-run:cook', name: 'cook', state: 'pending' },
+        { id: 'new-run:package', name: 'package', state: 'pending' },
+      ],
+    };
+    let nextMonitor = monitor;
+    let nextPage = page;
+    const { handlers } = mockApi({
+      monitorSnapshot: vi.fn().mockImplementation(async () => nextMonitor),
+      history: vi.fn().mockImplementation(async () => nextPage),
+      historyDetails: vi
+        .fn()
+        .mockImplementation(async (id: string) => makeDetails(id === started.id ? started : current)),
+    });
+    render(<BuildDashboard presentation="workspace" snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    await screen.findByText('build log for current-run');
+
+    nextMonitor = { ...monitor, revision: 2, activeRunId: started.id, runs: [...monitor.runs, started] };
+    nextPage = { ...page, total: 3, runs: [started, ...page.runs] };
+    handlers[0]({
+      kind: 'run-started',
+      sequence: 20,
+      runId: started.id,
+      timestamp: started.startedAt,
+      run: started,
+    });
+
+    expect(await screen.findByText('build log for new-run')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /build · Shipping/ })[0]).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('validate');
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('package');
+  });
+
   it('drills into a measured source and filters only text matched in the selected build log', async () => {
     const traced: BuildMonitorRun = {
       ...current,
@@ -365,7 +429,6 @@ describe('Build Monitor BM3', () => {
     });
     render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
     expect(await screen.findByText('unrelated compiler output')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Target dependencies and compile performance'));
     fireEvent.click(screen.getByRole('tab', { name: 'Diagnostics' }));
     fireEvent.click(screen.getByRole('button', { name: 'Inspect compile task: Source/main.cpp' }));
     expect(screen.getByText('MyEditor', { selector: 'dd' })).toBeInTheDocument();
@@ -406,8 +469,7 @@ describe('Build Monitor BM3', () => {
       taskCount: 1,
     });
     await waitFor(() => expect(monitorSnapshot).toHaveBeenCalledTimes(2));
-    fireEvent.click(await screen.findByText('Target dependencies and compile performance'));
-    expect(await screen.findByText('1 measured · Ninja · live')).toBeInTheDocument();
+    expect(await screen.findByText(/Ninja invocation clock/)).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Inspect compile task: CMakeFiles/game.dir/live.cpp.o' }),
     ).toBeInTheDocument();

@@ -40,15 +40,19 @@ const options: CookWorkflowOptions = {
 const cookOptions = vi.fn();
 const executeWorkflow = vi.fn();
 const execute = vi.fn();
+const workflowSnapshot = vi.fn();
+const buildSnapshot = vi.fn();
 
 beforeEach(() => {
   localStorage.clear();
   cookOptions.mockResolvedValue(options);
   executeWorkflow.mockResolvedValue({});
   execute.mockResolvedValue({});
+  workflowSnapshot.mockResolvedValue(null);
+  buildSnapshot.mockResolvedValue(null);
   Object.defineProperty(window, 'arc', {
     configurable: true,
-    value: { build: { cookOptions, executeWorkflow, execute } },
+    value: { build: { cookOptions, executeWorkflow, execute, workflowSnapshot, snapshot: buildSnapshot } },
   });
 });
 
@@ -75,6 +79,28 @@ function open(action: BuildDialogAction = 'build', platform = 'android', project
 }
 
 describe('Build project configuration', () => {
+  it('defaults Build to the authored project workflow instead of the editor-module command', async () => {
+    const { onClose } = open('build', 'windows');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Build target' })).toHaveTextContent('windows-x64-vulkan');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    await waitFor(() =>
+      expect(executeWorkflow).toHaveBeenCalledWith(
+        {
+          action: 'build',
+          profile: 'windows-shipping',
+          targetId: 'windows-x64-vulkan',
+          destination: 'none',
+          sessionId: '',
+        },
+        options.authority,
+      ),
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it('builds an available Windows package with authored profile and no device', async () => {
     localStorage.setItem(
       'arc.build.dialog.v1:Game A',
@@ -105,6 +131,31 @@ describe('Build project configuration', () => {
     );
     expect(onClose).toHaveBeenCalledOnce();
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('closes only after the main process confirms that a workflow build started', async () => {
+    executeWorkflow.mockImplementationOnce(() => new Promise(() => {}));
+    workflowSnapshot.mockResolvedValueOnce({
+      planning: true,
+      run: null,
+      requestId: 'request',
+      output: [],
+      error: null,
+    });
+    const { onClose } = open('build', 'windows');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    await waitFor(() => expect(workflowSnapshot).toHaveBeenCalled());
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('keeps immediate workflow failures visible in the build dialog', async () => {
+    executeWorkflow.mockRejectedValueOnce(new Error('Native workflow rejected the build'));
+    const { onClose } = open('build', 'windows');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Native workflow rejected the build');
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('uses friendly platform names and the main toolbar brand icons', async () => {

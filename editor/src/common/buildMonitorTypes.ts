@@ -17,6 +17,14 @@ export type BuildMonitorStage = {
   startedAt?: string;
   completedAt?: string;
   durationMs?: number;
+  tasks?: Array<{
+    id: string;
+    name: string;
+    state: Exclude<BuildMonitorStageState, 'pending'>;
+    startedAt: string;
+    completedAt?: string;
+    durationMs?: number;
+  }>;
 };
 
 export type BuildMonitorRun = {

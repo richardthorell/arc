@@ -204,6 +204,8 @@ export function parseMsbuildCompileLog(
 export type MsbuildCompileCapture = {
   /** Pass only to the native arc-project CLI, not directly to CMake. */
   args: string[];
+  /** Pass after CMake's `--` separator when invoking MSBuild directly. */
+  nativeArgs?: string[];
   /** Read completed CL intervals without deleting the in-progress native log. */
   snapshot: () => BuildCompileTrace | undefined;
   finish: () => BuildCompileTrace | undefined;
@@ -222,6 +224,16 @@ export function beginMsbuildCompileTrace(
   if (host !== 'win32' || !/^[0-9a-f-]{36}$/i.test(runId)) return null;
   const build = editorCommandBuildDirectory(project);
   if (!build) return null;
+  return beginMsbuildCompileTraceForBuild(project.projectRoot, build, runId, host);
+}
+
+export function beginMsbuildCompileTraceForBuild(
+  projectRoot: string,
+  build: string,
+  runId: string,
+  host = process.platform,
+): MsbuildCompileCapture | null {
+  if (host !== 'win32' || !/^[0-9a-f-]{36}$/i.test(runId)) return null;
   try {
     const cache = path.join(build, 'CMakeCache.txt');
     if (fs.existsSync(cache)) {
@@ -249,7 +261,7 @@ export function beginMsbuildCompileTrace(
             buffer.subarray(0, end).toString('utf8'),
             stat.size > MAX_LOG_BYTES,
             completed,
-            project.projectRoot,
+            projectRoot,
             build,
           );
         } finally {
@@ -266,6 +278,7 @@ export function beginMsbuildCompileTrace(
     let lastTrace: BuildCompileTrace | undefined;
     return {
       args: ['--msbuild-timing-log', filename],
+      nativeArgs: [`/flp:LogFile=${filename};Verbosity=diagnostic;ShowTimestamp;NoItemAndPropertyList;Encoding=UTF-8`],
       snapshot: () => {
         try {
           const info = fs.lstatSync(filename);

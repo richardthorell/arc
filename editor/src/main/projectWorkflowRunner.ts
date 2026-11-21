@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { BuildTargetGraph } from '../common/buildTargetTypes';
+import type { BuildCompileTrace } from '../common/buildCompileTypes';
 import {
   workflowPlanSchema,
   type WorkflowPlan,
@@ -8,6 +9,7 @@ import {
   type WorkflowCapability,
   type WorkflowRun,
   type WorkflowStage,
+  type WorkflowStageTaskProgress,
 } from '../common/projectWorkflowTypes';
 
 export type WorkflowStageContext = {
@@ -18,8 +20,11 @@ export type WorkflowStageContext = {
   assertCurrent(): void;
   /** Called only by trusted native build adapters, never renderer IPC. */
   publishTargetGraph(graph: BuildTargetGraph): void;
+  publishCompileTrace(trace: BuildCompileTrace): void;
   reportTargetArtifact(targetId: string): void;
   reportRequestedTargetSatisfied(): void;
+  /** Records a real nested operation on the currently executing workflow stage. */
+  runStageTask<T>(id: string, name: string, execute: () => Promise<T>): Promise<T>;
 };
 
 export type WorkflowStageAdapter = {
@@ -117,6 +122,11 @@ export class ProjectWorkflowRunner {
         run.targetGraph = structuredClone(graph);
         this.emit(run);
       },
+      publishCompileTrace: (trace) => {
+        if (controller.signal.aborted || run.state !== 'running') return;
+        run.compileTrace = structuredClone(trace);
+        this.emit(run);
+      },
       reportTargetArtifact: (targetId) => {
         if (controller.signal.aborted || run.state !== 'running') return;
         const graph = run.targetGraph;
@@ -134,6 +144,28 @@ export class ProjectWorkflowRunner {
         target.satisfiedAt = new Date().toISOString();
         graph.revision++;
         this.emit(run);
+      },
+      runStageTask: async <T>(id: string, name: string, execute: () => Promise<T>): Promise<T> => {
+        const stage = run.stages.find((entry) => entry.state === 'running');
+        if (!stage) throw new Error('Nested workflow task requires an active stage');
+        if (stage.tasks?.some((task) => task.id === id)) throw new Error(`Duplicate nested workflow task: ${id}`);
+        const started = performance.now();
+        const task: WorkflowStageTaskProgress = { id, name, state: 'running', startedAt: new Date().toISOString() };
+        stage.tasks ??= [];
+        stage.tasks.push(task);
+        this.emit(run);
+        try {
+          const value = await execute();
+          task.state = 'succeeded';
+          return value;
+        } catch (error) {
+          task.state = controller.signal.aborted ? 'cancelled' : 'failed';
+          throw error;
+        } finally {
+          task.completedAt = new Date().toISOString();
+          task.durationMs = Math.max(0, performance.now() - started);
+          this.emit(run);
+        }
       },
     };
     const entered: WorkflowStageAdapter[] = [];

@@ -121,6 +121,27 @@ describe('project workflow orchestration', () => {
     expect(running[0].stages[0].completedAt).toBeUndefined();
   });
 
+  it('publishes authoritative nested stage tasks while they run', async () => {
+    const { runner, adapters, notify } = setup();
+    adapters.configure!.execute = async (context) => {
+      await context.runStageTask('development-sdk', 'Build ARC development SDK', async () => {});
+      await context.runStageTask('cmake-configure', 'Configure project', async () => {});
+    };
+    const result = await runner.execute(plan(), authority());
+    expect(result.stages[1].tasks).toMatchObject([
+      {
+        id: 'development-sdk',
+        name: 'Build ARC development SDK',
+        state: 'succeeded',
+        startedAt: expect.any(String),
+        completedAt: expect.any(String),
+        durationMs: expect.any(Number),
+      },
+      { id: 'cmake-configure', name: 'Configure project', state: 'succeeded' },
+    ]);
+    expect(notify.mock.calls.some(([snapshot]) => snapshot.stages[1].tasks?.[0]?.state === 'running')).toBe(true);
+  });
+
   it('closes a failing stage at failure time and leaves unstarted stages unmeasured', async () => {
     const { runner, adapters } = setup();
     adapters.compile!.execute = async () => {
@@ -176,6 +197,21 @@ describe('project workflow orchestration', () => {
     const revisions = notify.mock.calls.map(([entry]) => entry.targetGraph?.revision).filter(Boolean);
     expect([...new Set(revisions)]).toEqual([1, 2, 3]);
     expect(revisions.filter((revision) => revision === 2)).toHaveLength(1);
+  });
+
+  it('publishes measured compiler intervals without changing the workflow clock', async () => {
+    const { runner, adapters, notify } = setup();
+    adapters.compile!.execute = async (context) => {
+      context.publishCompileTrace({
+        source: 'msbuild-file-log',
+        clock: 'msbuild-cl-events',
+        truncated: false,
+        tasks: [{ output: 'CL task #1', startMs: 0, endMs: 25, durationMs: 25 }],
+      });
+    };
+    const result = await runner.execute(plan(), authority());
+    expect(result.compileTrace).toMatchObject({ clock: 'msbuild-cl-events', tasks: [{ durationMs: 25 }] });
+    expect(notify.mock.calls.some(([entry]) => entry.compileTrace?.tasks.length === 1)).toBe(true);
   });
 
   it('cannot publish target progress after cancelling its owned workflow', async () => {
