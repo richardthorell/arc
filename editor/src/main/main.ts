@@ -32,6 +32,7 @@ import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windowsLivePlaySession';
+import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
 import { BuildMonitorService } from './buildMonitorService';
 import { resolveBuildArtifactPath } from './buildArtifactAccess';
 import { ProjectSettingsService } from './projectSettingsService';
@@ -74,6 +75,7 @@ let recoveryService: RecoveryService | null = null;
 let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
 let livePlaySession: WindowsLivePlaySession | null = null;
+let livePlayBaselines: LivePlaySceneBaselineStore | null = null;
 let projectSettingsService: ProjectSettingsService | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
@@ -1173,7 +1175,9 @@ void app.whenReady().then(async () => {
     () => projectSettingsService?.isBusy() ?? false,
     (project, runId, stream, text) => buildMonitor.appendRaw(project, runId, stream, text),
   );
+  livePlayBaselines = new LivePlaySceneBaselineStore(hostClient);
   livePlaySession = new WindowsLivePlaySession((snapshot) => {
+    if (snapshot.state === 'failed' && snapshot.pid === null) livePlayBaselines?.clear(snapshot.sessionId ?? undefined);
     sendToActiveRenderer('livePlay:state', snapshot);
   });
   projectSettingsService = new ProjectSettingsService(
@@ -1319,6 +1323,7 @@ void app.whenReady().then(async () => {
     'project:open',
     async (_event, candidate: string, options: { readOnly?: boolean; upgrade?: boolean } = {}) => {
       await livePlaySession?.stop();
+      livePlayBaselines?.clear();
       const result = await projectService?.open(candidate, options);
       if (result?.succeeded && result.project) {
         recoveryService?.start(result.project);
@@ -1329,12 +1334,20 @@ void app.whenReady().then(async () => {
     },
   );
   ipcMain.handle('livePlay:snapshot', () => livePlaySession?.snapshot() ?? null);
-  ipcMain.handle('livePlay:stop', () => livePlaySession?.stop());
+  ipcMain.handle('livePlay:stop', async () => {
+    try {
+      return (await livePlaySession?.stop()) ?? null;
+    } finally {
+      livePlayBaselines?.clear();
+    }
+  });
   ipcMain.handle('livePlay:start', async () => {
     const project = projectService?.active();
     if (!project) throw new Error('Open a project before starting standalone Play');
     if (process.platform !== 'win32') throw new Error('Windows standalone Play requires Windows');
-    if (!livePlaySession || !buildService) throw new Error('Windows Live Play service is unavailable');
+    if (!livePlaySession || !buildService || !livePlayBaselines) throw new Error('Windows Live Play service is unavailable');
+    if (livePlaySession.snapshot().state !== 'stopped' || livePlayBaselines.current())
+      throw new Error('Stop the existing Windows Live Play session before starting a new one');
     // The renderer cannot supply any executable path, cwd, build identity or
     // credentials. The current project's native workflow plan owns all paths.
     const profile = project.descriptor.cookProfiles.find((p) => p.platform === 'windows');
@@ -1365,15 +1378,25 @@ void app.whenReady().then(async () => {
       sessionId: randomUUID(),
       instanceId: randomUUID(),
     };
-    return livePlaySession.start({
-      executable: published.executable,
-      cwd: published.cwd,
-      context: {
-        authority,
-        schemaHash: createHash('sha256').update('arc.live-play/v1').digest('hex'),
-        capabilities: ['session.observe', 'content.observe'],
-      },
-    });
+    try {
+      // L1.3a: capture current unsaved Authoring World, without a Save or C9 cook.
+      // The private staged scene is reserved for L1.3b; it is not sent to
+      // the runtime or reused across sessions.
+      await livePlayBaselines.prepare({ ...authority, projectRoot: project.projectRoot });
+      if (projectService?.active() !== project) throw new Error('Project changed during Live Play scene capture');
+      return await livePlaySession.start({
+        executable: published.executable,
+        cwd: published.cwd,
+        context: {
+          authority,
+          schemaHash: createHash('sha256').update('arc.live-play/v1').digest('hex'),
+          capabilities: ['session.observe', 'content.observe'],
+        },
+      });
+    } catch (error) {
+      livePlayBaselines.clear(authority.sessionId);
+      throw error;
+    }
   });
 
   ipcMain.handle('project:close', async () => {
@@ -1402,6 +1425,7 @@ void app.whenReady().then(async () => {
       }
     }
     await livePlaySession?.stop();
+    livePlayBaselines?.clear();
     const result = await projectService?.close();
     if (result?.succeeded) {
       recoveryService?.stop(true);
@@ -1964,6 +1988,7 @@ app.on('before-quit', (event) => {
       const target = activeWindow();
       if (target) await quiesceSharedViewportsForWindow(target);
       await livePlaySession?.stop();
+      livePlayBaselines?.clear();
       await aiGateway?.stop();
     } finally {
       disposeBuiltInAgentIpc?.();
@@ -1982,6 +2007,7 @@ app.on('before-quit', (event) => {
       extensionService = null;
       buildService?.dispose();
       livePlaySession = null;
+      livePlayBaselines = null;
       buildService = null;
       hostClient?.stop();
       hostClient = null;
