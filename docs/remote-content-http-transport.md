@@ -85,5 +85,28 @@ native Android/Linux HTTPS backends, or automatic publish/activation. Future
 C9.2 work handles these independently.
 
 
+## C9.2d2 — mutable current release discovery (this PR)
+
+`discover_remote_release` closes the gap between C9.1 descriptor
+parsing and C9.2d1 immutable generation acquisition:
+
+1. Request only `releases/<project-guid>/<target-profile>/current.json`.
+   The GUID/profile path components and origin are validated before networking.
+2. Windows WinHTTP uses the OS TLS/certificate store, disables redirects, and
+   sends no-cache request headers. The read has a strict 8 MiB maximum, even
+   if Content-Length is missing (chunked transfer); HTTP failures are
+   structured. Only HTTPS or explicitly allowed plaintext *loopback* is valid.
+3. Revalidate status, redirection and body framing regardless of the fetch
+   executor, then parse with the existing C9.1 descriptor validator. Exact
+   project/engine/base-build/cook-target identity, complete generation, and
+   monotonic `minimum_generation` are mandatory.
+4. Return a parsed release candidate for C9.2d1 acquisition. Discovery alone
+   cannot install, stage or mount content, and stale/bad responses leave the
+   existing catalog untouched.
+
+The mutable document is **never** inserted into the immutable object CAS.
+Native Linux/Android HTTP backends, poll scheduling, retries/backoff, pinning,
+cache policy, ETag-based 304 refresh and automated activation are separate PRs.
+
 **Ownership:** #1135. The editor content server is #1137; Dev-only endpoint
 overrides are #1136; publish-on-edit is #1138; runtime hot reload is #1139.
