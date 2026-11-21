@@ -662,9 +662,9 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     const auto scene_guid = generate_asset_guid();
     const auto authored = std::string(R"({"format":"arc.scene","formatVersion":2,"scene":{"id":")") +
                           to_string(scene_guid) + R"(","name":"Level"},"entities":[],"dependencies":[]})";
-    const auto modified = std::string(R"({"format":"arc.scene","formatVersion":2,"scene":{"id":")") +
-                          to_string(scene_guid) +
-                          R"(","name":"Unsaved"},"entities":[{"id":"22222222-2222-2222-2222-222222222222","components":{"Transform":{"position":[4,5,6]}}}],"dependencies":[]})";
+    const auto modified =
+        std::string(R"({"format":"arc.scene","formatVersion":2,"scene":{"id":")") + to_string(scene_guid) +
+        R"(","name":"Unsaved"},"entities":[{"id":"22222222-2222-2222-2222-222222222222","components":{"Transform":{"position":[4,5,6]}}}],"dependencies":[]})";
     project.write("scenes/Level.arcscene", authored);
     asset_fixture fixture(project);
     const auto scene = fixture.manager.find("assets/scenes/Level.arcscene");
@@ -673,19 +673,17 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     derived_data_cache cache({.root = project.root / ".arc" / "cook-cache"});
     auto count = std::make_shared<std::size_t>(0);
     asset_cooker cooker(fixture.manager, cache);
-    REQUIRE(cooker.register_processor(
-        std::make_unique<test_cook_processor>(asset_types::scene, cook_processor_ids::scene,
-                                              artifact_schemas::scene, count)));
+    REQUIRE(cooker.register_processor(std::make_unique<test_cook_processor>(
+        asset_types::scene, cook_processor_ids::scene, artifact_schemas::scene, count)));
 
     auto dev = windows_vulkan_cook_target();
     dev.configuration = cook_configuration::development;
-    const auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(modified.data()),
-                                                  modified.size());
-    const cook_request request{.roots = {scene_guid},
-                               .target = dev,
-                               .output = project.root / "ephemeral",
-                               .ephemeral_scene = ephemeral_scene_cook_source{
-                                   .asset = scene_guid, .bytes = {bytes.begin(), bytes.end()}}};
+    const auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(modified.data()), modified.size());
+    const cook_request request{
+        .roots = {scene_guid},
+        .target = dev,
+        .output = project.root / "ephemeral",
+        .ephemeral_scene = ephemeral_scene_cook_source{.asset = scene_guid, .bytes = {bytes.begin(), bytes.end()}}};
     const auto first = cooker.cook(request);
     REQUIRE(first.succeeded());
     CHECK(first.cooked == 1);

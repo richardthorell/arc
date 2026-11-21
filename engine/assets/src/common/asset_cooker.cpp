@@ -271,8 +271,8 @@ cook_result asset_cooker::cook(const cook_request& request)
         constexpr std::size_t max_ephemeral_scene_bytes = 16u * 1024u * 1024u;
         if (request.target.configuration != cook_configuration::development || !source->asset.valid() ||
             source->bytes.empty() || source->bytes.size() > max_ephemeral_scene_bytes ||
-            std::find(request.roots.begin(), request.roots.end(), source->asset) == request.roots.end() ||
-            !snapshot || snapshot->type != asset_types::scene)
+            std::find(request.roots.begin(), request.roots.end(), source->asset) == request.roots.end() || !snapshot ||
+            snapshot->type != asset_types::scene)
         {
             result.error = {.code = asset_error_code::invalid_request,
                             .guid = source->asset,
@@ -286,9 +286,9 @@ cook_result asset_cooker::cook(const cook_request& request)
         const std::string_view bytes(reinterpret_cast<const char*>(source->bytes.data()), source->bytes.size());
         const auto document = json::parse(bytes.begin(), bytes.end(), nullptr, false);
         if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
-            document["format"] != "arc.scene" || !document.contains("scene") ||
-            !document["scene"].is_object() || !document["scene"].contains("id") ||
-            !document["scene"]["id"].is_string() || document["scene"]["id"] != to_string(source->asset))
+            document["format"] != "arc.scene" || !document.contains("scene") || !document["scene"].is_object() ||
+            !document["scene"].contains("id") || !document["scene"]["id"].is_string() ||
+            document["scene"]["id"] != to_string(source->asset))
         {
             result.error = {.code = asset_error_code::invalid_request,
                             .guid = source->asset,
@@ -401,7 +401,8 @@ cook_result asset_cooker::cook(const cook_request& request)
             canonical_settings = metadata.value().canonical_settings;
         }
         const bool is_ephemeral_scene = request.ephemeral_scene && request.ephemeral_scene->asset == guid;
-        const auto source_hash = is_ephemeral_scene ? hash_bytes(request.ephemeral_scene->bytes) : snapshot->source_hash;
+        const auto source_hash =
+            is_ephemeral_scene ? hash_bytes(request.ephemeral_scene->bytes) : snapshot->source_hash;
         const auto key = make_asset_build_key({.source_hash = source_hash,
                                                .dependency_hashes = dependency_hashes,
                                                .importer = snapshot->importer,
@@ -468,15 +469,15 @@ cook_result asset_cooker::cook(const cook_request& request)
         }
         else
         {
-            const auto loaded = implementation_->assets
-                                    ->load<source_asset_data>(
-                                        {.reference = {guid, snapshot->type,
-                                                       normalize_asset_path(snapshot->source_path)},
-                                         .priority = asset_streaming_priority::high,
-                                         .residency = asset_residency::cpu,
-                                         .cancellation = request.cancellation,
-                                         .allow_fallback = false})
-                                    .get();
+            const auto loaded =
+                implementation_->assets
+                    ->load<source_asset_data>(
+                        {.reference = {guid, snapshot->type, normalize_asset_path(snapshot->source_path)},
+                         .priority = asset_streaming_priority::high,
+                         .residency = asset_residency::cpu,
+                         .cancellation = request.cancellation,
+                         .allow_fallback = false})
+                    .get();
             if (!loaded)
             {
                 result.error = loaded.error;

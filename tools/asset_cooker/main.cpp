@@ -733,9 +733,8 @@ void register_processors(asset_cooker& cooker)
 
 // L1.3b2b uses the existing scene processor and asset graph. Only the
 // trusted editor/main process should provide this private staged file.
-std::optional<ephemeral_scene_cook_source> read_ephemeral_scene(const command_line& command,
-                                                               const std::filesystem::path& project_root,
-                                                               std::string& error)
+std::optional<ephemeral_scene_cook_source>
+read_ephemeral_scene(const command_line& command, const std::filesystem::path& project_root, std::string& error)
 {
     const auto guid = parse_asset_guid(command.ephemeral_scene_guid);
     const auto source = command.ephemeral_scene_path;
@@ -776,12 +775,11 @@ std::optional<ephemeral_scene_cook_source> read_ephemeral_scene(const command_li
         error = "Cannot read complete ephemeral scene snapshot";
         return std::nullopt;
     }
-    const auto document = nlohmann::json::parse(reinterpret_cast<const char*>(bytes.data()),
-                                                reinterpret_cast<const char*>(bytes.data() + bytes.size()),
-                                                nullptr, false);
+    const auto document =
+        nlohmann::json::parse(reinterpret_cast<const char*>(bytes.data()),
+                              reinterpret_cast<const char*>(bytes.data() + bytes.size()), nullptr, false);
     if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
-        document["format"] != "arc.scene" ||
-        !document.contains("scene") || !document["scene"].is_object() ||
+        document["format"] != "arc.scene" || !document.contains("scene") || !document["scene"].is_object() ||
         !document["scene"].contains("id") || !document["scene"]["id"].is_string() ||
         document["scene"]["id"].get<std::string>() != to_string(*guid))
     {
@@ -894,8 +892,8 @@ int main(int argc, char** argv)
     std::optional<ephemeral_scene_cook_source> ephemeral_scene;
     if (!command.ephemeral_scene_path.empty() || !command.ephemeral_scene_guid.empty())
     {
-        if (command.command != "cook" || command.ephemeral_scene_path.empty() ||
-            command.ephemeral_scene_guid.empty() || selected_profile == descriptor.value().cook_profiles.end() ||
+        if (command.command != "cook" || command.ephemeral_scene_path.empty() || command.ephemeral_scene_guid.empty() ||
+            selected_profile == descriptor.value().cook_profiles.end() ||
             selected_profile->configuration == "Shipping" || command.output.empty())
         {
             std::cerr << "Ephemeral scene overrides require explicit private Development cook output and a GUID\n";
