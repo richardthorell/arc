@@ -25,21 +25,27 @@ These checks apply **after** a backend has received bytes; they do not
 replace native TLS verification, hash verification, streaming quotas or the
 existing `runtime_update_receiver` atomic publication checks.
 
-## C9.2b — actual HTTPS request executor (next PR)
+## C9.2b — native Windows HTTPS request executor (this PR)
 
-Implement cancellable, asynchronous I/O on ARC job-system IO workers with an
-appropriate supported platform backend (e.g. Windows WinHTTP and an Android
-TLS implementation). Backend requirements:
+Implement cancellable, asynchronous I/O on ARC job-system IO workers. The first
+backend uses Windows WinHTTP, with OS CA validation, automatic redirects
+disabled and strict body-length checking. Other platforms explicitly return
+\`transport_unavailable\` rather than bypassing HTTPS or supplying fake bytes.
+Remaining backend and hardening requirements:
 
 1. Trust the OS CA store; verify hostname/certificate and never disable TLS.
 2. Disable automatic redirects; validate origin **before** DNS/connect.
-3. Support GET/HEAD, explicit Range and If-Match headers, connection/read
-   timeouts, request-level cancellation and bounded backoff.
+3. Support GET and explicit Range/If-Match headers; the Windows backend uses
+   bounded WinHTTP connection/read timeouts and observes cancellation between
+   blocking calls and read chunks. HEAD, interruption of a blocked OS call,
+   and bounded retries/backoff remain follow-ups.
 4. Bound all received bodies **during** transfer (not only after receipt) to
    prevent unbounded buffering. Report 401/403/404/429 distinctly.
-5. Avoid blocking render/main threads. Test using a local HTTP fixture and
-   fault injection for stalls, cancelled transfers, truncation and malformed
-   ranges. Production non-loopback requests remain HTTPS-only.
+5. Avoid blocking render/main threads. Add local WinHTTP HTTP/TLS fixtures
+   and fault injection for stalls, cancelled transfers, truncation and malformed
+   ranges as follow-up acceptance. Production non-loopback requests remain HTTPS-only.
+6. Add native Android/Linux TLS implementations using the same interface and
+   strict response validator, without editor-only dependencies.
 
 ## C9.2c — content-aware cache/VFS integration
 

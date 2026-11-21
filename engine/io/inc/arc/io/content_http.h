@@ -1,12 +1,12 @@
 #pragma once
 
 /** @file
- * @brief C9.2a bounded remote cooked-object HTTP transport boundary.
+ * @brief Bounded remote cooked-object HTTP transport boundary and async fetch.
  *
  * This transport-neutral contract validates HTTPS origins, immutable-object
- * addresses and exact HTTP response framing before C9.2b supplies platform
- * HTTP/TLS backends. No sockets, credentials or game-facing URLs leak into
- * cooked asset/VFS consumers.
+ * addresses and exact HTTP response framing; an optional platform backend
+ * performs native TLS and bounded transfers off the render thread. No
+ * sockets, credentials or game-facing URLs reach cooked asset/VFS consumers.
  */
 
 #include <arc/io/io.h>
@@ -58,7 +58,14 @@ enum class content_http_error_code : std::uint8_t
     invalid_range,
     oversized_response,
     inconsistent_length,
-    etag_mismatch
+    etag_mismatch,
+    cancelled,
+    timeout,
+    transport_unavailable,
+    network_failure,
+    unauthorized,
+    not_found,
+    rate_limited
 };
 
 struct [[nodiscard]] content_http_validation
@@ -83,5 +90,25 @@ struct [[nodiscard]] content_http_validation
 [[nodiscard]] content_http_validation validate_content_http_response(const content_http_request& request,
                                                                      const content_http_response& response,
                                                                      const content_http_limits& limits);
+
+struct [[nodiscard]] content_http_fetch_result
+{
+    std::optional<content_http_response> response;
+    content_http_validation validation;
+
+    [[nodiscard]] bool succeeded() const noexcept
+    {
+        return response.has_value() && validation.succeeded();
+    }
+};
+
+/** Perform a bounded GET on an ARC IO worker. Native Windows uses WinHTTP
+ * with platform TLS/certificate/hostname verification and redirects disabled.
+ * Other platforms report transport_unavailable until their native backend
+ * is registered. The job system must outlive the returned future.
+ */
+[[nodiscard]] jobs::job_future<content_http_fetch_result>
+fetch_content_http(jobs::job_system& jobs, content_http_request request, content_http_limits limits = {},
+                   jobs::cancellation_token cancellation = {});
 
 } // namespace arc::io
