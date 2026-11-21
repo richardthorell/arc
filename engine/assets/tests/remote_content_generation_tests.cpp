@@ -40,8 +40,8 @@ struct fixture
     std::filesystem::path root = std::filesystem::temp_directory_path() /
                                  ("arc-c9-generation-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
     arc::assets::derived_data_cache cache{{.root = root / "cache"}};
-    arc::jobs::job_system jobs{{.worker_count = 1, .run_inline = false, .io_worker_count = 2,
-                                .enable_render_thread = false}};
+    arc::jobs::job_system jobs{
+        {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false}};
     arc::io::async_file_service files{jobs};
     arc::io::virtual_file_system vfs{jobs};
     arc::assets::cooked_asset_catalog catalog{vfs, path("artifact://game")};
@@ -57,14 +57,10 @@ struct fixture
     {
         using namespace arc;
         const auto hash = assets::to_string(assets::hash_bytes(body));
-        assets::remote_content_object object{
-            .path = "objects/sha256/" + hash, .sha256 = hash, .size = body.size()};
-        io::content_http_request request{.origin = "https://content.example.org",
-                                         .object_path = object.path,
-                                         .object_size = object.size};
-        io::content_http_response response{.status = 200,
-                                           .content_length = std::to_string(body.size()),
-                                           .body = body};
+        assets::remote_content_object object{.path = "objects/sha256/" + hash, .sha256 = hash, .size = body.size()};
+        io::content_http_request request{
+            .origin = "https://content.example.org", .object_path = object.path, .object_size = object.size};
+        io::content_http_response response{.status = 200, .content_length = std::to_string(body.size()), .body = body};
         const auto added = assets::ingest_verified_remote_object(cache, object, request, response, {});
         REQUIRE(added.succeeded());
         return object;
@@ -110,8 +106,8 @@ struct fixture
         release.generation = 5;
         release.cook_manifest_name = packages.manifest_path.filename().string();
         release.cook_manifest = ingest(manifest_bytes);
-        release.chunks.push_back({.name = packages.chunks.front().filename().string(),
-                                  .object = ingest(package_bytes)});
+        release.chunks.push_back(
+            {.name = packages.chunks.front().filename().string(), .object = ingest(package_bytes)});
     }
 
     ~fixture()

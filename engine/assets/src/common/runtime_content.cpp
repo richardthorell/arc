@@ -538,8 +538,8 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
 }
 
 asset_status cooked_asset_catalog::mount_remote_generation(const remote_content_release& release,
-                                                         derived_data_cache& cache, io::async_file_service& files,
-                                                         std::int32_t priority)
+                                                           derived_data_cache& cache, io::async_file_service& files,
+                                                           std::int32_t priority)
 {
     // The factory verifies all referenced immutable chunks and artifact ranges
     // before the VFS, logical catalog, or active generation can change.

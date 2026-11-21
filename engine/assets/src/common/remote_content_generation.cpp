@@ -27,8 +27,8 @@ bool safe_filename(std::string_view name, std::string_view extension)
     if (name.empty() || name.size() > 255 || !name.ends_with(extension) ||
         !std::isalnum(static_cast<unsigned char>(name.front())))
         return false;
-    return std::all_of(name.begin(), name.end(), [](unsigned char c)
-                       { return std::isalnum(c) || c == '.' || c == '-' || c == '_'; });
+    return std::all_of(name.begin(), name.end(),
+                       [](unsigned char c) { return std::isalnum(c) || c == '.' || c == '-' || c == '_'; });
 }
 
 std::string fold_name(std::string_view name)
@@ -45,10 +45,14 @@ bool matching_target(const cook_target& target, const remote_content_release& re
     {
         switch (value)
         {
-            case cook_platform::windows: return "windows";
-            case cook_platform::linux_os: return "linux";
-            case cook_platform::macos: return "macos";
-            case cook_platform::android: return "android";
+            case cook_platform::windows:
+                return "windows";
+            case cook_platform::linux_os:
+                return "linux";
+            case cook_platform::macos:
+                return "macos";
+            case cook_platform::android:
+                return "android";
         }
         return {};
     }();
@@ -56,10 +60,14 @@ bool matching_target(const cook_target& target, const remote_content_release& re
     {
         switch (value)
         {
-            case cook_renderer::none: return "none";
-            case cook_renderer::vulkan: return "vulkan";
-            case cook_renderer::direct3d12: return "direct3d12";
-            case cook_renderer::metal: return "metal";
+            case cook_renderer::none:
+                return "none";
+            case cook_renderer::vulkan:
+                return "vulkan";
+            case cook_renderer::direct3d12:
+                return "direct3d12";
+            case cook_renderer::metal:
+                return "metal";
         }
         return {};
     }();
@@ -67,16 +75,19 @@ bool matching_target(const cook_target& target, const remote_content_release& re
     {
         switch (value)
         {
-            case cook_texture_family::bc: return "bc";
-            case cook_texture_family::astc: return "astc";
-            case cook_texture_family::etc2: return "etc2";
-            case cook_texture_family::portable: return "portable";
+            case cook_texture_family::bc:
+                return "bc";
+            case cook_texture_family::astc:
+                return "astc";
+            case cook_texture_family::etc2:
+                return "etc2";
+            case cook_texture_family::portable:
+                return "portable";
         }
         return {};
     }();
     return target.name == release.target.cook_profile && platform == release.target.platform &&
-           (target.architecture == cook_architecture::arm64 ? "arm64" : "x86_64") ==
-               release.target.architecture &&
+           (target.architecture == cook_architecture::arm64 ? "arm64" : "x86_64") == release.target.architecture &&
            renderer == release.target.renderer && textures == release.target.texture_family;
 }
 
@@ -170,18 +181,17 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
     std::unordered_set<std::string> artifact_keys;
     for (const auto& artifact : manifest.artifacts)
     {
-        const cooked_artifact_address address{.asset = artifact.asset, .schema = artifact.schema, .name = artifact.name};
+        const cooked_artifact_address address{
+            .asset = artifact.asset, .schema = artifact.schema, .name = artifact.name};
         auto logical = cooked_artifact_virtual_path(address);
-        if (!logical || artifact.schema_version == 0 || artifact.size == 0 ||
-            artifact.stored_size != artifact.size || artifact.compressed ||
-            !artifact_keys.insert(std::string(logical.value().relative_path())).second)
+        if (!logical || artifact.schema_version == 0 || artifact.size == 0 || artifact.stored_size != artifact.size ||
+            artifact.compressed || !artifact_keys.insert(std::string(logical.value().relative_path())).second)
             return reject("Remote cook manifest has a duplicate or unsupported artifact record");
         if (!chunks.contains(artifact.chunk))
             return reject("Remote cook manifest references an undeclared package chunk: " + artifact.chunk);
         by_chunk[artifact.chunk].push_back(&artifact);
     }
-    if (by_chunk.size() != chunks.size())
-        return reject("Remote release has missing or unreferenced package chunks");
+    if (by_chunk.size() != chunks.size()) return reject("Remote release has missing or unreferenced package chunks");
 
     auto state = std::make_shared<implementation>();
     state->cache = &cache;
@@ -194,8 +204,8 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
     {
         auto bytes = load_verified_remote_object(cache, entry.object, cache_error_value);
         if (!bytes)
-            return reject("Remote package chunk is missing or corrupt (" + entry.name + "): " +
-                          cache_error_value.message);
+            return reject("Remote package chunk is missing or corrupt (" + entry.name +
+                          "): " + cache_error_value.message);
         constexpr char magic[] = "ARCPAK1";
         if (bytes->size() < 8 || std::memcmp(bytes->data(), magic, 7) != 0 || (*bytes)[7] != std::byte{0})
             return reject("Remote package chunk has an invalid ARC package header: " + entry.name);
@@ -220,8 +230,8 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
             auto logical = cooked_artifact_virtual_path(
                 {.asset = artifact->asset, .schema = artifact->schema, .name = artifact->name});
             const auto key = std::string(logical.value().relative_path());
-            state->records.emplace(key, implementation::record{
-                                            .artifact = *artifact,
+            state->records.emplace(
+                key, implementation::record{.artifact = *artifact,
                                             .chunk = entry.object,
                                             .generation = artifact_generation(*artifact, release.generation)});
         }
@@ -259,7 +269,7 @@ io::provider_lookup_result remote_content_artifact_provider::resolve(std::string
 
 jobs::job_future<io::file_result<io::file_buffer>>
 remote_content_artifact_provider::read_range(const io::provider_file& file, std::uint64_t offset, std::size_t bytes,
-                                            jobs::cancellation_token cancellation)
+                                             jobs::cancellation_token cancellation)
 {
     return implementation_->files->scheduler().submit_future(
         {.name = "assets.remote_content.read",
@@ -301,9 +311,8 @@ remote_content_artifact_provider::enumerate(std::string_view relative_prefix)
     for (const auto& [key, record] : implementation_->records)
     {
         if (!relative_prefix.empty() && !key.starts_with(relative_prefix)) continue;
-        entries.push_back({.relative_path = key,
-                           .size = record.artifact.stored_size,
-                           .content_generation = record.generation});
+        entries.push_back(
+            {.relative_path = key, .size = record.artifact.stored_size, .content_generation = record.generation});
     }
     std::sort(entries.begin(), entries.end(),
               [](const auto& lhs, const auto& rhs) { return lhs.relative_path < rhs.relative_path; });

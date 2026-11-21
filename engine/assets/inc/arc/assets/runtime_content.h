@@ -101,9 +101,8 @@ public:
      * This does not fetch objects: callers ingest all immutable objects first, on IO workers.
      * On failure the currently mounted provider/catalog is untouched.
      */
-    [[nodiscard]] asset_status mount_remote_generation(const remote_content_release& release,
-                                                       derived_data_cache& cache, io::async_file_service& files,
-                                                       std::int32_t priority = 25);
+    [[nodiscard]] asset_status mount_remote_generation(const remote_content_release& release, derived_data_cache& cache,
+                                                       io::async_file_service& files, std::int32_t priority = 25);
     [[nodiscard]] asset_status mount_provider(std::shared_ptr<io::virtual_file_provider> provider,
                                               std::int32_t priority, std::string debug_name);
     [[nodiscard]] asset_status mount_overlay(const std::shared_ptr<cas_overlay_provider>& provider,
