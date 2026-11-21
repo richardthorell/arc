@@ -51,9 +51,9 @@ const artifactSchema = z.object({
   asset: z.string(),
   hash: z.string().regex(sha256Pattern),
   chunk: z.string(),
-  offset: z.number().int().safe().nonnegative(),
-  size: z.number().int().safe().positive(),
-  storedSize: z.number().int().safe().positive(),
+  offset: z.number().int().max(Number.MAX_SAFE_INTEGER).nonnegative(),
+  size: z.number().int().max(Number.MAX_SAFE_INTEGER).positive(),
+  storedSize: z.number().int().max(Number.MAX_SAFE_INTEGER).positive(),
   schemaVersion: z.number().int().positive(),
   compressed: z.literal(false),
 });
