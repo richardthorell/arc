@@ -44,9 +44,10 @@ struct transfer_state
 
 std::string_view trim(std::string_view value) noexcept
 {
-    while (!value.empty() && (value.front() == ' ' || value.front() == '\t')) value.remove_prefix(1);
-    while (!value.empty() && (value.back() == '\r' || value.back() == '\n' ||
-                              value.back() == ' ' || value.back() == '\t'))
+    while (!value.empty() && (value.front() == ' ' || value.front() == '\t'))
+        value.remove_prefix(1);
+    while (!value.empty() &&
+           (value.back() == '\r' || value.back() == '\n' || value.back() == ' ' || value.back() == '\t'))
         value.remove_suffix(1);
     return value;
 }
@@ -146,9 +147,8 @@ bool append_header(curl_slist*& list, const std::string& value)
 
 bool use_direct_loopback(std::string_view origin)
 {
-    return origin == "http://localhost" || origin.starts_with("http://localhost:") ||
-           origin == "http://127.0.0.1" || origin.starts_with("http://127.0.0.1:") ||
-           origin == "http://[::1]" || origin.starts_with("http://[::1]:");
+    return origin == "http://localhost" || origin.starts_with("http://localhost:") || origin == "http://127.0.0.1" ||
+           origin.starts_with("http://127.0.0.1:") || origin == "http://[::1]" || origin.starts_with("http://[::1]:");
 }
 
 content_http_fetch_result perform_get(std::string url, std::string_view origin, const content_http_limits& limits,
@@ -158,8 +158,7 @@ content_http_fetch_result perform_get(std::string url, std::string_view origin, 
     if (cancellation.stop_requested()) return failure(content_http_error_code::cancelled, "Content fetch cancelled");
     static std::once_flag initialization;
     static CURLcode initialization_result = CURLE_FAILED_INIT;
-    std::call_once(initialization, []
-                   { initialization_result = curl_global_init(CURL_GLOBAL_DEFAULT); });
+    std::call_once(initialization, [] { initialization_result = curl_global_init(CURL_GLOBAL_DEFAULT); });
     if (initialization_result != CURLE_OK)
         return failure(content_http_error_code::transport_unavailable, "libcurl initialization failed");
 
@@ -168,8 +167,8 @@ content_http_fetch_result perform_get(std::string url, std::string_view origin, 
     transfer_state state;
     state.cancellation = cancellation;
     state.maximum_bytes = byte_limit;
-    const auto timeout = static_cast<long>(
-        std::min<std::int64_t>(limits.timeout.count(), static_cast<std::int64_t>(LONG_MAX)));
+    const auto timeout =
+        static_cast<long>(std::min<std::int64_t>(limits.timeout.count(), static_cast<std::int64_t>(LONG_MAX)));
 
     if (curl_easy_setopt(handle.get(), CURLOPT_URL, url.c_str()) != CURLE_OK ||
         curl_easy_setopt(handle.get(), CURLOPT_FOLLOWLOCATION, 0L) != CURLE_OK ||
@@ -238,8 +237,8 @@ content_http_fetch_result perform_get(std::string url, std::string_view origin, 
                        std::string("libcurl transfer failed: ") + curl_easy_strerror(code));
 
     char* effective_url = nullptr;
-    if (curl_easy_getinfo(handle.get(), CURLINFO_EFFECTIVE_URL, &effective_url) != CURLE_OK ||
-        !effective_url || url != effective_url)
+    if (curl_easy_getinfo(handle.get(), CURLINFO_EFFECTIVE_URL, &effective_url) != CURLE_OK || !effective_url ||
+        url != effective_url)
         return failure(content_http_error_code::rejected_redirect, "Remote content URL was changed");
 
     return {.response = std::move(state.response), .validation = {}};
@@ -273,8 +272,8 @@ content_http_fetch_result curl_fetch_content_http_release(const content_http_rel
     auto preflight = validate_content_http_release_request(request, limits);
     if (!preflight.succeeded()) return {.response = std::nullopt, .validation = preflight};
     const auto budget = std::min<std::uint64_t>(maximum_release_bytes, limits.maximum_object_bytes);
-    const auto url = request.origin + "/releases/" + request.project_guid + "/" +
-                     request.target_profile + "/current.json";
+    const auto url =
+        request.origin + "/releases/" + request.project_guid + "/" + request.target_profile + "/current.json";
     auto fetched = perform_get(url, request.origin, limits, budget, cancellation, {}, {}, true);
     if (!fetched.succeeded()) return fetched;
     const auto valid = validate_content_http_release_response(request, *fetched.response, limits);

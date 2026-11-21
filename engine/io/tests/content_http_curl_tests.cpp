@@ -47,36 +47,33 @@ struct loopback_server
         port = ntohs(address.sin_port);
         REQUIRE(listen(listener, 1) == 0);
 
-        worker = std::jthread([this, path = std::move(expected_path), reply = std::move(response),
-                               expect_range, expect_no_cache]
-                              {
-                                  const int client = accept(listener, nullptr, nullptr);
-                                  if (client < 0) return;
-                                  timeval timeout{.tv_sec = 5, .tv_usec = 0};
-                                  static_cast<void>(setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)));
-                                  std::string received;
-                                  char buffer[4096];
-                                  while (received.find("\r\n\r\n") == std::string::npos &&
-                                         received.size() < 16384)
-                                  {
-                                      const auto count = recv(client, buffer, sizeof(buffer), 0);
-                                      if (count <= 0) break;
-                                      received.append(buffer, static_cast<std::size_t>(count));
-                                  }
-                                  saw_path.store(received.find("GET " + path + " HTTP/") != std::string::npos);
-                                  saw_range.store(received.find("Range: bytes=2-4") != std::string::npos);
-                                  saw_no_cache.store(received.find("Cache-Control: no-cache, no-store") !=
-                                                     std::string::npos);
-                                  for (std::size_t offset = 0; offset < reply.size();)
-                                  {
-                                      const auto count = send(client, reply.data() + offset,
-                                                              reply.size() - offset, MSG_NOSIGNAL);
-                                      if (count <= 0) break;
-                                      offset += static_cast<std::size_t>(count);
-                                  }
-                                  shutdown(client, SHUT_RDWR);
-                                  close(client);
-                              });
+        worker = std::jthread(
+            [this, path = std::move(expected_path), reply = std::move(response), expect_range, expect_no_cache]
+            {
+                const int client = accept(listener, nullptr, nullptr);
+                if (client < 0) return;
+                timeval timeout{.tv_sec = 5, .tv_usec = 0};
+                static_cast<void>(setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)));
+                std::string received;
+                char buffer[4096];
+                while (received.find("\r\n\r\n") == std::string::npos && received.size() < 16384)
+                {
+                    const auto count = recv(client, buffer, sizeof(buffer), 0);
+                    if (count <= 0) break;
+                    received.append(buffer, static_cast<std::size_t>(count));
+                }
+                saw_path.store(received.find("GET " + path + " HTTP/") != std::string::npos);
+                saw_range.store(received.find("Range: bytes=2-4") != std::string::npos);
+                saw_no_cache.store(received.find("Cache-Control: no-cache, no-store") != std::string::npos);
+                for (std::size_t offset = 0; offset < reply.size();)
+                {
+                    const auto count = send(client, reply.data() + offset, reply.size() - offset, MSG_NOSIGNAL);
+                    if (count <= 0) break;
+                    offset += static_cast<std::size_t>(count);
+                }
+                shutdown(client, SHUT_RDWR);
+                close(client);
+            });
         (void)expect_range;
         (void)expect_no_cache;
     }
@@ -106,9 +103,7 @@ std::string response(unsigned int status, std::string_view reason, std::string b
 
 arc::io::content_http_request immutable_request(const loopback_server& server)
 {
-    return {.origin = server.origin(),
-            .object_path = "objects/sha256/" + std::string(64, 'a'),
-            .object_size = 6};
+    return {.origin = server.origin(), .object_path = "objects/sha256/" + std::string(64, 'a'), .object_size = 6};
 }
 
 arc::io::content_http_limits development_limits()
@@ -183,8 +178,7 @@ TEST_CASE("C9.2e1 Linux curl refuses redirects and oversized objects before trus
     }
     SECTION("Excess body bytes")
     {
-        loopback_server server("/objects/sha256/" + std::string(64, 'a'),
-                               response(200, "OK", "abcdef extra bytes"));
+        loopback_server server("/objects/sha256/" + std::string(64, 'a'), response(200, "OK", "abcdef extra bytes"));
         arc::jobs::job_system jobs(
             {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
         auto fetched = arc::io::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
@@ -197,8 +191,7 @@ TEST_CASE("C9.2e1 Linux curl reports missing objects and pre-cancelled requests"
 {
     SECTION("404")
     {
-        loopback_server server("/objects/sha256/" + std::string(64, 'a'),
-                               response(404, "Not Found", ""));
+        loopback_server server("/objects/sha256/" + std::string(64, 'a'), response(404, "Not Found", ""));
         arc::jobs::job_system jobs(
             {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
         auto fetched = arc::io::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
@@ -211,10 +204,9 @@ TEST_CASE("C9.2e1 Linux curl reports missing objects and pre-cancelled requests"
             {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
         arc::jobs::cancellation_source cancellation;
         REQUIRE(cancellation.request_cancel());
-        arc::io::content_http_request request{
-            .origin = "https://content.example.org",
-            .object_path = "objects/sha256/" + std::string(64, 'a'),
-            .object_size = 6};
+        arc::io::content_http_request request{.origin = "https://content.example.org",
+                                              .object_path = "objects/sha256/" + std::string(64, 'a'),
+                                              .object_size = 6};
         const auto fetched =
             arc::io::fetch_content_http(jobs, request, development_limits(), cancellation.token()).get();
         CHECK_FALSE(fetched.succeeded());
