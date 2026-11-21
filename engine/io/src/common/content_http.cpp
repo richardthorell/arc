@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <charconv>
 #include <limits>
+#include <utility>
 #include <string>
 #include <string_view>
 
@@ -33,7 +34,8 @@ bool digest_path(std::string_view text) noexcept
 {
     constexpr std::string_view prefix = "objects/sha256/";
     if (!text.starts_with(prefix) || text.size() != prefix.size() + 64) return false;
-    return std::all_of(text.substr(prefix.size()).begin(), text.substr(prefix.size()).end(), [](char c)
+    const auto digest = text.substr(prefix.size());
+    return std::all_of(digest.begin(), digest.end(), [](char c)
                        { return ascii_digit(c) || (c >= 'a' && c <= 'f'); });
 }
 
@@ -138,7 +140,7 @@ content_http_validation validate_content_http_response(const content_http_reques
     if (!checked.succeeded()) return checked;
     // Never follow 30x: a future backend must disable redirects, including
     // cross-origin redirects and signed-URL handoffs unless explicitly trusted.
-    if (response.status >= 300 && response.status < 400 || !response.redirect_location.empty())
+    if ((response.status >= 300 && response.status < 400) || !response.redirect_location.empty())
         return invalid(content_http_error_code::rejected_redirect, "Untrusted HTTP redirect");
     const bool ranged = request.range_start.has_value();
     if (response.status != (ranged ? 206u : 200u))
