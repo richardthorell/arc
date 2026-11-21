@@ -86,7 +86,8 @@ import { BuildOutputPanel } from '../buildOutput/BuildOutputPanel';
 import { BuildDashboard } from '../buildOutput/BuildDashboard';
 import { BuildToolbar, type BuildDialogAction } from '../buildOutput/BuildToolbar';
 import { BuildCreationDialog } from '../buildOutput/BuildCreationDialog';
-import { detectHostTargetPlatform, EDITOR_VIEWPORT_TARGET_ID } from '../layout/MainToolbar';
+import { detectHostTargetPlatform, EDITOR_VIEWPORT_TARGET_ID, STANDALONE_TARGET_ID } from '../layout/MainToolbar';
+import type { WindowsLivePlaySnapshot } from '../../../common/livePlaySessionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
@@ -514,6 +515,31 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   });
   const runtimeRevision = useRef(0);
   const runtimeWorldActive = runtimeState.state !== 'stopped';
+  const [externalPlay, setExternalPlay] = useState<WindowsLivePlaySnapshot>({
+    state: 'stopped',
+    sessionId: null,
+    instanceId: null,
+    pid: null,
+    lastReceivedSequence: 0,
+    error: null,
+  });
+  useEffect(() => {
+    if (!window.arc?.livePlay) return;
+    let alive = true;
+    const unsub = window.arc.livePlay.onState((snapshot) => {
+      if (alive) setExternalPlay(snapshot);
+    });
+    void window.arc.livePlay
+      .snapshot()
+      .then((snapshot) => {
+        if (alive && snapshot) setExternalPlay(snapshot);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     const workspaceDocument =
@@ -828,13 +854,32 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return;
     }
 
-    // Keyboard shortcuts must not launch a local session for a remote target.
+    // Standalone Play owns a separate Development process and must never
+    // resume the in-editor Play World or save modified authoring documents.
+    if (targetPlatform === 'windows' && selectedPlayTarget === STANDALONE_TARGET_ID && command === 'scene.play') {
+      try {
+        await window.arc.livePlay.start();
+        setLastCommand('Connected to Windows standalone Development runtime');
+      } catch (error) {
+        setLastCommand(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+    if (command === 'scene.stop' && externalPlay.state !== 'stopped') {
+      try {
+        await window.arc.livePlay.stop();
+      } catch (error) {
+        setLastCommand(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+    // Remote Android and unsupported targets must not fall through to PIE.
     if (
       command === 'scene.play' &&
       runtimeState.state === 'stopped' &&
       (targetPlatform !== detectHostTargetPlatform() || selectedPlayTarget !== EDITOR_VIEWPORT_TARGET_ID)
     ) {
-      setLastCommand('Remote and standalone Play will be available when the runtime launch adapter is connected.');
+      setLastCommand('This Play destination is not available yet.');
       return;
     }
 
@@ -1686,6 +1731,15 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           targetDevice={targetPlatform === detectHostTargetPlatform() ? selectedPlayTarget : undefined}
           onTargetDeviceChange={selectPlayTarget}
           runtimeState={runtimeState.state}
+          enableStandalonePlay={
+            detectHostTargetPlatform() === 'windows' && targetPlatform === 'windows' && !runtimeWorldActive
+          }
+          targetDeviceTitle={
+            externalPlay.state !== 'stopped'
+              ? `Standalone: ${externalPlay.state}${externalPlay.error ? ` — ${externalPlay.error}` : ''}`
+              : undefined
+          }
+          standaloneSessionState={externalPlay.state}
           authoringDisabled={runtimeWorldActive}
           timeScale={runtimeState.timeScale}
           onTimeScaleChange={(value) => {

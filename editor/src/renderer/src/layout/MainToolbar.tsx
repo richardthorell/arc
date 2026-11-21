@@ -324,6 +324,8 @@ export type MainToolbarProps = {
   onTargetDeviceChange?: (deviceId: string) => void;
   targetDeviceActions?: ReactNode;
   targetDeviceMenuActions?: ReadonlyArray<UiDropdownOption<string>>;
+  enableStandalonePlay?: boolean;
+  standaloneSessionState?: 'stopped' | 'starting' | 'connected' | 'disconnected' | 'failed' | 'stopping';
 };
 
 export function MainToolbar({
@@ -353,6 +355,8 @@ export function MainToolbar({
   onTargetDeviceChange,
   targetDeviceActions,
   targetDeviceMenuActions = [],
+  enableStandalonePlay = false,
+  standaloneSessionState = 'stopped',
 }: MainToolbarProps) {
   const [transformOrigin, setTransformOrigin] = useState<ToolbarTransformOrigin>('pivot');
   const hostPlatform = detectHostTargetPlatform();
@@ -492,9 +496,15 @@ export function MainToolbar({
       : []),
   ];
   const playInEditor = effectiveTargetPlatform === hostPlatform && effectiveTargetDevice === EDITOR_VIEWPORT_TARGET_ID;
-  const playTargetUnavailableReason = playInEditor
-    ? undefined
-    : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
+  const standaloneSelected = effectiveTargetPlatform === 'windows' && effectiveTargetDevice === STANDALONE_TARGET_ID;
+  const standalonePlayable = enableStandalonePlay && standaloneSelected;
+  // Even a failed/disconnected transport may leave an owned child alive:
+  // keep Stop available until the process/session owner has cleaned it up.
+  const standaloneSessionActive = standaloneSessionState !== 'stopped';
+  const playTargetUnavailableReason =
+    playInEditor || standalonePlayable
+      ? undefined
+      : 'Standalone and remote Play are not implemented yet. Select Editor Viewport to play locally.';
 
   const targetPlatformOptions: ReadonlyArray<UiDropdownOption<PlatformMenuValue>> = [
     ...playablePlatforms.flatMap((platform) => {
@@ -531,7 +541,12 @@ export function MainToolbar({
           <UiIconButton
             active={runtimeState === 'running'}
             className="toolbar-button play"
-            disabled={runtimeState === 'running' || runtimeState === 'faulted' || !playInEditor}
+            disabled={
+              runtimeState === 'running' ||
+              runtimeState === 'faulted' ||
+              standaloneSessionActive ||
+              (!playInEditor && !standalonePlayable)
+            }
             label={playLabel}
             title={playTargetUnavailableReason ?? playLabel}
             onClick={() => onCommand('scene.play')}
@@ -549,7 +564,7 @@ export function MainToolbar({
           </UiIconButton>
           <UiIconButton
             className="toolbar-button"
-            disabled={runtimeState === 'stopped'}
+            disabled={runtimeState === 'stopped' && !standaloneSessionActive}
             label="Stop"
             onClick={() => onCommand('scene.stop')}
           >
@@ -652,7 +667,7 @@ export function MainToolbar({
         <UiDropdown
           ariaLabel="Play platform"
           className="toolbar-platform-dropdown"
-          disabled={runtimeState !== 'stopped'}
+          disabled={runtimeState !== 'stopped' || standaloneSessionActive}
           onValueChange={(platform) => {
             if (platform !== '__platform-settings__') onTargetPlatformChange?.(platform);
           }}
@@ -663,7 +678,7 @@ export function MainToolbar({
           ariaLabel="Play target"
           title={targetDeviceTitle ?? playTargetUnavailableReason}
           className="toolbar-device-dropdown"
-          disabled={runtimeState !== 'stopped'}
+          disabled={runtimeState !== 'stopped' || standaloneSessionActive}
           onValueChange={(deviceId) => {
             setLocalTargetDevices((current) => {
               const next = { ...current, [effectiveTargetPlatform]: deviceId };

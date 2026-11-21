@@ -13,6 +13,7 @@ import {
 } from 'electron';
 import type { WebFrameMain } from 'electron';
 import { spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -30,6 +31,7 @@ import { AndroidTargetService } from './androidTargetService';
 import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
+import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windowsLivePlaySession';
 import { BuildMonitorService } from './buildMonitorService';
 import { resolveBuildArtifactPath } from './buildArtifactAccess';
 import { ProjectSettingsService } from './projectSettingsService';
@@ -71,6 +73,7 @@ let sourceControlService: SourceControlService | null = null;
 let recoveryService: RecoveryService | null = null;
 let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
+let livePlaySession: WindowsLivePlaySession | null = null;
 let projectSettingsService: ProjectSettingsService | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
@@ -1170,6 +1173,9 @@ void app.whenReady().then(async () => {
     () => projectSettingsService?.isBusy() ?? false,
     (project, runId, stream, text) => buildMonitor.appendRaw(project, runId, stream, text),
   );
+  livePlaySession = new WindowsLivePlaySession((snapshot) => {
+    sendToActiveRenderer('livePlay:state', snapshot);
+  });
   projectSettingsService = new ProjectSettingsService(
     () => projectService?.active() ?? null,
     () => projectService?.projectTool() ?? '',
@@ -1312,6 +1318,7 @@ void app.whenReady().then(async () => {
   ipcMain.handle(
     'project:open',
     async (_event, candidate: string, options: { readOnly?: boolean; upgrade?: boolean } = {}) => {
+      await livePlaySession?.stop();
       const result = await projectService?.open(candidate, options);
       if (result?.succeeded && result.project) {
         recoveryService?.start(result.project);
@@ -1321,6 +1328,54 @@ void app.whenReady().then(async () => {
       return result;
     },
   );
+  ipcMain.handle('livePlay:snapshot', () => livePlaySession?.snapshot() ?? null);
+  ipcMain.handle('livePlay:stop', () => livePlaySession?.stop());
+  ipcMain.handle('livePlay:start', async () => {
+    const project = projectService?.active();
+    if (!project) throw new Error('Open a project before starting standalone Play');
+    if (process.platform !== 'win32') throw new Error('Windows standalone Play requires Windows');
+    if (!livePlaySession || !buildService) throw new Error('Windows Live Play service is unavailable');
+    // The renderer cannot supply any executable path, cwd, build identity or
+    // credentials. The current project's native workflow plan owns all paths.
+    const profile = project.descriptor.cookProfiles.find((p) => p.platform === 'windows');
+    if (!profile) throw new Error('No Windows cook/build profile is configured for this project');
+    const arch = profile.architecture === 'x86_64' ? 'x64' : profile.architecture;
+    const renderer = profile.renderer === 'none' ? 'headless' : profile.renderer;
+    const targetId = `windows-${arch}-${renderer}`;
+    const plan = await buildService.plan({
+      action: 'runBuilt',
+      profile: profile.id,
+      targetId,
+      destination: 'local',
+      sessionId: '',
+    });
+    if (plan.projectGuid !== project.descriptor.guid || plan.platform !== 'windows')
+      throw new Error('Project workflow returned a different project or platform');
+    const published = resolvePublishedWindowsLivePlay(
+      project.projectRoot,
+      plan.packageOutput,
+      plan.projectGuid,
+      plan.profile,
+      plan.targetId,
+    );
+    const authority = {
+      projectGuid: plan.projectGuid,
+      buildId: published.buildId,
+      targetProfile: plan.profile,
+      sessionId: randomUUID(),
+      instanceId: randomUUID(),
+    };
+    return livePlaySession.start({
+      executable: published.executable,
+      cwd: published.cwd,
+      context: {
+        authority,
+        schemaHash: createHash('sha256').update('arc.live-play/v1').digest('hex'),
+        capabilities: ['session.observe', 'content.observe'],
+      },
+    });
+  });
+
   ipcMain.handle('project:close', async () => {
     const target = activeWindow();
     let scene: SceneDocumentState | undefined;
@@ -1346,6 +1401,7 @@ void app.whenReady().then(async () => {
         if (!saved?.succeeded) return { succeeded: false, error: saved?.error || 'Scene save failed' };
       }
     }
+    await livePlaySession?.stop();
     const result = await projectService?.close();
     if (result?.succeeded) {
       recoveryService?.stop(true);
@@ -1907,6 +1963,7 @@ app.on('before-quit', (event) => {
     try {
       const target = activeWindow();
       if (target) await quiesceSharedViewportsForWindow(target);
+      await livePlaySession?.stop();
       await aiGateway?.stop();
     } finally {
       disposeBuiltInAgentIpc?.();
@@ -1924,6 +1981,7 @@ app.on('before-quit', (event) => {
       recoveryService = null;
       extensionService = null;
       buildService?.dispose();
+      livePlaySession = null;
       buildService = null;
       hostClient?.stop();
       hostClient = null;
