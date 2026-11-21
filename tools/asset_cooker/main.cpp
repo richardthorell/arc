@@ -779,7 +779,8 @@ std::optional<ephemeral_scene_cook_source> read_ephemeral_scene(const command_li
     const auto document = nlohmann::json::parse(reinterpret_cast<const char*>(bytes.data()),
                                                 reinterpret_cast<const char*>(bytes.data() + bytes.size()),
                                                 nullptr, false);
-    if (document.is_discarded() || !document.is_object() || document.value("format", "") != "arc.scene" ||
+    if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
+        document["format"] != "arc.scene" ||
         !document.contains("scene") || !document["scene"].is_object() ||
         !document["scene"].contains("id") || !document["scene"]["id"].is_string() ||
         document["scene"]["id"].get<std::string>() != to_string(*guid))
@@ -900,7 +901,22 @@ int main(int argc, char** argv)
             std::cerr << "Ephemeral scene overrides require explicit private Development cook output and a GUID\n";
             return 2;
         }
-        const auto relative = command.output.lexically_relative(command.project);
+        if (!command.output.is_absolute())
+        {
+            std::cerr << "Ephemeral cook output must use an absolute private directory\n";
+            return 2;
+        }
+        // Reject existing symlink/junction ancestors back into the project.
+        // No ephemeral cook is allowed to touch an authored Saved/Cooked tree.
+        std::error_code path_error;
+        const auto private_output = std::filesystem::weakly_canonical(command.output, path_error);
+        const auto root = std::filesystem::weakly_canonical(command.project, path_error);
+        if (path_error)
+        {
+            std::cerr << "Cannot validate ephemeral output path\n";
+            return 2;
+        }
+        const auto relative = private_output.lexically_relative(root);
         if (!relative.empty() && *relative.begin() != ".." && !relative.is_absolute())
         {
             std::cerr << "Ephemeral cook output must be outside the authored project\n";

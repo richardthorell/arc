@@ -694,10 +694,18 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     const auto cooked = cache.get_blob(first.manifest.artifacts.front().hash, read_error);
     REQUIRE(cooked);
     CHECK(cooked->bytes == request.ephemeral_scene->bytes);
+    // Saved source must not reuse a dirty-scene action, or vice versa.
+    auto saved = request;
+    saved.ephemeral_scene.reset();
+    const auto normal = cooker.cook(saved);
+    REQUIRE(normal.succeeded());
+    CHECK(normal.cooked == 1);
+    REQUIRE(normal.manifest.artifacts.size() == 1);
+    CHECK(normal.manifest.artifacts.front().hash != first.manifest.artifacts.front().hash);
     const auto second = cooker.cook(request);
     REQUIRE(second.succeeded());
     CHECK(second.cache_hits == 1);
-    CHECK(*count == 1);
+    CHECK(*count == 2);
     // The source and authored database are untouched by the ephemeral cook.
     std::ifstream authored_file(project.assets / "scenes/Level.arcscene", std::ios::binary);
     const std::string original((std::istreambuf_iterator<char>(authored_file)), std::istreambuf_iterator<char>());
