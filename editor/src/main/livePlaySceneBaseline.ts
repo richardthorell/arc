@@ -26,6 +26,8 @@ export type LivePlaySceneBaseline = Readonly<{
   instanceId: string;
   sceneGuid: string;
   sceneName: string;
+  /** Original saved authoring path, bound atomically to the native capture. Empty for new scenes. */
+  sourceScenePath: string;
   sceneRevision: number;
   historyRevision: number;
   entityCount: number;
@@ -111,7 +113,7 @@ export class LivePlaySceneBaselineStore {
         entities?: unknown;
         dependencies?: unknown;
       };
-      const capture = response.payload as { sceneGuid?: unknown; historyRevision?: unknown } | null;
+      const capture = response.payload as { sceneGuid?: unknown; historyRevision?: unknown; sourceScenePath?: unknown } | null;
       if (
         document.format !== 'arc.scene' ||
         !Number.isSafeInteger(document.formatVersion) ||
@@ -142,6 +144,7 @@ export class LivePlaySceneBaselineStore {
         instanceId: identity.instanceId,
         sceneGuid: document.scene.id,
         sceneName: typeof document.scene.name === 'string' ? document.scene.name : '',
+        sourceScenePath: typeof capture?.sourceScenePath === 'string' ? capture.sourceScenePath : '',
         sceneRevision: sceneRevision as number,
         historyRevision: historyRevision as number,
         entityCount: document.entities.length,
