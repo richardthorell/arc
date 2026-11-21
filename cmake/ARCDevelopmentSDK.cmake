@@ -6,6 +6,8 @@ add_custom_target(arc-development-sdk
     COMMAND "${CMAKE_COMMAND}" --install "${CMAKE_BINARY_DIR}" --config "$<CONFIG>"
         --prefix "${_arc_dev_root}/$<CONFIG>" --component sdk
     COMMAND "${CMAKE_COMMAND}" --install "${CMAKE_BINARY_DIR}" --config "$<CONFIG>"
+        --prefix "${_arc_dev_root}/$<CONFIG>" --component sdk-development
+    COMMAND "${CMAKE_COMMAND}" --install "${CMAKE_BINARY_DIR}" --config "$<CONFIG>"
         --prefix "${_arc_dev_root}/$<CONFIG>" --component sdk-headers
     COMMAND "${CMAKE_COMMAND}" --install "${CMAKE_BINARY_DIR}" --config "$<CONFIG>"
         --prefix "${_arc_dev_root}/$<CONFIG>" --component sdk-private
@@ -24,7 +26,11 @@ foreach(_interface arc arc-runtime arc-server arc-editor-module-sdk)
         endif()
     endforeach()
 endforeach()
-foreach(_target arc-project-cli arc-cook arc-platform-windows arc-platform-windows-packaged-entry arc-render-vulkan)
+# Every exported SDK target must have its archive present when CMake imports
+# ARCTargets.cmake. Live Play is optional, but configured development archives
+# must be built and staged with the rest of the SDK.
+foreach(_target arc-project-cli arc-cook arc-platform-windows arc-platform-windows-packaged-entry
+                arc-platform-windows-live-play-entry arc-live-play-dev arc-render-vulkan)
     if(TARGET ${_target})
         add_dependencies(arc-development-sdk ${_target})
     endif()

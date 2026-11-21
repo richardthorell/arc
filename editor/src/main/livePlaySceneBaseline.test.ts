@@ -88,7 +88,11 @@ describe('LivePlaySceneBaselineStore', () => {
       {
         command: async (_type, payload) => {
           fs.writeFileSync(payload.path as string, JSON.stringify(scene()));
-          return { succeeded: true, payload: { sceneGuid: '44444444-4444-4444-4444-444444444444', historyRevision: 1 }, sceneRevision: 2 };
+          return {
+            succeeded: true,
+            payload: { sceneGuid: '44444444-4444-4444-4444-444444444444', historyRevision: 1 },
+            sceneRevision: 2,
+          };
         },
       },
       tempRoot,
@@ -103,7 +107,11 @@ describe('LivePlaySceneBaselineStore', () => {
       {
         command: async (_type, payload) => {
           fs.writeFileSync(payload.path as string, Buffer.alloc(MAX_LIVE_PLAY_SCENE_BYTES + 1));
-          return { succeeded: true, payload: { sceneGuid: scene().scene.id, historyRevision: 1 }, sceneRevision: 2 };
+          return {
+            succeeded: true,
+            payload: { sceneGuid: scene().scene.id, historyRevision: 1 },
+            sceneRevision: 2,
+          };
         },
       },
       tempRoot,
@@ -115,13 +123,19 @@ describe('LivePlaySceneBaselineStore', () => {
   it('cancels a pending host capture without publishing a stale session baseline', async () => {
     const { projectRoot, tempRoot } = fixture();
     let finish!: () => void;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const store = new LivePlaySceneBaselineStore(
       {
         command: async (_type, payload) => {
           await pending;
           fs.writeFileSync(payload.path as string, JSON.stringify(scene()));
-          return { succeeded: true, payload: { sceneGuid: scene().scene.id, historyRevision: 1 }, sceneRevision: 2 };
+          return {
+            succeeded: true,
+            payload: { sceneGuid: scene().scene.id, historyRevision: 1 },
+            sceneRevision: 2,
+          };
         },
       },
       tempRoot,
@@ -137,7 +151,9 @@ describe('LivePlaySceneBaselineStore', () => {
   it('rejects a failed native save and prevents a second concurrent capture', async () => {
     const { projectRoot, tempRoot } = fixture();
     let finish!: () => void;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const store = new LivePlaySceneBaselineStore(
       {
         command: async () => {

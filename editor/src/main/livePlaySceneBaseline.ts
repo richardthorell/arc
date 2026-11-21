@@ -158,9 +158,7 @@ export class LivePlaySceneBaselineStore {
         JSON.stringify({
           format: 'arc.live-play.scene-baseline',
           formatVersion: 1,
-          ...Object.fromEntries(
-            Object.entries(result).filter(([key]) => key !== 'scenePath' && key !== 'directory'),
-          ),
+          ...Object.fromEntries(Object.entries(result).filter(([key]) => key !== 'scenePath' && key !== 'directory')),
         }),
         { encoding: 'utf8', flag: 'wx', mode: 0o400 },
       );

@@ -1345,7 +1345,8 @@ void app.whenReady().then(async () => {
     const project = projectService?.active();
     if (!project) throw new Error('Open a project before starting standalone Play');
     if (process.platform !== 'win32') throw new Error('Windows standalone Play requires Windows');
-    if (!livePlaySession || !buildService || !livePlayBaselines) throw new Error('Windows Live Play service is unavailable');
+    if (!livePlaySession || !buildService || !livePlayBaselines)
+      throw new Error('Windows Live Play service is unavailable');
     if (livePlaySession.snapshot().state !== 'stopped' || livePlayBaselines.current())
       throw new Error('Stop the existing Windows Live Play session before starting a new one');
     // The renderer cannot supply any executable path, cwd, build identity or

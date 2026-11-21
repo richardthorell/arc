@@ -216,8 +216,10 @@ TEST_CASE("workspace documents component operations and read only projects are h
         const auto entity = host->selected_entity_snapshot().entity;
         auto unsaved_transform = *host->selected_entity_snapshot().transform;
         unsaved_transform.position = {4.0f, 5.0f, 6.0f};
-        REQUIRE(host->execute(arc::editor::host_set_transform_command{
-                    .entity = entity, .transform = unsaved_transform}).succeeded);
+        arc::editor::host_set_transform_command set_transform{};
+        set_transform.entity = entity;
+        set_transform.transform = unsaved_transform;
+        REQUIRE(host->execute(set_transform).succeeded);
         const auto before_capture = host->scene_snapshot();
         const auto recovery_path = root / "recovery" / "scene.arcscene";
         REQUIRE(host->execute(arc::editor::host_autosave_scene_command{.path = recovery_path}).succeeded);
@@ -235,9 +237,9 @@ TEST_CASE("workspace documents component operations and read only projects are h
                           [](const nlohmann::json& record)
                           {
                               const auto& components = record.at("components");
-                              return components.contains("Transform") &&
-                                     components.at("Transform").at("position") ==
-                                         nlohmann::json::array({4.0f, 5.0f, 6.0f});
+                              if (!components.contains("Transform")) return false;
+                              const auto& position = components.at("Transform").at("position");
+                              return position == nlohmann::json::array({4.0f, 5.0f, 6.0f});
                           }));
         REQUIRE(host->execute(arc::editor::host_open_recovery_scene_command{
                                   .path = recovery_path, .original_path = root / "assets" / "scene.arcscene"})
