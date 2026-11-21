@@ -57,5 +57,33 @@ closure, stage under persistent CAS, and activate through ARC's existing
 last-good versions and reject incompatible target/base build. Never expose URLs
 to game-side GUID consumers.
 
+## C9.2d1 — cache-first generation acquisition (this PR)
+
+After a release descriptor has passed C9.1 target/project/build/generation
+validation, \`acquire_remote_generation\` ties the previous slices together:
+
+1. Validate the bounded object table and byte budget before issuing requests.
+2. Check each declared immutable cook manifest/chunk object in the existing
+   verified derived-data CAS. Offline mode requires all objects locally.
+3. Fetch only missing objects (or fetch all for diagnostics) via the C9.2b
+   HTTPS client, running on dedicated IO workers. The coordinating job runs on
+   a general worker, with one request in flight to bound memory.
+4. Ingest complete responses only through C9.2c1 SHA-verified CAS persistence.
+5. Re-run C9.2c2 whole-generation manifest/chunk/artifact closure before
+   reporting a successful acquisition.
+
+This is an *acquisition*, not an activation. The existing
+\`cooked_asset_catalog::mount_remote_generation\` call is explicitly separate
+and must happen only after acquisition succeeded. A failure or cancellation
+never changes the currently mounted generation. Tests inject deterministic
+IO-worker HTTP responses while exercising the same request validation and CAS
+integrity checks.
+
+Not yet included: fetching the mutable \`current.json\` release descriptor,
+parallel/coalesced downloads, retry/backoff, quota and generation pinning,
+native Android/Linux HTTPS backends, or automatic publish/activation. Future
+C9.2 work handles these independently.
+
+
 **Ownership:** #1135. The editor content server is #1137; Dev-only endpoint
 overrides are #1136; publish-on-edit is #1138; runtime hot reload is #1139.
