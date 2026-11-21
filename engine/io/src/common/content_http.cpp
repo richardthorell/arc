@@ -1,6 +1,7 @@
 #include <arc/io/content_http.h>
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <limits>
 #include <utility>
@@ -163,6 +164,83 @@ content_http_validation validate_content_http_response(const content_http_reques
         return invalid(content_http_error_code::invalid_range, "Full response unexpectedly declares Content-Range");
     if (!strong_etag(response.etag) || (!request.if_match_etag.empty() && response.etag != request.if_match_etag))
         return invalid(content_http_error_code::etag_mismatch, "ETag is weak, unsafe or changed");
+    return {};
+}
+
+
+namespace
+{
+constexpr std::uint64_t maximum_release_descriptor_bytes = 8ull * 1024ull * 1024ull;
+
+bool valid_release_guid(std::string_view guid) noexcept
+{
+    if (guid.size() != 36) return false;
+    for (std::size_t index = 0; index < guid.size(); ++index)
+    {
+        const auto c = guid[index];
+        if (index == 8 || index == 13 || index == 18 || index == 23)
+        {
+            if (c != '-') return false;
+        }
+        else if (!(ascii_digit(c) || (c >= 'a' && c <= 'f'))) return false;
+    }
+    return true;
+}
+
+bool valid_release_profile(std::string_view profile) noexcept
+{
+    if (profile.empty() || profile.size() > 128 || profile == "." || profile == ".." ||
+        !std::isalnum(static_cast<unsigned char>(profile.front())))
+        return false;
+    return std::all_of(profile.begin(), profile.end(), [](unsigned char c)
+                       {
+                           return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                  (c >= '0' && c <= '9') || c == '_' || c == '-';
+                       });
+}
+} // namespace
+
+content_http_validation validate_content_http_release_request(const content_http_release_request& request,
+                                                              const content_http_limits& limits)
+{
+    if (!valid_origin(request.origin, limits.allow_loopback_http))
+        return invalid(content_http_error_code::invalid_origin, "Release lookup requires trusted HTTPS or loopback");
+    if (!valid_release_guid(request.project_guid) || !valid_release_profile(request.target_profile) ||
+        limits.timeout.count() <= 0 || limits.maximum_object_bytes == 0)
+        return invalid(content_http_error_code::invalid_request, "Invalid release project/profile or transfer limits");
+    return {};
+}
+
+content_http_validation validate_content_http_release_response(const content_http_release_request& request,
+                                                               const content_http_response& response,
+                                                               const content_http_limits& limits)
+{
+    auto preflight = validate_content_http_release_request(request, limits);
+    if (!preflight.succeeded()) return preflight;
+
+    if ((response.status >= 300 && response.status < 400) || !response.redirect_location.empty())
+        return invalid(content_http_error_code::rejected_redirect, "Mutable release lookup cannot redirect");
+    if (response.status == 401 || response.status == 403)
+        return invalid(content_http_error_code::unauthorized, "Release descriptor access denied");
+    if (response.status == 404)
+        return invalid(content_http_error_code::not_found, "No release descriptor for target");
+    if (response.status == 429 || response.status == 503)
+        return invalid(content_http_error_code::rate_limited, "Release descriptor server temporarily unavailable");
+    if (response.status != 200)
+        return invalid(content_http_error_code::invalid_status, "Unexpected release descriptor HTTP status");
+    if (!response.content_range.empty())
+        return invalid(content_http_error_code::invalid_range, "Release descriptor cannot be ranged");
+
+    const auto budget = std::min(maximum_release_descriptor_bytes, limits.maximum_object_bytes);
+    if (response.body.empty() || response.body.size() > budget)
+        return invalid(content_http_error_code::oversized_response, "Release descriptor is empty or exceeds limit");
+
+    if (!response.content_length.empty())
+    {
+        std::uint64_t declared{};
+        if (!parse_decimal(response.content_length, declared) || declared != response.body.size())
+            return invalid(content_http_error_code::inconsistent_length, "Release descriptor length mismatch");
+    }
     return {};
 }
 
