@@ -102,9 +102,7 @@ describe('Live Play L1 wire contract', () => {
     };
     const fromRuntime = { ...runtimeContext, grantedCapabilities: ['content.observe'] as const };
     expect(receiveLivePlayFrame(frame('scene.baseline.status', status, 'runtime'), fromRuntime).accepted).toBe(true);
-    const malformedStatus = JSON.parse(
-      frame('scene.baseline.status', { ...status, status: 'active' }, 'runtime'),
-    );
+    const malformedStatus = JSON.parse(frame('scene.baseline.status', { ...status, status: 'active' }, 'runtime'));
     expect(livePlayMessageSchema.safeParse(malformedStatus).success).toBe(false);
   });
 
