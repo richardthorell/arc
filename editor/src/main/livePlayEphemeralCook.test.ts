@@ -3,7 +3,11 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareLivePlayCookedStaging, resolveLivePlaySceneAsset, type LivePlayCookInput } from './livePlayEphemeralCook';
+import {
+  prepareLivePlayCookedStaging,
+  resolveLivePlaySceneAsset,
+  type LivePlayCookInput,
+} from './livePlayEphemeralCook';
 import type { LivePlaySceneBaseline } from './livePlaySceneBaseline';
 import type { WorkflowProcessRequest } from './workflowProcess';
 
@@ -24,12 +28,15 @@ function fixture() {
   fs.mkdirSync(privateRoot);
   const original = path.join(content, 'Level.arcscene');
   fs.writeFileSync(original, JSON.stringify({ format: 'arc.scene', scene: { id: sceneGuid }, entities: [] }));
-  fs.writeFileSync(`${original}.arcmeta`, JSON.stringify({
-    format: 'arc.asset-meta',
-    formatVersion: 1,
-    guid: assetGuid,
-    type: 'a7ca55e7-0000-0001-0000-000000000001',
-  }));
+  fs.writeFileSync(
+    `${original}.arcmeta`,
+    JSON.stringify({
+      format: 'arc.asset-meta',
+      formatVersion: 1,
+      guid: assetGuid,
+      type: 'a7ca55e7-0000-0001-0000-000000000001',
+    }),
+  );
   const scenePath = path.join(privateRoot, 'initial-scene.arcscene');
   const authored = JSON.stringify({
     format: 'arc.scene',
@@ -60,8 +67,13 @@ function fixture() {
   };
   const controller = new AbortController();
   const input: LivePlayCookInput = {
-    baseline, projectGuid: baseline.projectGuid, projectRoot, descriptorPath,
-    assetRoots: ['Content'], cooker: tool, profile: baseline.targetProfile,
+    baseline,
+    projectGuid: baseline.projectGuid,
+    projectRoot,
+    descriptorPath,
+    assetRoots: ['Content'],
+    cooker: tool,
+    profile: baseline.targetProfile,
     target: { platform: 'windows', architecture: 'x86_64', renderer: 'vulkan' },
     signal: controller.signal,
     isCurrent: () => true,
@@ -73,10 +85,14 @@ function fixture() {
     if (request.args[0] === 'cook') {
       const output = argument('--output');
       const variant = path.join(output, 'windows-x64-vulkan.arccookmanifest');
-      fs.writeFileSync(variant, JSON.stringify({
-        buildId: 'cook-build', roots: [assetGuid],
-        target: { name: input.profile, ...input.target, configuration: 'development' },
-      }));
+      fs.writeFileSync(
+        variant,
+        JSON.stringify({
+          buildId: 'cook-build',
+          roots: [assetGuid],
+          target: { name: input.profile, ...input.target, configuration: 'development' },
+        }),
+      );
       return JSON.stringify({ event: 'cook.complete', variants: [{ family: 'bc', manifest: variant }] });
     }
     if (request.args[0] === 'package') {
@@ -137,14 +153,23 @@ describe('Live Play private cooked scene staging', () => {
 
   it('rejects unknown, unsaved, or out-of-root active scene paths', async () => {
     const t = fixture();
-    await expect(prepareLivePlayCookedStaging({
-      ...t.input, baseline: { ...t.baseline, sourceScenePath: '' },
-    }, t.run)).rejects.toThrow(/Save the scene once/);
+    await expect(
+      prepareLivePlayCookedStaging(
+        {
+          ...t.input,
+          baseline: { ...t.baseline, sourceScenePath: '' },
+        },
+        t.run,
+      ),
+    ).rejects.toThrow(/Save the scene once/);
     const outsider = path.join(t.root, 'outside.arcscene');
     fs.writeFileSync(outsider, fs.readFileSync(t.original));
-    expect(() => resolveLivePlaySceneAsset({
-      ...t.input, baseline: { ...t.baseline, sourceScenePath: outsider },
-    })).toThrow(/does not belong/);
+    expect(() =>
+      resolveLivePlaySceneAsset({
+        ...t.input,
+        baseline: { ...t.baseline, sourceScenePath: outsider },
+      }),
+    ).toThrow(/does not belong/);
     expect(t.run).not.toHaveBeenCalled();
   });
 
@@ -156,9 +181,15 @@ describe('Live Play private cooked scene staging', () => {
     });
     await expect(prepareLivePlayCookedStaging(t.input, run)).rejects.toThrow(/broken cook/);
     expect(fs.readdirSync(t.privateRoot)).toEqual(['initial-scene.arcscene']);
-    await expect(prepareLivePlayCookedStaging({
-      ...t.input, isCurrent: () => false,
-    }, run)).rejects.toThrow(/session changed/);
+    await expect(
+      prepareLivePlayCookedStaging(
+        {
+          ...t.input,
+          isCurrent: () => false,
+        },
+        run,
+      ),
+    ).rejects.toThrow(/session changed/);
     t.controller.abort();
     await expect(prepareLivePlayCookedStaging(t.input, run)).rejects.toThrow();
   });

@@ -113,7 +113,11 @@ export class LivePlaySceneBaselineStore {
         entities?: unknown;
         dependencies?: unknown;
       };
-      const capture = response.payload as { sceneGuid?: unknown; historyRevision?: unknown; sourceScenePath?: unknown } | null;
+      const capture = response.payload as {
+        sceneGuid?: unknown;
+        historyRevision?: unknown;
+        sourceScenePath?: unknown;
+      } | null;
       if (
         document.format !== 'arc.scene' ||
         !Number.isSafeInteger(document.formatVersion) ||

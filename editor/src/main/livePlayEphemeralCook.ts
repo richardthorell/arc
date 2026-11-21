@@ -50,7 +50,10 @@ const sceneAssetType = 'a7ca55e7-0000-0001-0000-000000000001';
 const maxManifestBytes = 16 * 1024 * 1024;
 const cookResult = z.object({
   event: z.literal('cook.complete'),
-  variants: z.array(z.object({ family: z.string().min(1), manifest: z.string().min(1) })).min(1).max(16),
+  variants: z
+    .array(z.object({ family: z.string().min(1), manifest: z.string().min(1) }))
+    .min(1)
+    .max(16),
 });
 const packageResult = z.object({ event: z.literal('package.complete'), manifest: z.string().min(1) });
 const manifestSchema = z.object({
@@ -168,7 +171,10 @@ export async function prepareLivePlayCookedStaging(
     throw new Error('Live Play baseline does not belong to this project, profile or private session');
 
   const source = fs.readFileSync(baseline.scenePath);
-  if (source.byteLength !== baseline.byteLength || createHash('sha256').update(source).digest('hex') !== baseline.sha256)
+  if (
+    source.byteLength !== baseline.byteLength ||
+    createHash('sha256').update(source).digest('hex') !== baseline.sha256
+  )
     throw new Error('Live Play scene capture changed after it was sealed');
   if (!hashPattern.test(baseline.sha256)) throw new Error('Invalid captured authoring digest');
   const sceneAssetGuid = resolveLivePlaySceneAsset(input);
@@ -184,9 +190,18 @@ export async function prepareLivePlayCookedStaging(
     const cookText = await run({
       executable: cooker,
       args: [
-        'cook', '--project', descriptor, '--profile', input.profile,
-        '--output', cookDirectory, '--ephemeral-scene', baseline.scenePath,
-        '--ephemeral-asset-guid', sceneAssetGuid, '--json',
+        'cook',
+        '--project',
+        descriptor,
+        '--profile',
+        input.profile,
+        '--output',
+        cookDirectory,
+        '--ephemeral-scene',
+        baseline.scenePath,
+        '--ephemeral-asset-guid',
+        sceneAssetGuid,
+        '--json',
       ],
       cwd: projectRoot,
       signal,
@@ -207,7 +222,9 @@ export async function prepareLivePlayCookedStaging(
       await run({
         executable: cooker,
         args: ['verify', '--project', descriptor, '--manifest', manifest],
-        cwd: projectRoot, signal, timeoutMs: 5 * 60_000,
+        cwd: projectRoot,
+        signal,
+        timeoutMs: 5 * 60_000,
       });
       assertCurrent();
       const packageDirectory = path.join(directory, 'packages', family);
@@ -215,7 +232,9 @@ export async function prepareLivePlayCookedStaging(
       const packedText = await run({
         executable: cooker,
         args: ['package', '--project', descriptor, '--manifest', manifest, '--output', packageDirectory, '--json'],
-        cwd: projectRoot, signal, timeoutMs: 10 * 60_000,
+        cwd: projectRoot,
+        signal,
+        timeoutMs: 10 * 60_000,
       });
       assertCurrent();
       const packaged = parseCompletion(packedText, packageResult);
@@ -225,7 +244,9 @@ export async function prepareLivePlayCookedStaging(
       await run({
         executable: cooker,
         args: ['verify', '--project', descriptor, '--manifest', packagedManifest],
-        cwd: projectRoot, signal, timeoutMs: 5 * 60_000,
+        cwd: projectRoot,
+        signal,
+        timeoutMs: 5 * 60_000,
       });
       assertCurrent();
       variants.push(Object.freeze({ family, manifestPath: packagedManifest, cookManifestBuildId, packageDirectory }));
