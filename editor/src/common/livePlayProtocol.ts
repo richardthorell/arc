@@ -207,6 +207,37 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
     'content.generation',
     z.object({ generation: revision, status: z.enum(['available', 'active', 'rejected']) }).strict(),
   ),
+  // L1.3b1: metadata only. The editor must NOT send this until C9 verifies a
+  // target-compatible cooked release. No source paths, bytes or tokens.
+  message(
+    'scene.baseline.offer',
+    z
+      .object({
+        sceneGuid: guid,
+        authoringRevision: revision,
+        authoringSha256: schemaHash,
+        cookedGeneration: revision,
+        cookedReleaseSha256: schemaHash,
+      })
+      .strict(),
+  ),
+  message(
+    'scene.baseline.status',
+    z
+      .object({
+        requestId: id,
+        sceneGuid: guid,
+        cookedGeneration: revision,
+        cookedReleaseSha256: schemaHash,
+        status: z.enum(['active', 'rejected']),
+        reason: z.enum(['none', 'unavailable', 'incompatible', 'corrupt', 'unsupported']),
+      })
+      .strict()
+      .refine(
+        (value) => (value.status === 'active') === (value.reason === 'none'),
+        'An active baseline must have no rejection reason',
+      ),
+  ),
   message(
     'session.resync.request',
     z.object({ lastReceivedSequence: revision, reason: z.enum(['reconnected', 'gap', 'overflow']) }).strict(),
@@ -263,6 +294,7 @@ const editorOnly = new Set<LivePlayMessageType>([
   'entity.reparent',
   'component.inspect.request',
   'session.resync.request',
+  'scene.baseline.offer',
 ]);
 const runtimeOnly = new Set<LivePlayMessageType>([
   'session.state',
@@ -271,6 +303,7 @@ const runtimeOnly = new Set<LivePlayMessageType>([
   'component.inspect.result',
   'log.record',
   'content.generation',
+  'scene.baseline.status',
 ]);
 
 function capabilityFor(type: LivePlayMessageType): LivePlayCapability | undefined {
@@ -283,6 +316,7 @@ function capabilityFor(type: LivePlayMessageType): LivePlayCapability | undefine
     return 'entity.edit';
   if (type === 'component.inspect.request') return 'entity.inspect';
   if (type === 'session.command') return 'session.control';
+  if (type === 'scene.baseline.offer' || type === 'scene.baseline.status') return 'content.observe';
   return undefined;
 }
 

@@ -84,6 +84,13 @@ public:
     [[nodiscard]] bool send_ack(std::string_view request_id, std::uint64_t applied_revision, std::string& error);
     [[nodiscard]] bool send_content_generation(std::uint64_t generation, std::string_view status, std::string& error);
 
+    /**
+     * Call ONLY after the C9 loader has verified and activated or rejected
+     * the offered cooked release. Polling an offer never activates a scene.
+     * Rejection reason: unavailable/incompatible/corrupt/unsupported.
+     */
+    [[nodiscard]] bool send_baseline_status(std::string_view status, std::string_view reason, std::string& error);
+
     /** Empty optional means no frame during the timeout, not a command. */
     [[nodiscard]] std::optional<incoming_message> poll(std::uint32_t timeout_ms, std::string& error);
     [[nodiscard]] std::uint64_t last_received_sequence() const noexcept;
@@ -101,6 +108,10 @@ private:
     std::string session_id_;
     std::string instance_id_;
     std::vector<std::string> negotiated_capabilities_;
+    std::string pending_baseline_request_;
+    std::string pending_baseline_scene_;
+    std::string pending_baseline_release_;
+    std::uint64_t pending_baseline_generation_{};
     bool initialized_socket_api_{};
 };
 

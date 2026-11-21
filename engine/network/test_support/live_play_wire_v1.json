@@ -35,5 +35,25 @@
     "payload": {
       "lastReceivedSequence": 2
     }
+  },
+  "editorBaselineOffer": {
+    "protocol": "arc.live-play",
+    "protocolVersion": 1,
+    "sender": "editor",
+    "projectGuid": "11111111-1111-1111-1111-111111111111",
+    "buildId": "dev-build-42",
+    "targetProfile": "windows-x64-vulkan",
+    "sessionId": "session-1",
+    "instanceId": "runtime-1",
+    "messageId": "editor-offer-3",
+    "sequence": 3,
+    "type": "scene.baseline.offer",
+    "payload": {
+      "sceneGuid": "22222222-2222-2222-2222-222222222222",
+      "authoringRevision": 9,
+      "authoringSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "cookedGeneration": 3,
+      "cookedReleaseSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
   }
 }

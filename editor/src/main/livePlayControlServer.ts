@@ -70,6 +70,7 @@ export class LivePlayControlServer {
   private lastError: string | null = null;
   private lastReceivedSequence = 0;
   private outgoingSequence = 0;
+  private pendingBaseline: Extract<LivePlayMessage, { type: 'scene.baseline.offer' }> | null = null;
 
   constructor(private readonly options: LivePlayControlOptions) {}
 
@@ -164,6 +165,7 @@ export class LivePlayControlServer {
     this.activePeer = null;
     this.lastReceivedSequence = 0;
     this.outgoingSequence = 0;
+    this.pendingBaseline = null;
     this.secret.fill(0);
     this.notify();
     if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -176,7 +178,20 @@ export class LivePlayControlServer {
     return this.send(this.activePeer, payload);
   }
 
-  private message(type: 'heartbeat' | 'hello.accepted', payload: unknown): LivePlayMessage {
+  /**
+   * Only call after C9 publishes and verifies the compatible cooked release.
+   * The L1.3a authored .arcscene file is not a cooked release or transport URL.
+   */
+  sendBaselineOffer(payload: Extract<LivePlayMessage, { type: 'scene.baseline.offer' }>['payload']): boolean {
+    const peer = this.activePeer;
+    if (!peer?.ready || !peer.capabilities.includes('content.observe') || this.pendingBaseline) return false;
+    const offer = this.message('scene.baseline.offer', payload);
+    if (!this.send(peer, offer)) return false;
+    this.pendingBaseline = offer as Extract<LivePlayMessage, { type: 'scene.baseline.offer' }>;
+    return true;
+  }
+
+  private message(type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer', payload: unknown): LivePlayMessage {
     const item = {
       protocol: LIVE_PLAY_PROTOCOL,
       protocolVersion: LIVE_PLAY_VERSION,
@@ -220,6 +235,7 @@ export class LivePlayControlServer {
       this.peers.delete(peer);
       if (this.activePeer === peer) {
         this.activePeer = null;
+        this.pendingBaseline = null;
         if (this.server) {
           this.state = 'disconnected';
           this.notify();
@@ -304,12 +320,26 @@ export class LivePlayControlServer {
       item.type === 'hierarchy.changed' ||
       item.type === 'component.inspect.result'
         ? 'entity.inspect'
-        : item.type === 'content.generation'
+        : item.type === 'content.generation' || item.type === 'scene.baseline.status'
           ? 'content.observe'
           : 'session.observe';
     if (!peer.capabilities.includes(required)) {
       this.reject(peer, 'permission_denied');
       return;
+    }
+    if (item.type === 'scene.baseline.status') {
+      const offered = this.pendingBaseline;
+      if (
+        !offered ||
+        item.payload.requestId !== offered.messageId ||
+        item.payload.sceneGuid.toLowerCase() !== offered.payload.sceneGuid.toLowerCase() ||
+        item.payload.cookedGeneration !== offered.payload.cookedGeneration ||
+        item.payload.cookedReleaseSha256 !== offered.payload.cookedReleaseSha256
+      ) {
+        this.reject(peer, 'baseline_identity_mismatch');
+        return;
+      }
+      this.pendingBaseline = null;
     }
     this.lastReceivedSequence = result.nextSequence;
     this.notify();

@@ -236,6 +236,20 @@ public:
                 send_packet(peer, heartbeat.dump());
                 const auto response = json::parse(read_packet(peer));
                 check(response.at("type") == "heartbeat", "Native heartbeat response not received");
+                const auto offered = fixtures.at("editorBaselineOffer");
+                check(offered.at("sender") == "editor" && offered.at("sequence") == 3,
+                      "Cross-language cooked baseline fixture is malformed");
+                send_packet(peer, offered.dump());
+                const auto baseline = json::parse(read_packet(peer));
+                check(baseline.at("type") == "scene.baseline.status", "Native baseline result was not emitted");
+                check(baseline.at("payload").at("requestId") == offered.at("messageId"),
+                      "Native baseline ACK was not bound to the offer");
+                check(baseline.at("payload").at("cookedReleaseSha256") ==
+                          offered.at("payload").at("cookedReleaseSha256"),
+                      "Native baseline report referenced a different cooked release");
+                check(baseline.at("payload").at("status") == "rejected" &&
+                          baseline.at("payload").at("reason") == "unavailable",
+                      "Native baseline report must not claim content activated by the transport");
             }
         }
         catch (...)
@@ -279,6 +293,18 @@ void test_successful_connection()
           "Native client did not parse validated editor heartbeat");
     check(native.last_received_sequence() == 2, "Native inbound sequence was not advanced");
     check(native.send_heartbeat(error), "Native heartbeat did not send");
+    check(!native.send_baseline_status("active", "none", error),
+          "Native bridge acknowledged a baseline before receiving an offer");
+    const auto offer = native.poll(2000, error);
+    check(offer.has_value() && offer->type == "scene.baseline.offer" && offer->sequence == 3,
+          "Native bridge did not validate the cooked baseline offer");
+    check(native.last_received_sequence() == 3, "Native baseline sequence was not advanced");
+    // Only a separate C9 scene loader may report 'active'. This transport
+    // fixture deliberately reports no cooked release has been materialized.
+    check(native.send_baseline_status("rejected", "unavailable", error),
+          "Native cooked baseline rejection ACK was not transmitted");
+    check(!native.send_baseline_status("rejected", "unavailable", error),
+          "Native bridge sent duplicate baseline ACK");
     native.close();
     server.join();
     if (server_error) std::rethrow_exception(server_error);
