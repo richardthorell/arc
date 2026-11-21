@@ -51,6 +51,18 @@ type PendingCapture = { sessionId: string; directory: string; cancelled: boolean
 
 export const MAX_LIVE_PLAY_SCENE_BYTES = 16 * 1024 * 1024;
 
+/** Windows read-only attributes must be cleared before recursive deletion. */
+function discardStagedDirectory(directory: string): void {
+  for (const filename of ['initial-scene.arcscene', 'baseline.json']) {
+    try {
+      fs.chmodSync(path.join(directory, filename), 0o600);
+    } catch {
+      // A partial/cancelled capture may not have produced this file.
+    }
+  }
+  fs.rmSync(directory, { recursive: true, force: true });
+}
+
 export class LivePlaySceneBaselineStore {
   private active: LivePlaySceneBaseline | null = null;
   private pending: PendingCapture | null = null;
@@ -71,9 +83,10 @@ export class LivePlaySceneBaselineStore {
 
     const projectRoot = fs.realpathSync(identity.projectRoot);
     const directory = fs.mkdtempSync(path.join(this.temporaryRoot, 'arc-live-play-baseline-'));
+    fs.chmodSync(directory, 0o700);
     const relative = path.relative(projectRoot, directory);
     if (!relative || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))) {
-      fs.rmSync(directory, { recursive: true, force: true });
+      discardStagedDirectory(directory);
       throw new Error('Live Play baseline storage must be outside the authoring project');
     }
 
@@ -156,7 +169,7 @@ export class LivePlaySceneBaselineStore {
       return result;
     } finally {
       if (this.pending === pending) this.pending = null;
-      if (this.active?.directory !== directory) fs.rmSync(directory, { recursive: true, force: true });
+      if (this.active?.directory !== directory) discardStagedDirectory(directory);
     }
   }
 
@@ -166,7 +179,7 @@ export class LivePlaySceneBaselineStore {
     if (this.active && (!sessionId || this.active.sessionId === sessionId)) {
       const directory = this.active.directory;
       this.active = null;
-      fs.rmSync(directory, { recursive: true, force: true });
+      discardStagedDirectory(directory);
     }
   }
 }
