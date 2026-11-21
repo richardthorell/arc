@@ -50,12 +50,12 @@ private:
 std::wstring wide(std::string_view utf8)
 {
     if (utf8.empty() || utf8.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) return {};
-    const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()),
-                                        nullptr, 0);
+    const int size =
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), nullptr, 0);
     if (!size) return {};
     std::wstring result(static_cast<std::size_t>(size), L'\0');
-    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()),
-                             result.data(), size))
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), static_cast<int>(utf8.size()), result.data(),
+                             size))
         return {};
     return result;
 }
@@ -63,8 +63,8 @@ std::wstring wide(std::string_view utf8)
 std::string narrow(const std::wstring& text)
 {
     if (text.empty()) return {};
-    const auto length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(),
-                                            static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
+    const auto length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
+                                            nullptr, 0, nullptr, nullptr);
     if (length <= 0) return {};
     std::string result(static_cast<std::size_t>(length), '\0');
     if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), result.data(),
@@ -106,8 +106,7 @@ origin_parts split_origin(std::string_view origin)
 std::string response_header(HINTERNET request, DWORD header)
 {
     DWORD bytes{};
-    if (WinHttpQueryHeaders(request, header, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &bytes,
-                            WINHTTP_NO_HEADER_INDEX) ||
+    if (WinHttpQueryHeaders(request, header, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &bytes, WINHTTP_NO_HEADER_INDEX) ||
         GetLastError() != ERROR_INSUFFICIENT_BUFFER || bytes > 65536u)
         return {};
     std::wstring text(bytes / sizeof(wchar_t), L'\0');
@@ -115,7 +114,8 @@ std::string response_header(HINTERNET request, DWORD header)
                              WINHTTP_NO_HEADER_INDEX))
         return {};
     text.resize(bytes / sizeof(wchar_t));
-    while (!text.empty() && text.back() == L'\0') text.pop_back();
+    while (!text.empty() && text.back() == L'\0')
+        text.pop_back();
     return narrow(text);
 }
 
@@ -132,19 +132,20 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
     if (origin.host.empty()) return failure(content_http_error_code::invalid_origin, "Invalid UTF-8 HTTP host");
 
     const auto proxy_mode = request.origin.starts_with("http://127.0.0.1") ||
-                            request.origin.starts_with("http://localhost") ||
-                            request.origin.starts_with("http://[::1]")
+                                    request.origin.starts_with("http://localhost") ||
+                                    request.origin.starts_with("http://[::1]")
                                 ? WINHTTP_ACCESS_TYPE_NO_PROXY
                                 : WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
-    http_handle session(WinHttpOpen(L"ARC remote content/1", proxy_mode,
-                                    WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    http_handle session(
+        WinHttpOpen(L"ARC remote content/1", proxy_mode, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) return failure(content_http_error_code::network_failure, "WinHTTP session unavailable");
     const auto timeout = static_cast<int>(std::min<std::int64_t>(limits.timeout.count(), 600000));
     if (!WinHttpSetTimeouts(session.get(), timeout, timeout, timeout, timeout))
         return failure(content_http_error_code::network_failure, "WinHTTP timeouts could not be configured");
 
     http_handle connection(WinHttpConnect(session.get(), origin.host.c_str(), origin.port, 0));
-    if (!connection) return failure(content_http_error_code::network_failure, "WinHTTP connection could not be created");
+    if (!connection)
+        return failure(content_http_error_code::network_failure, "WinHTTP connection could not be created");
 
     const auto resource = wide("/" + request.object_path);
     http_handle handle(WinHttpOpenRequest(connection.get(), L"GET", resource.c_str(), nullptr, WINHTTP_NO_REFERER,
@@ -160,13 +161,12 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
         headers += L"Range: bytes=" + std::to_wstring(*request.range_start) + L"-" +
                    std::to_wstring(*request.range_start + *request.range_length - 1) + L"\r\n";
     }
-    if (!request.if_match_etag.empty())
-        headers += L"If-Match: " + wide(request.if_match_etag) + L"\r\n";
+    if (!request.if_match_etag.empty()) headers += L"If-Match: " + wide(request.if_match_etag) + L"\r\n";
 
     if (cancelled(token)) return failure(content_http_error_code::cancelled, "HTTP fetch cancelled");
     if (!WinHttpSendRequest(handle.get(), headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
-                            headers.empty() ? 0 : static_cast<DWORD>(headers.size()), WINHTTP_NO_REQUEST_DATA,
-                            0, 0, 0) ||
+                            headers.empty() ? 0 : static_cast<DWORD>(headers.size()), WINHTTP_NO_REQUEST_DATA, 0, 0,
+                            0) ||
         !WinHttpReceiveResponse(handle.get(), nullptr))
     {
         const auto error = GetLastError();
@@ -237,11 +237,13 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
 } // namespace
 
 jobs::job_future<content_http_fetch_result> fetch_content_http(jobs::job_system& jobs, content_http_request request,
-                                                                 content_http_limits limits,
-                                                                 jobs::cancellation_token cancellation)
+                                                               content_http_limits limits,
+                                                               jobs::cancellation_token cancellation)
 {
-    return jobs.submit_future({.name = "content-http-fetch", .priority = jobs::job_priority::normal,
-                               .affinity = jobs::job_affinity::io_thread, .cancellation = cancellation},
+    return jobs.submit_future({.name = "content-http-fetch",
+                               .priority = jobs::job_priority::normal,
+                               .affinity = jobs::job_affinity::io_thread,
+                               .cancellation = cancellation},
                               [request = std::move(request), limits, cancellation]() -> content_http_fetch_result
                               {
                                   const auto preflight = validate_content_http_request(request, limits);

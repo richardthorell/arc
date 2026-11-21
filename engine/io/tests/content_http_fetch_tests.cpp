@@ -9,8 +9,7 @@ TEST_CASE("C9.2b HTTP fetch validates request before network access")
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     arc::io::content_http_request request{
-        .origin = "file:///etc/passwd", .object_path = "objects/sha256/" + std::string(64, 'a'),
-        .object_size = 4};
+        .origin = "file:///etc/passwd", .object_path = "objects/sha256/" + std::string(64, 'a'), .object_size = 4};
     auto result = arc::io::fetch_content_http(jobs, request).get();
     CHECK_FALSE(result.succeeded());
     CHECK(result.validation.code == arc::io::content_http_error_code::invalid_origin);
@@ -34,9 +33,9 @@ TEST_CASE("C9.2b unsupported platforms fail explicitly without network access")
 {
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
-    arc::io::content_http_request request{
-        .origin = "https://content.example.org", .object_path = "objects/sha256/" + std::string(64, 'a'),
-        .object_size = 4};
+    arc::io::content_http_request request{.origin = "https://content.example.org",
+                                          .object_path = "objects/sha256/" + std::string(64, 'a'),
+                                          .object_size = 4};
     const auto result = arc::io::fetch_content_http(jobs, std::move(request)).get();
     CHECK_FALSE(result.succeeded());
     CHECK(result.validation.code == arc::io::content_http_error_code::transport_unavailable);
