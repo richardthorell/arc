@@ -43,6 +43,13 @@ class RemoteContentContractTests(unittest.TestCase):
                                 engine_version="0.1.0", base_build_id="build-abc",
                                 target=self.target, **kwargs)
 
+    def test_shared_native_fixture(self):
+        fixture = (Path(__file__).resolve().parents[2] / "engine" / "assets" /
+                   "tests" / "fixtures" / "remote-content-v1.json")
+        release = self.validate(json.loads(fixture.read_text(encoding="utf-8")))
+        self.assertEqual(release["generation"], 5)
+        self.assertEqual(release["chunks"][0]["name"], "startup-hash.arcpak")
+
     def test_valid_windows_and_android_targets(self):
         self.assertEqual(self.validate()["generation"], 5)
         android = copy.deepcopy(self.release)
