@@ -107,10 +107,11 @@ export function BuildCreationDialog({
   const availableTargets = Array.from(
     new Set(authored.filter((item) => item.platform === selectedPlatform).map((item) => item.targetId)),
   );
-  const targets = [
-    ...(action !== 'cook' && selectedPlatform === hostPlatform ? [EDITOR_MODULE] : []),
-    ...(legacyOnly ? [] : availableTargets),
-  ];
+  // Primary Build and Cook actions always operate on an authored project
+  // target so they use the complete validate/configure/compile/cook/package
+  // workflow. Editor-module commands are intentionally limited to the
+  // separately named editor-code maintenance actions below.
+  const targets = legacyOnly ? [EDITOR_MODULE] : availableTargets;
   const selectedTarget = targets.includes(target) ? target : (targets[0] ?? '');
   const availableProfiles =
     selectedTarget === EDITOR_MODULE

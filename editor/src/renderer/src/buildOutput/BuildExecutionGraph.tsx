@@ -169,6 +169,13 @@ export function BuildExecutionGraph({
   });
   const selected = model.nodes.find((node) => node.id === selectedId) ?? model.nodes[0];
 
+  useEffect(() => {
+    // Target metadata commonly arrives after the workflow stage has already
+    // rendered. Expand it as soon as it becomes authoritative instead of
+    // leaving the graph stuck in its initial stage-only state.
+    if (run.targetGraph) setShowTargets(true);
+  }, [run.id, run.targetGraph]);
+
   const fit = useCallback(() => {
     const rect = canvasRef.current?.getBoundingClientRect();
     setViewport(

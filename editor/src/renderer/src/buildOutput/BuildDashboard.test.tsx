@@ -337,6 +337,47 @@ describe('Build Monitor BM3', () => {
     expect(screen.getByRole('button', { name: /cook · Debug/ })).toHaveAttribute('aria-current', 'true');
   });
 
+  it('selects every newly started build and refreshes its details when it enters the monitor', async () => {
+    const started: BuildMonitorRun = {
+      ...current,
+      id: 'new-run',
+      startedAt: '2026-11-20T12:00:00.000Z',
+      stages: [
+        { id: 'new-run:validate', name: 'validate', state: 'running' },
+        { id: 'new-run:configure', name: 'configure', state: 'pending' },
+        { id: 'new-run:compile', name: 'compile', state: 'pending' },
+        { id: 'new-run:cook', name: 'cook', state: 'pending' },
+        { id: 'new-run:package', name: 'package', state: 'pending' },
+      ],
+    };
+    let nextMonitor = monitor;
+    let nextPage = page;
+    const { handlers } = mockApi({
+      monitorSnapshot: vi.fn().mockImplementation(async () => nextMonitor),
+      history: vi.fn().mockImplementation(async () => nextPage),
+      historyDetails: vi
+        .fn()
+        .mockImplementation(async (id: string) => makeDetails(id === started.id ? started : current)),
+    });
+    render(<BuildDashboard presentation="workspace" snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    await screen.findByText('build log for current-run');
+
+    nextMonitor = { ...monitor, revision: 2, activeRunId: started.id, runs: [...monitor.runs, started] };
+    nextPage = { ...page, total: 3, runs: [started, ...page.runs] };
+    handlers[0]({
+      kind: 'run-started',
+      sequence: 20,
+      runId: started.id,
+      timestamp: started.startedAt,
+      run: started,
+    });
+
+    expect(await screen.findByText('build log for new-run')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /build · Shipping/ })[0]).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('region', { name: 'Build execution graph' })).toHaveTextContent('validate');
+    expect(screen.getByRole('region', { name: 'Build execution graph' })).toHaveTextContent('package');
+  });
+
   it('drills into a measured source and filters only text matched in the selected build log', async () => {
     const traced: BuildMonitorRun = {
       ...current,

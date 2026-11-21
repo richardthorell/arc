@@ -1575,6 +1575,7 @@
   position: relative;
   gap: 10px;
   padding: 12px 14px 16px;
+  overflow: hidden;
 }
 
 .build-monitor-floating-close {
@@ -1746,10 +1747,10 @@
 .build-execution {
   display: flex;
   flex-direction: column;
-  flex: 0 0 auto;
+  flex: 3 1 0;
   min-width: 0;
-  min-height: 410px;
-  max-height: 62vh;
+  min-height: 260px;
+  max-height: none;
   overflow: hidden;
   border: 1px solid #2c3f4e;
   border-radius: 6px;
@@ -2058,9 +2059,11 @@
 }
 
 .build-monitor-output {
-  flex: 0 0 auto;
-  height: 330px;
+  flex: 2 1 0;
+  min-height: 220px;
+  height: auto;
   max-height: none;
+  resize: none;
 }
 
 .build-monitor-details {
@@ -2138,6 +2141,14 @@
 
   .build-execution {
     min-height: 360px;
+  }
+
+  .build-monitor-content {
+    overflow: auto;
+  }
+
+  .build-monitor-output {
+    flex-basis: 300px;
   }
 
   .build-monitor-compact-facts {

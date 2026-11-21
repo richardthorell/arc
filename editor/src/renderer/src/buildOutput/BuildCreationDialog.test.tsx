@@ -75,6 +75,28 @@ function open(action: BuildDialogAction = 'build', platform = 'android', project
 }
 
 describe('Build project configuration', () => {
+  it('defaults Build to the authored project workflow instead of the editor-module command', async () => {
+    const { onClose } = open('build', 'windows');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Build' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Build target' })).toHaveTextContent('windows-x64-vulkan');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    await waitFor(() =>
+      expect(executeWorkflow).toHaveBeenCalledWith(
+        {
+          action: 'build',
+          profile: 'windows-shipping',
+          targetId: 'windows-x64-vulkan',
+          destination: 'none',
+          sessionId: '',
+        },
+        options.authority,
+      ),
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it('builds an available Windows package with authored profile and no device', async () => {
     localStorage.setItem(
       'arc.build.dialog.v1:Game A',

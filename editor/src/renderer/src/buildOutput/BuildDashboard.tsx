@@ -141,7 +141,7 @@ export function BuildDashboard({
   const detailRef = useRef<DetailView | null>(null);
   const detailRequest = useRef(0);
   const reading = useRef(false);
-  const followNextRun = useRef(false);
+  const pendingRunSelection = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!api) {
@@ -153,15 +153,23 @@ export function BuildDashboard({
       const [nextMonitor, nextHistory] = await Promise.all([api.monitorSnapshot(), api.history(0, 100)]);
       if (request !== overviewRequest.current) return;
       const changedProject = projectRef.current !== undefined && projectRef.current !== nextHistory.projectGuid;
+      if (changedProject) pendingRunSelection.current = null;
       projectRef.current = nextHistory.projectGuid;
       setMonitor(nextMonitor);
       setHistory(nextHistory);
       const available = new Set([...nextMonitor.runs, ...nextHistory.runs].map((run) => run.id));
-      setSelectedRunId((current) =>
-        !changedProject && current && available.has(current)
+      const pending = changedProject ? null : pendingRunSelection.current;
+      const resolvedPending = Boolean(pending && available.has(pending));
+      setSelectedRunId((current) => {
+        if (pending) return pending;
+        return !changedProject && current && available.has(current)
           ? current
-          : (nextMonitor.activeRunId ?? nextHistory.runs[0]?.id ?? nextMonitor.runs.at(-1)?.id ?? null),
-      );
+          : (nextMonitor.activeRunId ?? nextHistory.runs[0]?.id ?? nextMonitor.runs.at(-1)?.id ?? null);
+      });
+      if (resolvedPending) {
+        pendingRunSelection.current = null;
+        setDetailEpoch((value) => value + 1);
+      }
       setError(nextHistory.storageError ?? '');
     } catch (reason) {
       if (request === overviewRequest.current) setError(String(reason));
@@ -190,10 +198,11 @@ export function BuildDashboard({
       }, 150);
     };
     const unsubscribe = api?.onMonitorEvent((event) => {
-      // Only an explicit Build or Retry action may change the user's current
-      // selection. Ordinary background runs never steal focus from history.
-      if (event.kind === 'run-started' && followNextRun.current) {
-        followNextRun.current = false;
+      // A newly started build is the user's active work and must become the
+      // selected run even when it was initiated outside this view. Later
+      // stage/trace events never steal selection from historical inspection.
+      if (event.kind === 'run-started') {
+        pendingRunSelection.current = event.runId;
         setSelectedRunId(event.runId);
       }
       if (
@@ -327,7 +336,6 @@ export function BuildDashboard({
     if (!api || anyActiveRun || !canRetryBuild(run) || retrying) return;
     setRetrying(true);
     setError('');
-    followNextRun.current = true;
     try {
       if (run.source === 'workflow') {
         if (!run.request) throw new Error('This older workflow has no saved retry settings');
@@ -339,11 +347,9 @@ export function BuildDashboard({
       }
       await refresh();
     } catch (reason) {
-      followNextRun.current = false;
       await refresh();
       setError(`Retry failed: ${String(reason)}`);
     } finally {
-      followNextRun.current = false;
       setRetrying(false);
     }
   };
