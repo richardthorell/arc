@@ -161,7 +161,9 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
         return reject("Remote cook manifest contains invalid field types");
     }
 
-    if (manifest.build_id != release.base_build_id || !matching_target(manifest.target, release) ||
+    // C9.1 still validates the packaged base runtime build independently.
+    const auto& cook_build_id = release.cook_build_id.empty() ? release.base_build_id : release.cook_build_id;
+    if (manifest.build_id != cook_build_id || !matching_target(manifest.target, release) ||
         release.cook_manifest_name != manifest.target.name + ".arccookmanifest")
         return reject("Remote cook manifest build, target or filename does not match release");
 

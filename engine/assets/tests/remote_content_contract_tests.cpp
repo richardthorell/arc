@@ -48,6 +48,26 @@ TEST_CASE("C9.1 native remote descriptor accepts shared publisher fixture")
     CHECK(result.release->chunks.size() == 1);
     CHECK(result.release->chunks.front().name == "startup-hash.arcpak");
     CHECK(result.release->cook_manifest.size == 123);
+    CHECK(result.release->cook_build_id == "build-abc"); // legacy descriptor
+}
+
+TEST_CASE("C9.1 optional cookBuildId is distinct from packaged baseBuildId")
+{
+    auto changed = fixture();
+    replace_once(changed, "\"baseBuildId\": \"build-abc\",",
+                 "\"baseBuildId\": \"build-abc\", \"cookBuildId\": \"unsaved-cook-123\",");
+    const auto result = arc::assets::parse_remote_content_release(changed, expectations());
+    REQUIRE(result.succeeded());
+    REQUIRE(result.release);
+    CHECK(result.release->base_build_id == "build-abc");
+    CHECK(result.release->cook_build_id == "unsaved-cook-123");
+
+    replace_once(changed, "unsaved-cook-123", "../unsafe");
+    CHECK_FALSE(arc::assets::parse_remote_content_release(changed, expectations()).succeeded());
+    changed = fixture();
+    replace_once(changed, "\"baseBuildId\": \"build-abc\",",
+                 "\"baseBuildId\": \"build-abc\", \"cookBuildId\": 12,");
+    CHECK_FALSE(arc::assets::parse_remote_content_release(changed, expectations()).succeeded());
 }
 
 TEST_CASE("C9.1 native descriptor rejects mismatched runtime identity and stale generations")

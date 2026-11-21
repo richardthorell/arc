@@ -127,6 +127,12 @@ TEST_CASE("C9.2c2 verifies a full cook generation before exposing artifact VFS a
     REQUIRE(provider);
     CHECK(provider.value()->manifest().artifacts.size() == 1);
     CHECK(provider.value()->provider_generation() == 5);
+    f.release.base_build_id = "unchanged-runtime-package";
+    f.release.cook_build_id = "build-abc";
+    REQUIRE(arc::assets::remote_content_artifact_provider::create(f.release, f.cache, f.files));
+    f.release.cook_build_id = "wrong-content-build";
+    CHECK_FALSE(arc::assets::remote_content_artifact_provider::create(f.release, f.cache, f.files));
+    f.release.cook_build_id = "build-abc";
 
     REQUIRE(f.catalog.mount_remote_generation(f.release, f.cache, f.files));
     auto record = f.catalog.database().query(f.asset, arc::assets::asset_types::terrain);
