@@ -211,9 +211,36 @@ TEST_CASE("workspace documents component operations and read only projects are h
         REQUIRE(workspace.payload_json.find("\"documents\":[{") != std::string::npos);
         REQUIRE(workspace.payload_json.find("\"dirty\":true") != std::string::npos);
 
+        // Live Play L1.3a reuses this exact native autosave command: snapshot
+        // unsaved authoring transforms without marking the scene saved.
+        const auto entity = host->selected_entity_snapshot().entity;
+        auto unsaved_transform = *host->selected_entity_snapshot().transform;
+        unsaved_transform.position = {4.0f, 5.0f, 6.0f};
+        arc::editor::host_set_transform_command set_transform{};
+        set_transform.entity = entity;
+        set_transform.transform = unsaved_transform;
+        REQUIRE(host->execute(set_transform).succeeded);
+        const auto before_capture = host->scene_snapshot();
         const auto recovery_path = root / "recovery" / "scene.arcscene";
         REQUIRE(host->execute(arc::editor::host_autosave_scene_command{.path = recovery_path}).succeeded);
         REQUIRE(std::filesystem::is_regular_file(recovery_path));
+        const auto after_capture = host->scene_snapshot();
+        CHECK(after_capture.scene_revision == before_capture.scene_revision);
+        CHECK(after_capture.active_scene_path == before_capture.active_scene_path);
+        CHECK(after_capture.dirty == before_capture.dirty);
+        nlohmann::json captured_scene;
+        std::ifstream captured_input(recovery_path);
+        captured_input >> captured_scene;
+        CHECK(captured_scene.at("format") == "arc.scene");
+        CHECK(captured_scene.at("scene").at("id") == before_capture.scene_guid);
+        CHECK(std::any_of(captured_scene.at("entities").begin(), captured_scene.at("entities").end(),
+                          [](const nlohmann::json& record)
+                          {
+                              const auto& components = record.at("components");
+                              if (!components.contains("Transform")) return false;
+                              const auto& position = components.at("Transform").at("position");
+                              return position == nlohmann::json::array({4.0f, 5.0f, 6.0f});
+                          }));
         REQUIRE(host->execute(arc::editor::host_open_recovery_scene_command{
                                   .path = recovery_path, .original_path = root / "assets" / "scene.arcscene"})
                     .succeeded);
