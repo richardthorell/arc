@@ -227,9 +227,10 @@ describe('Windows Shipping workflow', () => {
     fs.mkdirSync(assetsDirectory, { recursive: true });
     fs.writeFileSync(
       path.join(root, 'arc-development-sdk.vcxproj'),
-      '<Project><ItemGroup><ProjectReference Include="engine\\assets\\arc-assets.vcxproj" /></ItemGroup></Project>',
+      '<Project><ItemGroup><ProjectReference Include="engine\\assets\\arc-assets.vcxproj" /><ProjectReference Include="ZERO_CHECK.vcxproj" /></ItemGroup></Project>',
     );
     fs.writeFileSync(path.join(assetsDirectory, 'arc-assets.vcxproj'), '<Project />');
+    fs.writeFileSync(path.join(root, 'ZERO_CHECK.vcxproj'), '<Project />');
 
     expect(readMsbuildProjectGraph(root, 'Shipping', 'arc-development-sdk')).toMatchObject({
       generator: 'MSBuild',
@@ -257,6 +258,7 @@ describe('Windows Shipping workflow', () => {
     const artifact = path.join(root, 'engine', 'assets', 'Shipping', 'arc-assets.lib');
     observer.accept('  arc-assets.vcxproj -> ', 'stdout');
     observer.accept(`${artifact}\n`, 'stdout');
+    observer.accept(`  ZERO_CHECK.vcxproj -> ${path.join(root, 'ZERO_CHECK.stamp')}\n`, 'stdout');
     observer.accept(`  outside.vcxproj -> ${path.join(path.dirname(root), 'outside.lib')}\n`, 'stdout');
     expect(observed).toHaveBeenCalledExactlyOnceWith('arc-assets', artifact);
   });

@@ -1829,7 +1829,8 @@
 }
 
 .build-stage-gantt {
-  padding: 12px;
+  box-sizing: border-box;
+  padding: 12px 28px 12px 12px;
 }
 
 .build-stage-gantt > header,

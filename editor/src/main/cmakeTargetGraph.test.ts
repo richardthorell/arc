@@ -33,6 +33,7 @@ function fixture() {
             { id: 'root', name: 'arc-runtime-output', jsonFile: 'target-root.json' },
             { id: 'game', name: 'game', jsonFile: 'target-game.json' },
             { id: 'core', name: 'arc_core', jsonFile: 'target-core.json' },
+            { id: 'zero', name: 'ZERO_CHECK', jsonFile: 'target-zero.json' },
             { id: 'unrelated', name: 'test_runner', jsonFile: 'target-test.json' },
           ],
         },
@@ -47,7 +48,10 @@ function fixture() {
       dependencies: dependencies.map((dependency) => ({ id: dependency })),
       artifacts: artifacts.map((artifact) => ({ path: artifact })),
     });
-  fs.writeFileSync(path.join(reply, 'target-root.json'), node('root', 'arc-runtime-output', 'UTILITY', ['game'], []));
+  fs.writeFileSync(
+    path.join(reply, 'target-root.json'),
+    node('root', 'arc-runtime-output', 'UTILITY', ['game', 'zero'], []),
+  );
   fs.writeFileSync(
     path.join(reply, 'target-game.json'),
     node('game', 'game', 'EXECUTABLE', ['core'], ['Shipping/game.exe']),
@@ -75,6 +79,7 @@ describe('CMake File API target graph', () => {
       ['core', 'arc_core', []],
     ]);
     expect(graph?.nodes.find((item) => item.name === 'test_runner')).toBeUndefined();
+    expect(graph?.nodes.find((item) => item.name === 'ZERO_CHECK')).toBeUndefined();
     expect(readCMakeTargetGraph(buildDir, 'Debug', 'arc-runtime-output')).toBeNull();
     expect(readCMakeTargetGraph(buildDir, 'Shipping', 'missing')).toBeNull();
   });

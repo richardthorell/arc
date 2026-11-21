@@ -215,7 +215,9 @@ function WorkflowTaskRows({
       {task.targetGraph &&
         !collapsed &&
         task.targetGraph.nodes
-          .filter((target) => target.id !== task.targetGraph?.rootTargetId)
+          .filter(
+            (target) => target.id !== task.targetGraph?.rootTargetId && target.name.toLowerCase() !== 'zero_check',
+          )
           .map((target) => {
             const observedAt = target.artifactObservedAt ? Date.parse(target.artifactObservedAt) : NaN;
             const observedOffset = Number.isFinite(observedAt) ? Math.max(0, observedAt - runStartedAt) : undefined;

@@ -51,6 +51,13 @@ const workflow = (): BuildMonitorRun => ({
                 artifacts: ['engine/assets/Shipping/arc-assets.lib'],
                 artifactObservedAt: '2026-11-20T12:00:00.220Z',
               },
+              {
+                id: 'zero-check',
+                name: 'ZERO_CHECK',
+                type: 'UTILITY',
+                dependencies: [],
+                artifacts: [],
+              },
             ],
           },
         },
@@ -82,6 +89,7 @@ describe('BuildExecutionTimeline', () => {
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('Build SDK');
     expect(screen.queryByText('configure', { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText('arc-assets')).toBeInTheDocument();
+    expect(screen.queryByText('ZERO_CHECK')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Collapse Build SDK modules' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
     expect(screen.getByRole('button', { name: 'Collapse compile subtasks' })).toHaveAttribute('aria-expanded', 'true');

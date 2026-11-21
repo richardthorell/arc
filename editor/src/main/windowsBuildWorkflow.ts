@@ -118,7 +118,7 @@ export class SdkModuleOutputObserver {
       const arrow = line.lastIndexOf(' -> ');
       if (arrow < 0) continue;
       const project = /([A-Za-z0-9_.+-]{1,128})\.vcxproj\s*$/iu.exec(line.slice(0, arrow));
-      if (!project) continue;
+      if (!project || project[1].toLowerCase() === 'zero_check') continue;
       const raw = line
         .slice(arrow + 4)
         .trim()
@@ -165,6 +165,7 @@ export function readMsbuildProjectGraph(
         if (!include || /[\0\r\n]/u.test(include) || path.extname(include).toLowerCase() !== '.vcxproj') continue;
         const resolved = path.resolve(path.dirname(filename), include);
         if (!inside(root, resolved) || !fs.existsSync(resolved)) continue;
+        if (path.basename(resolved, path.extname(resolved)).toLowerCase() === 'zero_check') continue;
         const dependencyId = id(resolved);
         if (!dependencies.includes(dependencyId)) dependencies.push(dependencyId);
         if (!visited.has(dependencyId)) pending.push(resolved);
