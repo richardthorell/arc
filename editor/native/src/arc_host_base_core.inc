@@ -3567,6 +3567,8 @@ host_response arc_host::execute(const host_command_envelope& command)
                 if (!saved.succeeded) return fail(saved.message.empty() ? "Scene autosave failed" : saved.message);
                 return success("{\"path\":" + to_json_string(path.generic_string()) +
                                ",\"sceneGuid\":" + to_json_string(ecs::to_string(state_->scene.scene_guid)) +
+                               ",\"sourceScenePath\":" +
+                               to_json_string(state_->scene.active_scene_path.generic_string()) +
                                ",\"historyRevision\":" + std::to_string(state_->history.snapshot().revision) + '}');
             }
             else if constexpr (std::is_same_v<command_type, host_open_recovery_scene_command>)

@@ -57,7 +57,7 @@ describe('LivePlaySceneBaselineStore', () => {
       fs.writeFileSync(payload.path as string, JSON.stringify(scene()));
       return {
         succeeded: true,
-        payload: { sceneGuid: scene().scene.id, historyRevision: 9 },
+        payload: { sceneGuid: scene().scene.id, historyRevision: 9, sourceScenePath: original },
         sceneRevision: 18,
       };
     });
@@ -65,6 +65,7 @@ describe('LivePlaySceneBaselineStore', () => {
     const captured = await store.prepare({ ...identity, projectRoot });
     expect(command).toHaveBeenCalledOnce();
     expect(captured.sceneGuid).toBe(scene().scene.id);
+    expect(captured.sourceScenePath).toBe(original);
     expect(captured.sceneRevision).toBe(18);
     expect(captured.historyRevision).toBe(9);
     expect(captured.entityCount).toBe(1);

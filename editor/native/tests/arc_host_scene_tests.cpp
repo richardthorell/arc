@@ -222,7 +222,9 @@ TEST_CASE("workspace documents component operations and read only projects are h
         REQUIRE(host->execute(set_transform).succeeded);
         const auto before_capture = host->scene_snapshot();
         const auto recovery_path = root / "recovery" / "scene.arcscene";
-        REQUIRE(host->execute(arc::editor::host_autosave_scene_command{.path = recovery_path}).succeeded);
+        const auto autosave = host->execute(arc::editor::host_autosave_scene_command{.path = recovery_path});
+        REQUIRE(autosave.succeeded);
+        CHECK(nlohmann::json::parse(autosave.payload_json).at("sourceScenePath") == before_capture.active_scene_path);
         REQUIRE(std::filesystem::is_regular_file(recovery_path));
         const auto after_capture = host->scene_snapshot();
         CHECK(after_capture.scene_revision == before_capture.scene_revision);
