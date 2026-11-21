@@ -737,9 +737,9 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     forged.ephemeral_scene->bytes.assign(wrong_bytes.begin(), wrong_bytes.end());
     CHECK_FALSE(cooker.cook(forged).succeeded());
     auto swapped_identity = request;
-    const auto asset_identity_document =
-        std::string(R"({"format":"arc.scene","scene":{"id":")") + to_string(asset_guid) +
-        R"("},"entities":[]})";
+    auto asset_identity_document = std::string(R"({"format":"arc.scene","scene":{"id":")");
+    asset_identity_document += to_string(asset_guid);
+    asset_identity_document += R"("},"entities":[]})";
     const auto wrong_id_bytes =
         std::as_bytes(std::span(asset_identity_document.data(), asset_identity_document.size()));
     swapped_identity.ephemeral_scene->bytes.assign(wrong_id_bytes.begin(), wrong_id_bytes.end());

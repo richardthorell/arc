@@ -285,19 +285,21 @@ cook_result asset_cooker::cook(const cook_request& request)
         // scene.id, never the registry GUID or an untrusted claimed identity.
         const auto document_scene_id = [](const json& document) -> std::optional<asset_guid>
         {
-            if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
-                document["format"] != "arc.scene" || !document.contains("scene") ||
-                !document["scene"].is_object() || !document["scene"].contains("id") ||
-                !document["scene"]["id"].is_string())
+            if (!document.is_object()) return std::nullopt;
+            const auto format = document.find("format");
+            if (format == document.end() || !format->is_string() || *format != "arc.scene")
                 return std::nullopt;
+            const auto scene = document.find("scene");
+            if (scene == document.end() || !scene->is_object()) return std::nullopt;
+            const auto id = scene->find("id");
+            if (id == scene->end() || !id->is_string()) return std::nullopt;
             // The existing UUID parser checks scene.id syntax, not asset identity.
-            return parse_asset_guid(document["scene"]["id"].get<std::string>());
+            return parse_asset_guid(id->get<std::string>());
         };
         const std::string_view bytes(reinterpret_cast<const char*>(source->bytes.data()), source->bytes.size());
         const auto document = json::parse(bytes.begin(), bytes.end(), nullptr, false);
-        const auto saved_source = snapshot->source_path.is_absolute()
-                                      ? snapshot->source_path
-                                      : registry.project_root / snapshot->source_path;
+        auto saved_source = snapshot->source_path;
+        if (!saved_source.is_absolute()) saved_source = registry.project_root / saved_source;
         std::error_code size_error;
         const auto saved_size = std::filesystem::file_size(saved_source, size_error);
         if (size_error || saved_size == 0 || saved_size > max_ephemeral_scene_bytes)
