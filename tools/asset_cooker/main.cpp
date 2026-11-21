@@ -554,7 +554,7 @@ struct command_line
     std::string profile{"windows-x64-vulkan"};
     std::vector<std::string> roots;
     std::filesystem::path ephemeral_scene_path;
-    std::string ephemeral_scene_guid;
+    std::string ephemeral_asset_guid;
     bool fail_on_warning{};
     bool require_shared{};
     bool json{};
@@ -566,7 +566,7 @@ void print_usage()
                  "  --project <path> --root <guid-or-path> --profile <name> --output <path>\n"
                  "  --manifest <path> --fail-on-warning --require-shared-cache --json\n"
                  "  Development cook only: --ephemeral-scene <absolute-private-file> "
-                 "--ephemeral-scene-guid <registered-scene-guid>\n"
+                 "--ephemeral-asset-guid <registered-asset-guid>\n"
                  "  cache subcommands: stats, verify, prune\n";
 }
 
@@ -621,10 +621,10 @@ std::optional<command_line> parse_command_line(int argc, char** argv)
             else
                 return std::nullopt;
         }
-        else if (argument == "--ephemeral-scene-guid")
+        else if (argument == "--ephemeral-asset-guid")
         {
             if (const auto* v = value())
-                result.ephemeral_scene_guid = v;
+                result.ephemeral_asset_guid = v;
             else
                 return std::nullopt;
         }
@@ -736,7 +736,7 @@ void register_processors(asset_cooker& cooker)
 std::optional<ephemeral_scene_cook_source>
 read_ephemeral_scene(const command_line& command, const std::filesystem::path& project_root, std::string& error)
 {
-    const auto guid = parse_asset_guid(command.ephemeral_scene_guid);
+    const auto guid = parse_asset_guid(command.ephemeral_asset_guid);
     const auto source = command.ephemeral_scene_path;
     if (!guid || !source.is_absolute() || !source.lexically_normal().is_absolute())
     {
@@ -781,9 +781,9 @@ read_ephemeral_scene(const command_line& command, const std::filesystem::path& p
     if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
         document["format"] != "arc.scene" || !document.contains("scene") || !document["scene"].is_object() ||
         !document["scene"].contains("id") || !document["scene"]["id"].is_string() ||
-        document["scene"]["id"].get<std::string>() != to_string(*guid))
+        !parse_asset_guid(document["scene"]["id"].get<std::string>()))
     {
-        error = "Ephemeral authoring scene identity does not match the registered asset GUID";
+        error = "Ephemeral authoring scene is missing a valid scene.id";
         return std::nullopt;
     }
     return ephemeral_scene_cook_source{.asset = *guid, .bytes = std::move(bytes)};
@@ -890,9 +890,9 @@ int main(int argc, char** argv)
     const auto cache_root = project_context.value().asset_cache_root;
 
     std::optional<ephemeral_scene_cook_source> ephemeral_scene;
-    if (!command.ephemeral_scene_path.empty() || !command.ephemeral_scene_guid.empty())
+    if (!command.ephemeral_scene_path.empty() || !command.ephemeral_asset_guid.empty())
     {
-        if (command.command != "cook" || command.ephemeral_scene_path.empty() || command.ephemeral_scene_guid.empty() ||
+        if (command.command != "cook" || command.ephemeral_scene_path.empty() || command.ephemeral_asset_guid.empty() ||
             selected_profile == descriptor.value().cook_profiles.end() ||
             selected_profile->configuration == "Shipping" || command.output.empty())
         {

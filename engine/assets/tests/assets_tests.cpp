@@ -669,7 +669,10 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     asset_fixture fixture(project);
     const auto scene = fixture.manager.find("assets/scenes/Level.arcscene");
     REQUIRE(scene);
-    REQUIRE(scene->guid == scene_guid);
+    // Scene document identity and registry/.arcmeta identity are independent.
+    const auto asset_guid = scene->guid;
+    REQUIRE(asset_guid.valid());
+    CHECK(asset_guid != scene_guid);
     derived_data_cache cache({.root = project.root / ".arc" / "cook-cache"});
     auto count = std::make_shared<std::size_t>(0);
     asset_cooker cooker(fixture.manager, cache);
@@ -680,15 +683,15 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     dev.configuration = cook_configuration::development;
     const auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(modified.data()), modified.size());
     const cook_request request{
-        .roots = {scene_guid},
+        .roots = {asset_guid},
         .target = dev,
         .output = project.root / "ephemeral",
-        .ephemeral_scene = ephemeral_scene_cook_source{.asset = scene_guid, .bytes = {bytes.begin(), bytes.end()}}};
+        .ephemeral_scene = ephemeral_scene_cook_source{.asset = asset_guid, .bytes = {bytes.begin(), bytes.end()}}};
     const auto first = cooker.cook(request);
     REQUIRE(first.succeeded());
     CHECK(first.cooked == 1);
     REQUIRE(first.manifest.artifacts.size() == 1);
-    CHECK(first.manifest.artifacts.front().asset == scene_guid);
+    CHECK(first.manifest.artifacts.front().asset == asset_guid);
     cache_error read_error;
     const auto cooked = cache.get_blob(first.manifest.artifacts.front().hash, read_error);
     REQUIRE(cooked);
@@ -709,8 +712,8 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     std::ifstream authored_file(project.assets / "scenes/Level.arcscene", std::ios::binary);
     const std::string original((std::istreambuf_iterator<char>(authored_file)), std::istreambuf_iterator<char>());
     CHECK(original == authored);
-    REQUIRE(fixture.manager.find(scene_guid));
-    CHECK(fixture.manager.find(scene_guid)->source_hash == scene->source_hash);
+    REQUIRE(fixture.manager.find(asset_guid));
+    CHECK(fixture.manager.find(asset_guid)->source_hash == scene->source_hash);
 
     auto shipping = request;
     shipping.target.configuration = cook_configuration::shipping;
@@ -733,6 +736,14 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     const auto wrong_bytes = std::as_bytes(std::span(wrong_content.data(), wrong_content.size()));
     forged.ephemeral_scene->bytes.assign(wrong_bytes.begin(), wrong_bytes.end());
     CHECK_FALSE(cooker.cook(forged).succeeded());
+    auto swapped_identity = request;
+    const auto asset_identity_document =
+        std::string(R"({"format":"arc.scene","scene":{"id":")") + to_string(asset_guid) +
+        R"("},"entities":[]})";
+    const auto wrong_id_bytes =
+        std::as_bytes(std::span(asset_identity_document.data(), asset_identity_document.size()));
+    swapped_identity.ephemeral_scene->bytes.assign(wrong_id_bytes.begin(), wrong_id_bytes.end());
+    CHECK_FALSE(cooker.cook(swapped_identity).succeeded());
 }
 
 TEST_CASE("cache pruning preserves pinned blobs")

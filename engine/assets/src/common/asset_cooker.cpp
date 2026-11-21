@@ -280,19 +280,42 @@ cook_result asset_cooker::cook(const cook_request& request)
                                        "a Development target"};
             return result;
         }
-        // The API must enforce identity too, not just the trusted arc-cook
-        // command-line entry. Otherwise callers could cook a different scene
-        // document under this asset's GUID and poison its action cache.
+        // Scene asset GUIDs live in .arcmeta; scene.id is a separate UUID
+        // inside the serialized scene. Compare against the saved document's
+        // scene.id, never the registry GUID or an untrusted claimed identity.
+        const auto document_scene_id = [](const json& document) -> std::optional<asset_guid>
+        {
+            if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
+                document["format"] != "arc.scene" || !document.contains("scene") ||
+                !document["scene"].is_object() || !document["scene"].contains("id") ||
+                !document["scene"]["id"].is_string())
+                return std::nullopt;
+            // The existing UUID parser checks scene.id syntax, not asset identity.
+            return parse_asset_guid(document["scene"]["id"].get<std::string>());
+        };
         const std::string_view bytes(reinterpret_cast<const char*>(source->bytes.data()), source->bytes.size());
         const auto document = json::parse(bytes.begin(), bytes.end(), nullptr, false);
-        if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
-            document["format"] != "arc.scene" || !document.contains("scene") || !document["scene"].is_object() ||
-            !document["scene"].contains("id") || !document["scene"]["id"].is_string() ||
-            document["scene"]["id"] != to_string(source->asset))
+        const auto saved_source = snapshot->source_path.is_absolute()
+                                      ? snapshot->source_path
+                                      : registry.project_root / snapshot->source_path;
+        std::error_code size_error;
+        const auto saved_size = std::filesystem::file_size(saved_source, size_error);
+        if (size_error || saved_size == 0 || saved_size > max_ephemeral_scene_bytes)
         {
             result.error = {.code = asset_error_code::invalid_request,
                             .guid = source->asset,
-                            .message = "Ephemeral authoring scene document does not match the registered root GUID"};
+                            .message = "Registered authored scene cannot be verified for ephemeral cooking"};
+            return result;
+        }
+        std::ifstream saved_input(saved_source, std::ios::binary);
+        const auto saved_document = saved_input ? json::parse(saved_input, nullptr, false) : json{};
+        const auto captured_id = document_scene_id(document);
+        const auto saved_id = document_scene_id(saved_document);
+        if (!captured_id || !saved_id || *captured_id != *saved_id)
+        {
+            result.error = {.code = asset_error_code::invalid_request,
+                            .guid = source->asset,
+                            .message = "Ephemeral scene.id differs from the registered authored scene document"};
             return result;
         }
     }

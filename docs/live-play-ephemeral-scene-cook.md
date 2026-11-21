@@ -7,13 +7,14 @@ Tracking: [#1198](https://github.com/richardthorell/arc/issues/1198), [#1194](ht
 L1.3a (#1211) captures the unsaved Authoring World privately, but a runtime
 cannot consume raw `.arcscene` files. This PR introduces a **Development-only**
 ephemeral source override inside the existing native asset cooker. A captured
-scene's bytes replace **only** the source of its existing registered scene GUID
+scene's bytes replace **only** the source of its existing registered scene asset GUID
 during that cook transaction. The normal processors, dependency graph, target
 profile, DDC/cache keys, `.arccookmanifest` and `.arcpak` packaging remain
 authoritative; there is no second scene database or binary serializer.
 
-- `cook_request.ephemeral_scene` accepts a single registered root scene GUID
-  and bounded (16 MiB) immutable authoring bytes.
+- `cook_request.ephemeral_scene` accepts a registered scene **asset GUID**
+  from the `.arcmeta` registry and bounded (16 MiB) immutable authoring bytes.
+  The scene document's distinct `scene.id` must match the saved scene document.
 - The source override's SHA-256 is fed into the existing cook action key.
   Cached results for saved versions cannot be reused for modified unsaved
   bytes. A second identical override may reuse its verified DDC action.
@@ -25,13 +26,13 @@ authoritative; there is no second scene database or binary serializer.
   missing roots, empty/oversized bytes, and non-scene asset types fail closed.
 - The local `arc-cook cook` CLI can be invoked by trusted editor main-process
   orchestration using `--ephemeral-scene <private absolute path>`
-  and `--ephemeral-scene-guid <registered scene GUID>`. It accepts only
+  and `--ephemeral-asset-guid <registered scene asset GUID>`. It accepts only
   Development profiles and an output directory **outside** the project.
   It does not rename, autosave, rewrite, or commit the original scene.
 - No runtime argv contains source paths; this CLI invocation is editor-side
-  staging only. The captured scene's GUID must match the registered source
-  asset GUID. Tests cover source provenance, cache isolation and Shipping
-  refusal.
+  staging only. The registered **asset GUID** selects the cook root and the
+  captured `scene.id` must match that asset's saved scene document.
+  Tests cover provenance, cache isolation and Shipping refusal.
 
 ## Boundaries and next integration
 
