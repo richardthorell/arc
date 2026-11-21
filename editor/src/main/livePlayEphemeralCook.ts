@@ -163,7 +163,6 @@ export async function prepareLivePlayCookedStaging(
     !baseline.sessionId ||
     !baseline.instanceId ||
     !inside(privateRoot, fs.realpathSync(baseline.scenePath)) ||
-    !inside(path.parse(projectRoot).root, privateRoot) ||
     inside(projectRoot, privateRoot)
   )
     throw new Error('Live Play baseline does not belong to this project, profile or private session');
