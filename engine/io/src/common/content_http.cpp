@@ -167,7 +167,6 @@ content_http_validation validate_content_http_response(const content_http_reques
     return {};
 }
 
-
 namespace
 {
 constexpr std::uint64_t maximum_release_descriptor_bytes = 8ull * 1024ull * 1024ull;
@@ -182,7 +181,8 @@ bool valid_release_guid(std::string_view guid) noexcept
         {
             if (c != '-') return false;
         }
-        else if (!(ascii_digit(c) || (c >= 'a' && c <= 'f'))) return false;
+        else if (!(ascii_digit(c) || (c >= 'a' && c <= 'f')))
+            return false;
     }
     return true;
 }
@@ -192,11 +192,9 @@ bool valid_release_profile(std::string_view profile) noexcept
     if (profile.empty() || profile.size() > 128 || profile == "." || profile == ".." ||
         !std::isalnum(static_cast<unsigned char>(profile.front())))
         return false;
-    return std::all_of(profile.begin(), profile.end(), [](unsigned char c)
-                       {
-                           return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                                  (c >= '0' && c <= '9') || c == '_' || c == '-';
-                       });
+    return std::all_of(
+        profile.begin(), profile.end(), [](unsigned char c)
+        { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'; });
 }
 } // namespace
 
@@ -222,8 +220,7 @@ content_http_validation validate_content_http_release_response(const content_htt
         return invalid(content_http_error_code::rejected_redirect, "Mutable release lookup cannot redirect");
     if (response.status == 401 || response.status == 403)
         return invalid(content_http_error_code::unauthorized, "Release descriptor access denied");
-    if (response.status == 404)
-        return invalid(content_http_error_code::not_found, "No release descriptor for target");
+    if (response.status == 404) return invalid(content_http_error_code::not_found, "No release descriptor for target");
     if (response.status == 429 || response.status == 503)
         return invalid(content_http_error_code::rate_limited, "Release descriptor server temporarily unavailable");
     if (response.status != 200)

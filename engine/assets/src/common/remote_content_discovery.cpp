@@ -7,10 +7,11 @@
 namespace arc::assets
 {
 
-jobs::job_future<remote_release_discovery_result>
-discover_remote_release(jobs::job_system& jobs, std::string origin, remote_content_expectations expectations,
-                        io::content_http_limits limits, jobs::cancellation_token cancellation,
-                        remote_release_fetch_executor executor)
+jobs::job_future<remote_release_discovery_result> discover_remote_release(jobs::job_system& jobs, std::string origin,
+                                                                          remote_content_expectations expectations,
+                                                                          io::content_http_limits limits,
+                                                                          jobs::cancellation_token cancellation,
+                                                                          remote_release_fetch_executor executor)
 {
     // A general worker waits on the dedicated IO worker. Keep cancellation out
     // of the coordinator descriptor so it always returns a structured failure.
@@ -29,10 +30,9 @@ discover_remote_release(jobs::job_system& jobs, std::string origin, remote_conte
                 return result;
             }
 
-            io::content_http_release_request request{
-                .origin = std::move(origin),
-                .project_guid = expectations.project_guid,
-                .target_profile = expectations.target.cook_profile};
+            io::content_http_release_request request{.origin = std::move(origin),
+                                                     .project_guid = expectations.project_guid,
+                                                     .target_profile = expectations.target.cook_profile};
             const auto preflight = io::validate_content_http_release_request(request, limits);
             if (!preflight.succeeded())
             {
@@ -52,9 +52,8 @@ discover_remote_release(jobs::job_system& jobs, std::string origin, remote_conte
             const auto waited = future.handle().wait_result();
             if (!waited.succeeded())
             {
-                result.transport_error = cancellation.stop_requested()
-                                             ? io::content_http_error_code::cancelled
-                                             : io::content_http_error_code::network_failure;
+                result.transport_error = cancellation.stop_requested() ? io::content_http_error_code::cancelled
+                                                                       : io::content_http_error_code::network_failure;
                 result.error = "Release lookup job did not complete";
                 return result;
             }
@@ -72,7 +71,8 @@ discover_remote_release(jobs::job_system& jobs, std::string origin, remote_conte
             if (!fetched.succeeded())
             {
                 result.transport_error = fetched.validation.code;
-                result.error = fetched.validation.message.empty() ? "Release lookup failed" : fetched.validation.message;
+                result.error =
+                    fetched.validation.message.empty() ? "Release lookup failed" : fetched.validation.message;
                 return result;
             }
             if (cancellation.stop_requested())

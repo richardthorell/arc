@@ -32,28 +32,24 @@ std::string descriptor_fixture()
     return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
 }
 
-arc::assets::remote_release_fetch_executor stub_fetch(std::string json,
-                                                      unsigned int status = 200,
-                                                      std::string redirect = {},
-                                                      std::string content_length = {})
+arc::assets::remote_release_fetch_executor stub_fetch(std::string json, unsigned int status = 200,
+                                                      std::string redirect = {}, std::string content_length = {})
 {
-    return [json = std::move(json), status, redirect = std::move(redirect),
-            content_length = std::move(content_length)](
-               arc::jobs::job_system& jobs, arc::io::content_http_release_request request,
-               arc::io::content_http_limits, arc::jobs::cancellation_token)
+    return [json = std::move(json), status, redirect = std::move(redirect), content_length = std::move(content_length)](
+               arc::jobs::job_system& jobs, arc::io::content_http_release_request request, arc::io::content_http_limits,
+               arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.remote_content.discovery_test", .affinity = arc::jobs::job_affinity::io_thread},
             [json, status, redirect, content_length, request = std::move(request)]()
             {
                 const auto byte_view = std::as_bytes(std::span(json.data(), json.size()));
-                arc::io::content_http_response response{
-                    .status = status,
-                    .content_length = content_length,
-                    .redirect_location = redirect,
-                    .body = arc::io::file_buffer(byte_view.begin(), byte_view.end())};
-                return arc::io::content_http_fetch_result{
-                    .response = std::move(response), .validation = {}};
+                arc::io::content_http_response response{.status = status,
+                                                        .content_length = content_length,
+                                                        .redirect_location = redirect,
+                                                        .body =
+                                                            arc::io::file_buffer(byte_view.begin(), byte_view.end())};
+                return arc::io::content_http_fetch_result{.response = std::move(response), .validation = {}};
             });
     };
 }
@@ -64,9 +60,9 @@ TEST_CASE("C9.2d2 fetches current release and validates C9.1 identity before acq
 {
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
-    const auto result = arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expectations(), {}, {},
-        stub_fetch(descriptor_fixture())).get();
+    const auto result = arc::assets::discover_remote_release(jobs, "https://content.example.org", expectations(), {},
+                                                             {}, stub_fetch(descriptor_fixture()))
+                            .get();
     REQUIRE(result.succeeded());
     REQUIRE(result.release);
     CHECK(result.release->generation == 5);
@@ -81,20 +77,26 @@ TEST_CASE("C9.2d2 refuses stale generation, wrong target and incomplete release"
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     auto expected = expectations();
     expected.minimum_generation = 5;
-    CHECK_FALSE(arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expected, {}, {}, stub_fetch(descriptor_fixture())).get().succeeded());
+    CHECK_FALSE(arc::assets::discover_remote_release(jobs, "https://content.example.org", expected, {}, {},
+                                                     stub_fetch(descriptor_fixture()))
+                    .get()
+                    .succeeded());
 
     expected = expectations();
     expected.target.platform = "android";
-    CHECK_FALSE(arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expected, {}, {}, stub_fetch(descriptor_fixture())).get().succeeded());
+    CHECK_FALSE(arc::assets::discover_remote_release(jobs, "https://content.example.org", expected, {}, {},
+                                                     stub_fetch(descriptor_fixture()))
+                    .get()
+                    .succeeded());
 
     auto incomplete = descriptor_fixture();
     const auto position = incomplete.find("\"complete\": true");
     REQUIRE(position != std::string::npos);
     incomplete.replace(position, std::string("\"complete\": true").size(), "\"complete\": false");
-    CHECK_FALSE(arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expectations(), {}, {}, stub_fetch(incomplete)).get().succeeded());
+    CHECK_FALSE(arc::assets::discover_remote_release(jobs, "https://content.example.org", expectations(), {}, {},
+                                                     stub_fetch(incomplete))
+                    .get()
+                    .succeeded());
 }
 
 TEST_CASE("C9.2d2 cannot bypass transport validation using an injected executor")
@@ -102,21 +104,22 @@ TEST_CASE("C9.2d2 cannot bypass transport validation using an injected executor"
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     auto descriptor = descriptor_fixture();
-    const auto redirected = arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expectations(), {}, {},
-        stub_fetch(descriptor, 302, "https://evil.example.org/current.json")).get();
+    const auto redirected =
+        arc::assets::discover_remote_release(jobs, "https://content.example.org", expectations(), {}, {},
+                                             stub_fetch(descriptor, 302, "https://evil.example.org/current.json"))
+            .get();
     CHECK_FALSE(redirected.succeeded());
     CHECK(redirected.transport_error == arc::io::content_http_error_code::rejected_redirect);
 
-    const auto wrong_length = arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expectations(), {}, {},
-        stub_fetch(descriptor, 200, {}, "1")).get();
+    const auto wrong_length = arc::assets::discover_remote_release(jobs, "https://content.example.org", expectations(),
+                                                                   {}, {}, stub_fetch(descriptor, 200, {}, "1"))
+                                  .get();
     CHECK_FALSE(wrong_length.succeeded());
     CHECK(wrong_length.transport_error == arc::io::content_http_error_code::inconsistent_length);
 
-    const auto missing = arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expectations(), {}, {},
-        stub_fetch(descriptor, 404)).get();
+    const auto missing = arc::assets::discover_remote_release(jobs, "https://content.example.org", expectations(), {},
+                                                              {}, stub_fetch(descriptor, 404))
+                             .get();
     CHECK_FALSE(missing.succeeded());
     CHECK(missing.transport_error == arc::io::content_http_error_code::not_found);
 }
@@ -126,15 +129,16 @@ TEST_CASE("C9.2d2 rejects invalid origin and pre-cancelled requests before fetch
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     auto fetcher = stub_fetch(descriptor_fixture());
-    const auto invalid = arc::assets::discover_remote_release(
-        jobs, "file:///tmp/current.json", expectations(), {}, {}, fetcher).get();
+    const auto invalid =
+        arc::assets::discover_remote_release(jobs, "file:///tmp/current.json", expectations(), {}, {}, fetcher).get();
     CHECK_FALSE(invalid.succeeded());
     CHECK(invalid.transport_error == arc::io::content_http_error_code::invalid_origin);
 
     arc::jobs::cancellation_source source;
     REQUIRE(source.request_cancel());
-    const auto cancelled = arc::assets::discover_remote_release(
-        jobs, "https://content.example.org", expectations(), {}, source.token(), fetcher).get();
+    const auto cancelled = arc::assets::discover_remote_release(jobs, "https://content.example.org", expectations(), {},
+                                                                source.token(), fetcher)
+                               .get();
     CHECK_FALSE(cancelled.succeeded());
     CHECK(cancelled.transport_error == arc::io::content_http_error_code::cancelled);
 }

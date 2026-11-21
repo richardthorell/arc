@@ -29,9 +29,8 @@ struct [[nodiscard]] remote_release_discovery_result
     }
 };
 
-using remote_release_fetch_executor =
-    std::function<jobs::job_future<io::content_http_fetch_result>(
-        jobs::job_system&, io::content_http_release_request, io::content_http_limits, jobs::cancellation_token)>;
+using remote_release_fetch_executor = std::function<jobs::job_future<io::content_http_fetch_result>(
+    jobs::job_system&, io::content_http_release_request, io::content_http_limits, jobs::cancellation_token)>;
 
 /** Request the fixed, no-cache current release endpoint on an IO worker,
  * validate the HTTP framing, then use the existing C9.1 descriptor parser to
