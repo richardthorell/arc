@@ -6,6 +6,7 @@ import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
 import type { NativeLivePlayLaunchContext } from './livePlayNativeHandoff';
 import { writeLivePlayNativeHandoff } from './livePlayNativeHandoff';
 import { LivePlayControlServer, type LivePlayControlStatus } from './livePlayControlServer';
+import { LivePlayBaselineOutcomeGate } from './livePlayBaselineOutcomeGate';
 
 /** Trusted main-process input, never a renderer-supplied executable or argv. */
 export type WindowsLivePlayLaunch = {
@@ -24,6 +25,7 @@ type Session = {
   rejectConnected: ((error: Error) => void) | null;
   connectedTimer: ReturnType<typeof setTimeout> | null;
   stopRequested: boolean;
+  baselineOutcome: LivePlayBaselineOutcomeGate;
 };
 
 const connectionTimeoutMs = 15_000;
@@ -50,10 +52,19 @@ export class WindowsLivePlaySession {
     return { ...this.snapshotValue };
   }
 
-  /** C9/#1140 will invoke this only after a verified cooked scene is available. */
-  offerBaseline(payload: Extract<LivePlayMessage, { type: 'scene.baseline.offer' }>['payload']): boolean {
-    if (this.snapshotValue.state !== 'connected') return false;
-    return this.current?.server.sendBaselineOffer(payload) ?? false;
+  /**
+   * L1.3b2: await a native activation decision for an already-verified cooked
+   * C9 release. Do not call with the L1.3a authored .arcscene snapshot.
+   * The C9 producer is deliberately not wired until #1137/#995 are available.
+   */
+  async awaitBaselineStatus(
+    payload: Extract<LivePlayMessage, { type: 'scene.baseline.offer' }>['payload'],
+    timeoutMs?: number,
+  ): Promise<Extract<LivePlayMessage, { type: 'scene.baseline.status' }>['payload']> {
+    const session = this.current;
+    if (!session || this.snapshotValue.state !== 'connected' || session.stopRequested)
+      throw new Error('Live Play is not connected to a Development runtime');
+    return session.baselineOutcome.waitForStatus(() => session.server.sendBaselineOffer(payload), timeoutMs);
   }
 
   private update(change: Partial<WindowsLivePlaySnapshot>): void {
@@ -81,7 +92,9 @@ export class WindowsLivePlaySession {
       schemaHash: context.schemaHash,
       grantedCapabilities: context.capabilities,
       onMessage: (message) => {
-        if (this.current?.epoch === epoch) this.onMessage(message);
+        if (this.current?.epoch !== epoch) return;
+        if (message.type === 'scene.baseline.status') this.current.baselineOutcome.receive(message.payload);
+        this.onMessage(message);
       },
       onStatus: (status) => this.onServerStatus(epoch, status),
     });
@@ -93,6 +106,7 @@ export class WindowsLivePlaySession {
       rejectConnected: null,
       connectedTimer: null,
       stopRequested: false,
+      baselineOutcome: new LivePlayBaselineOutcomeGate(),
     };
     this.current = session;
     this.update({
@@ -165,6 +179,7 @@ export class WindowsLivePlaySession {
       this.update({ state: 'connected', lastReceivedSequence: status.lastReceivedSequence, error: null });
       session.resolveConnected?.();
     } else if (status.state === 'disconnected' || status.state === 'error') {
+      session.baselineOutcome.cancel('Live Play runtime disconnected before scene activation');
       this.update({
         state: status.state === 'error' ? 'failed' : 'disconnected',
         error: status.lastError ?? 'Development runtime disconnected',
@@ -180,6 +195,7 @@ export class WindowsLivePlaySession {
 
   private onProcessExit(session: Session, message: string): void {
     if (this.current !== session || session.stopRequested) return;
+    session.baselineOutcome.cancel('Live Play runtime exited before scene activation');
     this.update({ state: 'failed', pid: null, error: message });
     session.rejectConnected?.(new Error(message));
     void session.server.stop();
@@ -194,6 +210,7 @@ export class WindowsLivePlaySession {
     }
     this.current = null;
     session.stopRequested = true;
+    session.baselineOutcome.cancel('Live Play stopped before scene activation');
     if (session.connectedTimer) clearTimeout(session.connectedTimer);
     session.rejectConnected?.(new Error('Live Play stopped'));
     this.update({ state: 'stopping' });
