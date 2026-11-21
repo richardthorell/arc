@@ -51,7 +51,7 @@ arc::assets::remote_release_fetch_executor stub_fetch(std::string json,
                     .status = status,
                     .content_length = content_length,
                     .redirect_location = redirect,
-                    .body = {byte_view.begin(), byte_view.end()}};
+                    .body = arc::io::file_buffer(byte_view.begin(), byte_view.end())};
                 return arc::io::content_http_fetch_result{
                     .response = std::move(response), .validation = {}};
             });
