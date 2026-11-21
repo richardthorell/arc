@@ -194,43 +194,47 @@ export function createWindowsBuildWorkflow(
       configure: stage(async (context) => {
         if (!environment) throw new Error('Missing runtime build environment');
         if (environment.development) {
+          await context.runStageTask('development-sdk', 'Build ARC development SDK', () =>
+            command(context, environment.cmake, [
+              '--build',
+              environment.development!.buildDirectory,
+              '--config',
+              context.plan.configuration,
+              '--target',
+              'arc-development-sdk',
+            ]),
+          );
+        }
+        await context.runStageTask('cmake-configure', 'Configure project', async () => {
+          // CMake responds to File API queries as part of this configure step.
+          // Query failure must not turn a valid native build into an editor failure.
+          try {
+            requestCMakeCodemodel(codeDirectory);
+          } catch {
+            // The build remains authoritative even when diagnostics are unavailable.
+          }
           await command(context, environment.cmake, [
-            '--build',
-            environment.development.buildDirectory,
-            '--config',
-            context.plan.configuration,
-            '--target',
-            'arc-development-sdk',
+            '-S',
+            context.authority.projectRoot,
+            '-B',
+            codeDirectory,
+            '-G',
+            environment.generator,
+            '-A',
+            context.plan.architecture === 'arm64' ? 'ARM64' : 'x64',
+            `-DCMAKE_GENERATOR_INSTANCE=${environment.visualStudio}`,
+            `-DCMAKE_PREFIX_PATH=${environment.sdkRoot}`,
+            `-DARC_DIR=${path.join(environment.sdkRoot, 'lib', 'cmake', 'ARC')}`,
+            `-DARC_WORKFLOW_PROFILE=${context.plan.profile}`,
+            `-DCMAKE_CONFIGURATION_TYPES=${context.plan.configuration}`,
           ]);
-        }
-        // CMake responds to File API queries as part of this configure step.
-        // Query failure must not turn a valid native build into an editor failure.
-        try {
-          requestCMakeCodemodel(codeDirectory);
-        } catch {
-          // The build remains authoritative even when diagnostics are unavailable.
-        }
-        await command(context, environment.cmake, [
-          '-S',
-          context.authority.projectRoot,
-          '-B',
-          codeDirectory,
-          '-G',
-          environment.generator,
-          '-A',
-          context.plan.architecture === 'arm64' ? 'ARM64' : 'x64',
-          `-DCMAKE_GENERATOR_INSTANCE=${environment.visualStudio}`,
-          `-DCMAKE_PREFIX_PATH=${environment.sdkRoot}`,
-          `-DARC_DIR=${path.join(environment.sdkRoot, 'lib', 'cmake', 'ARC')}`,
-          `-DARC_WORKFLOW_PROFILE=${context.plan.profile}`,
-          `-DCMAKE_CONFIGURATION_TYPES=${context.plan.configuration}`,
-        ]);
-        try {
-          targetGraph = readCMakeTargetGraph(codeDirectory, context.plan.configuration, 'arc-runtime-output');
-          if (targetGraph) context.publishTargetGraph(targetGraph);
-        } catch {
-          // Missing, malformed, or unsupported File API metadata is nonfatal.
-        }
+          try {
+            targetGraph = readCMakeTargetGraph(codeDirectory, context.plan.configuration, 'arc-runtime-output');
+            if (targetGraph) context.publishTargetGraph(targetGraph);
+          } catch {
+            // Missing, malformed, or unsupported File API metadata is nonfatal.
+          }
+        });
       }),
       compile: stage(async (context) => {
         if (!environment) throw new Error('Missing runtime build environment');

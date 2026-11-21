@@ -121,6 +121,27 @@ describe('project workflow orchestration', () => {
     expect(running[0].stages[0].completedAt).toBeUndefined();
   });
 
+  it('publishes authoritative nested stage tasks while they run', async () => {
+    const { runner, adapters, notify } = setup();
+    adapters.configure!.execute = async (context) => {
+      await context.runStageTask('development-sdk', 'Build ARC development SDK', async () => {});
+      await context.runStageTask('cmake-configure', 'Configure project', async () => {});
+    };
+    const result = await runner.execute(plan(), authority());
+    expect(result.stages[1].tasks).toMatchObject([
+      {
+        id: 'development-sdk',
+        name: 'Build ARC development SDK',
+        state: 'succeeded',
+        startedAt: expect.any(String),
+        completedAt: expect.any(String),
+        durationMs: expect.any(Number),
+      },
+      { id: 'cmake-configure', name: 'Configure project', state: 'succeeded' },
+    ]);
+    expect(notify.mock.calls.some(([snapshot]) => snapshot.stages[1].tasks?.[0]?.state === 'running')).toBe(true);
+  });
+
   it('closes a failing stage at failure time and leaves unstarted stages unmeasured', async () => {
     const { runner, adapters } = setup();
     adapters.compile!.execute = async () => {

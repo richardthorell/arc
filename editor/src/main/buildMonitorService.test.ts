@@ -63,6 +63,34 @@ const workflow = (
 });
 
 describe('BuildMonitorService BM1 event stream', () => {
+  it('clears idle history but rejects clearing an active run', () => {
+    const monitor = new BuildMonitorService();
+    monitor.observeCommand(command(), 'project-a');
+    expect(() => monitor.clearHistory()).toThrow('while a build is running');
+    monitor.observeCommand(
+      command({
+        state: 'succeeded',
+        completedAt: '2026-11-16T12:00:05.000Z',
+        history: [
+          {
+            id: 1,
+            runId: 'command-001',
+            kind: 'build',
+            startedAt: '2026-11-16T12:00:00.000Z',
+            durationMs: 5000,
+            configuration: 'RelWithDebInfo',
+            result: 'succeeded',
+            errorCount: 0,
+            warningCount: 0,
+          },
+        ],
+      }),
+      'project-a',
+    );
+    monitor.clearHistory();
+    expect(monitor.snapshot()).toMatchObject({ activeRunId: null, runs: [], events: [] });
+  });
+
   it('correlates command start, output, diagnostics and completion with one stable ID', () => {
     const observed = vi.fn();
     const monitor = new BuildMonitorService(observed, () => '2026-11-16T12:00:03.000Z');
@@ -243,6 +271,16 @@ describe('BuildMonitorService BM1 event stream', () => {
         startedAt: stageStart,
         completedAt: stageEnd,
         durationMs: 901.25,
+        tasks: [
+          {
+            id: 'development-sdk',
+            name: 'Build ARC development SDK',
+            state: 'succeeded',
+            startedAt: stageStart,
+            completedAt: stageEnd,
+            durationMs: 900,
+          },
+        ],
       },
     ]);
     snapshot.run!.startedAt = startedAt;
@@ -258,6 +296,7 @@ describe('BuildMonitorService BM1 event stream', () => {
       completedAt: stageEnd,
       durationMs: 901.25,
       state: 'succeeded',
+      tasks: [{ id: 'development-sdk', name: 'Build ARC development SDK', durationMs: 900 }],
     });
     expect(result.stages[0].startedAt).not.toBe(mainTime);
     expect(monitor.snapshot().events.filter((event) => event.kind === 'stage-changed')).toHaveLength(1);

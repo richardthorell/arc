@@ -17,6 +17,7 @@ import {
   FolderOpen,
   PackageCheck,
   SlidersHorizontal,
+  Trash2,
 } from 'lucide-react';
 
 import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/buildTypes';
@@ -135,6 +136,7 @@ export function BuildDashboard({
   const [elapsed, setElapsed] = useState(Date.now());
   const [retrying, setRetrying] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
   const projectRef = useRef<string | null | undefined>(undefined);
   const overviewRequest = useRef(0);
   const selectedRef = useRef<string | null>(null);
@@ -275,6 +277,21 @@ export function BuildDashboard({
 
   const runs = history?.runs ?? [];
   const activeId = monitor?.activeRunId ?? runs.find((run) => run.state === 'running')?.id;
+  const clearHistory = async () => {
+    if (!api?.clearHistory || activeId || clearingHistory || !history?.total) return;
+    if (!window.confirm('Clear all build history for this project? This cannot be undone.')) return;
+    setClearingHistory(true);
+    try {
+      await api.clearHistory();
+      setSelectedRunId(null);
+      setDetail(null);
+      await refresh();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setClearingHistory(false);
+    }
+  };
   const selected =
     monitor?.runs.find((run) => run.id === selectedRunId) ?? runs.find((run) => run.id === selectedRunId) ?? null;
   const active = selectedRunId === activeId && isActive(selected ?? undefined);
@@ -385,7 +402,18 @@ export function BuildDashboard({
         <aside className="build-monitor-sidebar" aria-label="Build history">
           <div className="build-monitor-sidebar-title">
             <strong>Build history</strong>
-            <span>{history?.total ?? 0}</span>
+            <div>
+              <span>{history?.total ?? 0}</span>
+              <button
+                type="button"
+                aria-label="Clear build history"
+                title={activeId ? 'Stop the active build before clearing history' : 'Clear build history'}
+                disabled={Boolean(activeId || clearingHistory || !history?.total)}
+                onClick={() => void clearHistory()}
+              >
+                <Trash2 size={13} aria-hidden="true" />
+              </button>
+            </div>
           </div>
           {activeId && runs.some((run) => run.id === activeId) && (
             <div className="build-monitor-sidebar-group">

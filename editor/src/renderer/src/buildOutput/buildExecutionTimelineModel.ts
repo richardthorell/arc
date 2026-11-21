@@ -7,6 +7,13 @@ export type BuildStageTimelineSpan = {
   state: BuildMonitorStageState;
   startMs?: number;
   durationMs?: number;
+  tasks: Array<{
+    id: string;
+    label: string;
+    state: BuildMonitorStageState;
+    startMs?: number;
+    durationMs?: number;
+  }>;
 };
 
 export type BuildStageTimeline = {
@@ -43,7 +50,24 @@ export const buildStageTimeline = (run: BuildMonitorRun, now = Date.now()): Buil
     const startMs = explicitStart ?? (measuredDuration !== undefined ? sequentialCursor : undefined);
     if (startMs !== undefined && measuredDuration !== undefined)
       sequentialCursor = Math.max(sequentialCursor, startMs + measuredDuration);
-    return { id: stage.id, label: stage.name, state: stage.state, startMs, durationMs: measuredDuration };
+    const tasks = (stage.tasks ?? []).map((task) => {
+      const taskStarted = timestamp(task.startedAt);
+      const taskCompleted = timestamp(task.completedAt);
+      return {
+        id: task.id,
+        label: task.name,
+        state: task.state,
+        startMs: runStart !== undefined && taskStarted !== undefined ? Math.max(0, taskStarted - runStart) : undefined,
+        durationMs:
+          task.durationMs ??
+          (taskStarted !== undefined && taskCompleted !== undefined
+            ? Math.max(0, taskCompleted - taskStarted)
+            : task.state === 'running' && taskStarted !== undefined
+              ? Math.max(0, now - taskStarted)
+              : undefined),
+      };
+    });
+    return { id: stage.id, label: stage.name, state: stage.state, startMs, durationMs: measuredDuration, tasks };
   });
   const runDuration =
     run.durationMs ??

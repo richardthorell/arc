@@ -182,6 +182,27 @@ describe('BuildHistoryStore (BM2)', () => {
     expect(fs.existsSync(path.join(project.projectRoot, 'Saved', 'BuildHistory', 'logs', 'run-0.jsonl'))).toBe(false);
   });
 
+  it('clears the project history index and owned log and event files', () => {
+    const project = createProject();
+    const store = new BuildHistoryStore();
+    store.activate(project);
+    const entry = run('clear-me');
+    store.saveRun(entry);
+    store.appendRaw(entry.id, 'stdout', 'output', entry.startedAt);
+    store.saveEvent({ kind: 'run-started', sequence: 1, runId: entry.id, timestamp: entry.startedAt, run: entry });
+
+    store.clear();
+
+    expect(store.list()).toMatchObject({ total: 0, runs: [] });
+    expect(store.details(entry.id)).toBeNull();
+    expect(fs.existsSync(path.join(project.projectRoot, 'Saved', 'BuildHistory', 'logs', `${entry.id}.jsonl`))).toBe(
+      false,
+    );
+    const reopened = new BuildHistoryStore();
+    reopened.activate(project);
+    expect(reopened.list()).toMatchObject({ total: 0, runs: [] });
+  });
+
   it('refuses a saved-directory symlink that escapes the project', () => {
     if (process.platform === 'win32') return;
     const project = createProject();

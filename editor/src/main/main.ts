@@ -1507,6 +1507,10 @@ void app.whenReady().then(async () => {
     buildMonitorProject();
     return buildMonitor.historyDetails(id, logCursor, eventCursor);
   });
+  ipcMain.handle('buildMonitor:clearHistory', () => {
+    buildMonitorProject();
+    buildMonitor.clearHistory();
+  });
   ipcMain.handle('buildMonitor:revealArtifact', async (_event, runId: string, artifactPath: string) => {
     // Only a path recorded by the current project's persisted run can be
     // opened. Never let renderer-supplied paths turn into arbitrary shell access.

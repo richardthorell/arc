@@ -153,6 +153,12 @@ export class BuildHistoryStore {
             stage.completedAt = undefined;
             stage.durationMs = undefined;
           }
+          for (const task of stage.tasks ?? []) {
+            if (task.state !== 'running') continue;
+            task.state = 'interrupted';
+            task.completedAt = undefined;
+            task.durationMs = undefined;
+          }
         }
       }
       if (recovered) this.writeIndex();
@@ -252,6 +258,25 @@ export class BuildHistoryStore {
       runs: structuredClone(this.runs.slice(offset, offset + limit)),
       ...(this.storageError ? { storageError: this.storageError } : {}),
     };
+  }
+
+  clear(): void {
+    if (!this.root) return;
+    try {
+      for (const run of this.runs) {
+        for (const kind of ['logs', 'events'] as const) {
+          const filename = this.file(kind, run.id);
+          safeFile(filename);
+          fs.rmSync(filename, { force: true });
+        }
+      }
+      this.runs = [];
+      this.storageError = undefined;
+      this.writeIndex();
+    } catch (error) {
+      this.storageError = String(error);
+      throw error;
+    }
   }
 
   details(runId: string, logCursor = 0, eventCursor = 0): BuildHistoryDetail | null {

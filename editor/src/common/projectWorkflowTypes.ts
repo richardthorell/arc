@@ -69,6 +69,14 @@ export type WorkflowArtifact = {
   profile: string;
 };
 export type WorkflowCapability = { available: boolean; reason?: string };
+export type WorkflowStageTaskProgress = {
+  id: string;
+  name: string;
+  state: 'running' | 'succeeded' | 'failed' | 'cancelled';
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+};
 export type WorkflowStageProgress = {
   stage: WorkflowStage;
   state: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -77,6 +85,8 @@ export type WorkflowStageProgress = {
   completedAt?: string;
   /** Monotonic duration measured at execution time. */
   durationMs?: number;
+  /** Authoritative nested operations executed by this stage. */
+  tasks?: WorkflowStageTaskProgress[];
 };
 
 export type WorkflowRun = {

@@ -41,9 +41,16 @@ describe('Build execution timeline model', () => {
     expect(buildStageTimeline(run(), Date.parse('2026-11-20T12:00:00.200Z'))).toEqual({
       durationMs: 200,
       spans: [
-        { id: 'validate', label: 'validate', state: 'succeeded', startMs: 0, durationMs: 20 },
-        { id: 'compile', label: 'compile', state: 'succeeded', startMs: 30, durationMs: 150 },
-        { id: 'package', label: 'package', state: 'pending', startMs: undefined, durationMs: undefined },
+        { id: 'validate', label: 'validate', state: 'succeeded', startMs: 0, durationMs: 20, tasks: [] },
+        { id: 'compile', label: 'compile', state: 'succeeded', startMs: 30, durationMs: 150, tasks: [] },
+        {
+          id: 'package',
+          label: 'package',
+          state: 'pending',
+          startMs: undefined,
+          durationMs: undefined,
+          tasks: [],
+        },
       ],
     });
   });
@@ -60,6 +67,27 @@ describe('Build execution timeline model', () => {
       ['b', 1],
       ['d', 0],
       ['c', 0],
+    ]);
+  });
+
+  it('places nested stage tasks on the workflow clock', () => {
+    const value = run();
+    value.stages[1].tasks = [
+      {
+        id: 'development-sdk',
+        name: 'Build ARC development SDK',
+        state: 'running',
+        startedAt: '2026-11-20T12:00:00.040Z',
+      },
+    ];
+    expect(buildStageTimeline(value, Date.parse('2026-11-20T12:00:00.090Z')).spans[1].tasks).toEqual([
+      {
+        id: 'development-sdk',
+        label: 'Build ARC development SDK',
+        state: 'running',
+        startMs: 40,
+        durationMs: 50,
+      },
     ]);
   });
 

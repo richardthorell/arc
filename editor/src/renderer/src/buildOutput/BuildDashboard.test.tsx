@@ -92,6 +92,7 @@ function mockApi(overrides: Record<string, unknown> = {}) {
     execute: vi.fn().mockResolvedValue({}),
     executeWorkflow: vi.fn().mockResolvedValue({}),
     revealArtifact: vi.fn().mockResolvedValue(''),
+    clearHistory: vi.fn().mockResolvedValue(undefined),
     history: vi.fn().mockResolvedValue(page),
     historyDetails: vi
       .fn()
@@ -111,10 +112,28 @@ function mockApi(overrides: Record<string, unknown> = {}) {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe('Build Monitor workspace presentation', () => {
+  it('clears persisted history only after confirmation and while idle', async () => {
+    const clearHistory = vi.fn().mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    mockApi({
+      clearHistory,
+      monitorSnapshot: vi.fn().mockResolvedValue({ ...monitor, activeRunId: null, runs: [previous] }),
+      history: vi.fn().mockResolvedValue({ ...page, total: 1, runs: [previous] }),
+      historyDetails: vi.fn().mockResolvedValue(makeDetails(previous)),
+    });
+    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+    const button = await screen.findByRole('button', { name: 'Clear build history' });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    expect(confirm).toHaveBeenCalledWith('Clear all build history for this project? This cannot be undone.');
+    await waitFor(() => expect(clearHistory).toHaveBeenCalledOnce());
+  });
+
   it('renders modelessly inside the document workspace without trapping Escape or cancelling the build', async () => {
     const { api } = mockApi();
     const onClose = vi.fn();
