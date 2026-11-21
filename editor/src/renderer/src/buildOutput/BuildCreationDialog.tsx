@@ -190,6 +190,38 @@ export function BuildCreationDialog({
               },
               options?.authority,
             );
+      const outcome = pending.then(
+        () => ({ state: 'completed' as const }),
+        (reason: unknown) => ({ state: 'failed' as const, reason }),
+      );
+      let started = false;
+      // IPC execution resolves only when the complete workflow finishes. Keep
+      // this dialog until the main process confirms that it accepted the run,
+      // so planning failures remain actionable here instead of disappearing.
+      for (let attempt = 0; attempt < 30 && alive.current; attempt++) {
+        const immediate = await Promise.race([
+          outcome,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 50)),
+        ]);
+        if (immediate?.state === 'failed') throw immediate.reason;
+        if (immediate?.state === 'completed') {
+          started = true;
+          break;
+        }
+        const snapshot =
+          selectedTarget === EDITOR_MODULE
+            ? await window.arc.build.snapshot()
+            : await window.arc.build.workflowSnapshot();
+        started =
+          selectedTarget === EDITOR_MODULE
+            ? Boolean(
+                snapshot && ['building', 'configuring', 'cleaning'].includes('state' in snapshot ? snapshot.state : ''),
+              )
+            : Boolean(snapshot && ('planning' in snapshot ? snapshot.planning || snapshot.run : false));
+        if (started) break;
+      }
+      if (!alive.current) return;
+      if (!started) throw new Error('The build service did not confirm that the build started. Try again.');
       void pending.catch((reason: unknown) => onError(String(reason)));
       onStarted?.();
       onClose();
