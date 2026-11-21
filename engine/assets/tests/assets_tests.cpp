@@ -654,6 +654,74 @@ TEST_CASE("incremental cooker reuses actions and packages mount without source s
         REQUIRE(mount.read(artifact.asset, artifact.schema));
 }
 
+TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scene identity")
+{
+    using namespace arc::assets;
+    temporary_project project;
+    const auto scene_guid = generate_asset_guid();
+    const auto authored = std::string(R"({"format":"arc.scene","formatVersion":2,"scene":{"id":")") +
+                          to_string(scene_guid) + R"(","name":"Level"},"entities":[],"dependencies":[]})";
+    const auto modified = std::string(R"({"format":"arc.scene","formatVersion":2,"scene":{"id":")") +
+                          to_string(scene_guid) +
+                          R"(","name":"Unsaved"},"entities":[{"id":"22222222-2222-2222-2222-222222222222","components":{"Transform":{"position":[4,5,6]}}}],"dependencies":[]})";
+    project.write("scenes/Level.arcscene", authored);
+    asset_fixture fixture(project);
+    const auto scene = fixture.manager.find("assets/scenes/Level.arcscene");
+    REQUIRE(scene);
+    REQUIRE(scene->guid == scene_guid);
+    derived_data_cache cache({.root = project.root / ".arc" / "cook-cache"});
+    auto count = std::make_shared<std::size_t>(0);
+    asset_cooker cooker(fixture.manager, cache);
+    REQUIRE(cooker.register_processor(
+        std::make_unique<test_cook_processor>(asset_types::scene, cook_processor_ids::scene,
+                                              artifact_schemas::scene, count)));
+
+    auto dev = windows_vulkan_cook_target();
+    dev.configuration = cook_configuration::development;
+    const auto bytes = std::span<const std::byte>(reinterpret_cast<const std::byte*>(modified.data()),
+                                                  modified.size());
+    const cook_request request{.roots = {scene_guid},
+                               .target = dev,
+                               .output = project.root / "ephemeral",
+                               .ephemeral_scene = ephemeral_scene_cook_source{
+                                   .asset = scene_guid, .bytes = {bytes.begin(), bytes.end()}}};
+    const auto first = cooker.cook(request);
+    REQUIRE(first.succeeded());
+    CHECK(first.cooked == 1);
+    REQUIRE(first.manifest.artifacts.size() == 1);
+    CHECK(first.manifest.artifacts.front().asset == scene_guid);
+    cache_error read_error;
+    const auto cooked = cache.get_blob(first.manifest.artifacts.front().hash, read_error);
+    REQUIRE(cooked);
+    CHECK(cooked->bytes == request.ephemeral_scene->bytes);
+    const auto second = cooker.cook(request);
+    REQUIRE(second.succeeded());
+    CHECK(second.cache_hits == 1);
+    CHECK(*count == 1);
+    // The source and authored database are untouched by the ephemeral cook.
+    std::ifstream authored_file(project.assets / "scenes/Level.arcscene", std::ios::binary);
+    const std::string original((std::istreambuf_iterator<char>(authored_file)), std::istreambuf_iterator<char>());
+    CHECK(original == authored);
+    REQUIRE(fixture.manager.find(scene_guid));
+    CHECK(fixture.manager.find(scene_guid)->source_hash == scene->source_hash);
+
+    auto shipping = request;
+    shipping.target.configuration = cook_configuration::shipping;
+    CHECK_FALSE(cooker.cook(shipping).succeeded());
+    auto wrong = request;
+    wrong.ephemeral_scene->asset = generate_asset_guid();
+    CHECK_FALSE(cooker.cook(wrong).succeeded());
+    auto unrelated = request;
+    unrelated.roots = {generate_asset_guid()};
+    CHECK_FALSE(cooker.cook(unrelated).succeeded());
+    auto oversized = request;
+    oversized.ephemeral_scene->bytes.resize(16u * 1024u * 1024u + 1);
+    CHECK_FALSE(cooker.cook(oversized).succeeded());
+    auto empty = request;
+    empty.ephemeral_scene->bytes.clear();
+    CHECK_FALSE(cooker.cook(empty).succeeded());
+}
+
 TEST_CASE("cache pruning preserves pinned blobs")
 {
     using namespace arc::assets;
