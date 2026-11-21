@@ -1544,3 +1544,603 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Graph-first Build Monitor. The execution graph and output are the primary surfaces. */
+.build-monitor {
+  position: relative;
+}
+
+.build-monitor-layout {
+  grid-template-columns: 208px minmax(0, 1fr);
+}
+
+.build-monitor-sidebar-title {
+  padding: 13px 12px 7px;
+}
+
+.build-monitor-sidebar-group {
+  padding: 7px 6px;
+}
+
+.build-monitor-history-row {
+  gap: 3px;
+  padding: 9px 10px;
+}
+
+.build-monitor-history-row .build-monitor-status {
+  font-size: 10px;
+}
+
+.build-monitor-content {
+  position: relative;
+  gap: 10px;
+  padding: 12px 14px 16px;
+}
+
+.build-monitor-floating-close {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #354858;
+  border-radius: 5px;
+  color: #c6d3dd;
+  background: #1d2c38;
+  cursor: pointer;
+}
+
+.build-monitor-compact-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 42px;
+  padding: 5px 8px 8px;
+  border-bottom: 1px solid #2a3b48;
+}
+
+.build-monitor-compact-title,
+.build-monitor-compact-facts,
+.build-monitor-compact-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.build-monitor-compact-title {
+  flex: 1 1 auto;
+  text-transform: capitalize;
+}
+
+.build-monitor-compact-title strong {
+  color: #edf4fa;
+  font-size: 15px;
+}
+
+.build-monitor-compact-title > span {
+  color: #a2b5c4;
+  font-size: 14px;
+}
+
+.build-monitor-compact-title small {
+  overflow: hidden;
+  color: #7f96a8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-monitor-compact-facts {
+  flex: 0 0 auto;
+  color: #9db0bf;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.build-monitor-compact-facts > span:not(:last-child)::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 12px;
+  margin-left: 8px;
+  vertical-align: -2px;
+  background: #354754;
+}
+
+.build-monitor-compact-facts .is-error {
+  color: #f18a95;
+}
+
+.build-monitor-compact-facts .is-warning {
+  color: #dfb565;
+}
+
+.build-monitor-compact-actions {
+  flex: 0 0 auto;
+}
+
+.build-monitor-compact-actions button,
+.build-execution-toolbar button,
+.build-execution-task-detail button,
+.build-monitor-details header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 29px;
+  padding: 4px 8px;
+  border: 1px solid #354b5c;
+  border-radius: 4px;
+  color: #c7d6e1;
+  background: #1c2e3a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.build-monitor-compact-actions button:hover,
+.build-execution-toolbar button:hover,
+.build-execution-task-detail button:hover {
+  border-color: #4e91c5;
+  color: #fff;
+}
+
+.build-monitor-compact-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.build-monitor-compact-actions .build-monitor-cancel {
+  border-color: #70434b;
+  color: #f398a1;
+}
+
+.build-monitor-problem-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid #6d434a;
+  border-radius: 5px;
+  color: #edb1b5;
+  background: #2c2227;
+  font-size: 11px;
+}
+
+.build-monitor-problem-compact.is-interrupted,
+.build-monitor-problem-compact.is-cancelled {
+  border-color: #62533d;
+  color: #e4c18a;
+  background: #292620;
+}
+
+.build-monitor-problem-compact strong {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-monitor-problem-compact small {
+  color: inherit;
+  opacity: 0.72;
+}
+
+.build-monitor-problem-compact button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 5px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.build-execution {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 410px;
+  max-height: 62vh;
+  overflow: hidden;
+  border: 1px solid #2c3f4e;
+  border-radius: 6px;
+  background: #14212a;
+}
+
+.build-execution-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 41px;
+  padding: 6px 9px 6px 12px;
+  border-bottom: 1px solid #2a3d4a;
+  background: #182731;
+}
+
+.build-execution-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.build-execution-toolbar > div:first-child span,
+.build-execution-toolbar small {
+  color: #869eaf;
+  font-size: 10px;
+}
+
+.build-execution-toolbar small {
+  padding: 2px 5px;
+  border: 1px solid #765944;
+  border-radius: 8px;
+  color: #dfae77;
+}
+
+.build-execution-canvas {
+  position: relative;
+  flex: 1 1 320px;
+  min-height: 280px;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background-color: #101c24;
+  background-image: radial-gradient(#293d4b 0.7px, transparent 0.7px);
+  background-size: 18px 18px;
+}
+
+.build-execution-canvas:active {
+  cursor: grabbing;
+}
+
+.build-execution-transform {
+  position: absolute;
+  inset: 0;
+}
+
+.build-execution-wires {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.build-execution-wires path {
+  pointer-events: stroke;
+  fill: none;
+  stroke: #4d6e83;
+  stroke-width: 2px;
+}
+
+.build-execution-node {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 9px 11px;
+  overflow: hidden;
+  border: 1px solid #405665;
+  border-radius: 6px;
+  color: #d6e3ec;
+  background: #1c2d38;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+}
+
+.build-execution-node:hover,
+.build-execution-node:focus-visible,
+.build-execution-node.is-selected {
+  border-color: #69ace0;
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(69, 145, 201, 0.23),
+    0 5px 14px rgba(0, 0, 0, 0.25);
+}
+
+.build-execution-node > span {
+  color: #7592a6;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.build-execution-node strong,
+.build-execution-node small {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-execution-node strong {
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.build-execution-node small {
+  color: #90a8b8;
+  font-size: 10px;
+}
+
+.build-execution-node.is-running {
+  border-color: #4c91ca;
+  background: #1b3850;
+}
+
+.build-execution-node.is-succeeded,
+.build-execution-node.is-satisfied {
+  border-color: #3e755d;
+}
+
+.build-execution-node.is-failed {
+  border-color: #8a4c58;
+  background: #35252c;
+}
+
+.build-execution-node.is-observed {
+  border-color: #467da4;
+}
+
+.build-execution-node.is-root::after {
+  content: 'root';
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  color: #7eb6d9;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.build-execution-timing,
+.build-execution-empty {
+  flex: 0 0 auto;
+  margin: 0;
+  border-top: 1px solid #2a3c49;
+  background: #172630;
+}
+
+.build-execution-empty {
+  padding: 11px 13px;
+  color: #829aaa;
+  font-size: 11px;
+}
+
+.build-execution-timing {
+  padding: 9px 12px 7px;
+}
+
+.build-execution-timing-heading,
+.build-execution-timing-heading > div,
+.build-execution-task-detail > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.build-execution-timing-heading > div {
+  justify-content: flex-start;
+}
+
+.build-execution-timing-heading strong {
+  font-size: 11px;
+}
+
+.build-execution-timing-heading span,
+.build-execution-timing-heading small,
+.build-execution-clock-note,
+.build-execution-active {
+  color: #819aaa;
+  font-size: 10px;
+}
+
+.build-execution-lanes {
+  position: relative;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: repeating-linear-gradient(90deg, #11202a 0, #11202a calc(25% - 1px), #2c414e 25%);
+}
+
+.build-execution-lane-axis {
+  position: absolute;
+  inset: 3px 5px auto;
+  display: flex;
+  justify-content: space-between;
+  color: #718a9c;
+  font-size: 9px;
+}
+
+.build-execution-task {
+  position: absolute;
+  min-width: 3px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #70b5e5;
+  border-radius: 3px;
+  background: #367cae;
+  cursor: pointer;
+}
+
+.build-execution-task:hover,
+.build-execution-task:focus-visible {
+  z-index: 2;
+  outline: 2px solid #b1dffe;
+  outline-offset: 1px;
+  background: #4c9fd5;
+}
+
+.build-execution-task-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 9px;
+  margin-top: 7px;
+  padding: 7px 9px;
+  border: 1px solid #344a59;
+  border-radius: 4px;
+  background: #12212b;
+  font-size: 10px;
+}
+
+.build-execution-task-detail > div {
+  grid-column: 1 / -1;
+}
+
+.build-execution-task-detail code {
+  overflow: hidden;
+  color: #92b8cf;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-execution-task-detail dl {
+  display: contents;
+}
+
+.build-execution-task-detail dt {
+  color: #8099aa;
+}
+
+.build-execution-task-detail dd {
+  margin: 0;
+  color: #c3d8e5;
+}
+
+.build-execution-clock-note,
+.build-execution-active {
+  margin: 6px 0 0;
+}
+
+.build-execution-active {
+  display: grid;
+  gap: 4px;
+}
+
+.build-execution-active > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 7px;
+  border-radius: 3px;
+  background: #11212b;
+}
+
+.build-execution-active i {
+  width: 34px;
+  height: 5px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(110deg, #579cda 0 7px, #3678ac 7px 14px);
+}
+
+.build-execution-active code {
+  min-width: 0;
+  overflow: hidden;
+  color: #9fb9ca;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-monitor-output {
+  flex: 0 0 auto;
+  height: 330px;
+  max-height: none;
+}
+
+.build-monitor-details {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 92%);
+  border-left: 1px solid #344957;
+  background: #111d25;
+  box-shadow: -14px 0 30px rgba(0, 0, 0, 0.35);
+}
+
+.build-monitor-details > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 45px;
+  padding: 7px 11px 7px 15px;
+  border-bottom: 1px solid #2d404d;
+  background: #1a2933;
+}
+
+.build-monitor-details > div {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  overflow: auto;
+}
+
+.build-monitor-details dl {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0;
+  padding: 11px;
+  border: 1px solid #304452;
+  border-radius: 5px;
+  color: #bfd0dc;
+  font-size: 11px;
+}
+
+.build-monitor-details dt {
+  color: #849aaa;
+}
+
+.build-monitor-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1050px) {
+  .build-monitor-compact-summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .build-monitor-compact-title {
+    min-width: 48%;
+  }
+
+  .build-monitor-compact-actions {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 750px) {
+  .build-monitor-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 136px minmax(0, 1fr);
+  }
+
+  .build-execution {
+    min-height: 360px;
+  }
+
+  .build-monitor-compact-facts {
+    flex-wrap: wrap;
+  }
+}
