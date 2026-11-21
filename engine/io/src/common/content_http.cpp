@@ -35,8 +35,7 @@ bool digest_path(std::string_view text) noexcept
     constexpr std::string_view prefix = "objects/sha256/";
     if (!text.starts_with(prefix) || text.size() != prefix.size() + 64) return false;
     const auto digest = text.substr(prefix.size());
-    return std::all_of(digest.begin(), digest.end(), [](char c)
-                       { return ascii_digit(c) || (c >= 'a' && c <= 'f'); });
+    return std::all_of(digest.begin(), digest.end(), [](char c) { return ascii_digit(c) || (c >= 'a' && c <= 'f'); });
 }
 
 bool loopback_host(std::string_view host) noexcept
@@ -47,7 +46,8 @@ bool loopback_host(std::string_view host) noexcept
 bool hostname(std::string_view host) noexcept
 {
     if (host.empty() || host.size() > 253 || host.front() == '.' || host.back() == '.') return false;
-    return std::all_of(host.begin(), host.end(), [](unsigned char c)
+    return std::all_of(host.begin(), host.end(),
+                       [](unsigned char c)
                        {
                            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                                   ascii_digit(static_cast<char>(c)) || c == '-' || c == '.';
@@ -88,8 +88,8 @@ bool strong_etag(std::string_view etag) noexcept
 {
     if (etag.empty()) return true;
     if (etag.size() < 2 || etag.front() != '"' || etag.back() != '"') return false;
-    return std::all_of(etag.begin() + 1, etag.end() - 1, [](unsigned char c)
-                       { return c >= 0x21u && c <= 0x7eu && c != '"'; });
+    return std::all_of(etag.begin() + 1, etag.end() - 1,
+                       [](unsigned char c) { return c >= 0x21u && c <= 0x7eu && c != '"'; });
 }
 
 bool response_content_range(std::string_view text, std::uint64_t start, std::uint64_t length,
@@ -112,13 +112,14 @@ bool response_content_range(std::string_view text, std::uint64_t start, std::uin
 } // namespace
 
 content_http_validation validate_content_http_request(const content_http_request& request,
-                                                       const content_http_limits& limits)
+                                                      const content_http_limits& limits)
 {
     if (!valid_origin(request.origin, limits.allow_loopback_http))
-        return invalid(content_http_error_code::invalid_origin, "Remote content requires HTTPS or explicit loopback HTTP");
-    if (!digest_path(request.object_path) || !strong_etag(request.if_match_etag) ||
-        limits.timeout.count() <= 0 || limits.maximum_object_bytes == 0 ||
-        request.object_size == 0 || request.object_size > limits.maximum_object_bytes)
+        return invalid(content_http_error_code::invalid_origin,
+                       "Remote content requires HTTPS or explicit loopback HTTP");
+    if (!digest_path(request.object_path) || !strong_etag(request.if_match_etag) || limits.timeout.count() <= 0 ||
+        limits.maximum_object_bytes == 0 || request.object_size == 0 ||
+        request.object_size > limits.maximum_object_bytes)
         return invalid(content_http_error_code::invalid_request, "Unsafe content object, ETag or request limits");
     if (request.range_start.has_value() != request.range_length.has_value())
         return invalid(content_http_error_code::invalid_range, "Range start and length must be provided together");
@@ -133,8 +134,8 @@ content_http_validation validate_content_http_request(const content_http_request
 }
 
 content_http_validation validate_content_http_response(const content_http_request& request,
-                                                        const content_http_response& response,
-                                                        const content_http_limits& limits)
+                                                       const content_http_response& response,
+                                                       const content_http_limits& limits)
 {
     auto checked = validate_content_http_request(request, limits);
     if (!checked.succeeded()) return checked;

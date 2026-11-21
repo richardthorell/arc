@@ -45,10 +45,10 @@ TEST_CASE("C9.2a immutable HTTP object validates strict successful full and rang
 TEST_CASE("C9.2a rejects unsafe origins and malformed immutable object addresses")
 {
     auto req = request();
-    for (const auto* origin : {"http://content.example.org", "file:///tmp", "https://user@content.example.org",
-                               "https://content.example.org/path", "https://content.example.org#x",
-                               "https://content.example.org:0", "https://content.example.org:99999",
-                               "http://192.168.1.2", "https://[::2]"})
+    for (const auto* origin :
+         {"http://content.example.org", "file:///tmp", "https://user@content.example.org",
+          "https://content.example.org/path", "https://content.example.org#x", "https://content.example.org:0",
+          "https://content.example.org:99999", "http://192.168.1.2", "https://[::2]"})
     {
         req.origin = origin;
         CHECK_FALSE(arc::io::validate_content_http_request(req, {}).succeeded());
