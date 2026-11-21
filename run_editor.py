@@ -202,6 +202,8 @@ def prepare_native_editor(args, repo_root, env=None):
         repo_root,
         "-DCMAKE_BUILD_TYPE={}".format(args.config),
         "-DARC_BUILD_EDITOR=ON",
+        "-DARC_BUILD_PROJECT_TOOL=ON",
+        "-DARC_BUILD_ASSET_COOKER=ON",
         "-DARC_BUILD_RENDER_VULKAN={}".format("ON" if args.vulkan_render else "OFF"),
         "-DFETCHCONTENT_FULLY_DISCONNECTED=OFF",
     ]
@@ -232,6 +234,9 @@ def prepare_native_editor(args, repo_root, env=None):
         env,
         args.parallel,
     )
+    arc_build.build_cmake_target(
+        cmake, build_dir, "arc-development-sdk", args.config, repo_root, env, args.parallel,
+    )
     host = find_host_executable(build_dir, args.config)
     project_tool = find_project_tool_executable(build_dir, args.config)
 
@@ -239,6 +244,9 @@ def prepare_native_editor(args, repo_root, env=None):
         raise RuntimeError("arc_host_process was not found after the native build")
     if project_tool is None:
         raise RuntimeError("arc-project was not found after the native build")
+    if env is not None:
+        env["ARC_DEVELOPMENT_SDK"] = os.path.join(build_dir, "development-sdk")
+        env["ARC_DEVELOPMENT_CONFIGURATION"] = args.config
     return host, project_tool
 
 

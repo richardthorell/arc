@@ -22,6 +22,7 @@ function fixture(
     escape?: boolean;
     cmakeGraph?: boolean;
     emitNativeArtifact?: boolean;
+    development?: boolean;
   } = {},
 ) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc shipping workflow '));
@@ -156,6 +157,15 @@ function fixture(
     sdkRoot: path.join(root, 'SDK'),
     visualStudio: path.join(root, 'VS'),
     generator: 'Visual Studio 17 2022',
+    ...(options.development
+      ? {
+          development: {
+            buildDirectory: path.join(root, 'EngineBuild'),
+            engineVersion: '0.1.0',
+            architecture: 'x86_64',
+          },
+        }
+      : {}),
   };
   const workflow = createWindowsBuildWorkflow(
     process.execPath,
@@ -191,6 +201,29 @@ function fixture(
 }
 
 describe('Windows Shipping workflow', () => {
+  it('rejects a development SDK with a different engine or architecture', () => {
+    const value = fixture({ development: true });
+    expect(
+      windowsBuildCapability({ ...value.plan, engineVersion: '2.0.0' }, value.environment, 'win32').available,
+    ).toBe(false);
+    expect(windowsBuildCapability({ ...value.plan, architecture: 'arm64' }, value.environment, 'win32').available).toBe(
+      false,
+    );
+  });
+  it('prepares the exact development SDK configuration before configuring the project', async () => {
+    const value = fixture({ development: true });
+    expect((await value.run()).state).toBe('succeeded');
+    const calls = value.runProcess.mock.calls.map(([request]) => request.args);
+    expect(calls[0]).toEqual([
+      '--build',
+      path.join(value.root, 'EngineBuild'),
+      '--config',
+      'Shipping',
+      '--target',
+      'arc-development-sdk',
+    ]);
+    expect(calls[1]).toContain(`-DARC_DIR=${path.join(value.environment.sdkRoot, 'lib', 'cmake', 'ARC')}`);
+  });
   it('uses explicit runtime metadata and profile, and publishes only packaged output without launching or reloading', async () => {
     const value = fixture();
     const result = await value.run();

@@ -13,7 +13,45 @@ vi.mock('./windowsToolchain', async (original) => ({
 const roots: string[] = [];
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+it('accepts only the explicitly selected development SDK and matching CLI', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-development-sdk-'));
+  roots.push(root);
+  const tool = path.join(root, 'arc-project.exe');
+  fs.writeFileSync(tool, 'fixture');
+  const config = path.join(root, 'Release', 'lib', 'cmake', 'ARC', 'ARCConfig.cmake');
+  fs.mkdirSync(path.dirname(config), { recursive: true });
+  fs.writeFileSync(config, 'fixture');
+  fs.writeFileSync(
+    path.join(root, 'Release', 'arc-development-sdk.json'),
+    JSON.stringify({
+      version: 1,
+      engineVersion: '0.1.0',
+      architecture: 'x86_64',
+      buildDirectory: root,
+      projectTool: tool,
+    }),
+  );
+  vi.stubEnv('ARC_DEVELOPMENT_SDK', root);
+  vi.stubEnv('ARC_DEVELOPMENT_CONFIGURATION', 'Release');
+  const settings = {
+    pathValidation: {
+      [windowsToolchainSettingKeys.cmakePath]: { valid: true, resolvedPath: 'cmake' },
+      [windowsToolchainSettingKeys.visualStudioPath]: { valid: true, resolvedPath: 'studio' },
+    },
+  } as unknown as EditorSettingsSnapshot;
+  expect(resolveWindowsBuildEnvironment(tool, settings)).toMatchObject({
+    sdkRoot: path.join(root, 'Shipping'),
+    development: { buildDirectory: root, engineVersion: '0.1.0' },
+  });
+  const other = path.join(root, 'other-cli.exe');
+  fs.writeFileSync(other, 'other');
+  expect(resolveWindowsBuildEnvironment(other, settings)).toBeUndefined();
+  vi.stubEnv('ARC_DEVELOPMENT_CONFIGURATION', '../other');
+  expect(resolveWindowsBuildEnvironment(tool, settings)).toBeUndefined();
 });
 
 it('uses only the selected installed SDK and configured Visual Studio instance', () => {
