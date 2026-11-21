@@ -78,7 +78,7 @@ TEST_CASE("C9.2d2 release response has strict status, redirect and eight-MiB siz
         .project_guid = "11111111-2222-4333-8444-555555555555",
         .target_profile = "windows-x64-vulkan"};
     content_http_response response{.status = 200, .content_length = "2"};
-    response.body = {std::byte{'{'}, std::byte{'}'}};
+    response.body = {std::byte{0x7B}, std::byte{0x7D}};
     CHECK(validate_content_http_release_response(request, response, {}).succeeded());
 
     response.content_length = "999";
