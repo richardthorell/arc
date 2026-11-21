@@ -1,6 +1,8 @@
 #include <arc/io/content_http.h>
 
 #include <algorithm>
+#include <charconv>
+#include <iterator>
 #include <chrono>
 #include <limits>
 #include <string>
@@ -232,6 +234,109 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
     if (!verified.succeeded()) return {.response = std::nullopt, .validation = std::move(verified)};
     return {.response = std::move(result), .validation = {}};
 }
+
+content_http_fetch_result winhttp_fetch_release(const content_http_release_request& request,
+                                                const content_http_limits& limits,
+                                                const jobs::cancellation_token& token)
+{
+    if (cancelled(token)) return failure(content_http_error_code::cancelled, "Release fetch cancelled");
+    const auto origin = split_origin(request.origin);
+    if (origin.host.empty()) return failure(content_http_error_code::invalid_origin, "Invalid UTF-8 release host");
+    const bool loopback = request.origin.starts_with("http://127.0.0.1") ||
+                          request.origin.starts_with("http://localhost") ||
+                          request.origin.starts_with("http://[::1]");
+    http_handle session(WinHttpOpen(L"ARC remote release/1",
+                                   loopback ? WINHTTP_ACCESS_TYPE_NO_PROXY : WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                   WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    if (!session) return failure(content_http_error_code::network_failure, "WinHTTP session unavailable");
+    const auto timeout = static_cast<int>(std::min<std::int64_t>(limits.timeout.count(), 600000));
+    if (!WinHttpSetTimeouts(session.get(), timeout, timeout, timeout, timeout))
+        return failure(content_http_error_code::network_failure, "WinHTTP timeout setup failed");
+
+    http_handle connection(WinHttpConnect(session.get(), origin.host.c_str(), origin.port, 0));
+    if (!connection) return failure(content_http_error_code::network_failure, "WinHTTP connection failed");
+
+    const auto resource = wide("/releases/" + request.project_guid + "/" + request.target_profile + "/current.json");
+    if (resource.empty()) return failure(content_http_error_code::invalid_request, "Invalid release resource");
+    http_handle handle(WinHttpOpenRequest(connection.get(), L"GET", resource.c_str(), nullptr, WINHTTP_NO_REFERER,
+                                          WINHTTP_DEFAULT_ACCEPT_TYPES, origin.tls ? WINHTTP_FLAG_SECURE : 0));
+    if (!handle) return failure(content_http_error_code::network_failure, "WinHTTP release request failed");
+    DWORD disable = WINHTTP_DISABLE_REDIRECTS;
+    if (!WinHttpSetOption(handle.get(), WINHTTP_OPTION_DISABLE_FEATURE, &disable, sizeof(disable)))
+        return failure(content_http_error_code::network_failure, "Could not disable release redirects");
+    constexpr wchar_t headers[] = L"Cache-Control: no-cache, no-store\r\nPragma: no-cache\r\n";
+    if (cancelled(token)) return failure(content_http_error_code::cancelled, "Release fetch cancelled");
+    if (!WinHttpSendRequest(handle.get(), headers, static_cast<DWORD>(std::size(headers) - 1),
+                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(handle.get(), nullptr))
+    {
+        const auto error = GetLastError();
+        return failure(error == ERROR_WINHTTP_TIMEOUT ? content_http_error_code::timeout
+                                                      : content_http_error_code::network_failure,
+                       "WinHTTP release send/receive failed (" + std::to_string(error) + ")");
+    }
+    if (cancelled(token)) return failure(content_http_error_code::cancelled, "Release fetch cancelled");
+
+    DWORD status{}, status_bytes = sizeof(status);
+    if (!WinHttpQueryHeaders(handle.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &status_bytes, WINHTTP_NO_HEADER_INDEX))
+        return failure(content_http_error_code::network_failure, "Release response status unavailable");
+
+    content_http_response response;
+    response.status = status;
+    response.content_length = response_header(handle.get(), WINHTTP_QUERY_CONTENT_LENGTH);
+    response.content_range = response_header(handle.get(), WINHTTP_QUERY_CONTENT_RANGE);
+    response.redirect_location = response_header(handle.get(), WINHTTP_QUERY_LOCATION);
+
+    // Reject statuses and redirects before receiving response bodies.
+    if (status == 401 || status == 403)
+        return failure(content_http_error_code::unauthorized, "Release access denied");
+    if (status == 404) return failure(content_http_error_code::not_found, "Release descriptor missing");
+    if (status == 429 || status == 503)
+        return failure(content_http_error_code::rate_limited, "Release server temporarily unavailable");
+    if ((status >= 300 && status < 400) || !response.redirect_location.empty())
+        return failure(content_http_error_code::rejected_redirect, "Release redirect rejected");
+    if (status != 200) return failure(content_http_error_code::invalid_status, "Unexpected release HTTP status");
+
+    constexpr std::uint64_t descriptor_limit = 8ull * 1024ull * 1024ull;
+    const auto budget = std::min(descriptor_limit, limits.maximum_object_bytes);
+    if (!response.content_length.empty())
+    {
+        std::uint64_t declared{};
+        const auto first = response.content_length.data();
+        const auto [end, ec] = std::from_chars(first, first + response.content_length.size(), declared);
+        if (ec != std::errc{} || end != first + response.content_length.size())
+            return failure(content_http_error_code::inconsistent_length, "Invalid release Content-Length");
+        if (declared > budget)
+            return failure(content_http_error_code::oversized_response, "Release Content-Length exceeds byte budget");
+        response.body.reserve(static_cast<std::size_t>(declared));
+    }
+
+    for (;;)
+    {
+        if (cancelled(token)) return failure(content_http_error_code::cancelled, "Release fetch cancelled");
+        if (response.body.size() > budget)
+            return failure(content_http_error_code::oversized_response, "Release descriptor exceeds byte budget");
+        std::byte buffer[16384];
+        const DWORD capacity = static_cast<DWORD>(
+            std::min<std::uint64_t>(sizeof(buffer), budget + 1u - response.body.size()));
+        DWORD read{};
+        if (!WinHttpReadData(handle.get(), buffer, capacity, &read))
+        {
+            const auto error = GetLastError();
+            return failure(error == ERROR_WINHTTP_TIMEOUT ? content_http_error_code::timeout
+                                                          : content_http_error_code::network_failure,
+                           "Release body read failed (" + std::to_string(error) + ")");
+        }
+        if (read == 0) break;
+        response.body.insert(response.body.end(), buffer, buffer + read);
+    }
+    if (cancelled(token)) return failure(content_http_error_code::cancelled, "Release fetch cancelled");
+    const auto validation = validate_content_http_release_response(request, response, limits);
+    if (!validation.succeeded()) return {.response = std::nullopt, .validation = validation};
+    return {.response = std::move(response), .validation = {}};
+}
+
 #endif
 
 } // namespace
@@ -258,6 +363,30 @@ jobs::job_future<content_http_fetch_result> fetch_content_http(jobs::job_system&
                                                  "Native HTTP/TLS backend not available for this platform");
 #endif
                               });
+}
+
+
+jobs::job_future<content_http_fetch_result>
+fetch_content_http_release(jobs::job_system& jobs, content_http_release_request request,
+                           content_http_limits limits, jobs::cancellation_token cancellation)
+{
+    return jobs.submit_future(
+        {.name = "content-http-release-fetch",
+         .priority = jobs::job_priority::normal,
+         .affinity = jobs::job_affinity::io_thread},
+        [request = std::move(request), limits, cancellation]() -> content_http_fetch_result
+        {
+            const auto preflight = validate_content_http_release_request(request, limits);
+            if (!preflight.succeeded()) return {.response = std::nullopt, .validation = preflight};
+            if (cancellation.stop_requested())
+                return failure(content_http_error_code::cancelled, "Release lookup cancelled");
+#if defined(_WIN32)
+            return winhttp_fetch_release(request, limits, cancellation);
+#else
+            return failure(content_http_error_code::transport_unavailable,
+                           "Native release HTTP/TLS backend unavailable on this platform");
+#endif
+        });
 }
 
 } // namespace arc::io
