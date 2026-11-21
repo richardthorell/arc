@@ -303,6 +303,65 @@ describe('Live Play L1.2a editor control endpoint', () => {
     expect(server.status().lastError).toBe('permission_denied');
   });
 
+  it('offers a cooked baseline only over the authenticated negotiated channel and checks its ACK identity', async () => {
+    const received: LivePlayMessage[] = [];
+    const server = await start({ onMessage: (message) => received.push(message) });
+    const offer = {
+      sceneGuid: '22222222-2222-2222-2222-222222222222',
+      authoringRevision: 9,
+      authoringSha256: 'b'.repeat(64),
+      cookedGeneration: 3,
+      cookedReleaseSha256: 'c'.repeat(64),
+    };
+    expect(server.sendBaselineOffer(offer)).toBe(false);
+    const peer = await handshake(server);
+    expect(server.sendBaselineOffer(offer)).toBe(true);
+    expect(server.sendBaselineOffer(offer)).toBe(false);
+    const offered = JSON.parse((await peer.next()).toString('utf8')) as LivePlayMessage;
+    expect(offered).toMatchObject({ type: 'scene.baseline.offer', payload: offer });
+    const rejected = {
+      requestId: offered.messageId,
+      sceneGuid: offer.sceneGuid,
+      cookedGeneration: offer.cookedGeneration,
+      cookedReleaseSha256: offer.cookedReleaseSha256,
+      status: 'rejected',
+      reason: 'unavailable',
+    };
+    peer.write(frame('scene.baseline.status', rejected, 2));
+    await expect.poll(() => received.map((m) => m.type)).toEqual(['scene.baseline.status']);
+    expect(server.sendBaselineOffer(offer)).toBe(true);
+    const second = JSON.parse((await peer.next()).toString('utf8')) as LivePlayMessage;
+    const wrongRelease = {
+      requestId: second.messageId,
+      sceneGuid: offer.sceneGuid,
+      cookedGeneration: offer.cookedGeneration,
+      cookedReleaseSha256: 'd'.repeat(64),
+      status: 'active',
+      reason: 'none',
+    };
+    peer.write(frame('scene.baseline.status', wrongRelease, 3));
+    await peer.closed;
+    expect(server.status().lastError).toBe('baseline_identity_mismatch');
+    expect(received).toHaveLength(1);
+  });
+
+  it('does not offer a baseline to a native session without content.observe', async () => {
+    const server = await start();
+    const handoff = server.launchHandoff();
+    const peer = await connect(handoff.port);
+    peer.write(handoff.secret);
+    peer.write(frame('hello', { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe'] }));
+    await peer.next();
+    const offer = {
+      sceneGuid: '22222222-2222-2222-2222-222222222222',
+      authoringRevision: 1,
+      authoringSha256: schemaHash,
+      cookedGeneration: 1,
+      cookedReleaseSha256: schemaHash,
+    };
+    expect(server.sendBaselineOffer(offer)).toBe(false);
+  });
+
   it('tears down connections and invalidates the launch secret on Stop', async () => {
     const server = await start();
     const handoff = server.launchHandoff();

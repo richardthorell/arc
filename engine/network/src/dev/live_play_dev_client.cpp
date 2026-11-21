@@ -344,6 +344,10 @@ void client::close() noexcept
     outbound_sequence_ = 0;
     inbound_sequence_ = 0;
     negotiated_capabilities_.clear();
+    pending_baseline_request_.clear();
+    pending_baseline_scene_.clear();
+    pending_baseline_release_.clear();
+    pending_baseline_generation_ = 0;
     project_guid_.clear();
     build_id_.clear();
     target_profile_.clear();
@@ -564,6 +568,37 @@ bool client::send_content_generation(std::uint64_t generation, std::string_view 
                         error);
 }
 
+bool client::send_baseline_status(std::string_view status, std::string_view reason, std::string& error)
+{
+    const bool content_negotiated = std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(),
+                                              "content.observe") != negotiated_capabilities_.end();
+    if (pending_baseline_request_.empty() || !content_negotiated)
+    {
+        error = "No negotiated Live Play cooked baseline offer is pending";
+        return false;
+    }
+    if ((status == "active" && reason != "none") ||
+        (status == "rejected" && reason != "unavailable" && reason != "incompatible" && reason != "corrupt" &&
+         reason != "unsupported") ||
+        (status != "active" && status != "rejected"))
+    {
+        error = "Invalid Live Play baseline result";
+        return false;
+    }
+    const json payload = {{"requestId", pending_baseline_request_},
+                          {"sceneGuid", pending_baseline_scene_},
+                          {"cookedGeneration", pending_baseline_generation_},
+                          {"cookedReleaseSha256", pending_baseline_release_},
+                          {"status", std::string(status)},
+                          {"reason", std::string(reason)}};
+    if (!send_message("scene.baseline.status", payload.dump(), error)) return false;
+    pending_baseline_request_.clear();
+    pending_baseline_scene_.clear();
+    pending_baseline_release_.clear();
+    pending_baseline_generation_ = 0;
+    return true;
+}
+
 bool client::receive_frame(std::string& result, std::uint32_t timeout_ms, std::string& error)
 {
     if (!connected())
@@ -615,10 +650,34 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
     }
     const auto& payload = parsed.at("payload");
     std::uint64_t seen = 0;
-    // L1.2b consumes only heartbeat/state transport. Later ECS handlers must
-    // explicitly register and validate the typed command allowlist.
-    if (type != "heartbeat" || !exact_keys(payload, {"lastReceivedSequence"}) ||
-        !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_)
+    // L1.3b1 recognizes cooked baseline metadata but does not touch ECS or
+    // content IO. The game host must ask the verified C9 loader to activate it.
+    if (type == "scene.baseline.offer")
+    {
+        std::string scene, authored_hash, release_hash;
+        std::uint64_t authoring_revision = 0, generation = 0;
+        if (!pending_baseline_request_.empty() ||
+            std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "content.observe") ==
+                negotiated_capabilities_.end() ||
+            !exact_keys(payload, {"sceneGuid", "authoringRevision", "authoringSha256", "cookedGeneration",
+                                  "cookedReleaseSha256"}) ||
+            !field(payload, "sceneGuid", scene) || !guid(scene) ||
+            !safe_number(payload, "authoringRevision", authoring_revision) ||
+            !field(payload, "authoringSha256", authored_hash) || !hash(authored_hash) ||
+            !safe_number(payload, "cookedGeneration", generation) ||
+            !field(payload, "cookedReleaseSha256", release_hash) || !hash(release_hash))
+        {
+            error = "Invalid or unsolicited cooked scene baseline offer";
+            close();
+            return std::nullopt;
+        }
+        pending_baseline_request_ = message_id;
+        pending_baseline_scene_ = std::move(scene);
+        pending_baseline_release_ = std::move(release_hash);
+        pending_baseline_generation_ = generation;
+    }
+    else if (type != "heartbeat" || !exact_keys(payload, {"lastReceivedSequence"}) ||
+             !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_)
     {
         error = "Live Play command is not yet supported by native Development bridge";
         close();

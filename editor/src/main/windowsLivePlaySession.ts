@@ -50,6 +50,12 @@ export class WindowsLivePlaySession {
     return { ...this.snapshotValue };
   }
 
+  /** C9/#1140 will invoke this only after a verified cooked scene is available. */
+  offerBaseline(payload: Extract<LivePlayMessage, { type: 'scene.baseline.offer' }>['payload']): boolean {
+    if (this.snapshotValue.state !== 'connected') return false;
+    return this.current?.server.sendBaselineOffer(payload) ?? false;
+  }
+
   private update(change: Partial<WindowsLivePlaySnapshot>): void {
     this.snapshotValue = { ...this.snapshotValue, ...change };
     try {

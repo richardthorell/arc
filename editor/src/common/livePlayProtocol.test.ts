@@ -66,6 +66,46 @@ const inspection = {
 };
 
 describe('Live Play L1 wire contract', () => {
+  it('requires strict cooked baseline identity, correct direction and content capability', () => {
+    const offer = {
+      sceneGuid: entityGuid,
+      authoringRevision: 7,
+      authoringSha256: hash,
+      cookedGeneration: 12,
+      cookedReleaseSha256: 'b'.repeat(64),
+    };
+    const withContent = { ...editorContext, grantedCapabilities: ['content.observe'] as const };
+    expect(receiveLivePlayFrame(frame('scene.baseline.offer', offer, 'editor'), withContent).accepted).toBe(true);
+    expect(receiveLivePlayFrame(frame('scene.baseline.offer', offer, 'runtime'), runtimeContext)).toMatchObject({
+      accepted: false,
+      code: 'wrong_direction',
+    });
+    expect(receiveLivePlayFrame(frame('scene.baseline.offer', offer, 'editor'), editorContext)).toMatchObject({
+      accepted: false,
+      code: 'permission_denied',
+    });
+    for (const invalid of [
+      { ...offer, cookedReleaseSha256: 'file:///tmp/raw.arcscene' },
+      { ...offer, authoringRevision: -1 },
+      { ...offer, sourcePath: 'Content/scene.arcscene' },
+    ]) {
+      const parsed = livePlayMessageSchema.safeParse(JSON.parse(frame('scene.baseline.offer', invalid, 'editor')));
+      expect(parsed.success).toBe(false);
+    }
+    const status = {
+      requestId: 'editor-offer-2',
+      sceneGuid: entityGuid,
+      cookedGeneration: 12,
+      cookedReleaseSha256: 'b'.repeat(64),
+      status: 'rejected',
+      reason: 'unavailable',
+    };
+    const fromRuntime = { ...runtimeContext, grantedCapabilities: ['content.observe'] as const };
+    expect(receiveLivePlayFrame(frame('scene.baseline.status', status, 'runtime'), fromRuntime).accepted).toBe(true);
+    const malformedStatus = JSON.parse(frame('scene.baseline.status', { ...status, status: 'active' }, 'runtime'));
+    expect(livePlayMessageSchema.safeParse(malformedStatus).success).toBe(false);
+  });
+
   it('can handshake mock editor and native peers over transport-neutral JSON frames', () => {
     const editorHello = receiveLivePlayFrame(frame('hello', hello, 'editor'), editorContext);
     expect(editorHello).toMatchObject({ accepted: true, nextSequence: 1 });
