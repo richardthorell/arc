@@ -1,4 +1,5 @@
 #include <arc/assets/runtime_content.h>
+#include <arc/assets/remote_content_generation.h>
 
 #include <algorithm>
 #include <charconv>
@@ -508,6 +509,47 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
     const auto manifest = package->manifest();
     const auto provider_id = std::string(asset_provider_ids::cooked_package_prefix) +
                              (manifest.build_id.empty() ? std::string{"anonymous"} : manifest.build_id) + ":" +
+                             std::to_string(logical_->revision + 1);
+    auto status = mount_provider(package, priority, provider_id);
+    if (!status) return status;
+
+    logical_->packages.push_back({.provider_id = provider_id,
+                                  .mount = mounts_.back(),
+                                  .debug_name = provider_id,
+                                  .priority = priority,
+                                  .generation = package->provider_generation(),
+                                  .manifest = manifest});
+    ++logical_->revision;
+    for (const auto& artifact : manifest.artifacts)
+    {
+        const auto was_present =
+            std::any_of(logical_->packages.begin(), logical_->packages.end() - 1,
+                        [&](const auto& previous)
+                        {
+                            return std::any_of(previous.manifest.artifacts.begin(), previous.manifest.artifacts.end(),
+                                               [&](const auto& entry) { return entry.asset == artifact.asset; });
+                        });
+        logical_->append_change(
+            {.kind = was_present ? asset_database_change_kind::provider_changed : asset_database_change_kind::added,
+             .guid = artifact.asset,
+             .provider_id = provider_id});
+    }
+    return asset_status::success();
+}
+
+asset_status cooked_asset_catalog::mount_remote_generation(const remote_content_release& release,
+                                                         derived_data_cache& cache, io::async_file_service& files,
+                                                         std::int32_t priority)
+{
+    // The factory verifies all referenced immutable chunks and artifact ranges
+    // before the VFS, logical catalog, or active generation can change.
+    auto verified = remote_content_artifact_provider::create(release, cache, files);
+    if (!verified) return asset_status::failure(std::move(verified).error());
+
+    auto package = std::move(verified).value();
+    const auto manifest = package->manifest();
+    const auto provider_id = std::string(asset_provider_ids::cooked_package_prefix) + manifest.build_id +
+                             ":remote:" + std::to_string(release.generation) + ":" +
                              std::to_string(logical_->revision + 1);
     auto status = mount_provider(package, priority, provider_id);
     if (!status) return status;
