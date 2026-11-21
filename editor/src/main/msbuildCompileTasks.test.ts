@@ -77,6 +77,7 @@ describe('BM7.2 native MSBuild CL task intervals', () => {
       '--msbuild-timing-log',
       path.join(project.projectRoot, 'Build', 'default', '.arc-monitor', 'arc-msbuild-' + runId + '.log'),
     ]);
+    expect(capture?.nativeArgs).toEqual([expect.stringContaining('/flp:LogFile=')]);
     const filename = capture!.args[1];
     fs.writeFileSync(filename, log);
     expect(capture?.finish()?.tasks).toHaveLength(2);

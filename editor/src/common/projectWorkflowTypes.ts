@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { BuildCompileTrace } from './buildCompileTypes';
 import type { BuildTargetGraph } from './buildTargetTypes';
 
 export const workflowStageSchema = z.enum([
@@ -91,6 +92,8 @@ export type WorkflowRun = {
   artifacts: WorkflowArtifact[];
   /** CMake File API graph for the requested target, when supported. */
   targetGraph?: BuildTargetGraph;
+  /** Native compiler intervals, retained on their native tool clock. */
+  compileTrace?: BuildCompileTrace;
   error?: string;
 };
 

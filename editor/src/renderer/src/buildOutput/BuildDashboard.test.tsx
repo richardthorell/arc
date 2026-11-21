@@ -178,7 +178,7 @@ describe('Build Monitor actionable workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry selected build' }));
     await waitFor(() => expect(api.execute).toHaveBeenCalledWith({ action: 'build', configuration: 'RelWithDebInfo' }));
     expect(screen.getByRole('button', { name: 'View error output' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Build execution graph' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toBeInTheDocument();
   });
 
   it('keeps history compact and reveals published workflow artifacts from details', async () => {
@@ -276,7 +276,7 @@ describe('Build Monitor BM3', () => {
     expect(screen.getByRole('dialog', { name: 'Build monitor' })).toBeInTheDocument();
     expect(await screen.findByText('RUNNING NOW')).toBeInTheDocument();
     expect(await screen.findByText('build log for current-run')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'Build execution graph' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toBeInTheDocument();
     expect(screen.getByText('configure')).toBeInTheDocument();
     expect(screen.getByText('compile')).toBeInTheDocument();
     expect(screen.getByText('package')).toBeInTheDocument();
@@ -374,8 +374,8 @@ describe('Build Monitor BM3', () => {
 
     expect(await screen.findByText('build log for new-run')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /build · Shipping/ })[0]).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByRole('region', { name: 'Build execution graph' })).toHaveTextContent('validate');
-    expect(screen.getByRole('region', { name: 'Build execution graph' })).toHaveTextContent('package');
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('validate');
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('package');
   });
 
   it('drills into a measured source and filters only text matched in the selected build log', async () => {

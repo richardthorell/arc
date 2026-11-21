@@ -22,7 +22,7 @@ import {
 import type { ArcBuildDiagnostic, ArcBuildSnapshot } from '../../../common/buildTypes';
 import type { BuildHistoryDetail, BuildHistoryPage, BuildRawLogChunk } from '../../../common/buildHistoryTypes';
 import type { BuildMonitorEvent, BuildMonitorRun, BuildMonitorSnapshot } from '../../../common/buildMonitorTypes';
-import { BuildExecutionGraph } from './BuildExecutionGraph';
+import { BuildExecutionTimeline } from './BuildExecutionTimeline';
 import { BuildHistoryComparisonPanel } from './BuildHistoryComparisonPanel';
 import { buildDisplayState, buildDuration, buildFailureReason, canRetryBuild } from './buildMonitorPresentation';
 
@@ -520,7 +520,7 @@ export function BuildDashboard({
                   </button>
                 </section>
               )}
-              <BuildExecutionGraph
+              <BuildExecutionTimeline
                 key={selected.id}
                 run={selected}
                 onFilterOutput={(outputName) => {

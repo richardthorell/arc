@@ -278,6 +278,17 @@ export class BuildMonitorService {
       this.event({ kind: 'target-graph-changed', runId: run.id, revision: workflow.targetGraph.revision });
     }
 
+    if (workflow.compileTrace && JSON.stringify(workflow.compileTrace) !== JSON.stringify(run.compileTrace)) {
+      run.compileTrace = structuredClone(workflow.compileTrace);
+      this.history.saveRun(run);
+      this.event({
+        kind: 'compile-trace-changed',
+        runId: run.id,
+        source: workflow.compileTrace.source,
+        taskCount: workflow.compileTrace.tasks.length,
+      });
+    }
+
     // Workflow stages come from the native planner and runner, never a UI guess.
     for (const source of workflow.stages) {
       const stage = run.stages.find((entry) => entry.name === source.stage);

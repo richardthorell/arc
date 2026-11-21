@@ -2,11 +2,13 @@
 
 BM3 introduced the persistent **Build Monitor** backed by the [BM1 event stream](build-monitor.md) and [BM2 build history](build-history.md). Later milestones added [measured workflow stages](build-monitor-timeline.md), [CMake target dependencies](build-monitor-target-graph.md), command-build graphs and [native compiler intervals](build-monitor-compile-tasks.md).
 
-## Graph-first layout
+## Timeline-first layout
 
 - **Compact build history:** The running build is pinned above persisted previous runs. Rows contain only status, action/configuration, time and duration. Selecting history never interrupts or retargets the active build.
 - **Compact summary:** Action/configuration, state, measured duration, diagnostic counts and selected-run actions share one row. Failed, cancelled and interrupted runs add one concise callout that navigates to the relevant diagnostic or output.
-- **Execution graph:** Planner-provided stages form the authoritative fallback. When CMake File API metadata exists, Compile expands into a deterministic dependency DAG. The graph uses ARC's shared pan, zoom, fit and selection primitives and never infers target completion from dependency structure.
+- **Execution timeline:** Planner-provided stages form the authoritative workflow Gantt. Measured stage boundaries share the editor workflow clock; missing timing remains visibly unavailable.
+- **Compile lanes:** Native Ninja/MSBuild compiler intervals are packed into stacked lanes so parallel work remains visible. Their native clock is labelled separately and is never aligned artificially to the workflow clock.
+- **Target metadata:** CMake target counts and bounded-data status remain available as context, but dependency relationships no longer define the primary visualization.
 - **Parallel task detail:** Selecting Compile shows all measured native compiler intervals. Selecting a CMake target filters only verified Ninja attribution; MSBuild CL tasks remain under Compile because their target cannot be identified safely. Intervals are packed into lanes to expose overlap on the native tool clock, which is explicitly not aligned to workflow time.
 - **Output and diagnostics:** The primary surface directly below the graph retains stdout/stderr archive paging, search of loaded chunks, stream filtering and clickable file diagnostics.
 - **Secondary details:** Published artifacts and compatible historical comparison remain available in a Details drawer without displacing the graph or output.

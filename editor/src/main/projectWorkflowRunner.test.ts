@@ -178,6 +178,21 @@ describe('project workflow orchestration', () => {
     expect(revisions.filter((revision) => revision === 2)).toHaveLength(1);
   });
 
+  it('publishes measured compiler intervals without changing the workflow clock', async () => {
+    const { runner, adapters, notify } = setup();
+    adapters.compile!.execute = async (context) => {
+      context.publishCompileTrace({
+        source: 'msbuild-file-log',
+        clock: 'msbuild-cl-events',
+        truncated: false,
+        tasks: [{ output: 'CL task #1', startMs: 0, endMs: 25, durationMs: 25 }],
+      });
+    };
+    const result = await runner.execute(plan(), authority());
+    expect(result.compileTrace).toMatchObject({ clock: 'msbuild-cl-events', tasks: [{ durationMs: 25 }] });
+    expect(notify.mock.calls.some(([entry]) => entry.compileTrace?.tasks.length === 1)).toBe(true);
+  });
+
   it('cannot publish target progress after cancelling its owned workflow', async () => {
     const { runner, adapters, commit } = setup();
     adapters.compile!.execute = async (context) => {

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { BuildTargetGraph } from '../common/buildTargetTypes';
+import type { BuildCompileTrace } from '../common/buildCompileTypes';
 import {
   workflowPlanSchema,
   type WorkflowPlan,
@@ -18,6 +19,7 @@ export type WorkflowStageContext = {
   assertCurrent(): void;
   /** Called only by trusted native build adapters, never renderer IPC. */
   publishTargetGraph(graph: BuildTargetGraph): void;
+  publishCompileTrace(trace: BuildCompileTrace): void;
   reportTargetArtifact(targetId: string): void;
   reportRequestedTargetSatisfied(): void;
 };
@@ -115,6 +117,11 @@ export class ProjectWorkflowRunner {
       publishTargetGraph: (graph) => {
         if (controller.signal.aborted || run.state !== 'running') return;
         run.targetGraph = structuredClone(graph);
+        this.emit(run);
+      },
+      publishCompileTrace: (trace) => {
+        if (controller.signal.aborted || run.state !== 'running') return;
+        run.compileTrace = structuredClone(trace);
         this.emit(run);
       },
       reportTargetArtifact: (targetId) => {
