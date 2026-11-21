@@ -263,6 +263,64 @@ cook_result asset_cooker::cook(const cook_request& request)
         return result;
     }
 
+    // L1.3b2b: never allow a captured authoring scene to become Shipping
+    // source or silently change the identity/closure of another project asset.
+    if (const auto& source = request.ephemeral_scene)
+    {
+        const auto snapshot = implementation_->assets->find(source->asset);
+        constexpr std::size_t max_ephemeral_scene_bytes = 16u * 1024u * 1024u;
+        if (request.target.configuration != cook_configuration::development || !source->asset.valid() ||
+            source->bytes.empty() || source->bytes.size() > max_ephemeral_scene_bytes ||
+            std::find(request.roots.begin(), request.roots.end(), source->asset) == request.roots.end() || !snapshot ||
+            snapshot->type != asset_types::scene)
+        {
+            result.error = {.code = asset_error_code::invalid_request,
+                            .guid = source->asset,
+                            .message = "Ephemeral scene cook requires a registered root scene, bounded bytes and "
+                                       "a Development target"};
+            return result;
+        }
+        // Scene asset GUIDs live in .arcmeta; scene.id is a separate UUID
+        // inside the serialized scene. Compare against the saved document's
+        // scene.id, never the registry GUID or an untrusted claimed identity.
+        const auto document_scene_id = [](const json& document) -> std::optional<asset_guid>
+        {
+            if (!document.is_object()) return std::nullopt;
+            const auto format = document.find("format");
+            if (format == document.end() || !format->is_string() || *format != "arc.scene") return std::nullopt;
+            const auto scene = document.find("scene");
+            if (scene == document.end() || !scene->is_object()) return std::nullopt;
+            const auto id = scene->find("id");
+            if (id == scene->end() || !id->is_string()) return std::nullopt;
+            // The existing UUID parser checks scene.id syntax, not asset identity.
+            return parse_asset_guid(id->get<std::string>());
+        };
+        const std::string_view bytes(reinterpret_cast<const char*>(source->bytes.data()), source->bytes.size());
+        const auto document = json::parse(bytes.begin(), bytes.end(), nullptr, false);
+        auto saved_source = snapshot->source_path;
+        if (!saved_source.is_absolute()) saved_source = registry.project_root / saved_source;
+        std::error_code size_error;
+        const auto saved_size = std::filesystem::file_size(saved_source, size_error);
+        if (size_error || saved_size == 0 || saved_size > max_ephemeral_scene_bytes)
+        {
+            result.error = {.code = asset_error_code::invalid_request,
+                            .guid = source->asset,
+                            .message = "Registered authored scene cannot be verified for ephemeral cooking"};
+            return result;
+        }
+        std::ifstream saved_input(saved_source, std::ios::binary);
+        const auto saved_document = saved_input ? json::parse(saved_input, nullptr, false) : json{};
+        const auto captured_id = document_scene_id(document);
+        const auto saved_id = document_scene_id(saved_document);
+        if (!captured_id || !saved_id || *captured_id != *saved_id)
+        {
+            result.error = {.code = asset_error_code::invalid_request,
+                            .guid = source->asset,
+                            .message = "Ephemeral scene.id differs from the registered authored scene document"};
+            return result;
+        }
+    }
+
     std::vector<asset_guid> order;
     std::unordered_set<asset_guid, asset_guid_hash> visiting;
     std::unordered_set<asset_guid, asset_guid_hash> visited;
@@ -366,7 +424,10 @@ cook_result asset_cooker::cook(const cook_request& request)
             settings_version = metadata.value().settings_version;
             canonical_settings = metadata.value().canonical_settings;
         }
-        const auto key = make_asset_build_key({.source_hash = snapshot->source_hash,
+        const bool is_ephemeral_scene = request.ephemeral_scene && request.ephemeral_scene->asset == guid;
+        const auto source_hash =
+            is_ephemeral_scene ? hash_bytes(request.ephemeral_scene->bytes) : snapshot->source_hash;
+        const auto key = make_asset_build_key({.source_hash = source_hash,
                                                .dependency_hashes = dependency_hashes,
                                                .importer = snapshot->importer,
                                                .importer_version = snapshot->importer_version,
@@ -421,21 +482,35 @@ cook_result asset_cooker::cook(const cook_request& request)
         }
         if (used_cache) continue;
 
-        const auto loaded = implementation_->assets
-                                ->load<source_asset_data>(
-                                    {.reference = {guid, snapshot->type, normalize_asset_path(snapshot->source_path)},
-                                     .priority = asset_streaming_priority::high,
-                                     .residency = asset_residency::cpu,
-                                     .cancellation = request.cancellation,
-                                     .allow_fallback = false})
-                                .get();
-        if (!loaded)
+        source_asset_data source;
+        if (is_ephemeral_scene)
         {
-            result.error = loaded.error;
-            return result;
+            // Stay inside the existing cooker and DDC. Never open, save, or
+            // refresh the authored source for this scene transaction.
+            source.source_path = absolute_source;
+            source.source_hash = source_hash;
+            source.bytes = request.ephemeral_scene->bytes;
+        }
+        else
+        {
+            const auto loaded =
+                implementation_->assets
+                    ->load<source_asset_data>(
+                        {.reference = {guid, snapshot->type, normalize_asset_path(snapshot->source_path)},
+                         .priority = asset_streaming_priority::high,
+                         .residency = asset_residency::cpu,
+                         .cancellation = request.cancellation,
+                         .allow_fallback = false})
+                    .get();
+            if (!loaded)
+            {
+                result.error = loaded.error;
+                return result;
+            }
+            source = *loaded.asset;
         }
         asset_cook_context context{.asset = *snapshot,
-                                   .source = *loaded.asset,
+                                   .source = std::move(source),
                                    .target = request.target,
                                    .settings_version = settings_version,
                                    .canonical_settings = std::move(canonical_settings),
@@ -446,6 +521,8 @@ cook_result asset_cooker::cook(const cook_request& request)
         // against the selected project, never the arc-cook process working
         // directory (which may be the CTest build directory or a CI runner).
         context.source.source_path = absolute_source;
+        context.asset.source_hash = source_hash;
+        context.ephemeral_source_override = is_ephemeral_scene;
         for (auto& dependency : context.dependencies)
             if (!dependency.source_path.is_absolute())
                 dependency.source_path = registry.project_root / dependency.source_path;

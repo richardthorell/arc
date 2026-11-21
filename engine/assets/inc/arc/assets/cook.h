@@ -356,6 +356,8 @@ struct asset_cook_context
     std::vector<asset_snapshot> dependencies;
     std::vector<cooked_dependency_artifact> cooked_dependencies;
     jobs::cancellation_token cancellation;
+    /** Fail closed on new optional source references not present in the saved graph. */
+    bool ephemeral_source_override{};
 };
 
 struct [[nodiscard]] asset_cook_result
@@ -442,6 +444,16 @@ struct [[nodiscard]] bundle_cook_request_result
                                                                    std::string_view bundle_id,
                                                                    const asset_database& database);
 
+/** Source bytes captured from a trusted, private authoring scene snapshot.
+ * In Development-only ephemeral cooks this replaces one registered scene's
+ * source bytes without altering asset identity, source files or the database.
+ */
+struct ephemeral_scene_cook_source
+{
+    asset_guid asset{};
+    std::vector<std::byte> bytes;
+};
+
 struct cook_request
 {
     std::vector<asset_guid> roots;
@@ -452,6 +464,8 @@ struct cook_request
     std::filesystem::path output;
     bool fail_on_warning{};
     jobs::cancellation_token cancellation;
+    /** Optional session-scoped Development input; never used for Shipping. */
+    std::optional<ephemeral_scene_cook_source> ephemeral_scene;
 };
 
 struct [[nodiscard]] cook_result

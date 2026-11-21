@@ -147,7 +147,10 @@ public:
                                                                    : archive.error}};
             for (const auto& dependency : archive.document.dependencies)
             {
-                if (!dependency.required) continue;
+                // An unsaved snapshot cannot add any unseen dependency
+                // without a fresh graph scan. Refuse even optional unknown
+                // refs rather than publish an incomplete ephemeral cook.
+                if (!dependency.required && !context.ephemeral_source_override) continue;
                 const auto found = std::find_if(context.dependencies.begin(), context.dependencies.end(),
                                                 [&](const asset_snapshot& candidate)
                                                 { return candidate.guid == dependency.reference.guid; });
@@ -550,6 +553,8 @@ struct command_line
     std::filesystem::path manifest;
     std::string profile{"windows-x64-vulkan"};
     std::vector<std::string> roots;
+    std::filesystem::path ephemeral_scene_path;
+    std::string ephemeral_asset_guid;
     bool fail_on_warning{};
     bool require_shared{};
     bool json{};
@@ -560,6 +565,8 @@ void print_usage()
     std::cout << "arc-cook <cook|package|verify|clean|cache> [options]\n"
                  "  --project <path> --root <guid-or-path> --profile <name> --output <path>\n"
                  "  --manifest <path> --fail-on-warning --require-shared-cache --json\n"
+                 "  Development cook only: --ephemeral-scene <absolute-private-file> "
+                 "--ephemeral-asset-guid <registered-asset-guid>\n"
                  "  cache subcommands: stats, verify, prune\n";
 }
 
@@ -604,6 +611,20 @@ std::optional<command_line> parse_command_line(int argc, char** argv)
         {
             if (const auto* v = value())
                 result.roots.emplace_back(v);
+            else
+                return std::nullopt;
+        }
+        else if (argument == "--ephemeral-scene")
+        {
+            if (const auto* v = value())
+                result.ephemeral_scene_path = v;
+            else
+                return std::nullopt;
+        }
+        else if (argument == "--ephemeral-asset-guid")
+        {
+            if (const auto* v = value())
+                result.ephemeral_asset_guid = v;
             else
                 return std::nullopt;
         }
@@ -710,6 +731,64 @@ void register_processors(asset_cooker& cooker)
         std::make_unique<unsupported_processor>(asset_types::audio_clip, cook_processor_ids::audio, "Audio encoding"));
 }
 
+// L1.3b2b uses the existing scene processor and asset graph. Only the
+// trusted editor/main process should provide this private staged file.
+std::optional<ephemeral_scene_cook_source>
+read_ephemeral_scene(const command_line& command, const std::filesystem::path& project_root, std::string& error)
+{
+    const auto guid = parse_asset_guid(command.ephemeral_asset_guid);
+    const auto source = command.ephemeral_scene_path;
+    if (!guid || !source.is_absolute() || !source.lexically_normal().is_absolute())
+    {
+        error = "Ephemeral scene requires a valid asset GUID and absolute private source path";
+        return std::nullopt;
+    }
+    std::error_code ec;
+    const auto status = std::filesystem::symlink_status(source, ec);
+    if (ec || !std::filesystem::is_regular_file(status))
+    {
+        error = "Ephemeral scene must be a regular non-symlink source file";
+        return std::nullopt;
+    }
+    const auto canonical_source = std::filesystem::canonical(source, ec);
+    if (ec)
+    {
+        error = "Cannot resolve private ephemeral scene";
+        return std::nullopt;
+    }
+    const auto relative = canonical_source.lexically_relative(project_root);
+    if (!relative.empty() && *relative.begin() != ".." && !relative.is_absolute())
+    {
+        error = "Ephemeral scene source must be outside the project";
+        return std::nullopt;
+    }
+    const auto size = std::filesystem::file_size(canonical_source, ec);
+    if (ec || size == 0 || size > 16u * 1024u * 1024u)
+    {
+        error = "Ephemeral scene exceeds the 16 MiB capture limit or is empty";
+        return std::nullopt;
+    }
+    std::ifstream input(canonical_source, std::ios::binary);
+    std::vector<std::byte> bytes(static_cast<std::size_t>(size));
+    if (!input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size)))
+    {
+        error = "Cannot read complete ephemeral scene snapshot";
+        return std::nullopt;
+    }
+    const auto document =
+        nlohmann::json::parse(reinterpret_cast<const char*>(bytes.data()),
+                              reinterpret_cast<const char*>(bytes.data() + bytes.size()), nullptr, false);
+    if (document.is_discarded() || !document.is_object() || !document.contains("format") ||
+        document["format"] != "arc.scene" || !document.contains("scene") || !document["scene"].is_object() ||
+        !document["scene"].contains("id") || !document["scene"]["id"].is_string() ||
+        !parse_asset_guid(document["scene"]["id"].get<std::string>()))
+    {
+        error = "Ephemeral authoring scene is missing a valid scene.id";
+        return std::nullopt;
+    }
+    return ephemeral_scene_cook_source{.asset = *guid, .bytes = std::move(bytes)};
+}
+
 std::filesystem::path find_project_descriptor(const std::filesystem::path& candidate)
 {
     if (std::filesystem::is_regular_file(candidate) && candidate.extension() == ".arcproject") return candidate;
@@ -809,6 +888,47 @@ int main(int argc, char** argv)
                               ? std::vector<cook_variant>{}
                               : cook_variants_for(*selected_profile, command.output);
     const auto cache_root = project_context.value().asset_cache_root;
+
+    std::optional<ephemeral_scene_cook_source> ephemeral_scene;
+    if (!command.ephemeral_scene_path.empty() || !command.ephemeral_asset_guid.empty())
+    {
+        if (command.command != "cook" || command.ephemeral_scene_path.empty() || command.ephemeral_asset_guid.empty() ||
+            selected_profile == descriptor.value().cook_profiles.end() ||
+            selected_profile->configuration == "Shipping" || command.output.empty())
+        {
+            std::cerr << "Ephemeral scene overrides require explicit private Development cook output and a GUID\n";
+            return 2;
+        }
+        if (!command.output.is_absolute())
+        {
+            std::cerr << "Ephemeral cook output must use an absolute private directory\n";
+            return 2;
+        }
+        // Reject existing symlink/junction ancestors back into the project.
+        // No ephemeral cook is allowed to touch an authored Saved/Cooked tree.
+        std::error_code path_error;
+        const auto private_output = std::filesystem::weakly_canonical(command.output, path_error);
+        const auto root = std::filesystem::weakly_canonical(command.project, path_error);
+        if (path_error)
+        {
+            std::cerr << "Cannot validate ephemeral output path\n";
+            return 2;
+        }
+        const auto relative = private_output.lexically_relative(root);
+        if (!relative.empty() && *relative.begin() != ".." && !relative.is_absolute())
+        {
+            std::cerr << "Ephemeral cook output must be outside the authored project\n";
+            return 2;
+        }
+        std::string reason;
+        ephemeral_scene = read_ephemeral_scene(command, command.project, reason);
+        if (!ephemeral_scene)
+        {
+            std::cerr << reason << '\n';
+            return 2;
+        }
+        command.roots.push_back(to_string(ephemeral_scene->asset));
+    }
 
     if (command.command == "clean")
     {
@@ -1021,7 +1141,8 @@ int main(int argc, char** argv)
         const auto cooked = cooker.cook({.roots = roots,
                                          .target = variant.target,
                                          .output = variant.output,
-                                         .fail_on_warning = command.fail_on_warning});
+                                         .fail_on_warning = command.fail_on_warning,
+                                         .ephemeral_scene = ephemeral_scene});
         if (!cooked.succeeded())
         {
             std::cerr << cooked.error.message << '\n';
