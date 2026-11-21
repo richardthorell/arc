@@ -29,9 +29,11 @@ describe('LivePlayBaselineOutcomeGate', () => {
   it('does not report readiness when offering fails or the native runtime disconnects', async () => {
     const gate = new LivePlayBaselineOutcomeGate();
     await expect(gate.waitForStatus(() => false)).rejects.toThrow(/could not offer/);
-    await expect(gate.waitForStatus(() => { throw new Error('sensitive internal error'); })).rejects.toThrow(
-      /could not offer/,
-    );
+    await expect(
+      gate.waitForStatus(() => {
+        throw new Error('sensitive internal error');
+      }),
+    ).rejects.toThrow(/could not offer/);
     const pending = gate.waitForStatus(() => true);
     gate.cancel('Live Play stopped before scene activation');
     await expect(pending).rejects.toThrow(/stopped/);
