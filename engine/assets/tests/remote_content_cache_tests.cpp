@@ -20,16 +20,14 @@ struct fixture
 {
     arc::io::file_buffer body = bytes("immutable cooked bytes");
     arc::assets::content_hash hash = arc::assets::hash_bytes(body);
-    arc::assets::remote_content_object object{
-        .path = "objects/sha256/" + arc::assets::to_string(hash),
-        .sha256 = arc::assets::to_string(hash),
-        .size = body.size()};
+    arc::assets::remote_content_object object{.path = "objects/sha256/" + arc::assets::to_string(hash),
+                                              .sha256 = arc::assets::to_string(hash),
+                                              .size = body.size()};
     arc::io::content_http_request request{
         .origin = "https://content.example.org", .object_path = object.path, .object_size = object.size};
-    arc::io::content_http_response response{
-        .status = 200, .content_length = std::to_string(body.size()), .body = body};
+    arc::io::content_http_response response{.status = 200, .content_length = std::to_string(body.size()), .body = body};
     std::filesystem::path root = std::filesystem::temp_directory_path() /
-        ("arc-remote-content-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
+                                 ("arc-remote-content-" + arc::assets::to_string(arc::assets::generate_asset_guid()));
     arc::assets::derived_data_cache cache{arc::assets::derived_data_cache_config{.root = root}};
 
     ~fixture()

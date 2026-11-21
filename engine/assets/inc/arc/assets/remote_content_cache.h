@@ -44,8 +44,7 @@ struct [[nodiscard]] remote_object_cache_result
  * The cache's own error is preserved in 'error' for diagnostics.
  */
 [[nodiscard]] std::optional<io::file_buffer>
-load_verified_remote_object(derived_data_cache& cache, const remote_content_object& object,
-                            cache_error& error);
+load_verified_remote_object(derived_data_cache& cache, const remote_content_object& object, cache_error& error);
 
 /** Validate full HTTP response framing, hash, and bytes BEFORE publishing into
  * the existing persistent derived-data CAS. A network worker calls this only
@@ -53,10 +52,10 @@ load_verified_remote_object(derived_data_cache& cache, const remote_content_obje
  *
  * Identical content already in cache is reused, not rewritten.
  */
-[[nodiscard]] remote_object_cache_result
-ingest_verified_remote_object(derived_data_cache& cache, const remote_content_object& object,
-                              const io::content_http_request& request,
-                              const io::content_http_response& response,
-                              const io::content_http_limits& limits);
+[[nodiscard]] remote_object_cache_result ingest_verified_remote_object(derived_data_cache& cache,
+                                                                       const remote_content_object& object,
+                                                                       const io::content_http_request& request,
+                                                                       const io::content_http_response& response,
+                                                                       const io::content_http_limits& limits);
 
 } // namespace arc::assets

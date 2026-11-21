@@ -16,8 +16,7 @@ remote_object_cache_result failed(remote_object_cache_error code, std::string me
 
 std::optional<content_hash> validated_hash(const remote_content_object& object)
 {
-    if (object.size == 0 || object.path != "objects/sha256/" + object.sha256)
-        return std::nullopt;
+    if (object.size == 0 || object.path != "objects/sha256/" + object.sha256) return std::nullopt;
     auto hash = parse_asset_hash(object.sha256);
     if (!hash || to_string(*hash) != object.sha256) return std::nullopt;
     return hash;
@@ -26,8 +25,7 @@ std::optional<content_hash> validated_hash(const remote_content_object& object)
 } // namespace
 
 std::optional<io::file_buffer> load_verified_remote_object(derived_data_cache& cache,
-                                                            const remote_content_object& object,
-                                                            cache_error& error)
+                                                           const remote_content_object& object, cache_error& error)
 {
     error = {};
     const auto expected_hash = validated_hash(object);
@@ -46,8 +44,7 @@ std::optional<io::file_buffer> load_verified_remote_object(derived_data_cache& c
     return std::move(cached->bytes);
 }
 
-remote_object_cache_result ingest_verified_remote_object(derived_data_cache& cache,
-                                                         const remote_content_object& object,
+remote_object_cache_result ingest_verified_remote_object(derived_data_cache& cache, const remote_content_object& object,
                                                          const io::content_http_request& request,
                                                          const io::content_http_response& response,
                                                          const io::content_http_limits& limits)
@@ -59,8 +56,7 @@ remote_object_cache_result ingest_verified_remote_object(derived_data_cache& cac
                       "Remote CAS ingestion requires a matching complete immutable object");
 
     const auto validated = io::validate_content_http_response(request, response, limits);
-    if (!validated.succeeded())
-        return failed(remote_object_cache_error::incompatible_response, validated.message);
+    if (!validated.succeeded()) return failed(remote_object_cache_error::incompatible_response, validated.message);
 
     if (hash_bytes(response.body) != *expected_hash)
         return failed(remote_object_cache_error::hash_mismatch,
