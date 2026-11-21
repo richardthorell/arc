@@ -421,8 +421,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                     if (!client->send_heartbeat(error)) break;
                     last_heartbeat = now;
                 }
-                static_cast<void>(client->poll(150, error));
+                const auto incoming = client->poll(150, error);
                 if (!error.empty()) break;
+                if (incoming && incoming->type == "scene.baseline.offer")
+                {
+                    // L1.3b2: the control bridge cannot activate authored
+                    // snapshots. Until C9 mounts a verified target-cooked
+                    // generation, fail closed instead of silently dropping
+                    // the request or reporting a scene as active.
+                    if (!client->send_baseline_status("rejected", "unavailable", error)) break;
+                }
             }
             if (client->connected())
                 static_cast<void>(client->send_state("stopped", live_ticks.load(), live_ticks.load(), error));
