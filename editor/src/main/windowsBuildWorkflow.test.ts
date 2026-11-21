@@ -4,7 +4,12 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowPlan } from '../common/projectWorkflowTypes';
 import { ProjectWorkflowRunner } from './projectWorkflowRunner';
-import { createWindowsBuildWorkflow, windowsBuildCapability } from './windowsBuildWorkflow';
+import {
+  createWindowsBuildWorkflow,
+  readMsbuildProjectGraph,
+  SdkModuleOutputObserver,
+  windowsBuildCapability,
+} from './windowsBuildWorkflow';
 import type { WorkflowProcessRequest } from './workflowProcess';
 
 const roots: string[] = [];
@@ -108,6 +113,10 @@ function fixture(
       const artifact = path.join(arg('--build'), 'Shipping', 'game.exe');
       request.onRawOutput?.(`game.vcxproj -> ${artifact}\n`, 'stdout');
     }
+    if (options.development && request.args.includes('arc-development-sdk')) {
+      const artifact = path.join(root, 'EngineBuild', 'engine', 'assets', 'Shipping', 'arc-assets.lib');
+      request.onRawOutput?.(`arc-assets.vcxproj -> ${artifact}\n`, 'stdout');
+    }
     if (request.args[0] === 'cook') {
       const manifests = (options.variants ? ['bc', 'other'] : ['bc']).map((name) => {
         const manifest = path.join(arg('--output'), `${name}.arccookmanifest`);
@@ -167,6 +176,16 @@ function fixture(
         }
       : {}),
   };
+  if (options.development) {
+    const engineBuild = path.join(root, 'EngineBuild');
+    const assetsDirectory = path.join(engineBuild, 'engine', 'assets');
+    fs.mkdirSync(assetsDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(engineBuild, 'arc-development-sdk.vcxproj'),
+      '<Project><ItemGroup><ProjectReference Include="engine\\assets\\arc-assets.vcxproj" /></ItemGroup></Project>',
+    );
+    fs.writeFileSync(path.join(assetsDirectory, 'arc-assets.vcxproj'), '<Project />');
+  }
   const workflow = createWindowsBuildWorkflow(
     process.execPath,
     process.execPath,
@@ -201,6 +220,47 @@ function fixture(
 }
 
 describe('Windows Shipping workflow', () => {
+  it('reads a bounded SDK module hierarchy from generated MSBuild project references', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc sdk project graph '));
+    roots.push(root);
+    const assetsDirectory = path.join(root, 'engine', 'assets');
+    fs.mkdirSync(assetsDirectory, { recursive: true });
+    fs.writeFileSync(
+      path.join(root, 'arc-development-sdk.vcxproj'),
+      '<Project><ItemGroup><ProjectReference Include="engine\\assets\\arc-assets.vcxproj" /></ItemGroup></Project>',
+    );
+    fs.writeFileSync(path.join(assetsDirectory, 'arc-assets.vcxproj'), '<Project />');
+
+    expect(readMsbuildProjectGraph(root, 'Shipping', 'arc-development-sdk')).toMatchObject({
+      generator: 'MSBuild',
+      rootTargetId: 'arc-development-sdk.vcxproj',
+      nodes: [
+        {
+          id: 'arc-development-sdk.vcxproj',
+          name: 'arc-development-sdk',
+          dependencies: ['engine/assets/arc-assets.vcxproj'],
+        },
+        {
+          id: 'engine/assets/arc-assets.vcxproj',
+          name: 'arc-assets',
+          dependencies: [],
+        },
+      ],
+    });
+  });
+
+  it('observes bounded SDK module artifacts from chunked MSBuild output', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc sdk modules '));
+    roots.push(root);
+    const observed = vi.fn();
+    const observer = new SdkModuleOutputObserver(root, observed);
+    const artifact = path.join(root, 'engine', 'assets', 'Shipping', 'arc-assets.lib');
+    observer.accept('  arc-assets.vcxproj -> ', 'stdout');
+    observer.accept(`${artifact}\n`, 'stdout');
+    observer.accept(`  outside.vcxproj -> ${path.join(path.dirname(root), 'outside.lib')}\n`, 'stdout');
+    expect(observed).toHaveBeenCalledExactlyOnceWith('arc-assets', artifact);
+  });
+
   it('rejects a development SDK with a different engine or architecture', () => {
     const value = fixture({ development: true });
     expect(
@@ -215,7 +275,17 @@ describe('Windows Shipping workflow', () => {
     const result = await value.run();
     expect(result.state).toBe('succeeded');
     expect(result.stages.find((stage) => stage.stage === 'configure')?.tasks).toMatchObject([
-      { id: 'development-sdk', name: 'Build ARC development SDK', state: 'succeeded' },
+      {
+        id: 'development-sdk',
+        name: 'Build SDK',
+        state: 'succeeded',
+        targetGraph: {
+          nodes: [
+            { id: 'arc-development-sdk.vcxproj', satisfiedAt: expect.any(String) },
+            { name: 'arc-assets', artifactObservedAt: expect.any(String) },
+          ],
+        },
+      },
       { id: 'cmake-configure', name: 'Configure project', state: 'succeeded' },
     ]);
     const calls = value.runProcess.mock.calls.map(([request]) => request.args);

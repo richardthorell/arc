@@ -157,6 +157,94 @@ function CompileTaskHierarchy({
   );
 }
 
+type WorkflowTaskSpan = ReturnType<typeof buildStageTimeline>['spans'][number]['tasks'][number];
+
+function WorkflowTaskRows({
+  task,
+  timelineDuration,
+  runStartedAt,
+  nested,
+  collapsed,
+  onToggle,
+}: {
+  task: WorkflowTaskSpan;
+  timelineDuration: number;
+  runStartedAt: number;
+  nested: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <div className={`build-stage-gantt-row${nested ? ' is-task' : ''}`}>
+        <div className={`build-stage-gantt-label${nested ? ' is-task' : ''}`}>
+          {task.targetGraph ? (
+            <button
+              type="button"
+              className="build-stage-expand"
+              aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${task.label} modules`}
+              aria-expanded={!collapsed}
+              onClick={onToggle}
+            >
+              {collapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+            </button>
+          ) : nested ? (
+            <span className="build-stage-task-branch" aria-hidden="true" />
+          ) : (
+            <span className="build-stage-expand-placeholder" />
+          )}
+          <i className={`is-${task.state}`} />
+          <strong>{task.label}</strong>
+          <small>{task.durationMs === undefined ? task.state : formatDuration(task.durationMs)}</small>
+        </div>
+        <div className={`build-stage-gantt-track${nested ? ' is-task' : ''}`}>
+          {task.startMs !== undefined && task.durationMs !== undefined ? (
+            <div
+              className={`build-stage-gantt-bar is-${task.state}`}
+              style={{
+                left: `${(task.startMs / timelineDuration) * 100}%`,
+                width: `${Math.max(0.5, (task.durationMs / timelineDuration) * 100)}%`,
+              }}
+              title={`${task.label} · ${formatDuration(task.durationMs)}`}
+            />
+          ) : (
+            <span className="build-stage-gantt-unavailable">{task.state}</span>
+          )}
+        </div>
+      </div>
+      {task.targetGraph &&
+        !collapsed &&
+        task.targetGraph.nodes
+          .filter((target) => target.id !== task.targetGraph?.rootTargetId)
+          .map((target) => {
+            const observedAt = target.artifactObservedAt ? Date.parse(target.artifactObservedAt) : NaN;
+            const observedOffset = Number.isFinite(observedAt) ? Math.max(0, observedAt - runStartedAt) : undefined;
+            return (
+              <div className="build-stage-gantt-row is-module" key={`${task.id}:${target.id}`}>
+                <div className="build-stage-gantt-label is-module">
+                  <span className="build-stage-task-branch" aria-hidden="true" />
+                  <i className={target.artifactObservedAt ? 'is-succeeded' : 'is-pending'} />
+                  <strong>{target.name}</strong>
+                  <small>{target.artifactObservedAt ? 'built' : 'pending'}</small>
+                </div>
+                <div className="build-stage-gantt-track is-module">
+                  {observedOffset !== undefined ? (
+                    <span
+                      className="build-stage-target-milestone"
+                      style={{ left: `${Math.min(100, (observedOffset / timelineDuration) * 100)}%` }}
+                      title={`${target.name} output observed`}
+                    />
+                  ) : (
+                    <span className="build-stage-gantt-unavailable">Pending</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+    </>
+  );
+}
+
 function WorkflowHierarchy({
   run,
   onFilterOutput,
@@ -168,6 +256,7 @@ function WorkflowHierarchy({
   const isCompile = (id: string, label: string) => id === 'compile' || label.toLowerCase() === 'compile';
   const hasCompile = timeline.spans.some((span) => isCompile(span.id, span.label));
   const [collapsedStages, setCollapsedStages] = useState<Set<string>>(() => new Set());
+  const [collapsedTasks, setCollapsedTasks] = useState<Set<string>>(() => new Set());
   const toggleStage = (id: string) => {
     setCollapsedStages((current) => {
       const next = new Set(current);
@@ -176,6 +265,15 @@ function WorkflowHierarchy({
       return next;
     });
   };
+  const toggleTask = (id: string) => {
+    setCollapsedTasks((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const runStartedAt = Date.parse(run.startedAt);
   return (
     <section className="build-stage-gantt" aria-label="Workflow stage hierarchy">
       <header>
@@ -187,70 +285,60 @@ function WorkflowHierarchy({
         <TimelineAxis durationMs={timeline.durationMs} />
         {timeline.spans.map((span) => {
           const compile = isCompile(span.id, span.label);
+          const flattenTasks = span.label.toLowerCase() === 'configure' && span.tasks.length > 0;
           const expandable = Boolean(span.tasks.length || (compile && run.compileTrace));
           const expanded = expandable && !collapsedStages.has(span.id);
           return (
             <Fragment key={span.id}>
-              <div className="build-stage-gantt-row">
-                <div className="build-stage-gantt-label">
-                  {expandable ? (
-                    <button
-                      type="button"
-                      className="build-stage-expand"
-                      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${span.label} subtasks`}
-                      aria-expanded={expanded}
-                      onClick={() => toggleStage(span.id)}
-                    >
-                      {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                    </button>
-                  ) : (
-                    <span className="build-stage-expand-placeholder" />
-                  )}
-                  <i className={`is-${span.state}`} />
-                  <strong>{span.label}</strong>
-                  <small>{span.durationMs === undefined ? span.state : formatDuration(span.durationMs)}</small>
-                </div>
-                <div className="build-stage-gantt-track">
-                  {span.startMs !== undefined && span.durationMs !== undefined ? (
-                    <div
-                      className={`build-stage-gantt-bar is-${span.state}`}
-                      style={{
-                        left: `${(span.startMs / timeline.durationMs) * 100}%`,
-                        width: `${Math.max(0.5, (span.durationMs / timeline.durationMs) * 100)}%`,
-                      }}
-                      title={`${span.label} · ${formatDuration(span.durationMs)}`}
-                    />
-                  ) : (
-                    <span className="build-stage-gantt-unavailable">
-                      {span.state === 'pending' ? 'Pending' : 'Timing unavailable'}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {expanded &&
-                span.tasks.map((task) => (
-                  <div className="build-stage-gantt-row is-task" key={`${span.id}:${task.id}`}>
-                    <div className="build-stage-gantt-label is-task">
-                      <span className="build-stage-task-branch" aria-hidden="true" />
-                      <i className={`is-${task.state}`} />
-                      <strong>{task.label}</strong>
-                      <small>{task.durationMs === undefined ? task.state : formatDuration(task.durationMs)}</small>
-                    </div>
-                    <div className="build-stage-gantt-track is-task">
-                      {task.startMs !== undefined && task.durationMs !== undefined ? (
-                        <div
-                          className={`build-stage-gantt-bar is-${task.state}`}
-                          style={{
-                            left: `${(task.startMs / timeline.durationMs) * 100}%`,
-                            width: `${Math.max(0.5, (task.durationMs / timeline.durationMs) * 100)}%`,
-                          }}
-                          title={`${task.label} · ${formatDuration(task.durationMs)}`}
-                        />
-                      ) : (
-                        <span className="build-stage-gantt-unavailable">{task.state}</span>
-                      )}
-                    </div>
+              {!flattenTasks && (
+                <div className="build-stage-gantt-row">
+                  <div className="build-stage-gantt-label">
+                    {expandable ? (
+                      <button
+                        type="button"
+                        className="build-stage-expand"
+                        aria-label={`${expanded ? 'Collapse' : 'Expand'} ${span.label} subtasks`}
+                        aria-expanded={expanded}
+                        onClick={() => toggleStage(span.id)}
+                      >
+                        {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                      </button>
+                    ) : (
+                      <span className="build-stage-expand-placeholder" />
+                    )}
+                    <i className={`is-${span.state}`} />
+                    <strong>{span.label}</strong>
+                    <small>{span.durationMs === undefined ? span.state : formatDuration(span.durationMs)}</small>
                   </div>
+                  <div className="build-stage-gantt-track">
+                    {span.startMs !== undefined && span.durationMs !== undefined ? (
+                      <div
+                        className={`build-stage-gantt-bar is-${span.state}`}
+                        style={{
+                          left: `${(span.startMs / timeline.durationMs) * 100}%`,
+                          width: `${Math.max(0.5, (span.durationMs / timeline.durationMs) * 100)}%`,
+                        }}
+                        title={`${span.label} · ${formatDuration(span.durationMs)}`}
+                      />
+                    ) : (
+                      <span className="build-stage-gantt-unavailable">
+                        {span.state === 'pending' ? 'Pending' : 'Timing unavailable'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {(flattenTasks || expanded) &&
+                span.tasks.map((task) => (
+                  <WorkflowTaskRows
+                    key={`${span.id}:${task.id}`}
+                    task={task}
+                    timelineDuration={timeline.durationMs}
+                    runStartedAt={runStartedAt}
+                    nested={!flattenTasks}
+                    collapsed={collapsedTasks.has(task.id)}
+                    onToggle={() => toggleTask(task.id)}
+                  />
                 ))}
             </Fragment>
           );

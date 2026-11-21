@@ -29,11 +29,30 @@ const workflow = (): BuildMonitorRun => ({
       tasks: [
         {
           id: 'development-sdk',
-          name: 'Build ARC development SDK',
+          name: 'Build SDK',
           state: 'succeeded',
           startedAt: '2026-11-20T12:00:00.100Z',
           completedAt: '2026-11-20T12:00:00.250Z',
           durationMs: 150,
+          targetGraph: {
+            revision: 2,
+            generator: 'Visual Studio 17 2022',
+            configuration: 'Shipping',
+            rootTargetId: 'sdk',
+            discoveredAt: '2026-11-20T12:00:00.100Z',
+            truncated: false,
+            nodes: [
+              { id: 'sdk', name: 'arc-development-sdk', type: 'UTILITY', dependencies: ['assets'], artifacts: [] },
+              {
+                id: 'assets',
+                name: 'arc-assets',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: ['engine/assets/Shipping/arc-assets.lib'],
+                artifactObservedAt: '2026-11-20T12:00:00.220Z',
+              },
+            ],
+          },
         },
       ],
     },
@@ -60,13 +79,10 @@ describe('BuildExecutionTimeline', () => {
     expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('Hierarchical Gantt');
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('validate');
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('package');
-    expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent(
-      'Build ARC development SDK',
-    );
-    expect(screen.getByRole('button', { name: 'Collapse configure subtasks' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('Build SDK');
+    expect(screen.queryByText('configure', { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText('arc-assets')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Collapse Build SDK modules' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
     expect(screen.getByRole('button', { name: 'Collapse compile subtasks' })).toHaveAttribute('aria-expanded', 'true');
     const taskGroup = screen.getByRole('button', { name: /Compiler tasks/ });

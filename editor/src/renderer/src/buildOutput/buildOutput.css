@@ -1970,6 +1970,31 @@
   height: 20px;
 }
 
+.build-stage-gantt-label.is-module {
+  padding-left: 48px;
+  background: #112029;
+}
+
+.build-stage-gantt-label.is-module strong {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.build-stage-gantt-track.is-module {
+  min-height: 34px;
+  background-color: #101e27;
+}
+
+.build-stage-target-milestone {
+  position: absolute;
+  top: 12px;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #76d4a2;
+  background: #397b59;
+  transform: translateX(-50%) rotate(45deg);
+}
+
 .build-stage-gantt-label i.is-running {
   background: #5faee7;
 }

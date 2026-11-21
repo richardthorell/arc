@@ -24,6 +24,7 @@ export type BuildMonitorStage = {
     startedAt: string;
     completedAt?: string;
     durationMs?: number;
+    targetGraph?: BuildTargetGraph;
   }>;
 };
 

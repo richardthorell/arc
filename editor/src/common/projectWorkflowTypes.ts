@@ -76,6 +76,8 @@ export type WorkflowStageTaskProgress = {
   startedAt: string;
   completedAt?: string;
   durationMs?: number;
+  /** Native target dependency slice scoped to this nested operation. */
+  targetGraph?: BuildTargetGraph;
 };
 export type WorkflowStageProgress = {
   stage: WorkflowStage;
