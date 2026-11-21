@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
-import { buildStageTimeline, packCompileTaskLanes } from './buildExecutionTimelineModel';
+import { buildStageTimeline, groupCompileTasks, packCompileTaskLanes } from './buildExecutionTimelineModel';
 
 const run = (): BuildMonitorRun => ({
   id: 'run',
@@ -60,6 +60,19 @@ describe('Build execution timeline model', () => {
       ['b', 1],
       ['d', 0],
       ['c', 0],
+    ]);
+  });
+
+  it('groups verified targets while keeping unattributed compiler work explicit', () => {
+    const groups = groupCompileTasks([
+      { output: 'b.obj', startMs: 0, endMs: 10, durationMs: 10, targetName: 'game' },
+      { output: 'a.obj', startMs: 0, endMs: 10, durationMs: 10, targetName: 'engine' },
+      { output: 'unknown.obj', startMs: 0, endMs: 10, durationMs: 10 },
+    ]);
+    expect(groups.map(({ id, label, attributed, tasks }) => [id, label, attributed, tasks.length])).toEqual([
+      ['target:engine', 'engine', true, 1],
+      ['target:game', 'game', true, 1],
+      ['unattributed', 'Compiler tasks', false, 1],
     ]);
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { BuildMonitorRun } from '../../../common/buildMonitorTypes';
@@ -40,14 +40,24 @@ const workflow = (): BuildMonitorRun => ({
 afterEach(cleanup);
 
 describe('BuildExecutionTimeline', () => {
-  it('renders workflow stages and parallel compiler work as Gantt timelines rather than a relationship graph', () => {
+  it('renders expandable workflow, target and compiler task hierarchy', () => {
     render(<BuildExecutionTimeline run={workflow()} />);
-    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('Stacked Gantt');
-    expect(screen.getByRole('region', { name: 'Workflow stage timeline' })).toHaveTextContent('validate');
-    expect(screen.getByRole('region', { name: 'Workflow stage timeline' })).toHaveTextContent('package');
-    expect(screen.getByRole('region', { name: 'Compiler task timeline' })).toHaveTextContent('2 measured');
+    expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('Hierarchical Gantt');
+    expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('validate');
+    expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('package');
+    expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
+    expect(screen.getByRole('button', { name: 'Collapse compile subtasks' })).toHaveAttribute('aria-expanded', 'true');
+    const taskGroup = screen.getByRole('button', { name: /Compiler tasks/ });
+    expect(taskGroup).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: 'Inspect compile task: first.obj' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Inspect compile task: second.obj' })).toBeInTheDocument();
-    expect(screen.queryByText('Execution graph')).not.toBeInTheDocument();
+
+    fireEvent.click(taskGroup);
+    expect(taskGroup).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'Inspect compile task: first.obj' })).not.toBeInTheDocument();
+    fireEvent.click(taskGroup);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse compile subtasks' }));
+    expect(screen.queryByRole('region', { name: 'Compiler task hierarchy' })).not.toBeInTheDocument();
   });
 });

@@ -55,6 +55,36 @@ export const buildStageTimeline = (run: BuildMonitorRun, now = Date.now()): Buil
 
 export type PackedCompileTask = { task: BuildCompileTask; lane: number; index: number };
 
+export type CompileTaskGroup = {
+  id: string;
+  label: string;
+  attributed: boolean;
+  tasks: BuildCompileTask[];
+};
+
+/** Stable, presentation-only hierarchy built from verified compiler attribution. */
+export const groupCompileTasks = (tasks: readonly BuildCompileTask[]): CompileTaskGroup[] => {
+  const groups = new Map<string, CompileTaskGroup>();
+  for (const task of tasks) {
+    const id = task.targetName ? `target:${task.targetName}` : 'unattributed';
+    let group = groups.get(id);
+    if (!group) {
+      group = {
+        id,
+        label: task.targetName ?? 'Compiler tasks',
+        attributed: Boolean(task.targetName),
+        tasks: [],
+      };
+      groups.set(id, group);
+    }
+    group.tasks.push(task);
+  }
+  return [...groups.values()].sort((left, right) => {
+    if (left.attributed !== right.attributed) return left.attributed ? -1 : 1;
+    return left.label.localeCompare(right.label);
+  });
+};
+
 export const packCompileTaskLanes = (tasks: readonly BuildCompileTask[]): PackedCompileTask[] => {
   const sorted = tasks
     .map((task, index) => ({ task, index }))

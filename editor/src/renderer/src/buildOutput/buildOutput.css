@@ -1869,7 +1869,7 @@
 
 .build-stage-gantt-label {
   display: grid;
-  grid-template-columns: 7px minmax(0, 1fr);
+  grid-template-columns: 18px 7px minmax(0, 1fr);
   gap: 2px 8px;
   align-content: center;
   min-height: 42px;
@@ -1885,6 +1885,32 @@
   height: 7px;
   border-radius: 50%;
   background: #647b8c;
+}
+
+.build-stage-expand,
+.build-stage-expand-placeholder {
+  grid-row: 1 / 3;
+  align-self: center;
+  width: 18px;
+  height: 22px;
+}
+
+.build-stage-expand {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: #91a7b7;
+  background: transparent;
+  cursor: pointer;
+}
+
+.build-stage-expand:hover,
+.build-stage-expand:focus-visible {
+  color: #d4e5f0;
+  background: #263c4a;
+  outline: none;
 }
 
 .build-stage-gantt-label i.is-running {
@@ -1977,6 +2003,14 @@
   padding: 12px;
 }
 
+.build-execution-timing.is-child,
+.build-execution-empty.is-child {
+  margin-top: 10px;
+  margin-left: 18px;
+  border: 1px solid #2a3c49;
+  border-radius: 4px;
+}
+
 .build-execution-timing-heading > div,
 .build-execution-task-detail > div {
   display: flex;
@@ -2004,6 +2038,86 @@
   background: #111f28;
 }
 
+.build-hierarchical-gantt {
+  display: grid;
+  grid-template-columns: minmax(180px, 22%) minmax(420px, 1fr);
+  overflow: hidden;
+  border: 1px solid #263a47;
+  border-radius: 4px;
+  background: #111f28;
+}
+
+.build-stage-gantt-axis-label.is-nested {
+  padding-left: 29px;
+}
+
+.build-hierarchical-group {
+  display: contents;
+}
+
+.build-hierarchical-label {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 5px 9px 5px 22px;
+  border: 0;
+  border-right: 1px solid #263a47;
+  border-bottom: 1px solid #20323e;
+  color: #c2d0d9;
+  text-align: left;
+  background: #14232d;
+  cursor: pointer;
+}
+
+.build-hierarchical-label:hover,
+.build-hierarchical-label:focus-visible {
+  color: #e2edf3;
+  background: #1b303d;
+  outline: none;
+}
+
+.build-hierarchical-label span {
+  display: grid;
+  min-width: 0;
+}
+
+.build-hierarchical-label strong,
+.build-hierarchical-label small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-hierarchical-label strong {
+  font-size: 10px;
+}
+
+.build-hierarchical-label small {
+  color: #7790a1;
+  font-size: 9px;
+}
+
+.build-hierarchical-lanes {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid #20323e;
+  background: repeating-linear-gradient(90deg, #11202a 0, #11202a calc(25% - 1px), #2c414e 25%);
+  transition: height 120ms ease;
+}
+
+.build-hierarchical-lanes.is-collapsed::after {
+  position: absolute;
+  top: 17px;
+  right: 10px;
+  left: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: #2b4657;
+  content: '';
+}
+
 .build-compile-gantt-label {
   display: flex;
   align-items: center;
@@ -2028,6 +2142,19 @@
   border-radius: 3px;
   background: #367cae;
   cursor: pointer;
+  overflow: hidden;
+  color: #e2f3fc;
+  font-size: 9px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.build-execution-task span {
+  display: block;
+  overflow: hidden;
+  padding: 0 5px;
+  line-height: 20px;
+  text-overflow: ellipsis;
 }
 
 .build-execution-task:hover,
