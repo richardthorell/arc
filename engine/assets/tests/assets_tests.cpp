@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <semaphore>
 
@@ -728,6 +729,12 @@ TEST_CASE("Live Play L1.3 ephemeral scene cook preserves authored files and scen
     auto empty = request;
     empty.ephemeral_scene->bytes.clear();
     CHECK_FALSE(cooker.cook(empty).succeeded());
+    auto forged = request;
+    const auto wrong_content = std::string(R"({"format":"arc.scene","scene":{"id":")") +
+                               to_string(generate_asset_guid()) + R"("},"entities":[]})";
+    const auto wrong_bytes = std::as_bytes(std::span(wrong_content.data(), wrong_content.size()));
+    forged.ephemeral_scene->bytes.assign(wrong_bytes.begin(), wrong_bytes.end());
+    CHECK_FALSE(cooker.cook(forged).succeeded());
 }
 
 TEST_CASE("cache pruning preserves pinned blobs")
