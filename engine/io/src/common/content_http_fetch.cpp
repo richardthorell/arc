@@ -131,7 +131,12 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
     const auto origin = split_origin(request.origin);
     if (origin.host.empty()) return failure(content_http_error_code::invalid_origin, "Invalid UTF-8 HTTP host");
 
-    const auto proxy_mode = request.origin.starts_with("http://127.0.0.1") ||\n                                    request.origin.starts_with("http://localhost") ||\n                                    request.origin.starts_with("http://[::1]")\n                                ? WINHTTP_ACCESS_TYPE_NO_PROXY\n                                : WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;\n    http_handle session(WinHttpOpen(L"ARC remote content/1", proxy_mode,
+    const auto proxy_mode = request.origin.starts_with("http://127.0.0.1") ||
+                            request.origin.starts_with("http://localhost") ||
+                            request.origin.starts_with("http://[::1]")
+                                ? WINHTTP_ACCESS_TYPE_NO_PROXY
+                                : WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
+    http_handle session(WinHttpOpen(L"ARC remote content/1", proxy_mode,
                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) return failure(content_http_error_code::network_failure, "WinHTTP session unavailable");
     const auto timeout = static_cast<int>(std::min<std::int64_t>(limits.timeout.count(), 600000));
