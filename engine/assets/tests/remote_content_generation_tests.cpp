@@ -204,7 +204,6 @@ TEST_CASE("C9.2c2 rejects chunks whose manifest artifact byte ranges are truncat
     CHECK_FALSE(arc::assets::remote_content_artifact_provider::create(f.release, f.cache, f.files));
 }
 
-
 namespace
 {
 
@@ -212,18 +211,15 @@ arc::assets::remote_generation_fetch_executor mock_remote_objects(fixture& fixtu
                                                                   bool corrupt_chunk = false)
 {
     return [&fixture, &requests, corrupt_chunk](arc::jobs::job_system& jobs, arc::io::content_http_request request,
-                                                 arc::io::content_http_limits,
-                                                 arc::jobs::cancellation_token)
+                                                arc::io::content_http_limits, arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.remote_content.test_fetch", .affinity = arc::jobs::job_affinity::io_thread},
-            [&fixture, &requests, corrupt_chunk, request = std::move(request)]()
-                -> arc::io::content_http_fetch_result
+            [&fixture, &requests, corrupt_chunk, request = std::move(request)]() -> arc::io::content_http_fetch_result
             {
                 ++requests;
-                auto body = request.object_path == fixture.release.cook_manifest.path
-                                ? fixture.manifest_bytes
-                                : fixture.package_bytes;
+                auto body = request.object_path == fixture.release.cook_manifest.path ? fixture.manifest_bytes
+                                                                                      : fixture.package_bytes;
                 if (corrupt_chunk && request.object_path == fixture.release.chunks.front().object.path)
                     body.back() ^= std::byte{0x01};
                 arc::io::content_http_response response{
@@ -243,8 +239,8 @@ TEST_CASE("C9.2d1 downloads missing immutable objects then reuses cache and moun
     std::size_t requests{};
     auto fetcher = mock_remote_objects(f, requests);
 
-    auto first = arc::assets::acquire_remote_generation(
-        f.jobs, f.files, downloaded, f.release, options, {}, fetcher).get();
+    auto first =
+        arc::assets::acquire_remote_generation(f.jobs, f.files, downloaded, f.release, options, {}, fetcher).get();
     REQUIRE(first.succeeded());
     CHECK(first.downloaded_objects == 2);
     CHECK(first.reused_objects == 0);
@@ -252,8 +248,8 @@ TEST_CASE("C9.2d1 downloads missing immutable objects then reuses cache and moun
     CHECK(requests == 2);
     CHECK_FALSE(f.catalog.database().query(f.asset)); // acquisition never activates
 
-    auto repeat = arc::assets::acquire_remote_generation(
-        f.jobs, f.files, downloaded, f.release, options, {}, fetcher).get();
+    auto repeat =
+        arc::assets::acquire_remote_generation(f.jobs, f.files, downloaded, f.release, options, {}, fetcher).get();
     REQUIRE(repeat.succeeded());
     CHECK(repeat.reused_objects == 2);
     CHECK(repeat.downloaded_objects == 0);
@@ -261,8 +257,7 @@ TEST_CASE("C9.2d1 downloads missing immutable objects then reuses cache and moun
 
     options.policy = arc::assets::remote_generation_transfer_policy::offline_only;
     options.origin.clear();
-    auto offline = arc::assets::acquire_remote_generation(
-        f.jobs, f.files, downloaded, f.release, options).get();
+    auto offline = arc::assets::acquire_remote_generation(f.jobs, f.files, downloaded, f.release, options).get();
     REQUIRE(offline.succeeded());
     CHECK(offline.reused_objects == 2);
 
@@ -281,8 +276,9 @@ TEST_CASE("C9.2d1 refuses a corrupt downloaded chunk and preserves active conten
     arc::assets::derived_data_cache downloaded{{.root = f.root / "downloaded-cache"}};
     arc::assets::remote_generation_transfer_options options{.origin = "https://content.example.org"};
     std::size_t requests{};
-    auto result = arc::assets::acquire_remote_generation(
-        f.jobs, f.files, downloaded, f.release, options, {}, mock_remote_objects(f, requests, true)).get();
+    auto result = arc::assets::acquire_remote_generation(f.jobs, f.files, downloaded, f.release, options, {},
+                                                         mock_remote_objects(f, requests, true))
+                      .get();
     CHECK_FALSE(result.succeeded());
     CHECK(result.cache_error == arc::assets::remote_object_cache_error::hash_mismatch);
     CHECK(result.downloaded_objects == 1);
@@ -338,8 +334,9 @@ TEST_CASE("C9.2d1 propagates cancellation without doing network work")
     std::size_t requests{};
     arc::jobs::cancellation_source source;
     REQUIRE(source.request_cancel());
-    auto cancelled = arc::assets::acquire_remote_generation(
-        f.jobs, f.files, empty, f.release, options, source.token(), mock_remote_objects(f, requests)).get();
+    auto cancelled = arc::assets::acquire_remote_generation(f.jobs, f.files, empty, f.release, options, source.token(),
+                                                            mock_remote_objects(f, requests))
+                         .get();
     CHECK_FALSE(cancelled.succeeded());
     CHECK(cancelled.transport_error == arc::io::content_http_error_code::cancelled);
     CHECK(requests == 0);

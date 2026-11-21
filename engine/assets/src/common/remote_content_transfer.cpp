@@ -18,8 +18,8 @@ bool safe_filename(std::string_view name, std::string_view suffix)
     if (name.empty() || name.size() > 255 || !name.ends_with(suffix) ||
         !std::isalnum(static_cast<unsigned char>(name.front())))
         return false;
-    return std::all_of(name.begin(), name.end(), [](unsigned char c)
-                       { return std::isalnum(c) || c == '-' || c == '_' || c == '.'; });
+    return std::all_of(name.begin(), name.end(),
+                       [](unsigned char c) { return std::isalnum(c) || c == '-' || c == '_' || c == '.'; });
 }
 
 std::string folded(std::string_view text)
@@ -168,8 +168,8 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
                     return reject(object->path, "Remote generation acquisition cancelled");
                 }
 
-                const auto ingested = ingest_verified_remote_object(
-                    cache, *object, request, *response.response, options.http);
+                const auto ingested =
+                    ingest_verified_remote_object(cache, *object, request, *response.response, options.http);
                 if (!ingested.succeeded())
                 {
                     result.cache_error = ingested.code;

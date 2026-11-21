@@ -55,9 +55,8 @@ struct [[nodiscard]] remote_generation_transfer_result
  * regardless of which executor supplies bytes. Production callers omit this
  * argument and use fetch_content_http.
  */
-using remote_generation_fetch_executor =
-    std::function<jobs::job_future<io::content_http_fetch_result>(
-        jobs::job_system&, io::content_http_request, io::content_http_limits, jobs::cancellation_token)>;
+using remote_generation_fetch_executor = std::function<jobs::job_future<io::content_http_fetch_result>(
+    jobs::job_system&, io::content_http_request, io::content_http_limits, jobs::cancellation_token)>;
 
 /** Runs the transfer coordinator on a general worker and each HTTP GET on an
  * IO worker. Fetches serially to keep at most one object body in memory; later
