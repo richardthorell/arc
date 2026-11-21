@@ -570,9 +570,10 @@ bool client::send_content_generation(std::uint64_t generation, std::string_view 
 
 bool client::send_baseline_status(std::string_view status, std::string_view reason, std::string& error)
 {
-    if (pending_baseline_request_.empty() ||
-        std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "content.observe") ==
-            negotiated_capabilities_.end())
+    const bool content_negotiated =
+        std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "content.observe") !=
+        negotiated_capabilities_.end();
+    if (pending_baseline_request_.empty() || !content_negotiated)
     {
         error = "No negotiated Live Play cooked baseline offer is pending";
         return false;

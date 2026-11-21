@@ -89,8 +89,8 @@ describe('Live Play L1 wire contract', () => {
       { ...offer, authoringRevision: -1 },
       { ...offer, sourcePath: 'Content/scene.arcscene' },
     ]) {
-      expect(livePlayMessageSchema.safeParse(JSON.parse(frame('scene.baseline.offer', invalid, 'editor'))).success)
-        .toBe(false);
+      const parsed = livePlayMessageSchema.safeParse(JSON.parse(frame('scene.baseline.offer', invalid, 'editor')));
+      expect(parsed.success).toBe(false);
     }
     const status = {
       requestId: 'editor-offer-2',
@@ -102,9 +102,10 @@ describe('Live Play L1 wire contract', () => {
     };
     const fromRuntime = { ...runtimeContext, grantedCapabilities: ['content.observe'] as const };
     expect(receiveLivePlayFrame(frame('scene.baseline.status', status, 'runtime'), fromRuntime).accepted).toBe(true);
-    expect(livePlayMessageSchema.safeParse(
-      JSON.parse(frame('scene.baseline.status', { ...status, status: 'active' }, 'runtime')),
-    ).success).toBe(false);
+    const malformedStatus = JSON.parse(
+      frame('scene.baseline.status', { ...status, status: 'active' }, 'runtime'),
+    );
+    expect(livePlayMessageSchema.safeParse(malformedStatus).success).toBe(false);
   });
 
   it('can handshake mock editor and native peers over transport-neutral JSON frames', () => {

@@ -303,8 +303,8 @@ void test_successful_connection()
     // fixture deliberately reports no cooked release has been materialized.
     check(native.send_baseline_status("rejected", "unavailable", error),
           "Native cooked baseline rejection ACK was not transmitted");
-    check(!native.send_baseline_status("rejected", "unavailable", error),
-          "Native bridge sent duplicate baseline ACK");
+    const bool duplicate_ack = native.send_baseline_status("rejected", "unavailable", error);
+    check(!duplicate_ack, "Native bridge sent duplicate baseline ACK");
     native.close();
     server.join();
     if (server_error) std::rethrow_exception(server_error);

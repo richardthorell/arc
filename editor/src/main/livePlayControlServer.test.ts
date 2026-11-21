@@ -319,25 +319,27 @@ describe('Live Play L1.2a editor control endpoint', () => {
     expect(server.sendBaselineOffer(offer)).toBe(false);
     const offered = JSON.parse((await peer.next()).toString('utf8')) as LivePlayMessage;
     expect(offered).toMatchObject({ type: 'scene.baseline.offer', payload: offer });
-    peer.write(frame('scene.baseline.status', {
+    const rejected = {
       requestId: offered.messageId,
       sceneGuid: offer.sceneGuid,
       cookedGeneration: offer.cookedGeneration,
       cookedReleaseSha256: offer.cookedReleaseSha256,
       status: 'rejected',
       reason: 'unavailable',
-    }, 2));
+    };
+    peer.write(frame('scene.baseline.status', rejected, 2));
     await expect.poll(() => received.map((m) => m.type)).toEqual(['scene.baseline.status']);
     expect(server.sendBaselineOffer(offer)).toBe(true);
     const second = JSON.parse((await peer.next()).toString('utf8')) as LivePlayMessage;
-    peer.write(frame('scene.baseline.status', {
+    const wrongRelease = {
       requestId: second.messageId,
       sceneGuid: offer.sceneGuid,
       cookedGeneration: offer.cookedGeneration,
       cookedReleaseSha256: 'd'.repeat(64),
       status: 'active',
       reason: 'none',
-    }, 3));
+    };
+    peer.write(frame('scene.baseline.status', wrongRelease, 3));
     await peer.closed;
     expect(server.status().lastError).toBe('baseline_identity_mismatch');
     expect(received).toHaveLength(1);
@@ -350,13 +352,14 @@ describe('Live Play L1.2a editor control endpoint', () => {
     peer.write(handoff.secret);
     peer.write(frame('hello', { schemaHash, lastReceivedSequence: 0, capabilities: ['session.observe'] }));
     await peer.next();
-    expect(server.sendBaselineOffer({
+    const offer = {
       sceneGuid: '22222222-2222-2222-2222-222222222222',
       authoringRevision: 1,
       authoringSha256: schemaHash,
       cookedGeneration: 1,
       cookedReleaseSha256: schemaHash,
-    })).toBe(false);
+    };
+    expect(server.sendBaselineOffer(offer)).toBe(false);
   });
 
   it('tears down connections and invalidates the launch secret on Stop', async () => {
