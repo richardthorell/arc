@@ -108,5 +108,30 @@ The mutable document is **never** inserted into the immutable object CAS.
 Native Linux/Android HTTP backends, poll scheduling, retries/backoff, pinning,
 cache policy, ETag-based 304 refresh and automated activation are separate PRs.
 
+## C9.2e1 — Linux system-TLS HTTP transport
+
+Linux now uses libcurl (when the platform development package is available)
+for both immutable `objects/sha256/<digest>` and mutable release discovery.
+ARC continues to perform the existing C9.2 preflight and response framing
+checks and C9.2c SHA-256/CAS validation; libcurl does not change asset identity.
+
+- Enforces the system CA trust store and hostname verification, with HTTPS
+  required except for explicitly enabled **loopback-only** HTTP.
+- Does not follow redirects or allow non-HTTP(S) protocols; protects against
+  unexpected URL changes, content encodings, malformed/oversized headers and
+  bodies larger than the declared immutable object or 8 MiB release bound.
+- Runs on ARC IO workers and responds to cancellation, timeouts, Range and
+  If-Match headers. Release lookups send no-cache headers.
+- Tests exercise real local HTTP transfers for full objects, byte ranges,
+  current-release requests and failure modes without Internet access.
+- CMake detects the system libcurl development package; installed Linux SDK
+  configs restore the link dependency via `find_dependency(CURL)`. Linux CI
+  installs the package explicitly. Missing development libraries leave the
+  backend unavailable rather than silently falling back to insecure HTTP.
+
+Android is **not** covered by this backend: the NDK does not ship libcurl.
+Android TLS transport, shared retry/coalescing policies, cache quota and
+end-to-end device acceptance remain separate C9.2 follow-ups.
+
 **Ownership:** #1135. The editor content server is #1137; Dev-only endpoint
 overrides are #1136; publish-on-edit is #1138; runtime hot reload is #1139.
