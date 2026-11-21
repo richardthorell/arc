@@ -58,6 +58,15 @@ const workflow = (): BuildMonitorRun => ({
                 dependencies: [],
                 artifacts: [],
               },
+              {
+                id: 'render',
+                name: 'arc-render',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                activePhase: 'compiling',
+                activePhaseStartedAt: '2026-11-20T12:00:00.230Z',
+              },
             ],
           },
         },
@@ -89,6 +98,7 @@ describe('BuildExecutionTimeline', () => {
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('Build SDK');
     expect(screen.queryByText('configure', { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText('arc-assets')).toBeInTheDocument();
+    expect(screen.getByText('arc-render')).toBeInTheDocument();
     expect(screen.queryByText('ZERO_CHECK')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Collapse Build SDK modules' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
@@ -105,5 +115,24 @@ describe('BuildExecutionTimeline', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse compile subtasks' }));
     expect(screen.queryByRole('region', { name: 'Compiler task hierarchy' })).not.toBeInTheDocument();
+  });
+
+  it('shows an active SDK module with a blue phase spinner', () => {
+    const run = workflow();
+    run.state = 'running';
+    delete run.completedAt;
+    delete run.durationMs;
+    const configure = run.stages[1];
+    configure.state = 'running';
+    const sdk = configure.tasks![0];
+    sdk.state = 'running';
+    delete sdk.completedAt;
+    delete sdk.durationMs;
+
+    render(<BuildExecutionTimeline run={run} />);
+
+    const status = screen.getByText('Compiling…');
+    expect(status.closest('.build-stage-gantt-label')).toHaveTextContent('arc-render');
+    expect(status.closest('.build-stage-gantt-label')?.querySelector('.is-building')).toBeInTheDocument();
   });
 });

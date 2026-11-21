@@ -2004,6 +2004,28 @@
   background: #65c793;
 }
 
+.build-stage-gantt-label i.is-building {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #3475a6;
+  border-top-color: #75c5ff;
+  background: transparent;
+  animation: build-target-spin 700ms linear infinite;
+}
+
+@keyframes build-target-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-stage-gantt-label i.is-building {
+    animation: none;
+  }
+}
+
 .build-stage-gantt-label i.is-failed {
   background: #ef7e8a;
 }

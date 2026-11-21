@@ -254,13 +254,24 @@ describe('Windows Shipping workflow', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc sdk modules '));
     roots.push(root);
     const observed = vi.fn();
-    const observer = new SdkModuleOutputObserver(root, observed);
+    const phases = vi.fn();
+    const observer = new SdkModuleOutputObserver(root, observed, phases);
     const artifact = path.join(root, 'engine', 'assets', 'Shipping', 'arc-assets.lib');
+    observer.accept(
+      `1>Project "${path.join(root, 'arc-development-sdk.vcxproj')}" is building "${path.join(root, 'engine', 'assets', 'arc-assets.vcxproj')}" (2) on node 1\n`,
+      'stdout',
+    );
+    observer.accept('2>ClCompile:\n', 'stdout');
+    observer.accept('2>Lib:\n', 'stdout');
     observer.accept('  arc-assets.vcxproj -> ', 'stdout');
     observer.accept(`${artifact}\n`, 'stdout');
     observer.accept(`  ZERO_CHECK.vcxproj -> ${path.join(root, 'ZERO_CHECK.stamp')}\n`, 'stdout');
     observer.accept(`  outside.vcxproj -> ${path.join(path.dirname(root), 'outside.lib')}\n`, 'stdout');
     expect(observed).toHaveBeenCalledExactlyOnceWith('arc-assets', artifact);
+    expect(phases.mock.calls).toEqual([
+      ['arc-assets', 'compiling'],
+      ['arc-assets', 'linking'],
+    ]);
   });
 
   it('rejects a development SDK with a different engine or architecture', () => {
@@ -298,6 +309,8 @@ describe('Windows Shipping workflow', () => {
       'Shipping',
       '--target',
       'arc-development-sdk',
+      '--',
+      '/verbosity:normal',
     ]);
     expect(calls[1]).toContain(`-DARC_DIR=${path.join(value.environment.sdkRoot, 'lib', 'cmake', 'ARC')}`);
   });

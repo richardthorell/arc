@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { BuildTargetGraph } from '../common/buildTargetTypes';
+import type { BuildTargetActivePhase, BuildTargetGraph } from '../common/buildTargetTypes';
 import type { BuildCompileTrace } from '../common/buildCompileTypes';
 import {
   workflowPlanSchema,
@@ -31,6 +31,7 @@ export type WorkflowStageTaskReporter = {
   publishTargetGraph(graph: BuildTargetGraph): void;
   reportTargetArtifact(targetId: string): void;
   reportTargetByName(name: string, artifact?: string): void;
+  reportTargetPhaseByName(name: string, phase: BuildTargetActivePhase): void;
   reportRequestedTargetSatisfied(): void;
 };
 
@@ -182,6 +183,8 @@ export class ProjectWorkflowRunner {
               const target = graph.nodes.find((node) => node.id === targetId);
               if (!target || target.artifactObservedAt) return false;
               target.artifactObservedAt = new Date().toISOString();
+              delete target.activePhase;
+              delete target.activePhaseStartedAt;
               return true;
             }),
           reportTargetByName: (targetName, artifact) =>
@@ -204,6 +207,17 @@ export class ProjectWorkflowRunner {
               }
               if (target.artifactObservedAt) return false;
               target.artifactObservedAt = new Date().toISOString();
+              delete target.activePhase;
+              delete target.activePhaseStartedAt;
+              return true;
+            }),
+          reportTargetPhaseByName: (targetName, phase) =>
+            updateGraph((graph) => {
+              const normalized = targetName.toLowerCase();
+              const target = graph.nodes.find((node) => node.name.toLowerCase() === normalized);
+              if (!target || target.artifactObservedAt || target.activePhase === phase) return false;
+              target.activePhase = phase;
+              target.activePhaseStartedAt = new Date().toISOString();
               return true;
             }),
           reportRequestedTargetSatisfied: () =>

@@ -221,13 +221,24 @@ function WorkflowTaskRows({
           .map((target) => {
             const observedAt = target.artifactObservedAt ? Date.parse(target.artifactObservedAt) : NaN;
             const observedOffset = Number.isFinite(observedAt) ? Math.max(0, observedAt - runStartedAt) : undefined;
+            const active = task.state === 'running' && !target.artifactObservedAt ? target.activePhase : undefined;
+            const status = target.artifactObservedAt
+              ? 'Built'
+              : active === 'compiling'
+                ? 'Compiling…'
+                : active === 'linking'
+                  ? 'Linking…'
+                  : 'Pending';
             return (
               <div className="build-stage-gantt-row is-module" key={`${task.id}:${target.id}`}>
                 <div className="build-stage-gantt-label is-module">
                   <span className="build-stage-task-branch" aria-hidden="true" />
-                  <i className={target.artifactObservedAt ? 'is-succeeded' : 'is-pending'} />
+                  <i
+                    className={target.artifactObservedAt ? 'is-succeeded' : active ? 'is-building' : 'is-pending'}
+                    aria-hidden="true"
+                  />
                   <strong>{target.name}</strong>
-                  <small>{target.artifactObservedAt ? 'built' : 'pending'}</small>
+                  <small>{status}</small>
                 </div>
                 <div className="build-stage-gantt-track is-module">
                   {observedOffset !== undefined ? (

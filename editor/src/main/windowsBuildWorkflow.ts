@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import type { BuildTargetGraph } from '../common/buildTargetTypes';
+import type { BuildTargetActivePhase, BuildTargetGraph } from '../common/buildTargetTypes';
 import type { WorkflowArtifact, WorkflowCapability, WorkflowPlan } from '../common/projectWorkflowTypes';
 import type { WorkflowStageAdapter, WorkflowStageContext, WorkflowPublication } from './projectWorkflowRunner';
 import type { WorkflowProcessRequest } from './workflowProcess';
@@ -102,10 +102,12 @@ function readJson(file: string): unknown {
 export class SdkModuleOutputObserver {
   private pendingStdout = '';
   private pendingStderr = '';
+  private readonly projectsByContext = new Map<string, string>();
 
   constructor(
     private readonly buildDirectory: string,
     private readonly onModule: (name: string, artifact: string) => void,
+    private readonly onPhase?: (name: string, phase: BuildTargetActivePhase) => void,
   ) {}
 
   accept(text: string, stream: 'stdout' | 'stderr'): void {
@@ -115,6 +117,7 @@ export class SdkModuleOutputObserver {
     if (stream === 'stdout') this.pendingStdout = rest;
     else this.pendingStderr = rest;
     for (const line of lines) {
+      this.observePhase(line);
       const arrow = line.lastIndexOf(' -> ');
       if (arrow < 0) continue;
       const project = /([A-Za-z0-9_.+-]{1,128})\.vcxproj\s*$/iu.exec(line.slice(0, arrow));
@@ -128,6 +131,23 @@ export class SdkModuleOutputObserver {
       if (!inside(this.buildDirectory, artifact)) continue;
       this.onModule(project[1], artifact);
     }
+  }
+
+  private observePhase(line: string): void {
+    const prefix = /^\s*(\d+)>/u.exec(line)?.[1];
+    const projects = [...line.matchAll(/"([^"]+\.vcxproj)"(?:\s+\((\d+)\))?/giu)];
+    if (projects.length) {
+      const project = projects[projects.length - 1];
+      const name = path.basename(project[1], path.extname(project[1]));
+      const context = project[2] ?? prefix;
+      if (context && name.toLowerCase() !== 'zero_check') this.projectsByContext.set(context, name);
+    }
+    if (!prefix || !this.onPhase) return;
+    const task = /^\s*\d+>\s*(ClCompile|Link|Lib):/iu.exec(line)?.[1]?.toLowerCase();
+    if (!task) return;
+    const name = this.projectsByContext.get(prefix);
+    if (!name) return;
+    this.onPhase(name, task === 'clcompile' ? 'compiling' : 'linking');
   }
 }
 
@@ -324,8 +344,10 @@ export function createWindowsBuildWorkflow(
                   ],
                 },
             );
-            const modules = new SdkModuleOutputObserver(environment.development!.buildDirectory, (name, artifact) =>
-              progress.reportTargetByName(name, artifact),
+            const modules = new SdkModuleOutputObserver(
+              environment.development!.buildDirectory,
+              (name, artifact) => progress.reportTargetByName(name, artifact),
+              (name, phase) => progress.reportTargetPhaseByName(name, phase),
             );
             await command(
               context,
@@ -337,6 +359,8 @@ export function createWindowsBuildWorkflow(
                 context.plan.configuration,
                 '--target',
                 'arc-development-sdk',
+                '--',
+                '/verbosity:normal',
               ],
               (text, stream) => modules.accept(text, stream),
             );

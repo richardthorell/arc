@@ -1,3 +1,5 @@
+export type BuildTargetActivePhase = 'compiling' | 'linking';
+
 /** An authoritative CMake File API codemodel dependency slice for the requested build target. */
 export type BuildTargetNode = {
   id: string;
@@ -11,6 +13,9 @@ export type BuildTargetNode = {
   artifactObservedAt?: string;
   /** Set for the requested target when cmake --build returns success; it may be up to date. */
   satisfiedAt?: string;
+  /** Native task phase currently reported for this target. Never inferred from graph order. */
+  activePhase?: BuildTargetActivePhase;
+  activePhaseStartedAt?: string;
 };
 
 export type BuildTargetGraph = {

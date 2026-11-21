@@ -132,8 +132,12 @@ describe('project workflow orchestration', () => {
           rootTargetId: 'sdk',
           discoveredAt: '2026-11-21T10:00:00.000Z',
           truncated: false,
-          nodes: [{ id: 'sdk', name: 'arc-development-sdk', type: 'UTILITY', dependencies: [], artifacts: [] }],
+          nodes: [
+            { id: 'sdk', name: 'arc-development-sdk', type: 'UTILITY', dependencies: ['assets'], artifacts: [] },
+            { id: 'assets', name: 'arc-assets', type: 'STATIC_LIBRARY', dependencies: [], artifacts: [] },
+          ],
         });
+        progress.reportTargetPhaseByName('arc-assets', 'compiling');
         progress.reportTargetByName('arc-assets', '/project/build/arc-assets.lib');
         progress.reportRequestedTargetSatisfied();
       });
@@ -149,15 +153,20 @@ describe('project workflow orchestration', () => {
         completedAt: expect.any(String),
         durationMs: expect.any(Number),
         targetGraph: {
-          revision: 3,
+          revision: 4,
           nodes: [
             { id: 'sdk', satisfiedAt: expect.any(String) },
-            { id: 'observed:arc-assets', name: 'arc-assets', artifactObservedAt: expect.any(String) },
+            {
+              id: 'assets',
+              name: 'arc-assets',
+              artifactObservedAt: expect.any(String),
+            },
           ],
         },
       },
       { id: 'cmake-configure', name: 'Configure project', state: 'succeeded' },
     ]);
+    expect(result.stages[1].tasks?.[0].targetGraph?.nodes[1]).not.toHaveProperty('activePhase');
     expect(notify.mock.calls.some(([snapshot]) => snapshot.stages[1].tasks?.[0]?.state === 'running')).toBe(true);
   });
 
