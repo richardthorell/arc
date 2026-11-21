@@ -9,6 +9,9 @@ export type BuildTargetNode = {
   dependencies: string[];
   /** Native build artifact paths returned by CMake (relative to the build directory or absolute). */
   artifacts: string[];
+  /** Optional native codemodel locations used for presentation grouping. */
+  sourceDirectory?: string;
+  buildDirectory?: string;
   /** Only set when a matching artifact is explicitly reported by the build system. */
   artifactObservedAt?: string;
   /** Set for the requested target when cmake --build returns success; it may be up to date. */

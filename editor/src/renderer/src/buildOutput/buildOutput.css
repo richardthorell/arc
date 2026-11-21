@@ -1854,6 +1854,40 @@
   font-size: 10px;
 }
 
+.build-timeline-scrubber {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 9px;
+}
+
+.build-timeline-scrubber input {
+  width: 100%;
+  accent-color: #4e9bd2;
+}
+
+.build-timeline-scrubber button {
+  padding: 3px 7px;
+  border: 1px solid #324a59;
+  border-radius: 3px;
+  color: #8da5b5;
+  background: #152630;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.build-timeline-scrubber button.is-following {
+  border-color: #39739b;
+  color: #79bff0;
+}
+
+.build-timeline-scrubber input:disabled,
+.build-timeline-scrubber button.is-following {
+  cursor: default;
+}
+
 .build-stage-gantt-grid {
   display: grid;
   grid-template-columns: minmax(115px, 15%) minmax(420px, 1fr);
@@ -1974,6 +2008,19 @@
 .build-stage-gantt-label.is-module {
   padding-left: 48px;
   background: #112029;
+}
+
+.build-stage-gantt-label.is-module.is-group {
+  padding-left: 48px;
+  background: #142630;
+}
+
+.build-stage-gantt-label.is-module.is-group strong {
+  font-weight: 650;
+}
+
+.build-stage-gantt-label.is-module.is-external {
+  padding-left: 72px;
 }
 
 .build-stage-gantt-label.is-module strong {

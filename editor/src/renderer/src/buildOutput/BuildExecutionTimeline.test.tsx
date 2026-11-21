@@ -67,6 +67,14 @@ const workflow = (): BuildMonitorRun => ({
                 activePhase: 'compiling',
                 activePhaseStartedAt: '2026-11-20T12:00:00.230Z',
               },
+              {
+                id: 'third_party/meshoptimizer/meshoptimizer.vcxproj',
+                name: 'meshoptimizer',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                artifactObservedAt: '2026-11-20T12:00:00.210Z',
+              },
             ],
           },
         },
@@ -99,6 +107,8 @@ describe('BuildExecutionTimeline', () => {
     expect(screen.queryByText('configure', { exact: true })).not.toBeInTheDocument();
     expect(screen.getByText('arc-assets')).toBeInTheDocument();
     expect(screen.getByText('arc-render')).toBeInTheDocument();
+    expect(screen.getByText('Third-party')).toBeInTheDocument();
+    expect(screen.queryByText('meshoptimizer')).not.toBeInTheDocument();
     expect(screen.queryByText('ZERO_CHECK')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Collapse Build SDK modules' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
@@ -115,6 +125,9 @@ describe('BuildExecutionTimeline', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse compile subtasks' }));
     expect(screen.queryByRole('region', { name: 'Compiler task hierarchy' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Third-party modules' }));
+    expect(screen.getByText('meshoptimizer')).toBeInTheDocument();
   });
 
   it('shows an active SDK module with a blue phase spinner', () => {
@@ -134,5 +147,23 @@ describe('BuildExecutionTimeline', () => {
     const status = screen.getByText('Compiling…');
     expect(status.closest('.build-stage-gantt-label')).toHaveTextContent('arc-render');
     expect(status.closest('.build-stage-gantt-label')?.querySelector('.is-building')).toBeInTheDocument();
+  });
+
+  it('uses a fixed 30-second scale and follows the right edge until scrubbed', () => {
+    const run = workflow();
+    run.durationMs = 189_000;
+    run.completedAt = '2026-11-20T12:03:09.000Z';
+
+    render(<BuildExecutionTimeline run={run} />);
+
+    const scrubber = screen.getByRole('slider', { name: 'Scrub workflow timeline' });
+    expect(scrubber).toHaveAttribute('max', '69000');
+    expect(scrubber).toHaveValue('69000');
+    expect(screen.getByRole('button', { name: 'Following live' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.change(scrubber, { target: { value: '30000' } });
+    expect(screen.getByRole('button', { name: 'Follow live' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Follow live' }));
+    expect(screen.getByRole('button', { name: 'Following live' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

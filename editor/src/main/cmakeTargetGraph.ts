@@ -17,6 +17,7 @@ type FileApiTarget = {
   type: string;
   dependencies?: Array<{ id: string }>;
   artifacts?: Array<{ path: string }>;
+  paths?: { source?: string; build?: string };
 };
 
 /** Generator bookkeeping is not a user/module build task. */
@@ -103,7 +104,19 @@ export function readCMakeTargetGraph(
     const artifacts = (detail.artifacts ?? [])
       .map((artifact) => artifact.path)
       .filter((artifact) => typeof artifact === 'string' && artifact.length <= 1024);
-    nodes.push({ id, name: entry.name, type: detail.type, dependencies, artifacts });
+    const sourceDirectory =
+      typeof detail.paths?.source === 'string' && detail.paths.source.length <= 1024 ? detail.paths.source : undefined;
+    const buildDirectory =
+      typeof detail.paths?.build === 'string' && detail.paths.build.length <= 1024 ? detail.paths.build : undefined;
+    nodes.push({
+      id,
+      name: entry.name,
+      type: detail.type,
+      dependencies,
+      artifacts,
+      ...(sourceDirectory ? { sourceDirectory } : {}),
+      ...(buildDirectory ? { buildDirectory } : {}),
+    });
     for (const dependency of dependencies) if (!visited.has(dependency)) pending.push(dependency);
   }
 
