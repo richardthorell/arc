@@ -170,7 +170,14 @@ export class CookWorkflowService {
           tool,
           cooker,
           ...(environment
-            ? [environment.cmake, path.join(environment.sdkRoot, 'lib', 'cmake', 'ARC', 'ARCConfig.cmake')]
+            ? [
+                environment.cmake,
+                // A source-tree build creates the configuration-specific SDK during Configure.
+                // Installed SDKs must already contain their package configuration.
+                ...(!environment.development
+                  ? [path.join(environment.sdkRoot, 'lib', 'cmake', 'ARC', 'ARCConfig.cmake')]
+                  : []),
+              ]
             : []),
         ].map((executable) => {
           const stat = fs.statSync(executable);

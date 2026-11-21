@@ -43,7 +43,7 @@
   top: calc(100% + var(--arc-space-2));
   right: 0;
   min-width: 168px;
-  width: max-content;
+  width: auto;
   max-width: calc(100vw - 16px);
   max-height: calc(100vh - 16px);
   overflow-y: auto;
