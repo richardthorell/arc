@@ -224,7 +224,7 @@ content_http_fetch_result perform_get(std::string url, std::string_view origin, 
         return failure(content_http_error_code::oversized_response, "HTTP body exceeds declared content budget");
     if (state.headers_too_large || state.malformed_headers)
         return failure(content_http_error_code::inconsistent_length, "Malformed or oversized HTTP response headers");
-    if (status >= 300 && status < 400 || !state.response.redirect_location.empty())
+    if ((status >= 300 && status < 400) || !state.response.redirect_location.empty())
         return failure(content_http_error_code::rejected_redirect, "Content redirect rejected");
     if (status == 401 || status == 403)
         return failure(content_http_error_code::unauthorized, "Remote content access denied");
