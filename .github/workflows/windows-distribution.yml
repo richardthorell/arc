@@ -98,8 +98,10 @@ jobs:
       - name: Validate D3 Python Syntax and Harness
         shell: pwsh
         run: |
-          python -m py_compile tools/d3_shipping_acceptance.py tools/d3_shipping_negative.py tools/d4_headless_shipping_acceptance.py tools/d4_headless_negative.py tools/verify_relocated_package.py tools/tests/test_relocated_package.py tools/tests/test_d3_shipping_negative.py tools/tests/test_d4_headless_negative.py tools/tests/test_d4_server_lifecycle_report.py
+          python -m py_compile tools/d3_shipping_acceptance.py tools/d3_shipping_negative.py tools/d4_headless_shipping_acceptance.py tools/d4_headless_stop_acceptance.py tools/d4_headless_negative.py tools/verify_relocated_package.py tools/tests/test_relocated_package.py tools/tests/test_d3_shipping_negative.py tools/tests/test_d4_headless_negative.py tools/tests/test_d4_server_lifecycle_report.py tools/tests/test_d4_headless_stop.py
           if ($LASTEXITCODE -ne 0) { throw "D3 Python syntax validation failed" }
+          python -m unittest discover -s tools/tests -p test_d4_headless_stop.py -v
+          if ($LASTEXITCODE -ne 0) { throw "D4.4 stop acceptance tests failed" }
           python -m unittest discover -s tools/tests -p test_d4_server_lifecycle_report.py -v
           if ($LASTEXITCODE -ne 0) { throw "D4.3 lifecycle reporting tests failed" }
           python -m unittest discover -s tools/tests -p test_d4_headless_negative.py -v

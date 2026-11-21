@@ -35,6 +35,21 @@ void on_stop_signal(int)
     stop_signal = 1;
 }
 
+#if defined(_WIN32)
+// Windows console control events are not reliably translated into C runtime
+// SIGINT/SIGTERM. Handle Ctrl+C and Ctrl+Break explicitly; never perform
+// engine teardown or I/O from the console-handler thread.
+BOOL WINAPI on_console_control(DWORD event)
+{
+    if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT)
+    {
+        stop_signal = 1;
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
 bool parse_ticks(std::string_view text, std::uint64_t& value)
 {
     const char* const begin = text.data();
@@ -101,6 +116,7 @@ int main(int argc, char** argv)
     bool json_report = false;
     fs::path distribution_root;
     fs::path data_root;
+    fs::path stop_file;
 
     for (int index = 1; index < argc; ++index)
     {
@@ -129,6 +145,8 @@ int main(int argc, char** argv)
             distribution_root = fs::path(argv[++index]);
         else if (argument == "--data-root" && index + 1 < argc)
             data_root = fs::path(argv[++index]);
+        else if (argument == "--stop-file" && index + 1 < argc)
+            stop_file = fs::path(argv[++index]);
         else
         {
             std::cerr << "Unknown or incomplete server option: " << argument << '\n';
@@ -137,9 +155,10 @@ int main(int argc, char** argv)
     }
 
     if ((!distribution_root.empty() && !distribution_root.is_absolute()) ||
-        (!data_root.empty() && !data_root.is_absolute()))
+        (!data_root.empty() && !data_root.is_absolute()) ||
+        (!stop_file.empty() && (!stop_file.is_absolute() || stop_file != stop_file.lexically_normal())))
     {
-        std::cerr << "Distribution and data roots must be absolute paths\n";
+        std::cerr << "Distribution, data and stop-file paths must be absolute and normalized\n";
         return 2;
     }
 
@@ -201,8 +220,17 @@ int main(int argc, char** argv)
         return 2;
     }
 
+#if defined(_WIN32)
+    if (!SetConsoleCtrlHandler(on_console_control, TRUE))
+    {
+        std::cerr << "Cannot register Windows console stop handler\n";
+        return 2;
+    }
+    std::signal(SIGTERM, on_stop_signal);
+#else
     std::signal(SIGINT, on_stop_signal);
     std::signal(SIGTERM, on_stop_signal);
+#endif
 
     arc::jobs::job_system jobs{{.worker_count = 1, .run_inline = false, .io_worker_count = 2,
                                 .enable_render_thread = false}};
@@ -232,16 +260,25 @@ int main(int argc, char** argv)
                                                .native_files = &native_files};
     {{PROJECT_TOKEN}}::register_server(request.registrations);
 
+    bool external_stop_requested = false;
     auto result = project::run_packaged_headless_server({.runtime = std::move(request),
                                                          .maximum_ticks = maximum_ticks,
                                                          .sleep_to_clock = sleep_to_clock,
-                                                         .stop_requested = [] { return stop_signal != 0; }});
+                                                         .stop_requested = [&]
+                                                         {
+                                                             if (stop_signal != 0) return true;
+                                                             if (stop_file.empty()) return false;
+                                                             std::error_code error;
+                                                             external_stop_requested = fs::exists(stop_file, error) && !error;
+                                                             return external_stop_requested;
+                                                         }});
     if (!result)
     {
         std::cerr << result.error().field << ": " << result.error().message << '\n';
         return 1;
     }
     const char* reason = stop_signal != 0 ? "signal"
+                          : external_stop_requested ? "external-stop"
                           : maximum_ticks != 0 && result.value() >= maximum_ticks ? "tick-limit"
                                                                                   : "runtime-stop";
     if (json_report)
