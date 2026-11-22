@@ -278,7 +278,7 @@ TEST_CASE("C9.2f2 follower cancellation never cancels an unrelated in-flight lea
 
     arc::assets::remote_generation_fetch_executor executor =
         [&requests, &started, can_finish, body](arc::jobs::job_system& jobs, arc::http::content_http_request,
-                                    arc::http::content_http_limits, arc::jobs::cancellation_token)
+                                                arc::http::content_http_limits, arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.download.cancel_waiter", .affinity = arc::jobs::job_affinity::io_thread},
