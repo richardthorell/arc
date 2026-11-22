@@ -128,6 +128,17 @@ if(ARC_BUILD_LIVE_PLAY_DEV AND TARGET arc-live-play-dev)
         COMPONENT sdk-development)
 endif()
 
+# Development-only frame-boundary transform tests. These never ship with
+# packaged client games and do not expose a gameplay networking dependency.
+if(BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS AND TARGET arc-platform-windows-live-play-entry)
+    add_executable(arc-windows-live-play-edits-tests tests/windows_live_play_edits_tests.cpp)
+    arc_configure_first_party_target(arc-windows-live-play-edits-tests)
+    target_compile_features(arc-windows-live-play-edits-tests PRIVATE cxx_std_20)
+    target_link_libraries(arc-windows-live-play-edits-tests PRIVATE
+        arc-framework arc-scene arc-live-play-dev)
+    add_test(NAME arc-windows-live-play-edits-tests COMMAND arc-windows-live-play-edits-tests)
+endif()
+
 if(NOT TARGET arc::platform-windows)
     add_library(arc::platform-windows ALIAS arc-platform-windows)
 endif()
