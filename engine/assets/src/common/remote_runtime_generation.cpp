@@ -22,9 +22,11 @@ bool matching_target(const remote_content_target& a, const remote_content_target
 
 } // namespace
 
-remote_runtime_generation_session::remote_runtime_generation_session(
-    cooked_asset_catalog& catalog, derived_data_cache& cache, io::async_file_service& files,
-    remote_content_expectations expected, std::int32_t initial_priority)
+remote_runtime_generation_session::remote_runtime_generation_session(cooked_asset_catalog& catalog,
+                                                                     derived_data_cache& cache,
+                                                                     io::async_file_service& files,
+                                                                     remote_content_expectations expected,
+                                                                     std::int32_t initial_priority)
     : catalog_(&catalog), cache_(&cache), files_(&files), expected_(std::move(expected)),
       next_priority_(initial_priority)
 {
@@ -35,8 +37,7 @@ remote_runtime_generation_session::~remote_runtime_generation_session() = defaul
 
 bool remote_runtime_generation_session::compatible(const remote_content_release& release) const noexcept
 {
-    return release.project_guid == expected_.project_guid &&
-           release.engine_version == expected_.engine_version &&
+    return release.project_guid == expected_.project_guid && release.engine_version == expected_.engine_version &&
            release.base_build_id == expected_.base_build_id && matching_target(release.target, expected_.target);
 }
 
@@ -70,8 +71,7 @@ asset_status remote_runtime_generation_session::activate_verified(const remote_c
     if (!retained.succeeded()) return fail(asset_error_code::io_failed, retained.error);
 
     std::string new_provider_id;
-    const auto mounted = catalog_->mount_remote_provider(std::move(prepared).value(), next_priority_,
-                                                          &new_provider_id);
+    const auto mounted = catalog_->mount_remote_provider(std::move(prepared).value(), next_priority_, &new_provider_id);
     if (!mounted)
     {
         // Restoring old pins may fail due to disk error, but over-retention is
@@ -142,10 +142,10 @@ asset_status remote_runtime_generation_session::attach_overlay(std::filesystem::
 {
     if (!active_)
         return reject(asset_error_code::invalid_request, "Cannot attach a live overlay before base activation");
-    if (overlay_)
-        return reject(asset_error_code::invalid_request, "Runtime live overlay already attached");
+    if (overlay_) return reject(asset_error_code::invalid_request, "Runtime live overlay already attached");
     if (root.empty())
-        return reject(asset_error_code::invalid_request, "Runtime live overlay requires an explicit private cache root");
+        return reject(asset_error_code::invalid_request,
+                      "Runtime live overlay requires an explicit private cache root");
 
     auto overlay = std::make_shared<cas_overlay_provider>(*files_, root);
     const auto restored = overlay->load(expected_.target.cook_profile, expected_.base_build_id);
@@ -161,8 +161,9 @@ asset_status remote_runtime_generation_session::attach_overlay(std::filesystem::
     return asset_status::success();
 }
 
-asset_status remote_runtime_generation_session::ingest_overlay(
-    const runtime_update_manifest& update, std::span<const std::pair<content_hash, io::file_buffer>> blobs)
+asset_status
+remote_runtime_generation_session::ingest_overlay(const runtime_update_manifest& update,
+                                                  std::span<const std::pair<content_hash, io::file_buffer>> blobs)
 {
     if (!active_ || !receiver_)
         return reject(asset_error_code::invalid_request, "Remote base and live overlay are not active");

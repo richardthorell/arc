@@ -562,7 +562,6 @@ TEST_CASE("C9.2f2 eager generation acquisition retries a transient GET without d
     CHECK(read.value() == f.payload);
 }
 
-
 namespace
 {
 
@@ -686,7 +685,7 @@ TEST_CASE("C9.2g2 explicit base rollback restores prior provider and retention b
     const auto scope = arc::assets::remote_content_retention_scope(f.release);
     CHECK(f.cache.persistent_pins(scope).size() == 2);
     CHECK_FALSE(runtime.activate_verified(newer)); // No stale replay after rollback.
-    CHECK_FALSE(runtime.rollback()); // Only one active base remains.
+    CHECK_FALSE(runtime.rollback());               // Only one active base remains.
     auto newest = newer;
     newest.generation = 7;
     REQUIRE(runtime.activate_verified(newest));
@@ -706,15 +705,14 @@ TEST_CASE("C9.2g2 reuses native runtime_update_receiver for atomic higher priori
 
     const auto new_bytes = bytes("an updated terrain payload");
     const auto replacement_hash = arc::assets::hash_bytes(new_bytes);
-    arc::assets::runtime_update_manifest update{
-        .target_profile = f.release.target.cook_profile,
-        .base_build_id = f.release.base_build_id,
-        .update_sequence = 1,
-        .artifacts = {{.address = f.address,
-                       .type = arc::assets::asset_types::terrain,
-                       .schema_version = 1,
-                       .hash = replacement_hash,
-                       .size = new_bytes.size()}}};
+    arc::assets::runtime_update_manifest update{.target_profile = f.release.target.cook_profile,
+                                                .base_build_id = f.release.base_build_id,
+                                                .update_sequence = 1,
+                                                .artifacts = {{.address = f.address,
+                                                               .type = arc::assets::asset_types::terrain,
+                                                               .schema_version = 1,
+                                                               .hash = replacement_hash,
+                                                               .size = new_bytes.size()}}};
     const std::array blobs{std::pair{replacement_hash, new_bytes}};
     REQUIRE(runtime.ingest_overlay(update, blobs));
     CHECK(runtime.state().overlay_sequence == 1);
