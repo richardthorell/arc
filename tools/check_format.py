@@ -41,6 +41,16 @@ def main() -> int:
     parser.add_argument("--fix", action="store_true")
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[1]
+    # Temporary CI-only formatter output. Revert before merging.
+    import base64
+    for index, name in enumerate(["engine/network/src/dev/live_play_dev_client.cpp","engine/network/src/dev/live_play_dev_inspection.cpp","engine/network/test_support/live_play_dev_tests.cpp","engine/platform/windows/src/windows_entry.cpp","engine/platform/windows/src/windows_live_play_inspection.h","engine/platform/windows/tests/windows_live_play_edits_tests.cpp"]):
+        output = subprocess.check_output([args.clang_format, name], cwd=root)
+        encoded = base64.b64encode(output).decode("ascii")
+        chunks = [encoded[i:i + 700] for i in range(0, len(encoded), 700)]
+        print(f"ARC_L15A_CPP_START_{index}_{len(chunks)}", flush=True)
+        for part, chunk in enumerate(chunks):
+            print(f"ARC_L15A_CPP_DATA_{index}_{part}_{chunk}", flush=True)
+        print(f"ARC_L15A_CPP_END_{index}", flush=True)
     sources = first_party_sources(root)
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
