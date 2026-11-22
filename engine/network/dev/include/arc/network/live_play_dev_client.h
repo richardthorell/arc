@@ -10,6 +10,7 @@
  */
 
 #include <arc/network/live_play_dev_edits.h>
+#include <arc/network/live_play_dev_inspection.h>
 
 #include <array>
 #include <cstdint>
@@ -59,6 +60,7 @@ struct incoming_message
     std::uint64_t sequence{};
     std::string json;                  ///< Strictly bounded, validated wire envelope. Never blindly execute it.
     std::optional<property_edit> edit; ///< Parsed typed edit, never raw ECS mutation.
+    std::optional<inspection_request> inspection; ///< Read-only ECS request.
 };
 
 /**
@@ -87,6 +89,8 @@ public:
     [[nodiscard]] bool send_ack(std::string_view request_id, std::uint64_t applied_revision, std::string& error);
     [[nodiscard]] bool send_rejected_ack(std::string_view request_id, std::string_view code, std::string& error);
     [[nodiscard]] bool send_content_generation(std::uint64_t generation, std::string_view status, std::string& error);
+    [[nodiscard]] bool send_hierarchy_snapshot(const hierarchy_snapshot& snapshot, std::string& error);
+    [[nodiscard]] bool send_inspection_result(const component_inspection& result, std::string& error);
 
     /**
      * Call ONLY after the C9 loader has verified and activated or rejected
