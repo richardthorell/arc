@@ -264,3 +264,51 @@ source artifacts or editor-only network code are persisted. The tests cover
 restart/offline recovery, active/last-good rotation, independent scopes,
 corrupt metadata fail-closed behavior, hash tampering, bounded eviction and
 expired temporary-file cleanup.
+
+## C9.2g2 — Runtime-safe remote generation activation and last-good recovery
+
+The `remote_runtime_generation_session` connects verified C9.2 cooked releases
+to the ordinary `cooked_asset_catalog` and existing per-artifact
+`runtime_update_receiver` without introducing a second VFS or content cache.
+
+**Strict release activation.** Acquire/cache all C9.1 immutable objects with
+`acquire_remote_generation(...)`, then on a serialized simulation-safe
+boundary call `session.activate_verified(release)`. It requires exact
+project GUID, engine version, runtime base-build and target/profile identity,
+and a strictly increasing generation. The strict provider factory verifies
+every cached chunk and addressed artifact hash before mounting.
+The session persists retention for the candidate and previous active release,
+mounts the verified provider at higher VFS priority, retains the prior active
+as last-good, and retires the older provider. Failed validation, retention
+or mount leaves the existing base visible.
+
+**Explicit rollback.** `session.rollback()` unmounts the current remote base
+and exposes the previous SHA-verified last-good provider while keeping its
+object closure protected from cache pruning. The maximum accepted generation
+stays monotonic even after rollback, so stale releases cannot be replayed.
+Rollback refuses to proceed if an active live artifact overlay might shadow
+the older base, rather than silently mixing incompatible generations.
+
+**Live updates stay a separate verified layer.** Optional
+`session.attach_overlay(private_root)` uses the existing
+`cas_overlay_provider` and `runtime_update_receiver` at reserved high
+priority over the remote cooked base. `session.ingest_overlay(update, blobs)`
+delegates artifact hash, target/build checks, ordered sequence validation,
+tombstones and atomic overlay manifest commit to that receiver.
+C9 remote package chunks are **not** treated as raw overlay blobs.
+The cooked Asset Database and VFS publish provider change events downstream.
+Actual GPU resource residency refresh and scene reload-versus-restart policy
+are C9.6 (#1139).
+
+**Lifecycle and recovery.** Activation, rollback and overlay attach are
+safe-frame serialized runtime operations, never network/render callbacks.
+Cache prune/rotation must share maintenance ownership, preventing concurrent
+quota sweep from deleting an unpinned candidate during promotion.
+The session maintains at most active and previous remote bases normally;
+failed removal of an older low-priority mount is counted in diagnostics.
+Persisted C9.2g1 SHA retention is still only an eviction barrier: on restart,
+the runtime revalidates compatible release metadata and CAS bytes before mount.
+
+This slice does not add C9.3 launch overrides, C9.4 editor HTTP service,
+automatic scene-ready handshake, CDN signing, automatic persisted-release
+reconstruction, live GPU hot reload or remote feed replay.
