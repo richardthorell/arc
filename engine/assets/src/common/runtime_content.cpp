@@ -546,10 +546,17 @@ asset_status cooked_asset_catalog::mount_remote_generation(const remote_content_
     auto verified = remote_content_artifact_provider::create(release, cache, files);
     if (!verified) return asset_status::failure(std::move(verified).error());
 
-    auto package = std::move(verified).value();
+    return mount_remote_provider(std::move(verified).value(), priority);
+}
+
+asset_status cooked_asset_catalog::mount_remote_provider(std::shared_ptr<remote_content_artifact_provider> package,
+                                                         std::int32_t priority)
+{
+    if (!package)
+        return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Null remote cooked provider"));
     const auto manifest = package->manifest();
     const auto provider_id = std::string(asset_provider_ids::cooked_package_prefix) + manifest.build_id +
-                             ":remote:" + std::to_string(release.generation) + ":" +
+                             ":remote:" + std::to_string(package->provider_generation()) + ":" +
                              std::to_string(logical_->revision + 1);
     auto status = mount_provider(package, priority, provider_id);
     if (!status) return status;
