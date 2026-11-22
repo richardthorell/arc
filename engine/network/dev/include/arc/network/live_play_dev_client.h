@@ -9,6 +9,8 @@
  * log output, cooked assets, or the packaged distribution manifest.
  */
 
+#include <arc/network/live_play_dev_edits.h>
+
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -55,7 +57,8 @@ struct incoming_message
     std::string type;
     std::string message_id;
     std::uint64_t sequence{};
-    std::string json; ///< Strictly bounded, validated wire envelope. Never blindly execute it.
+    std::string json;                  ///< Strictly bounded, validated wire envelope. Never blindly execute it.
+    std::optional<property_edit> edit; ///< Parsed typed edit, never raw ECS mutation.
 };
 
 /**
@@ -82,6 +85,7 @@ public:
                                   std::string& error);
     [[nodiscard]] bool send_heartbeat(std::string& error);
     [[nodiscard]] bool send_ack(std::string_view request_id, std::uint64_t applied_revision, std::string& error);
+    [[nodiscard]] bool send_rejected_ack(std::string_view request_id, std::string_view code, std::string& error);
     [[nodiscard]] bool send_content_generation(std::uint64_t generation, std::string_view status, std::string& error);
 
     /**
