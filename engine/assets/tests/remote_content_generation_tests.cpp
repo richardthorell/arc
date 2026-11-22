@@ -1,3 +1,4 @@
+#include <arc/assets/remote_content_download.h>
 #include <arc/assets/remote_content_generation.h>
 #include <arc/assets/remote_content_lazy.h>
 #include <arc/assets/remote_content_transfer.h>
