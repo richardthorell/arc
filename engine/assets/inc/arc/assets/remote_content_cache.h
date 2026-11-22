@@ -9,7 +9,7 @@
 
 #include <arc/assets/cook.h>
 #include <arc/assets/remote_content.h>
-#include <arc/io/content_http.h>
+#include <arc/http/content_http.h>
 
 #include <cstdint>
 #include <optional>
@@ -54,8 +54,8 @@ load_verified_remote_object(derived_data_cache& cache, const remote_content_obje
  */
 [[nodiscard]] remote_object_cache_result ingest_verified_remote_object(derived_data_cache& cache,
                                                                        const remote_content_object& object,
-                                                                       const io::content_http_request& request,
-                                                                       const io::content_http_response& response,
-                                                                       const io::content_http_limits& limits);
+                                                                       const http::content_http_request& request,
+                                                                       const http::content_http_response& response,
+                                                                       const http::content_http_limits& limits);
 
 } // namespace arc::assets

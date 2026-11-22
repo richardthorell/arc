@@ -28,7 +28,7 @@ enum class remote_generation_transfer_policy : std::uint8_t
 struct remote_generation_transfer_options
 {
     std::string origin;
-    io::content_http_limits http{};
+    http::content_http_limits http{};
     remote_generation_transfer_policy policy{remote_generation_transfer_policy::cache_first};
     std::uint64_t maximum_generation_bytes{16ull * 1024ull * 1024ull * 1024ull};
     std::size_t maximum_objects{100000};
@@ -39,7 +39,7 @@ struct [[nodiscard]] remote_generation_transfer_result
     std::size_t reused_objects{};
     std::size_t downloaded_objects{};
     std::uint64_t downloaded_bytes{};
-    io::content_http_error_code transport_error{io::content_http_error_code::none};
+    http::content_http_error_code transport_error{http::content_http_error_code::none};
     remote_object_cache_error cache_error{remote_object_cache_error::none};
     std::string failed_object;
     std::string error;
@@ -55,8 +55,8 @@ struct [[nodiscard]] remote_generation_transfer_result
  * regardless of which executor supplies bytes. Production callers omit this
  * argument and use fetch_content_http.
  */
-using remote_generation_fetch_executor = std::function<jobs::job_future<io::content_http_fetch_result>(
-    jobs::job_system&, io::content_http_request, io::content_http_limits, jobs::cancellation_token)>;
+using remote_generation_fetch_executor = std::function<jobs::job_future<http::content_http_fetch_result>(
+    jobs::job_system&, http::content_http_request, http::content_http_limits, jobs::cancellation_token)>;
 
 /** Runs the transfer coordinator on a general worker and each HTTP GET on an
  * IO worker. Fetches serially to keep at most one object body in memory; later
