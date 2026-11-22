@@ -222,7 +222,11 @@ cross-project transfer leak.
 C9 uses the existing `derived_data_cache` filesystem CAS; no second asset
 cache, cooked registry or blob identity is introduced. The DDC already
 provides a configurable size budget, threshold/target-based LRU-ish
-last-access pruning and temporary/action expiry. C9.2g1 adds **persistent
+last-access pruning and temporary/action expiry.
+The cleanup operation is explicit (`cache.prune()` on a worker); downloading
+an object does not synchronously trigger disk scanning or eviction on an IO
+worker. The runtime maintenance/promotion policy will schedule cleanup after
+activation in C9.2g2. C9.2g1 adds **persistent
 scoped SHA-256 retention** so the active and previous verified generation's
 object references cannot be evicted when the process exits.
 
