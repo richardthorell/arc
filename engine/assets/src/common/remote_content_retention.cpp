@@ -31,8 +31,7 @@ bool same_target(const remote_content_target& first, const remote_content_target
 
 bool validated_object(const remote_content_object& object)
 {
-    if (object.size == 0 || object.size > maximum_retained_bytes ||
-        object.path != "objects/sha256/" + object.sha256)
+    if (object.size == 0 || object.size > maximum_retained_bytes || object.path != "objects/sha256/" + object.sha256)
         return false;
     const auto digest = parse_asset_hash(object.sha256);
     return digest && to_string(*digest) == object.sha256;
@@ -46,8 +45,8 @@ bool validated_release_identity(const remote_content_release& release)
         release.chunks.size() >= maximum_retained_objects)
         return false;
     if (!validated_object(release.cook_manifest)) return false;
-    return std::all_of(release.chunks.begin(), release.chunks.end(), [](const auto& chunk)
-                       { return validated_object(chunk.object); });
+    return std::all_of(release.chunks.begin(), release.chunks.end(),
+                       [](const auto& chunk) { return validated_object(chunk.object); });
 }
 
 } // namespace
@@ -121,8 +120,8 @@ retain_remote_content_generations(derived_data_cache& cache, const remote_conten
     cache_error persistence_error;
     if (!cache.set_persistent_pins(result.scope, hashes, persistence_error))
     {
-        result.error = persistence_error.message.empty() ? "Could not persist remote cache retention"
-                                                         : persistence_error.message;
+        result.error =
+            persistence_error.message.empty() ? "Could not persist remote cache retention" : persistence_error.message;
         return result;
     }
     result.retained_objects = hashes.size();

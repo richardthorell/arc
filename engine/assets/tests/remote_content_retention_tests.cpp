@@ -306,8 +306,7 @@ TEST_CASE("C9.2g1 project/target scopes do not unpin one another")
     f.store(cache, "chunk shared");
     REQUIRE(arc::assets::retain_remote_content_generations(cache, first).succeeded());
     REQUIRE(arc::assets::retain_remote_content_generations(cache, second).succeeded());
-    CHECK(arc::assets::remote_content_retention_scope(first) !=
-          arc::assets::remote_content_retention_scope(second));
+    CHECK(arc::assets::remote_content_retention_scope(first) != arc::assets::remote_content_retention_scope(second));
     arc::assets::cache_error error;
     REQUIRE(arc::assets::clear_remote_content_retention(cache, first, error));
     CHECK(cache.prune(true) == std::string_view("manifest project one").size());

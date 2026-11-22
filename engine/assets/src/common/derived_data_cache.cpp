@@ -109,8 +109,8 @@ constexpr std::size_t maximum_retention_hashes = 100000;
 bool valid_retention_scope(std::string_view scope)
 {
     if (scope.empty() || scope.size() > 128) return false;
-    return std::all_of(scope.begin(), scope.end(), [](unsigned char c)
-                       { return std::isalnum(c) || c == '.' || c == '-' || c == '_'; });
+    return std::all_of(scope.begin(), scope.end(),
+                       [](unsigned char c) { return std::isalnum(c) || c == '.' || c == '-' || c == '_'; });
 }
 
 /** Replaces mutable retention metadata (unlike immutable CAS write_atomic).
@@ -139,7 +139,7 @@ bool replace_atomic(const std::filesystem::path& destination, std::string_view c
     }
 #ifdef _WIN32
     const bool published = MoveFileExW(std::filesystem::path(temporary).c_str(), destination.c_str(),
-                                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+                                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
     if (published) return true;
 #else
     std::error_code rename_error;
@@ -541,7 +541,8 @@ struct derived_data_cache::implementation
     {
         retained_hashes.clear();
         for (const auto& [scope, hashes] : retained_scopes)
-            for (const auto& hash : hashes) retained_hashes.insert(to_string(hash));
+            for (const auto& hash : hashes)
+                retained_hashes.insert(to_string(hash));
     }
 
     void load_retention()
@@ -569,9 +570,8 @@ struct derived_data_cache::implementation
         const auto document = json::parse(stream, nullptr, false);
         if (!document.is_object() || !document.contains("format") || !document["format"].is_string() ||
             document["format"] != "arc.ddc-persistent-pins" || !document.contains("version") ||
-            !document["version"].is_number_integer() || document["version"] != 1 ||
-            !document.contains("scopes") || !document["scopes"].is_object() ||
-            document["scopes"].size() > maximum_retention_scopes)
+            !document["version"].is_number_integer() || document["version"] != 1 || !document.contains("scopes") ||
+            !document["scopes"].is_object() || document["scopes"].size() > maximum_retention_scopes)
         {
             retention_ready = false;
             return;
@@ -579,8 +579,7 @@ struct derived_data_cache::implementation
         std::size_t total{};
         for (const auto& [scope, hashes] : document["scopes"].items())
         {
-            if (!valid_retention_scope(scope) || !hashes.is_array() ||
-                hashes.size() > maximum_retention_hashes - total)
+            if (!valid_retention_scope(scope) || !hashes.is_array() || hashes.size() > maximum_retention_hashes - total)
             {
                 retention_ready = false;
                 retained_scopes.clear();
@@ -886,7 +885,8 @@ bool derived_data_cache::set_persistent_pins(std::string_view scope, std::span<c
         // A deterministic minimal snapshot is safe to replay on restart.
         std::vector<std::string> strings;
         strings.reserve(values.size());
-        for (const auto& hash : values) strings.push_back(to_string(hash));
+        for (const auto& hash : values)
+            strings.push_back(to_string(hash));
         std::sort(strings.begin(), strings.end());
         strings.erase(std::unique(strings.begin(), strings.end()), strings.end());
         if (strings.size() > maximum_retention_hashes - total)
@@ -904,9 +904,8 @@ bool derived_data_cache::set_persistent_pins(std::string_view scope, std::span<c
         }
         scopes[key] = std::move(entries);
     }
-    const std::string document = json{{"format", "arc.ddc-persistent-pins"},
-                                      {"version", 1},
-                                      {"scopes", std::move(scopes)}}.dump();
+    const std::string document =
+        json{{"format", "arc.ddc-persistent-pins"}, {"version", 1}, {"scopes", std::move(scopes)}}.dump();
     if (document.size() > maximum_retention_file_bytes ||
         !replace_atomic(implementation_->config.root / "persistent-pins.json", document, error.message))
     {
@@ -979,7 +978,7 @@ std::uint64_t derived_data_cache::prune(bool force)
         for (std::filesystem::recursive_directory_iterator it(root, error), end; it != end && !error;
              it.increment(error))
             if (it->is_regular_file(error) && !implementation_->pins.contains(it->path().filename().string()) &&
-                 !implementation_->retained_hashes.contains(it->path().filename().string()))
+                !implementation_->retained_hashes.contains(it->path().filename().string()))
                 candidates.push_back({it->path(), it->file_size(error), it->last_write_time(error)});
     std::sort(candidates.begin(), candidates.end(),
               [](const auto& lhs, const auto& rhs) { return lhs.time < rhs.time; });
