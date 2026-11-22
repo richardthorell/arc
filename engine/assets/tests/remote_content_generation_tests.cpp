@@ -61,7 +61,8 @@ struct fixture
         assets::remote_content_object object{.path = "objects/sha256/" + hash, .sha256 = hash, .size = body.size()};
         http::content_http_request request{
             .origin = "https://content.example.org", .object_path = object.path, .object_size = object.size};
-        http::content_http_response response{.status = 200, .content_length = std::to_string(body.size()), .body = body};
+        http::content_http_response response{
+            .status = 200, .content_length = std::to_string(body.size()), .body = body};
         const auto added = assets::ingest_verified_remote_object(cache, object, request, response, {});
         REQUIRE(added.succeeded());
         return object;

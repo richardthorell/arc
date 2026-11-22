@@ -36,8 +36,8 @@ arc::assets::remote_release_fetch_executor stub_fetch(std::string json, unsigned
                                                       std::string redirect = {}, std::string content_length = {})
 {
     return [json = std::move(json), status, redirect = std::move(redirect), content_length = std::move(content_length)](
-               arc::jobs::job_system& jobs, arc::http::content_http_release_request request, arc::http::content_http_limits,
-               arc::jobs::cancellation_token)
+               arc::jobs::job_system& jobs, arc::http::content_http_release_request request,
+               arc::http::content_http_limits, arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.remote_content.discovery_test", .affinity = arc::jobs::job_affinity::io_thread},
@@ -45,10 +45,10 @@ arc::assets::remote_release_fetch_executor stub_fetch(std::string json, unsigned
             {
                 const auto byte_view = std::as_bytes(std::span(json.data(), json.size()));
                 arc::http::content_http_response response{.status = status,
-                                                        .content_length = content_length,
-                                                        .redirect_location = redirect,
-                                                        .body =
-                                                            arc::io::file_buffer(byte_view.begin(), byte_view.end())};
+                                                          .content_length = content_length,
+                                                          .redirect_location = redirect,
+                                                          .body =
+                                                              arc::io::file_buffer(byte_view.begin(), byte_view.end())};
                 return arc::http::content_http_fetch_result{.response = std::move(response), .validation = {}};
             });
     };

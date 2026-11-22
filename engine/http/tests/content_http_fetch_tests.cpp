@@ -34,8 +34,8 @@ TEST_CASE("C9.2b unsupported platforms fail explicitly without network access")
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     arc::http::content_http_request request{.origin = "https://content.example.org",
-                                          .object_path = "objects/sha256/" + std::string(64, 'a'),
-                                          .object_size = 4};
+                                            .object_path = "objects/sha256/" + std::string(64, 'a'),
+                                            .object_size = 4};
     const auto result = arc::http::fetch_content_http(jobs, std::move(request)).get();
     CHECK_FALSE(result.succeeded());
     CHECK(result.validation.code == arc::http::content_http_error_code::transport_unavailable);
@@ -104,8 +104,8 @@ TEST_CASE("C9.2d2 release discovery reports unsupported TLS backend rather than 
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     arc::http::content_http_release_request request{.origin = "https://content.example.org",
-                                                  .project_guid = "11111111-2222-4333-8444-555555555555",
-                                                  .target_profile = "windows-x64-vulkan"};
+                                                    .project_guid = "11111111-2222-4333-8444-555555555555",
+                                                    .target_profile = "windows-x64-vulkan"};
     const auto result = arc::http::fetch_content_http_release(jobs, request).get();
     CHECK_FALSE(result.succeeded());
     CHECK(result.validation.code == arc::http::content_http_error_code::transport_unavailable);

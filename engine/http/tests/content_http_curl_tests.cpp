@@ -202,8 +202,8 @@ TEST_CASE("C9.2e1 Linux curl reports missing objects and pre-cancelled requests"
         arc::jobs::cancellation_source cancellation;
         REQUIRE(cancellation.request_cancel());
         arc::http::content_http_request request{.origin = "https://content.example.org",
-                                              .object_path = "objects/sha256/" + std::string(64, 'a'),
-                                              .object_size = 6};
+                                                .object_path = "objects/sha256/" + std::string(64, 'a'),
+                                                .object_size = 6};
         const auto fetched =
             arc::http::fetch_content_http(jobs, request, development_limits(), cancellation.token()).get();
         CHECK_FALSE(fetched.succeeded());

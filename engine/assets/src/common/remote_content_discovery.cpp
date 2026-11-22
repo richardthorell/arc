@@ -31,8 +31,8 @@ jobs::job_future<remote_release_discovery_result> discover_remote_release(jobs::
             }
 
             http::content_http_release_request request{.origin = std::move(origin),
-                                                     .project_guid = expectations.project_guid,
-                                                     .target_profile = expectations.target.cook_profile};
+                                                       .project_guid = expectations.project_guid,
+                                                       .target_profile = expectations.target.cook_profile};
             const auto preflight = http::validate_content_http_release_request(request, limits);
             if (!preflight.succeeded())
             {
