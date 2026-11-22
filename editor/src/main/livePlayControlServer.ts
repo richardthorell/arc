@@ -191,7 +191,26 @@ export class LivePlayControlServer {
     return true;
   }
 
-  private message(type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer', payload: unknown): LivePlayMessage {
+  /**
+   * Trusted editor-main process only. The peer must negotiate entity.edit,
+   * and runtime world mutation remains disabled until L1.4b implements it.
+   */
+  sendAuthoringProperty(payload: Extract<LivePlayMessage, { type: 'entity.property.set' }>['payload']): string | null {
+    const peer = this.activePeer;
+    if (
+      !peer?.ready ||
+      !peer.capabilities.includes('entity.edit') ||
+      !this.options.grantedCapabilities.includes('entity.edit')
+    )
+      return null;
+    const command = this.message('entity.property.set', payload);
+    return this.send(peer, command) ? command.messageId : null;
+  }
+
+  private message(
+    type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer' | 'entity.property.set',
+    payload: unknown,
+  ): LivePlayMessage {
     const item = {
       protocol: LIVE_PLAY_PROTOCOL,
       protocolVersion: LIVE_PLAY_VERSION,
