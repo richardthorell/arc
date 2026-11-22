@@ -151,6 +151,8 @@ struct remote_object_download_coordinator::implementation
                 // during the fetch. Report network bytes, not CAS writes.
                 result.downloaded = true;
                 result.reused = false;
+                result.transport_error = http::content_http_error_code::none;
+                result.error.clear();
                 return result;
             }
 
