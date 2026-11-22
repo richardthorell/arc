@@ -109,7 +109,8 @@ public:
      * For lazy mode, missing chunks remain read-time failures until verified.
      */
     [[nodiscard]] asset_status mount_remote_provider(std::shared_ptr<remote_content_artifact_provider> provider,
-                                                     std::int32_t priority = 25);
+                                                     std::int32_t priority = 25,
+                                                     std::string* mounted_provider_id = nullptr);
     [[nodiscard]] asset_status mount_provider(std::shared_ptr<io::virtual_file_provider> provider,
                                               std::int32_t priority, std::string debug_name);
     [[nodiscard]] asset_status mount_overlay(const std::shared_ptr<cas_overlay_provider>& provider,
