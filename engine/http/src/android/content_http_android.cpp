@@ -137,6 +137,7 @@ public:
         }
         if (response_) env_->DeleteLocalRef(response_);
     }
+
 private:
     JNIEnv* env_{};
     jobject response_{};
@@ -144,8 +145,8 @@ private:
 };
 
 content_http_fetch_result fetch(std::string url, std::string range, std::string etag, bool release,
-                               std::uint64_t byte_budget, const content_http_limits& limits,
-                               const jobs::cancellation_token& cancellation)
+                                std::uint64_t byte_budget, const content_http_limits& limits,
+                                const jobs::cancellation_token& cancellation)
 {
     if (cancellation.stop_requested()) return failure(content_http_error_code::cancelled, "Android HTTP cancelled");
     JavaVM* vm{};
@@ -182,11 +183,11 @@ content_http_fetch_result fetch(std::string url, std::string range, std::string 
     if (clear_exception(env) || !java_url.get() || !java_range.get() || !java_etag.get())
         return failure(content_http_error_code::network_failure, "Android HTTP request allocation failed");
 
-    const auto timeout = static_cast<jint>(
-        std::min<std::int64_t>(limits.timeout.count(), std::numeric_limits<jint>::max()));
-    jobject response = env->CallStaticObjectMethod(static_cast<jclass>(bridge.get()), open,
-                                                   java_url.get(), java_range.get(), java_etag.get(),
-                                                   release ? JNI_TRUE : JNI_FALSE, timeout);
+    const auto timeout =
+        static_cast<jint>(std::min<std::int64_t>(limits.timeout.count(), std::numeric_limits<jint>::max()));
+    jobject response =
+        env->CallStaticObjectMethod(static_cast<jclass>(bridge.get()), open, java_url.get(), java_range.get(),
+                                    java_etag.get(), release ? JNI_TRUE : JNI_FALSE, timeout);
     if (env->ExceptionCheck())
     {
         const auto code = java_exception(env);
@@ -194,8 +195,7 @@ content_http_fetch_result fetch(std::string url, std::string range, std::string 
                                  ? "Android HTTP transfer timed out"
                                  : "Android HTTP connection or certificate validation failed");
     }
-    if (!response)
-        return failure(content_http_error_code::network_failure, "Android HTTP returned no response");
+    if (!response) return failure(content_http_error_code::network_failure, "Android HTTP returned no response");
 
     local_ref cls(env, env->GetObjectClass(response));
     if (clear_exception(env) || !cls.get())
@@ -243,8 +243,8 @@ content_http_fetch_result fetch(std::string url, std::string range, std::string 
     if (!out.content_length.empty())
     {
         std::uint64_t declared{};
-        const auto [end, ec] = std::from_chars(out.content_length.data(),
-                                              out.content_length.data() + out.content_length.size(), declared);
+        const auto [end, ec] =
+            std::from_chars(out.content_length.data(), out.content_length.data() + out.content_length.size(), declared);
         if (ec != std::errc{} || end != out.content_length.data() + out.content_length.size())
             return failure(content_http_error_code::inconsistent_length, "Malformed Android Content-Length");
         if (declared > byte_budget)
@@ -259,15 +259,13 @@ content_http_fetch_result fetch(std::string url, std::string range, std::string 
     std::array<std::byte, chunk_size> bytes{};
     for (;;)
     {
-        if (cancellation.stop_requested())
-            return failure(content_http_error_code::cancelled, "Android HTTP cancelled");
+        if (cancellation.stop_requested()) return failure(content_http_error_code::cancelled, "Android HTTP cancelled");
         const auto received = env->CallIntMethod(response, read, chunk.get());
         if (env->ExceptionCheck())
         {
             const auto code = java_exception(env);
-            return failure(code, code == content_http_error_code::timeout
-                                     ? "Android HTTP body read timed out"
-                                     : "Android HTTP body read failed");
+            return failure(code, code == content_http_error_code::timeout ? "Android HTTP body read timed out"
+                                                                          : "Android HTTP body read failed");
         }
         if (received < 0) break;
         if (received == 0) continue;
@@ -295,24 +293,24 @@ bool register_android_http_transport(JavaVM* vm, jobject activity) noexcept
     if (!env) return false;
     local_ref activity_class(env, env->GetObjectClass(activity));
     if (!activity_class.get() || clear_exception(env)) return false;
-    const auto get_loader = env->GetMethodID(static_cast<jclass>(activity_class.get()), "getClassLoader",
-                                             "()Ljava/lang/ClassLoader;");
+    const auto get_loader =
+        env->GetMethodID(static_cast<jclass>(activity_class.get()), "getClassLoader", "()Ljava/lang/ClassLoader;");
     if (!get_loader || clear_exception(env)) return false;
     local_ref loader(env, env->CallObjectMethod(activity, get_loader));
     if (!loader.get() || clear_exception(env)) return false;
     local_ref loader_class(env, env->GetObjectClass(loader.get()));
     if (!loader_class.get() || clear_exception(env)) return false;
-    const auto load = env->GetMethodID(static_cast<jclass>(loader_class.get()), "loadClass",
-                                       "(Ljava/lang/String;)Ljava/lang/Class;");
+    const auto load =
+        env->GetMethodID(static_cast<jclass>(loader_class.get()), "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
     if (!load || clear_exception(env)) return false;
     local_ref name(env, env->NewStringUTF("org.arcengine.host.http.ArcHttpTransport"));
     if (!name.get() || clear_exception(env)) return false;
     local_ref java_class(env, env->CallObjectMethod(loader.get(), load, name.get()));
     if (!java_class.get() || clear_exception(env)) return false;
     const auto clazz = static_cast<jclass>(java_class.get());
-    const auto open = env->GetStaticMethodID(
-        clazz, "open", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)"
-                       "Lorg/arcengine/host/http/ArcHttpTransport$Response;");
+    const auto open = env->GetStaticMethodID(clazz, "open",
+                                             "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)"
+                                             "Lorg/arcengine/host/http/ArcHttpTransport$Response;");
     if (!open || clear_exception(env)) return false;
     auto* global = static_cast<jclass>(env->NewGlobalRef(clazz));
     if (!global || clear_exception(env)) return false;
@@ -338,8 +336,8 @@ void unregister_android_http_transport() noexcept
 }
 
 content_http_fetch_result android_fetch_content_http(const content_http_request& request,
-                                                      const content_http_limits& limits,
-                                                      const jobs::cancellation_token& cancellation)
+                                                     const content_http_limits& limits,
+                                                     const jobs::cancellation_token& cancellation)
 {
     auto valid = validate_content_http_request(request, limits);
     if (!valid.succeeded()) return {.response = std::nullopt, .validation = valid};
@@ -348,8 +346,8 @@ content_http_fetch_result android_fetch_content_http(const content_http_request&
         range = "bytes=" + std::to_string(*request.range_start) + "-" +
                 std::to_string(*request.range_start + *request.range_length - 1u);
     const auto maximum = request.range_start ? *request.range_length : request.object_size;
-    auto fetched = fetch(request.origin + "/" + request.object_path, range, request.if_match_etag, false,
-                         maximum, limits, cancellation);
+    auto fetched = fetch(request.origin + "/" + request.object_path, range, request.if_match_etag, false, maximum,
+                         limits, cancellation);
     if (!fetched.succeeded()) return fetched;
     valid = validate_content_http_response(request, *fetched.response, limits);
     if (!valid.succeeded()) return {.response = std::nullopt, .validation = valid};
@@ -357,15 +355,14 @@ content_http_fetch_result android_fetch_content_http(const content_http_request&
 }
 
 content_http_fetch_result android_fetch_content_http_release(const content_http_release_request& request,
-                                                              const content_http_limits& limits,
-                                                              const jobs::cancellation_token& cancellation)
+                                                             const content_http_limits& limits,
+                                                             const jobs::cancellation_token& cancellation)
 {
     auto valid = validate_content_http_release_request(request, limits);
     if (!valid.succeeded()) return {.response = std::nullopt, .validation = valid};
-    auto fetched = fetch(request.origin + "/releases/" + request.project_guid + "/" +
-                             request.target_profile + "/current.json",
-                         {}, {}, true, std::min(max_release_bytes, limits.maximum_object_bytes), limits,
-                         cancellation);
+    auto fetched =
+        fetch(request.origin + "/releases/" + request.project_guid + "/" + request.target_profile + "/current.json", {},
+              {}, true, std::min(max_release_bytes, limits.maximum_object_bytes), limits, cancellation);
     if (!fetched.succeeded()) return fetched;
     valid = validate_content_http_release_response(request, *fetched.response, limits);
     if (!valid.succeeded()) return {.response = std::nullopt, .validation = valid};

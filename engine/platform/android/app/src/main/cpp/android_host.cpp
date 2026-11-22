@@ -120,13 +120,15 @@ extern "C" void android_main(android_app* app)
     // Register the app ClassLoader for arc-http's Android TLS bridge before
     // runtime jobs may request any remote cooked artifacts. The guard is
     // declared before runtime so its teardown runs *after* jobs have drained.
-    const bool http_ready = app->activity && arc::http::register_android_http_transport(
-                                                app->activity->vm, app->activity->clazz);
-    if (!http_ready)
-        arc::diagnostics::warn("Android", "Platform HTTPS bridge unavailable; remote content disabled");
+    const bool http_ready =
+        app->activity && arc::http::register_android_http_transport(app->activity->vm, app->activity->clazz);
+    if (!http_ready) arc::diagnostics::warn("Android", "Platform HTTPS bridge unavailable; remote content disabled");
     struct http_registration_guard
     {
-        ~http_registration_guard() { arc::http::unregister_android_http_transport(); }
+        ~http_registration_guard()
+        {
+            arc::http::unregister_android_http_transport();
+        }
     } http_guard;
     (void)http_guard;
 
