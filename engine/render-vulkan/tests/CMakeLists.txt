@@ -21,7 +21,10 @@ list(APPEND CMAKE_MODULE_PATH "${catch2_SOURCE_DIR}/extras")
 
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 
-add_executable(arc_render_vulkan_tests ${TEST_SOURCES})
+add_executable(arc_render_vulkan_tests
+  ${TEST_SOURCES}
+  ../src/vulkan_sky_constants.cpp
+)
 arc_configure_first_party_target(arc_render_vulkan_tests)
 target_link_libraries(arc_render_vulkan_tests PRIVATE arc-render-vulkan Catch2::Catch2WithMain)
 target_include_directories(arc_render_vulkan_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
