@@ -59,9 +59,9 @@ struct fixture
         using namespace arc;
         const auto hash = assets::to_string(assets::hash_bytes(body));
         assets::remote_content_object object{.path = "objects/sha256/" + hash, .sha256 = hash, .size = body.size()};
-        io::content_http_request request{
+        http::content_http_request request{
             .origin = "https://content.example.org", .object_path = object.path, .object_size = object.size};
-        io::content_http_response response{.status = 200, .content_length = std::to_string(body.size()), .body = body};
+        http::content_http_response response{.status = 200, .content_length = std::to_string(body.size()), .body = body};
         const auto added = assets::ingest_verified_remote_object(cache, object, request, response, {});
         REQUIRE(added.succeeded());
         return object;
@@ -216,19 +216,19 @@ namespace
 arc::assets::remote_generation_fetch_executor mock_remote_objects(fixture& fixture, std::size_t& requests,
                                                                   bool corrupt_chunk = false)
 {
-    return [&fixture, &requests, corrupt_chunk](arc::jobs::job_system& jobs, arc::io::content_http_request request,
-                                                arc::io::content_http_limits, arc::jobs::cancellation_token)
+    return [&fixture, &requests, corrupt_chunk](arc::jobs::job_system& jobs, arc::http::content_http_request request,
+                                                arc::http::content_http_limits, arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.remote_content.test_fetch", .affinity = arc::jobs::job_affinity::io_thread},
-            [&fixture, &requests, corrupt_chunk, request = std::move(request)]() -> arc::io::content_http_fetch_result
+            [&fixture, &requests, corrupt_chunk, request = std::move(request)]() -> arc::http::content_http_fetch_result
             {
                 ++requests;
                 auto body = request.object_path == fixture.release.cook_manifest.path ? fixture.manifest_bytes
                                                                                       : fixture.package_bytes;
                 if (corrupt_chunk && request.object_path == fixture.release.chunks.front().object.path)
                     body.back() ^= std::byte{0x01};
-                arc::io::content_http_response response{
+                arc::http::content_http_response response{
                     .status = 200, .content_length = std::to_string(body.size()), .body = std::move(body)};
                 return {.response = std::move(response), .validation = {}};
             });
@@ -317,7 +317,7 @@ TEST_CASE("C9.2d1 rejects offline cache misses, invalid origins and unsafe gener
     options.origin = "file:///etc/passwd";
     auto origin = arc::assets::acquire_remote_generation(f.jobs, f.files, empty, f.release, options).get();
     CHECK_FALSE(origin.succeeded());
-    CHECK(origin.transport_error == arc::io::content_http_error_code::invalid_origin);
+    CHECK(origin.transport_error == arc::http::content_http_error_code::invalid_origin);
 
     options.origin = "https://content.example.org";
     options.maximum_generation_bytes = f.manifest_bytes.size() + f.package_bytes.size() - 1;
@@ -344,6 +344,6 @@ TEST_CASE("C9.2d1 propagates cancellation without doing network work")
                                                             mock_remote_objects(f, requests))
                          .get();
     CHECK_FALSE(cancelled.succeeded());
-    CHECK(cancelled.transport_error == arc::io::content_http_error_code::cancelled);
+    CHECK(cancelled.transport_error == arc::http::content_http_error_code::cancelled);
     CHECK(requests == 0);
 }
