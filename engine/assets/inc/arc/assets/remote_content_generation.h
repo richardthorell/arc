@@ -1,17 +1,20 @@
 #pragma once
 
 /** @file
- * @brief C9.2c2 verified complete remote cook generations backed by ARC's existing CAS.
+ * @brief Strict and lazy remote cook generations backed by ARC's verified CAS.
  *
- * A remote provider is constructible only after the cook manifest, every
- * declared package chunk and every artifact byte range have been verified.
+ * Strict providers verify every chunk before mounting; lazy providers validate
+ * the cooked manifest metadata, then fetch/verify each whole immutable chunk
+ * before yielding any requested artifact bytes.
  * The existing cooked Asset Database/VFS remains authoritative.
  */
 
 #include <arc/assets/remote_content_cache.h>
 #include <arc/assets/runtime_content.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <memory>
 #include <functional>
 #include <string>

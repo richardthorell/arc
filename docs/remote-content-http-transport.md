@@ -147,3 +147,35 @@ immutable byte framing, cancellation and cache identity stay in place.
 coupled to VFS or packaged runtime hosting. `arc-io` remains responsible for
 filesystem, async file services and VFS. See `docs/arc-http.md` for the
 editor/runtime integration boundary.
+
+## C9.2f1 — Demand-loaded verified cooked chunks
+
+`prepare_lazy_remote_generation(...)` is a metadata-first alternative to
+`acquire_remote_generation(...)`. Given a previously C9.1-validated release,
+it fetches (or reuses) only the SHA-verified `.arccookmanifest`, checks the
+target/build, chunk declarations, artifact mapping, non-overlapping ranges
+and the declared bounds, and returns an **unmounted** lazy provider.
+The caller explicitly publishes the metadata at a safe runtime boundary via
+`cooked_asset_catalog::mount_remote_provider(provider)`.
+
+The normal cooked Asset Database and VFS resolve logical GUID artifacts
+without exposing URLs. On the first read of an uncached artifact, a general
+worker coordinates an IO-worker `arc-http` GET for its **entire** containing
+immutable `.arcpak` object; existing SHA-256/response validation and
+persistent CAS ingestion run before any bytes are returned. The provider
+then checks ARC package magic, declared offsets and the addressed artifact
+hash from the cook manifest. Later reads use the verified cached object.
+Offline-only metadata mounting returns a typed cache miss on uncached reads.
+
+**Security and availability boundaries:** the lazy provider reports
+metadata availability before all referenced chunk bodies are verified.
+Corrupt, cancelled or offline reads fail closed and never leak unverified
+bytes, but lazy mounting does not automatically switch the VFS to a
+lower-priority last-good provider on read failure. A runtime may retain
+and explicitly reactivate that provider. The original fully verified
+acquisition/mount path remains unchanged for callers needing all-or-nothing
+generation activation. This is demand-loading by **chunk**, not a byte-range
+HTTP streaming optimization: whole-object SHA-256 must pass first.
+Concurrent duplicate coalescing, retries, transfer budgets, persistent
+quota/pinning and runtime startup/orchestration are follow-on C9.2f2/g
+and C9.3 tasks.
