@@ -182,3 +182,37 @@ and C9.3 tasks.
 
 The new Catch2 coverage uses actual cooker-generated ARC package fixtures and
 an injectable IO-worker fetcher; no external service or credentials are needed.
+
+## C9.2f2 — Coalesced immutable object transfer and bounded retries
+
+The shared `remote_object_download_coordinator` provides an explicit,
+reusable transfer-policy boundary for `arc-assets`. A coordinator can be
+shared across lazy remote providers and eager generation acquisition, provided
+the callers use the same ARC job scheduler and derived-data cache instance.
+
+- Every SHA-256 CAS miss is keyed by immutable object hash: concurrent
+  requests for the same object join one in-flight leader, then verify the
+  completed CAS entry. A cancelled follower returns immediately without
+  cancelling an unrelated leader.
+- Downloads are restricted by both a concurrent-request cap (default 4)
+  and an aggregate declared in-flight response-byte budget (default 512 MiB).
+  These settings are configurable via `remote_download_limits` when
+  constructing a shared coordinator.
+- Only **transport timeouts, connection failures and rate limiting** are
+  retried, at most 3 attempts by default with bounded exponential backoff.
+  Authorization failures, missing resources, redirects, TLS/origin validation,
+  invalid response framing, digest mismatch and CAS failures are never
+  retried. Cancellation ends queued, waiting and retrying requests.
+- The coordinator runs on general worker threads and schedules HTTP jobs on
+  IO workers. Verified full immutable objects are ingested into the existing
+  persistent CAS before any waiter receives success.
+- Eager generation acquisition remains **serial** for its existing
+  all-or-nothing verification/activation semantics, but uses the same retry
+  boundary. Lazy provider reads use bounded parallel GETs across distinct
+  chunks while coalescing duplicate-chunk requests.
+
+The coordinator does not implement global cache eviction, production CDN
+credentials, or resumable partial-object SHA verification; those remain
+separate tracks. Keeping `remote_object_download_coordinator` scoped to
+an explicit cache and job system avoids a process-wide singleton or
+cross-project transfer leak.
