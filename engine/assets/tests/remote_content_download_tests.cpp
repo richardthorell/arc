@@ -272,19 +272,21 @@ TEST_CASE("C9.2f2 follower cancellation never cancels an unrelated in-flight lea
     arc::assets::remote_object_download_coordinator downloads(f.jobs, f.cache, policy);
     std::promise<void> started;
     auto entered = started.get_future();
+    std::promise<void> release_leader;
+    const auto can_finish = release_leader.get_future().share();
     std::atomic<int> requests{};
 
     arc::assets::remote_generation_fetch_executor executor =
-        [&requests, &started, body](arc::jobs::job_system& jobs, arc::http::content_http_request,
+        [&requests, &started, can_finish, body](arc::jobs::job_system& jobs, arc::http::content_http_request,
                                     arc::http::content_http_limits, arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.download.cancel_waiter", .affinity = arc::jobs::job_affinity::io_thread},
-            [&requests, &started, body]() -> arc::http::content_http_fetch_result
+            [&requests, &started, can_finish, body]() -> arc::http::content_http_fetch_result
             {
                 ++requests;
                 started.set_value();
-                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                can_finish.wait();
                 return full_response(body);
             });
     };
@@ -296,8 +298,11 @@ TEST_CASE("C9.2f2 follower cancellation never cancels an unrelated in-flight lea
     auto follower =
         std::async(std::launch::async,
                    [&] { return downloads.ensure(object, std::string(origin), {}, cancel_waiter.token(), executor); });
-    std::this_thread::sleep_for(std::chrono::milliseconds(35));
-    REQUIRE(cancel_waiter.request_cancel());
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    CHECK(cancel_waiter.request_cancel());
+    const auto cancelled_status = follower.wait_for(std::chrono::seconds(2));
+    release_leader.set_value(); // Always unblock the IO job before checking cancellation.
+    REQUIRE(cancelled_status == std::future_status::ready);
     const auto cancelled = follower.get();
     CHECK_FALSE(cancelled.succeeded());
     CHECK(cancelled.transport_error == arc::http::content_http_error_code::cancelled);
