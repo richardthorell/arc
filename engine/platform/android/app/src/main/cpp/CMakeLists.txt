@@ -60,7 +60,7 @@ add_library(arc_android_host SHARED
 target_compile_features(arc_android_host PRIVATE cxx_std_20)
 target_compile_definitions(arc_android_host PRIVATE VK_USE_PLATFORM_ANDROID_KHR=1)
 target_link_libraries(arc_android_host PRIVATE
-    arc_native_app_glue arc-project arc-io arc-jobs arc-diagnostics arc-render-vulkan arc-scene android log dl)
+    arc_native_app_glue arc-project arc-io arc-http arc-jobs arc-diagnostics arc-render-vulkan arc-scene android log dl)
 target_compile_definitions(arc_android_host PRIVATE
     ARC_ANDROID_ENGINE_VERSION="0.1.0"
     ARC_ANDROID_SDK_VERSION="0.1.0"

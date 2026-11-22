@@ -7,6 +7,7 @@
 #include "android_vulkan_presenter.h"
 
 #include <arc/diagnostics/log.h>
+#include <arc/http/android_http.h>
 #include <android/native_window.h>
 #include <android_native_app_glue.h>
 
@@ -115,6 +116,19 @@ extern "C" void android_main(android_app* app)
     android_host_context host;
     app->userData = &host;
     app->onAppCmd = on_app_command;
+
+    // Register the app ClassLoader for arc-http's Android TLS bridge before
+    // runtime jobs may request any remote cooked artifacts. The guard is
+    // declared before runtime so its teardown runs *after* jobs have drained.
+    const bool http_ready = app->activity && arc::http::register_android_http_transport(
+                                                app->activity->vm, app->activity->clazz);
+    if (!http_ready)
+        arc::diagnostics::warn("Android", "Platform HTTPS bridge unavailable; remote content disabled");
+    struct http_registration_guard
+    {
+        ~http_registration_guard() { arc::http::unregister_android_http_transport(); }
+    } http_guard;
+    (void)http_guard;
 
     // These paths are owned by Android. A3 will feed them to the shared launch
     // context; the asset manager is an Android asset-provider handle, not a path.

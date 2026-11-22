@@ -105,8 +105,9 @@ struct [[nodiscard]] content_http_fetch_result
 /** Perform a bounded GET on an ARC IO worker. Native Windows uses WinHTTP
  * with platform TLS/certificate/hostname verification and redirects disabled.
  * Linux uses libcurl with system CA/hostname verification when available at
- * build time. Android and other unsupported platforms explicitly return
- * transport_unavailable. The job system must outlive the returned future.
+ * build time. Android uses the OS-verified Java URLConnection bridge after
+ * NativeActivity registers its application ClassLoader; unregistered hosts
+ * fail explicitly with transport_unavailable. The job system must outlive the returned future.
  */
 [[nodiscard]] jobs::job_future<content_http_fetch_result>
 fetch_content_http(jobs::job_system& jobs, content_http_request request, content_http_limits limits = {},
@@ -135,8 +136,9 @@ validate_content_http_release_response(const content_http_release_request& reque
                                        const content_http_response& response, const content_http_limits& limits);
 
 /** Perform a bounded GET for the current release descriptor on an IO worker.
- * Windows uses WinHTTP, Linux uses libcurl when available, and all backends
- * enforce system TLS/hostname verification. Unsupported platforms fail
+ * Windows uses WinHTTP, Linux uses libcurl, and Android uses the system
+ * URLConnection bridge. All backends enforce platform TLS/hostname checks;
+ * unsupported or unregistered hosts fail
  * explicitly. A release is valid only after C9.1 parse_remote_content_release.
  */
 [[nodiscard]] jobs::job_future<content_http_fetch_result>
