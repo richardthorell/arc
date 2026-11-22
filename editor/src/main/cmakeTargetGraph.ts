@@ -7,6 +7,7 @@ const MAX_TARGETS = 128;
 const MAX_CONFIG_TARGETS = 8_000;
 const MAX_REPLY_SIZE = 12 * 1024 * 1024;
 const MAX_FILE_SIZE = 4 * 1024 * 1024;
+const HIDDEN_GENERATOR_TARGETS = new Set(['zero_check']);
 
 type FileApiTargetEntry = { id: string; name: string; jsonFile: string };
 type FileApiConfiguration = { name: string; targets: FileApiTargetEntry[] };
@@ -16,7 +17,13 @@ type FileApiTarget = {
   type: string;
   dependencies?: Array<{ id: string }>;
   artifacts?: Array<{ path: string }>;
+  paths?: { source?: string; build?: string };
 };
+
+/** Generator bookkeeping is not a user/module build task. */
+function visibleTarget(name: string): boolean {
+  return !HIDDEN_GENERATOR_TARGETS.has(name.toLowerCase());
+}
 
 function replyDirectory(buildDir: string): string {
   return path.join(buildDir, '.cmake', 'api', 'v1', 'reply');
@@ -74,7 +81,8 @@ export function readCMakeTargetGraph(
 
   const byId = new Map<string, FileApiTargetEntry>();
   for (const target of config.targets) {
-    if (typeof target.id === 'string' && typeof target.jsonFile === 'string') byId.set(target.id, target);
+    if (typeof target.id === 'string' && typeof target.jsonFile === 'string' && visibleTarget(target.name))
+      byId.set(target.id, target);
   }
   const root = config.targets.find((target) => target.name === rootTargetName);
   if (!root || !byId.has(root.id)) return null;
@@ -96,7 +104,19 @@ export function readCMakeTargetGraph(
     const artifacts = (detail.artifacts ?? [])
       .map((artifact) => artifact.path)
       .filter((artifact) => typeof artifact === 'string' && artifact.length <= 1024);
-    nodes.push({ id, name: entry.name, type: detail.type, dependencies, artifacts });
+    const sourceDirectory =
+      typeof detail.paths?.source === 'string' && detail.paths.source.length <= 1024 ? detail.paths.source : undefined;
+    const buildDirectory =
+      typeof detail.paths?.build === 'string' && detail.paths.build.length <= 1024 ? detail.paths.build : undefined;
+    nodes.push({
+      id,
+      name: entry.name,
+      type: detail.type,
+      dependencies,
+      artifacts,
+      ...(sourceDirectory ? { sourceDirectory } : {}),
+      ...(buildDirectory ? { buildDirectory } : {}),
+    });
     for (const dependency of dependencies) if (!visited.has(dependency)) pending.push(dependency);
   }
 

@@ -124,7 +124,23 @@ describe('project workflow orchestration', () => {
   it('publishes authoritative nested stage tasks while they run', async () => {
     const { runner, adapters, notify } = setup();
     adapters.configure!.execute = async (context) => {
-      await context.runStageTask('development-sdk', 'Build ARC development SDK', async () => {});
+      await context.runStageTask('development-sdk', 'Build ARC development SDK', async (progress) => {
+        progress.publishTargetGraph({
+          revision: 1,
+          generator: 'Visual Studio 17 2022',
+          configuration: 'Debug',
+          rootTargetId: 'sdk',
+          discoveredAt: '2026-11-21T10:00:00.000Z',
+          truncated: false,
+          nodes: [
+            { id: 'sdk', name: 'arc-development-sdk', type: 'UTILITY', dependencies: ['assets'], artifacts: [] },
+            { id: 'assets', name: 'arc-assets', type: 'STATIC_LIBRARY', dependencies: [], artifacts: [] },
+          ],
+        });
+        progress.reportTargetPhaseByName('arc-assets', 'compiling');
+        progress.reportTargetByName('arc-assets', '/project/build/arc-assets.lib');
+        progress.reportRequestedTargetSatisfied();
+      });
       await context.runStageTask('cmake-configure', 'Configure project', async () => {});
     };
     const result = await runner.execute(plan(), authority());
@@ -136,9 +152,22 @@ describe('project workflow orchestration', () => {
         startedAt: expect.any(String),
         completedAt: expect.any(String),
         durationMs: expect.any(Number),
+        targetGraph: {
+          revision: 4,
+          nodes: [
+            { id: 'sdk', satisfiedAt: expect.any(String) },
+            {
+              id: 'assets',
+              name: 'arc-assets',
+              artifactObservedAt: expect.any(String),
+              buildStartedAt: expect.any(String),
+            },
+          ],
+        },
       },
       { id: 'cmake-configure', name: 'Configure project', state: 'succeeded' },
     ]);
+    expect(result.stages[1].tasks?.[0].targetGraph?.nodes[1]).not.toHaveProperty('activePhase');
     expect(notify.mock.calls.some(([snapshot]) => snapshot.stages[1].tasks?.[0]?.state === 'running')).toBe(true);
   });
 

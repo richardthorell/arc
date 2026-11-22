@@ -29,11 +29,82 @@ const workflow = (): BuildMonitorRun => ({
       tasks: [
         {
           id: 'development-sdk',
-          name: 'Build ARC development SDK',
+          name: 'Build SDK',
           state: 'succeeded',
           startedAt: '2026-11-20T12:00:00.100Z',
           completedAt: '2026-11-20T12:00:00.250Z',
           durationMs: 150,
+          targetGraph: {
+            revision: 2,
+            generator: 'Visual Studio 17 2022',
+            configuration: 'Shipping',
+            rootTargetId: 'sdk',
+            discoveredAt: '2026-11-20T12:00:00.100Z',
+            truncated: false,
+            nodes: [
+              { id: 'sdk', name: 'arc-development-sdk', type: 'UTILITY', dependencies: ['assets'], artifacts: [] },
+              {
+                id: 'assets',
+                name: 'arc-assets',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: ['engine/assets/Shipping/arc-assets.lib'],
+                buildStartedAt: '2026-11-20T12:00:00.120Z',
+                artifactObservedAt: '2026-11-20T12:00:00.220Z',
+              },
+              {
+                id: 'zero-check',
+                name: 'ZERO_CHECK',
+                type: 'UTILITY',
+                dependencies: [],
+                artifacts: [],
+              },
+              {
+                id: 'animation',
+                name: 'arc-animation',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                buildStartedAt: '2026-11-20T12:00:00.150Z',
+                artifactObservedAt: '2026-11-20T12:00:00.225Z',
+              },
+              {
+                id: 'render',
+                name: 'arc-render',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                activePhase: 'compiling',
+                activePhaseStartedAt: '2026-11-20T12:00:00.230Z',
+                buildStartedAt: '2026-11-20T12:00:00.230Z',
+              },
+              {
+                id: 'audio',
+                name: 'arc-audio',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                activePhase: 'linking',
+                activePhaseStartedAt: '2026-11-20T12:00:00.240Z',
+                buildStartedAt: '2026-11-20T12:00:00.240Z',
+              },
+              {
+                id: 'water',
+                name: 'arc-water',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+              },
+              {
+                id: 'third_party/meshoptimizer/meshoptimizer.vcxproj',
+                name: 'meshoptimizer',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                artifactObservedAt: '2026-11-20T12:00:00.210Z',
+              },
+            ],
+          },
         },
       ],
     },
@@ -56,17 +127,19 @@ afterEach(cleanup);
 
 describe('BuildExecutionTimeline', () => {
   it('renders expandable workflow, target and compiler task hierarchy', () => {
-    render(<BuildExecutionTimeline run={workflow()} />);
+    const { container } = render(<BuildExecutionTimeline run={workflow()} />);
     expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('Hierarchical Gantt');
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('validate');
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('package');
-    expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent(
-      'Build ARC development SDK',
-    );
-    expect(screen.getByRole('button', { name: 'Collapse configure subtasks' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('Build SDK');
+    expect(screen.queryByText('configure', { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText('arc-assets')).toBeInTheDocument();
+    expect(screen.getByText('arc-render')).toBeInTheDocument();
+    expect(screen.getByText('Third-party')).toBeInTheDocument();
+    expect(screen.queryByText('meshoptimizer')).not.toBeInTheDocument();
+    expect(screen.queryByText('ZERO_CHECK')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.build-stage-gantt-bar.is-module')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Collapse Build SDK modules' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
     expect(screen.getByRole('button', { name: 'Collapse compile subtasks' })).toHaveAttribute('aria-expanded', 'true');
     const taskGroup = screen.getByRole('button', { name: /Compiler tasks/ });
@@ -81,5 +154,50 @@ describe('BuildExecutionTimeline', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse compile subtasks' }));
     expect(screen.queryByRole('region', { name: 'Compiler task hierarchy' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Third-party modules' }));
+    expect(screen.getByText('meshoptimizer')).toBeInTheDocument();
+  });
+
+  it('shows an active SDK module with a blue phase spinner', () => {
+    const run = workflow();
+    run.state = 'running';
+    delete run.completedAt;
+    delete run.durationMs;
+    const configure = run.stages[1];
+    configure.state = 'running';
+    const sdk = configure.tasks![0];
+    sdk.state = 'running';
+    delete sdk.completedAt;
+    delete sdk.durationMs;
+
+    render(<BuildExecutionTimeline run={run} />);
+
+    const status = screen.getByText('Compiling…');
+    expect(status.closest('.build-stage-gantt-label')).toHaveTextContent('arc-render');
+    expect(status.closest('.build-stage-gantt-label')?.querySelector('.is-building')).toBeInTheDocument();
+    expect(
+      [...document.querySelectorAll('.build-stage-gantt-label.is-module > strong')].map((element) =>
+        element.textContent?.trim(),
+      ),
+    ).toEqual(['arc-assets', 'arc-animation', 'Third-party', 'arc-render', 'arc-audio', 'arc-water']);
+  });
+
+  it('uses a fixed 30-second scale and follows the right edge until scrubbed', () => {
+    const run = workflow();
+    run.durationMs = 189_000;
+    run.completedAt = '2026-11-20T12:03:09.000Z';
+
+    render(<BuildExecutionTimeline run={run} />);
+
+    const scrubber = screen.getByRole('slider', { name: 'Scrub workflow timeline' });
+    expect(scrubber).toHaveAttribute('max', '69000');
+    expect(scrubber).toHaveValue('69000');
+    expect(screen.getByRole('button', { name: 'Following live' })).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.change(scrubber, { target: { value: '30000' } });
+    expect(screen.getByRole('button', { name: 'Follow live' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Follow live' }));
+    expect(screen.getByRole('button', { name: 'Following live' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

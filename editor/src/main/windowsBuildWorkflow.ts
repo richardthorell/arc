@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import type { BuildTargetActivePhase, BuildTargetGraph } from '../common/buildTargetTypes';
 import type { WorkflowArtifact, WorkflowCapability, WorkflowPlan } from '../common/projectWorkflowTypes';
 import type { WorkflowStageAdapter, WorkflowStageContext, WorkflowPublication } from './projectWorkflowRunner';
 import type { WorkflowProcessRequest } from './workflowProcess';
@@ -95,6 +96,122 @@ function outputDirectory(root: string, output: string): string {
 function readJson(file: string): unknown {
   if (fs.statSync(file).size > 16 * 1024 * 1024) throw new Error('Workflow metadata exceeds size limit');
   return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+/** Bounded parser for explicit MSBuild project artifact lines. */
+export class SdkModuleOutputObserver {
+  private pendingStdout = '';
+  private pendingStderr = '';
+  private readonly projectsByContext = new Map<string, string>();
+
+  constructor(
+    private readonly buildDirectory: string,
+    private readonly onModule: (name: string, artifact: string) => void,
+    private readonly onPhase?: (name: string, phase: BuildTargetActivePhase) => void,
+  ) {}
+
+  accept(text: string, stream: 'stdout' | 'stderr'): void {
+    const combined = (stream === 'stdout' ? this.pendingStdout : this.pendingStderr) + text;
+    const lines = combined.split(/\r?\n/u);
+    const rest = (lines.pop() ?? '').slice(-8192);
+    if (stream === 'stdout') this.pendingStdout = rest;
+    else this.pendingStderr = rest;
+    for (const line of lines) {
+      this.observePhase(line);
+      const arrow = line.lastIndexOf(' -> ');
+      if (arrow < 0) continue;
+      const project = /([A-Za-z0-9_.+-]{1,128})\.vcxproj\s*$/iu.exec(line.slice(0, arrow));
+      if (!project || project[1].toLowerCase() === 'zero_check') continue;
+      const raw = line
+        .slice(arrow + 4)
+        .trim()
+        .replace(/^["']|["']$/gu, '');
+      if (!raw || raw.length > 2048 || /[\0\r\n]/u.test(raw)) continue;
+      const artifact = path.resolve(this.buildDirectory, raw);
+      if (!inside(this.buildDirectory, artifact)) continue;
+      this.onModule(project[1], artifact);
+    }
+  }
+
+  private observePhase(line: string): void {
+    const prefix = /^\s*(\d+)>/u.exec(line)?.[1];
+    const projects = [...line.matchAll(/"([^"]+\.vcxproj)"(?:\s+\((\d+)\))?/giu)];
+    if (projects.length) {
+      const project = projects[projects.length - 1];
+      const name = path.basename(project[1], path.extname(project[1]));
+      const context = project[2] ?? prefix;
+      if (context && name.toLowerCase() !== 'zero_check') this.projectsByContext.set(context, name);
+    }
+    if (!prefix || !this.onPhase) return;
+    const task = /^\s*\d+>\s*(ClCompile|Link|Lib):/iu.exec(line)?.[1]?.toLowerCase();
+    if (!task) return;
+    const name = this.projectsByContext.get(prefix);
+    if (!name) return;
+    this.onPhase(name, task === 'clcompile' ? 'compiling' : 'linking');
+  }
+}
+
+/** Reads the generated MSBuild project-reference graph without scanning for binaries. */
+export function readMsbuildProjectGraph(
+  buildDirectory: string,
+  configuration: string,
+  rootTarget: string,
+): BuildTargetGraph | null {
+  try {
+    const root = fs.realpathSync(buildDirectory);
+    const rootProject = path.join(root, `${rootTarget}.vcxproj`);
+    if (!fs.statSync(rootProject).isFile() || fs.lstatSync(rootProject).isSymbolicLink()) return null;
+    const id = (filename: string) => path.relative(root, filename).replace(/\\/gu, '/').toLowerCase();
+    const pending = [rootProject];
+    const visited = new Set<string>();
+    const nodes: BuildTargetGraph['nodes'] = [];
+    let truncated = false;
+    while (pending.length) {
+      const filename = pending.shift()!;
+      const nodeId = id(filename);
+      if (visited.has(nodeId)) continue;
+      if (visited.size >= 256) {
+        truncated = true;
+        break;
+      }
+      visited.add(nodeId);
+      const info = fs.lstatSync(filename);
+      if (!info.isFile() || info.isSymbolicLink() || info.size > 4 * 1024 * 1024) continue;
+      const content = fs.readFileSync(filename, 'utf8');
+      const dependencies: string[] = [];
+      const references = /<ProjectReference\b[^>]*\bInclude="([^"]+)"/giu;
+      for (const match of content.matchAll(references)) {
+        const include = match[1].replace(/&amp;/giu, '&');
+        if (!include || /[\0\r\n]/u.test(include) || path.extname(include).toLowerCase() !== '.vcxproj') continue;
+        // Generated Visual Studio projects use Windows separators even when a
+        // fixture is inspected on another host (for example Linux CI).
+        const resolved = path.resolve(path.dirname(filename), include.replace(/[\\/]/gu, path.sep));
+        if (!inside(root, resolved) || !fs.existsSync(resolved)) continue;
+        if (path.basename(resolved, path.extname(resolved)).toLowerCase() === 'zero_check') continue;
+        const dependencyId = id(resolved);
+        if (!dependencies.includes(dependencyId)) dependencies.push(dependencyId);
+        if (!visited.has(dependencyId)) pending.push(resolved);
+      }
+      nodes.push({
+        id: nodeId,
+        name: path.basename(filename, path.extname(filename)),
+        type: 'MSBUILD_PROJECT',
+        dependencies,
+        artifacts: [],
+      });
+    }
+    return {
+      revision: 1,
+      generator: 'MSBuild',
+      configuration,
+      rootTargetId: id(rootProject),
+      discoveredAt: new Date().toISOString(),
+      nodes,
+      truncated,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function windowsBuildCapability(
@@ -194,16 +311,63 @@ export function createWindowsBuildWorkflow(
       configure: stage(async (context) => {
         if (!environment) throw new Error('Missing runtime build environment');
         if (environment.development) {
-          await context.runStageTask('development-sdk', 'Build ARC development SDK', () =>
-            command(context, environment.cmake, [
-              '--build',
+          await context.runStageTask('development-sdk', 'Build SDK', async (progress) => {
+            let sdkGraph: ReturnType<typeof readCMakeTargetGraph> = null;
+            try {
+              sdkGraph = readCMakeTargetGraph(
+                environment.development!.buildDirectory,
+                context.plan.configuration,
+                'arc-development-sdk',
+              );
+            } catch {
+              // Explicit MSBuild artifact lines still populate bounded module rows below.
+            }
+            progress.publishTargetGraph(
+              sdkGraph ??
+                readMsbuildProjectGraph(
+                  environment.development!.buildDirectory,
+                  context.plan.configuration,
+                  'arc-development-sdk',
+                ) ?? {
+                  revision: 1,
+                  generator: environment.generator,
+                  configuration: context.plan.configuration,
+                  rootTargetId: 'arc-development-sdk',
+                  discoveredAt: new Date().toISOString(),
+                  truncated: false,
+                  nodes: [
+                    {
+                      id: 'arc-development-sdk',
+                      name: 'arc-development-sdk',
+                      type: 'UTILITY',
+                      dependencies: [],
+                      artifacts: [],
+                    },
+                  ],
+                },
+            );
+            const modules = new SdkModuleOutputObserver(
               environment.development!.buildDirectory,
-              '--config',
-              context.plan.configuration,
-              '--target',
-              'arc-development-sdk',
-            ]),
-          );
+              (name, artifact) => progress.reportTargetByName(name, artifact),
+              (name, phase) => progress.reportTargetPhaseByName(name, phase),
+            );
+            await command(
+              context,
+              environment.cmake,
+              [
+                '--build',
+                environment.development!.buildDirectory,
+                '--config',
+                context.plan.configuration,
+                '--target',
+                'arc-development-sdk',
+                '--',
+                '/verbosity:normal',
+              ],
+              (text, stream) => modules.accept(text, stream),
+            );
+            progress.reportRequestedTargetSatisfied();
+          });
         }
         await context.runStageTask('cmake-configure', 'Configure project', async () => {
           // CMake responds to File API queries as part of this configure step.

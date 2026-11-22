@@ -13,6 +13,7 @@ export type BuildStageTimelineSpan = {
     state: BuildMonitorStageState;
     startMs?: number;
     durationMs?: number;
+    targetGraph?: import('../../../common/buildTargetTypes').BuildTargetGraph;
   }>;
 };
 
@@ -65,6 +66,7 @@ export const buildStageTimeline = (run: BuildMonitorRun, now = Date.now()): Buil
             : task.state === 'running' && taskStarted !== undefined
               ? Math.max(0, now - taskStarted)
               : undefined),
+        ...(task.targetGraph ? { targetGraph: task.targetGraph } : {}),
       };
     });
     return { id: stage.id, label: stage.name, state: stage.state, startMs, durationMs: measuredDuration, tasks };

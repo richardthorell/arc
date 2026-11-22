@@ -1829,7 +1829,8 @@
 }
 
 .build-stage-gantt {
-  padding: 12px;
+  box-sizing: border-box;
+  padding: 12px 28px 12px 12px;
 }
 
 .build-stage-gantt > header,
@@ -1851,6 +1852,40 @@
 .build-execution-timing-heading small {
   color: #819aaa;
   font-size: 10px;
+}
+
+.build-timeline-scrubber {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 9px;
+}
+
+.build-timeline-scrubber input {
+  width: 100%;
+  accent-color: #4e9bd2;
+}
+
+.build-timeline-scrubber button {
+  padding: 3px 7px;
+  border: 1px solid #324a59;
+  border-radius: 3px;
+  color: #8da5b5;
+  background: #152630;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.build-timeline-scrubber button.is-following {
+  border-color: #39739b;
+  color: #79bff0;
+}
+
+.build-timeline-scrubber input:disabled,
+.build-timeline-scrubber button.is-following {
+  cursor: default;
 }
 
 .build-stage-gantt-grid {
@@ -1970,12 +2005,77 @@
   height: 20px;
 }
 
+.build-stage-gantt-label.is-module {
+  padding-left: 48px;
+  background: #112029;
+}
+
+.build-stage-gantt-label.is-module.is-group {
+  padding-left: 48px;
+  background: #142630;
+}
+
+.build-stage-gantt-label.is-module.is-group strong {
+  font-weight: 650;
+}
+
+.build-stage-gantt-label.is-module.is-external {
+  padding-left: 72px;
+}
+
+.build-stage-gantt-label.is-module strong {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.build-stage-gantt-track.is-module {
+  min-height: 34px;
+  background-color: #101e27;
+}
+
+.build-stage-gantt-track.is-module .build-stage-gantt-bar.is-module {
+  top: 7px;
+  height: 20px;
+}
+
+.build-stage-target-milestone {
+  position: absolute;
+  top: 12px;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #76d4a2;
+  background: #397b59;
+  transform: translateX(-50%) rotate(45deg);
+}
+
 .build-stage-gantt-label i.is-running {
   background: #5faee7;
 }
 
 .build-stage-gantt-label i.is-succeeded {
   background: #65c793;
+}
+
+.build-stage-gantt-label i.is-building {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #3475a6;
+  border-top-color: #75c5ff;
+  background: transparent;
+  animation: build-target-spin 700ms linear infinite;
+}
+
+@keyframes build-target-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .build-stage-gantt-label i.is-building {
+    animation: none;
+  }
 }
 
 .build-stage-gantt-label i.is-failed {

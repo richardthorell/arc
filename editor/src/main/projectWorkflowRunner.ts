@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { BuildTargetGraph } from '../common/buildTargetTypes';
+import type { BuildTargetActivePhase, BuildTargetGraph } from '../common/buildTargetTypes';
 import type { BuildCompileTrace } from '../common/buildCompileTypes';
 import {
   workflowPlanSchema,
@@ -24,7 +24,15 @@ export type WorkflowStageContext = {
   reportTargetArtifact(targetId: string): void;
   reportRequestedTargetSatisfied(): void;
   /** Records a real nested operation on the currently executing workflow stage. */
-  runStageTask<T>(id: string, name: string, execute: () => Promise<T>): Promise<T>;
+  runStageTask<T>(id: string, name: string, execute: (progress: WorkflowStageTaskReporter) => Promise<T>): Promise<T>;
+};
+
+export type WorkflowStageTaskReporter = {
+  publishTargetGraph(graph: BuildTargetGraph): void;
+  reportTargetArtifact(targetId: string): void;
+  reportTargetByName(name: string, artifact?: string): void;
+  reportTargetPhaseByName(name: string, phase: BuildTargetActivePhase): void;
+  reportRequestedTargetSatisfied(): void;
 };
 
 export type WorkflowStageAdapter = {
@@ -145,7 +153,11 @@ export class ProjectWorkflowRunner {
         graph.revision++;
         this.emit(run);
       },
-      runStageTask: async <T>(id: string, name: string, execute: () => Promise<T>): Promise<T> => {
+      runStageTask: async <T>(
+        id: string,
+        name: string,
+        execute: (progress: WorkflowStageTaskReporter) => Promise<T>,
+      ): Promise<T> => {
         const stage = run.stages.find((entry) => entry.state === 'running');
         if (!stage) throw new Error('Nested workflow task requires an active stage');
         if (stage.tasks?.some((task) => task.id === id)) throw new Error(`Duplicate nested workflow task: ${id}`);
@@ -154,8 +166,72 @@ export class ProjectWorkflowRunner {
         stage.tasks ??= [];
         stage.tasks.push(task);
         this.emit(run);
+        const updateGraph = (mutate: (graph: BuildTargetGraph) => boolean) => {
+          if (controller.signal.aborted || run.state !== 'running' || !task.targetGraph) return;
+          if (!mutate(task.targetGraph)) return;
+          task.targetGraph.revision++;
+          this.emit(run);
+        };
+        const progress: WorkflowStageTaskReporter = {
+          publishTargetGraph: (graph) => {
+            if (controller.signal.aborted || run.state !== 'running') return;
+            task.targetGraph = structuredClone(graph);
+            this.emit(run);
+          },
+          reportTargetArtifact: (targetId) =>
+            updateGraph((graph) => {
+              const target = graph.nodes.find((node) => node.id === targetId);
+              if (!target || target.artifactObservedAt) return false;
+              target.artifactObservedAt = new Date().toISOString();
+              delete target.activePhase;
+              delete target.activePhaseStartedAt;
+              return true;
+            }),
+          reportTargetByName: (targetName, artifact) =>
+            updateGraph((graph) => {
+              const normalized = targetName.toLowerCase();
+              let target = graph.nodes.find((node) => node.name.toLowerCase() === normalized);
+              if (!target) {
+                if (graph.nodes.length >= 256) {
+                  graph.truncated = true;
+                  return false;
+                }
+                target = {
+                  id: `observed:${normalized}`,
+                  name: targetName,
+                  type: 'OBSERVED',
+                  dependencies: [],
+                  artifacts: artifact ? [artifact] : [],
+                };
+                graph.nodes.push(target);
+              }
+              if (target.artifactObservedAt) return false;
+              target.artifactObservedAt = new Date().toISOString();
+              delete target.activePhase;
+              delete target.activePhaseStartedAt;
+              return true;
+            }),
+          reportTargetPhaseByName: (targetName, phase) =>
+            updateGraph((graph) => {
+              const normalized = targetName.toLowerCase();
+              const target = graph.nodes.find((node) => node.name.toLowerCase() === normalized);
+              if (!target || target.artifactObservedAt || target.activePhase === phase) return false;
+              const timestamp = new Date().toISOString();
+              target.buildStartedAt ??= timestamp;
+              target.activePhase = phase;
+              target.activePhaseStartedAt = timestamp;
+              return true;
+            }),
+          reportRequestedTargetSatisfied: () =>
+            updateGraph((graph) => {
+              const target = graph.nodes.find((node) => node.id === graph.rootTargetId);
+              if (!target || target.satisfiedAt) return false;
+              target.satisfiedAt = new Date().toISOString();
+              return true;
+            }),
+        };
         try {
-          const value = await execute();
+          const value = await execute(progress);
           task.state = 'succeeded';
           return value;
         } catch (error) {

@@ -33,28 +33,40 @@ function fixture() {
             { id: 'root', name: 'arc-runtime-output', jsonFile: 'target-root.json' },
             { id: 'game', name: 'game', jsonFile: 'target-game.json' },
             { id: 'core', name: 'arc_core', jsonFile: 'target-core.json' },
+            { id: 'zero', name: 'ZERO_CHECK', jsonFile: 'target-zero.json' },
             { id: 'unrelated', name: 'test_runner', jsonFile: 'target-test.json' },
           ],
         },
       ],
     }),
   );
-  const node = (id: string, name: string, type: string, dependencies: string[], artifacts: string[]) =>
+  const node = (
+    id: string,
+    name: string,
+    type: string,
+    dependencies: string[],
+    artifacts: string[],
+    sourceDirectory?: string,
+  ) =>
     JSON.stringify({
       id,
       name,
       type,
       dependencies: dependencies.map((dependency) => ({ id: dependency })),
       artifacts: artifacts.map((artifact) => ({ path: artifact })),
+      ...(sourceDirectory ? { paths: { source: sourceDirectory, build: `_deps/${name}-build` } } : {}),
     });
-  fs.writeFileSync(path.join(reply, 'target-root.json'), node('root', 'arc-runtime-output', 'UTILITY', ['game'], []));
+  fs.writeFileSync(
+    path.join(reply, 'target-root.json'),
+    node('root', 'arc-runtime-output', 'UTILITY', ['game', 'zero'], []),
+  );
   fs.writeFileSync(
     path.join(reply, 'target-game.json'),
     node('game', 'game', 'EXECUTABLE', ['core'], ['Shipping/game.exe']),
   );
   fs.writeFileSync(
     path.join(reply, 'target-core.json'),
-    node('core', 'arc_core', 'STATIC_LIBRARY', [], ['Shipping/arc_core.lib']),
+    node('core', 'arc_core', 'STATIC_LIBRARY', [], ['Shipping/arc_core.lib'], 'third_party/arc_core'),
   );
   fs.writeFileSync(
     path.join(reply, 'target-test.json'),
@@ -75,6 +87,11 @@ describe('CMake File API target graph', () => {
       ['core', 'arc_core', []],
     ]);
     expect(graph?.nodes.find((item) => item.name === 'test_runner')).toBeUndefined();
+    expect(graph?.nodes.find((item) => item.name === 'ZERO_CHECK')).toBeUndefined();
+    expect(graph?.nodes.find((item) => item.name === 'arc_core')).toMatchObject({
+      sourceDirectory: 'third_party/arc_core',
+      buildDirectory: '_deps/arc_core-build',
+    });
     expect(readCMakeTargetGraph(buildDir, 'Debug', 'arc-runtime-output')).toBeNull();
     expect(readCMakeTargetGraph(buildDir, 'Shipping', 'missing')).toBeNull();
   });
