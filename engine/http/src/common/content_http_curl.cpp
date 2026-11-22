@@ -1,4 +1,4 @@
-#include <arc/io/content_http.h>
+#include <arc/http/content_http.h>
 
 #if defined(ARC_CONTENT_HTTP_CURL) && defined(__linux__) && !defined(__ANDROID__)
 
@@ -18,7 +18,7 @@
 #include <string_view>
 #include <utility>
 
-namespace arc::io
+namespace arc::http
 {
 namespace
 {
@@ -281,6 +281,6 @@ content_http_fetch_result curl_fetch_content_http_release(const content_http_rel
     return fetched;
 }
 
-} // namespace arc::io
+} // namespace arc::http
 
 #endif

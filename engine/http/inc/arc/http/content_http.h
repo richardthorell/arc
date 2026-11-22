@@ -1,7 +1,7 @@
 #pragma once
 
 /** @file
- * @brief Bounded remote cooked-object HTTP transport boundary and async fetch.
+ * @brief Shared engine HTTP client and cooked-content request policy.
  *
  * This transport-neutral contract validates HTTPS origins, immutable-object
  * addresses and exact HTTP response framing; an optional platform backend
@@ -18,7 +18,7 @@
 #include <string>
 #include <string_view>
 
-namespace arc::io
+namespace arc::http
 {
 
 struct content_http_limits
@@ -45,7 +45,7 @@ struct content_http_response
     std::string content_range;
     std::string etag;
     std::string redirect_location;
-    file_buffer body;
+    io::file_buffer body;
 };
 
 enum class content_http_error_code : std::uint8_t
@@ -143,4 +143,4 @@ validate_content_http_release_response(const content_http_release_request& reque
 fetch_content_http_release(jobs::job_system& jobs, content_http_release_request request,
                            content_http_limits limits = {}, jobs::cancellation_token cancellation = {});
 
-} // namespace arc::io
+} // namespace arc::http

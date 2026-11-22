@@ -20,7 +20,7 @@ namespace arc::assets
 struct [[nodiscard]] remote_release_discovery_result
 {
     std::optional<remote_content_release> release;
-    io::content_http_error_code transport_error{io::content_http_error_code::none};
+    http::content_http_error_code transport_error{http::content_http_error_code::none};
     std::string error;
 
     [[nodiscard]] bool succeeded() const noexcept
@@ -29,8 +29,8 @@ struct [[nodiscard]] remote_release_discovery_result
     }
 };
 
-using remote_release_fetch_executor = std::function<jobs::job_future<io::content_http_fetch_result>(
-    jobs::job_system&, io::content_http_release_request, io::content_http_limits, jobs::cancellation_token)>;
+using remote_release_fetch_executor = std::function<jobs::job_future<http::content_http_fetch_result>(
+    jobs::job_system&, http::content_http_release_request, http::content_http_limits, jobs::cancellation_token)>;
 
 /** Request the fixed, no-cache current release endpoint on an IO worker,
  * validate the HTTP framing, then use the existing C9.1 descriptor parser to
@@ -42,7 +42,7 @@ using remote_release_fetch_executor = std::function<jobs::job_future<io::content
  */
 [[nodiscard]] jobs::job_future<remote_release_discovery_result>
 discover_remote_release(jobs::job_system& jobs, std::string origin, remote_content_expectations expectations,
-                        io::content_http_limits limits = {}, jobs::cancellation_token cancellation = {},
+                        http::content_http_limits limits = {}, jobs::cancellation_token cancellation = {},
                         remote_release_fetch_executor executor = {});
 
 } // namespace arc::assets

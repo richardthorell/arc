@@ -46,7 +46,7 @@ include("${ARC_REPO_ROOT}/cmake/ArcBuildPolicy.cmake")
 include("${ARC_REPO_ROOT}/engine/cmake/arc_module.cmake")
 
 add_subdirectory("${ARC_REPO_ROOT}/third_party" "${CMAKE_CURRENT_BINARY_DIR}/arc-third-party")
-foreach(module IN ITEMS core simd math geometric diagnostics memory jobs io input ecs framework assets persistence project water render scene)
+foreach(module IN ITEMS core simd math geometric diagnostics memory jobs io http input ecs framework assets persistence project water render scene)
     add_subdirectory("${ARC_REPO_ROOT}/engine/${module}" "${CMAKE_CURRENT_BINARY_DIR}/arc-${module}")
 endforeach()
 add_subdirectory("${ARC_REPO_ROOT}/engine/render-vulkan" "${CMAKE_CURRENT_BINARY_DIR}/arc-render-vulkan")

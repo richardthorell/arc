@@ -1,4 +1,4 @@
-#include <arc/io/content_http.h>
+#include <arc/http/content_http.h>
 
 #if defined(__linux__) && defined(ARC_CONTENT_HTTP_CURL) && !defined(__ANDROID__)
 
@@ -98,14 +98,14 @@ std::string response(unsigned int status, std::string_view reason, std::string b
            "Connection: close\r\n\r\n" + body;
 }
 
-arc::io::content_http_request immutable_request(const loopback_server& server)
+arc::http::content_http_request immutable_request(const loopback_server& server)
 {
     return {.origin = server.origin(), .object_path = "objects/sha256/" + std::string(64, 'a'), .object_size = 6};
 }
 
-arc::io::content_http_limits development_limits()
+arc::http::content_http_limits development_limits()
 {
-    arc::io::content_http_limits limits;
+    arc::http::content_http_limits limits;
     limits.allow_loopback_http = true;
     limits.timeout = std::chrono::seconds(5);
     return limits;
@@ -121,7 +121,7 @@ TEST_CASE("C9.2e1 Linux curl fetches and frames a complete immutable object over
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
     auto request = immutable_request(server);
     request.if_match_etag = "\"digest\"";
-    const auto fetched = arc::io::fetch_content_http(jobs, request, development_limits()).get();
+    const auto fetched = arc::http::fetch_content_http(jobs, request, development_limits()).get();
     REQUIRE(fetched.succeeded());
     CHECK(fetched.response->status == 200);
     CHECK(fetched.response->body.size() == 6);
@@ -138,7 +138,7 @@ TEST_CASE("C9.2e1 Linux curl sends bounded range GET and validates Content-Range
     auto request = immutable_request(server);
     request.range_start = 2;
     request.range_length = 3;
-    const auto fetched = arc::io::fetch_content_http(jobs, request, development_limits()).get();
+    const auto fetched = arc::http::fetch_content_http(jobs, request, development_limits()).get();
     REQUIRE(fetched.succeeded());
     CHECK(fetched.response->body.size() == 3);
     CHECK(server.saw_path.load());
@@ -152,9 +152,9 @@ TEST_CASE("C9.2e1 Linux curl retrieves mutable current release with no-cache and
                            response(200, "OK", "{\"generation\":6}"));
     arc::jobs::job_system jobs(
         {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
-    arc::io::content_http_release_request request{
+    arc::http::content_http_release_request request{
         .origin = server.origin(), .project_guid = guid, .target_profile = "windows-x64-vulkan"};
-    const auto fetched = arc::io::fetch_content_http_release(jobs, request, development_limits()).get();
+    const auto fetched = arc::http::fetch_content_http_release(jobs, request, development_limits()).get();
     REQUIRE(fetched.succeeded());
     CHECK(fetched.response->status == 200);
     CHECK(server.saw_path.load());
@@ -169,18 +169,18 @@ TEST_CASE("C9.2e1 Linux curl refuses redirects and oversized objects before trus
                                response(302, "Found", "", "Location: https://evil.invalid/payload\r\n"));
         arc::jobs::job_system jobs(
             {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
-        auto fetched = arc::io::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
+        auto fetched = arc::http::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
         CHECK_FALSE(fetched.succeeded());
-        CHECK(fetched.validation.code == arc::io::content_http_error_code::rejected_redirect);
+        CHECK(fetched.validation.code == arc::http::content_http_error_code::rejected_redirect);
     }
     SECTION("Excess body bytes")
     {
         loopback_server server("/objects/sha256/" + std::string(64, 'a'), response(200, "OK", "abcdef extra bytes"));
         arc::jobs::job_system jobs(
             {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
-        auto fetched = arc::io::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
+        auto fetched = arc::http::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
         CHECK_FALSE(fetched.succeeded());
-        CHECK(fetched.validation.code == arc::io::content_http_error_code::oversized_response);
+        CHECK(fetched.validation.code == arc::http::content_http_error_code::oversized_response);
     }
 }
 
@@ -191,9 +191,9 @@ TEST_CASE("C9.2e1 Linux curl reports missing objects and pre-cancelled requests"
         loopback_server server("/objects/sha256/" + std::string(64, 'a'), response(404, "Not Found", ""));
         arc::jobs::job_system jobs(
             {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
-        auto fetched = arc::io::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
+        auto fetched = arc::http::fetch_content_http(jobs, immutable_request(server), development_limits()).get();
         CHECK_FALSE(fetched.succeeded());
-        CHECK(fetched.validation.code == arc::io::content_http_error_code::not_found);
+        CHECK(fetched.validation.code == arc::http::content_http_error_code::not_found);
     }
     SECTION("Pre-cancelled")
     {
@@ -201,13 +201,13 @@ TEST_CASE("C9.2e1 Linux curl reports missing objects and pre-cancelled requests"
             {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false});
         arc::jobs::cancellation_source cancellation;
         REQUIRE(cancellation.request_cancel());
-        arc::io::content_http_request request{.origin = "https://content.example.org",
-                                              .object_path = "objects/sha256/" + std::string(64, 'a'),
-                                              .object_size = 6};
+        arc::http::content_http_request request{.origin = "https://content.example.org",
+                                                .object_path = "objects/sha256/" + std::string(64, 'a'),
+                                                .object_size = 6};
         const auto fetched =
-            arc::io::fetch_content_http(jobs, request, development_limits(), cancellation.token()).get();
+            arc::http::fetch_content_http(jobs, request, development_limits(), cancellation.token()).get();
         CHECK_FALSE(fetched.succeeded());
-        CHECK(fetched.validation.code == arc::io::content_http_error_code::cancelled);
+        CHECK(fetched.validation.code == arc::http::content_http_error_code::cancelled);
     }
 }
 

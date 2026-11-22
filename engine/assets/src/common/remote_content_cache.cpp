@@ -45,9 +45,9 @@ std::optional<io::file_buffer> load_verified_remote_object(derived_data_cache& c
 }
 
 remote_object_cache_result ingest_verified_remote_object(derived_data_cache& cache, const remote_content_object& object,
-                                                         const io::content_http_request& request,
-                                                         const io::content_http_response& response,
-                                                         const io::content_http_limits& limits)
+                                                         const http::content_http_request& request,
+                                                         const http::content_http_response& response,
+                                                         const http::content_http_limits& limits)
 {
     const auto expected_hash = validated_hash(object);
     if (!expected_hash || request.object_path != object.path || request.object_size != object.size ||
@@ -55,7 +55,7 @@ remote_object_cache_result ingest_verified_remote_object(derived_data_cache& cac
         return failed(remote_object_cache_error::invalid_reference,
                       "Remote CAS ingestion requires a matching complete immutable object");
 
-    const auto validated = io::validate_content_http_response(request, response, limits);
+    const auto validated = http::validate_content_http_response(request, response, limits);
     if (!validated.succeeded()) return failed(remote_object_cache_error::incompatible_response, validated.message);
 
     if (hash_bytes(response.body) != *expected_hash)

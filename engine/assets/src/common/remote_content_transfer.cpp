@@ -30,7 +30,7 @@ std::string folded(std::string_view text)
     return result;
 }
 
-bool valid_object(const remote_content_object& object, const io::content_http_limits& limits)
+bool valid_object(const remote_content_object& object, const http::content_http_limits& limits)
 {
     if (object.size == 0 || object.size > limits.maximum_object_bytes ||
         object.path != "objects/sha256/" + object.sha256)
@@ -64,7 +64,7 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
             };
             if (cancellation.stop_requested())
             {
-                result.transport_error = io::content_http_error_code::cancelled;
+                result.transport_error = http::content_http_error_code::cancelled;
                 return reject({}, "Remote generation acquisition cancelled");
             }
             if (release.generation == 0 || release.base_build_id.empty() ||
@@ -104,7 +104,7 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
             {
                 if (cancellation.stop_requested())
                 {
-                    result.transport_error = io::content_http_error_code::cancelled;
+                    result.transport_error = http::content_http_error_code::cancelled;
                     return reject(object->path, "Remote generation acquisition cancelled");
                 }
 
@@ -120,9 +120,9 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
                 if (options.policy == remote_generation_transfer_policy::offline_only)
                     return reject(object->path, "Required remote generation object is unavailable offline");
 
-                io::content_http_request request{
+                http::content_http_request request{
                     .origin = options.origin, .object_path = object->path, .object_size = object->size};
-                auto valid = io::validate_content_http_request(request, options.http);
+                auto valid = http::validate_content_http_request(request, options.http);
                 if (!valid.succeeded())
                 {
                     result.transport_error = valid.code;
@@ -133,28 +133,28 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
                 // runs on a general worker, so a single IO worker cannot
                 // deadlock waiting for another IO-thread job.
                 auto fetch = executor ? executor(jobs, request, options.http, cancellation)
-                                      : io::fetch_content_http(jobs, request, options.http, cancellation);
+                                      : http::fetch_content_http(jobs, request, options.http, cancellation);
                 if (!fetch.valid())
                 {
-                    result.transport_error = io::content_http_error_code::transport_unavailable;
+                    result.transport_error = http::content_http_error_code::transport_unavailable;
                     return reject(object->path, "Remote HTTP executor returned no job");
                 }
                 const auto waited = fetch.handle().wait_result();
                 if (!waited.succeeded())
                 {
                     result.transport_error = cancellation.stop_requested()
-                                                 ? io::content_http_error_code::cancelled
-                                                 : io::content_http_error_code::network_failure;
+                                                 ? http::content_http_error_code::cancelled
+                                                 : http::content_http_error_code::network_failure;
                     return reject(object->path, "Remote HTTP fetch job was cancelled or failed");
                 }
-                io::content_http_fetch_result response;
+                http::content_http_fetch_result response;
                 try
                 {
                     response = fetch.get();
                 }
                 catch (const std::exception&)
                 {
-                    result.transport_error = io::content_http_error_code::network_failure;
+                    result.transport_error = http::content_http_error_code::network_failure;
                     return reject(object->path, "Remote HTTP fetch job failed");
                 }
                 if (!response.succeeded())
@@ -164,7 +164,7 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
                 }
                 if (cancellation.stop_requested())
                 {
-                    result.transport_error = io::content_http_error_code::cancelled;
+                    result.transport_error = http::content_http_error_code::cancelled;
                     return reject(object->path, "Remote generation acquisition cancelled");
                 }
 
@@ -181,7 +181,7 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
 
             if (cancellation.stop_requested())
             {
-                result.transport_error = io::content_http_error_code::cancelled;
+                result.transport_error = http::content_http_error_code::cancelled;
                 return reject({}, "Remote generation acquisition cancelled");
             }
 

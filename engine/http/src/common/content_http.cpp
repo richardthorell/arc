@@ -1,4 +1,4 @@
-#include <arc/io/content_http.h>
+#include <arc/http/content_http.h>
 
 #include <algorithm>
 #include <cctype>
@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace arc::io
+namespace arc::http
 {
 namespace
 {
@@ -241,4 +241,4 @@ content_http_validation validate_content_http_release_response(const content_htt
     return {};
 }
 
-} // namespace arc::io
+} // namespace arc::http

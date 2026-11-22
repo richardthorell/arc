@@ -1,4 +1,4 @@
-#include <arc/io/content_http.h>
+#include <arc/http/content_http.h>
 
 #include <algorithm>
 #include <charconv>
@@ -15,7 +15,7 @@
 #include <winhttp.h>
 #endif
 
-namespace arc::io
+namespace arc::http
 {
 #if defined(ARC_CONTENT_HTTP_CURL) && defined(__linux__) && !defined(__ANDROID__)
 content_http_fetch_result curl_fetch_content_http(const content_http_request& request,
@@ -398,4 +398,4 @@ jobs::job_future<content_http_fetch_result> fetch_content_http_release(jobs::job
                               });
 }
 
-} // namespace arc::io
+} // namespace arc::http
