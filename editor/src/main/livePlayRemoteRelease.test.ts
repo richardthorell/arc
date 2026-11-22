@@ -40,19 +40,21 @@ function fixture() {
       configuration: 'development',
       textures: 'bc',
     },
-    artifacts: [{
-      asset: assetGuid,
-      type: 'a7ca55e7-0000-0001-0000-000000000001',
-      name: 'scene',
-      schemaVersion: 1,
-      schema: 'a7ca55e7-0000-0003-0000-000000000001',
-      hash: digest(payload),
-      chunk: chunkName,
-      offset: 4096,
-      size: payload.length,
-      storedSize: payload.length,
-      compressed: false,
-    }],
+    artifacts: [
+      {
+        asset: assetGuid,
+        type: 'a7ca55e7-0000-0001-0000-000000000001',
+        name: 'scene',
+        schemaVersion: 1,
+        schema: 'a7ca55e7-0000-0003-0000-000000000001',
+        hash: digest(payload),
+        chunk: chunkName,
+        offset: 4096,
+        size: payload.length,
+        storedSize: payload.length,
+        compressed: false,
+      },
+    ],
   };
   fs.writeFileSync(manifestPath, JSON.stringify(manifest));
   const staged: LivePlayCookedStaging = {
@@ -152,10 +154,12 @@ describe('C9 Live Play immutable release assembly', () => {
     await expect(prepareLivePlayRemoteRelease({ ...f.input, isCurrent: () => false })).rejects.toThrow(
       /session or project changed/,
     );
-    await expect(prepareLivePlayRemoteRelease({
-      ...f.input,
-      staged: { ...f.staged, variants: [{ ...f.staged.variants[0], family: '../escape' }] },
-    })).rejects.toThrow(/unsafe target texture family/);
+    await expect(
+      prepareLivePlayRemoteRelease({
+        ...f.input,
+        staged: { ...f.staged, variants: [{ ...f.staged.variants[0], family: '../escape' }] },
+      }),
+    ).rejects.toThrow(/unsafe target texture family/);
     f.controller.abort();
     await expect(prepareLivePlayRemoteRelease(f.input)).rejects.toThrow();
     expect(fs.existsSync(path.join(f.root, 'release'))).toBe(false);

@@ -92,11 +92,7 @@ function safeFile(root: string, candidate: string): string {
 }
 
 function safeName(value: string, extension: string): boolean {
-  return (
-    value.length <= 255 &&
-    /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value) &&
-    value.endsWith(extension)
-  );
+  return value.length <= 255 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value) && value.endsWith(extension);
 }
 
 function lowerCaseSort<T extends { name: string }>(values: T[]): T[] {
@@ -108,14 +104,20 @@ function stableJson(value: unknown): string {
     if (Array.isArray(item)) return item.map(normalize);
     if (item && typeof item === 'object')
       return Object.fromEntries(
-        Object.entries(item).sort(([a], [b]) => a.localeCompare(b, 'en')).map(([key, value]) => [key, normalize(value)]),
+        Object.entries(item)
+          .sort(([a], [b]) => a.localeCompare(b, 'en'))
+          .map(([key, value]) => [key, normalize(value)]),
       );
     return item;
   };
   return `${JSON.stringify(normalize(value))}\n`;
 }
 
-async function digestFile(file: string, signal: AbortSignal, options?: { start: number; end: number }): Promise<string> {
+async function digestFile(
+  file: string,
+  signal: AbortSignal,
+  options?: { start: number; end: number },
+): Promise<string> {
   const digest = createHash('sha256');
   const source = fs.createReadStream(file, { ...options, highWaterMark: 1024 * 1024, signal });
   for await (const block of source) digest.update(block as Buffer);
@@ -182,8 +184,7 @@ async function verifyChunkArtifacts(
   }
   ranges.sort((a, b) => a.begin - b.begin);
   for (let i = 1; i < ranges.length; i++) {
-    if (ranges[i].begin < ranges[i - 1].end)
-      throw new Error(`Cooked artifact ranges overlap in chunk ${name}`);
+    if (ranges[i].begin < ranges[i - 1].end) throw new Error(`Cooked artifact ranges overlap in chunk ${name}`);
   }
 }
 
@@ -250,8 +251,7 @@ export async function prepareLivePlayRemoteRelease(input: LivePlayReleaseInput):
       const grouped = new Map<string, Artifact[]>();
       const foldedNames = new Set<string>();
       for (const artifact of manifest.artifacts) {
-        if (!safeName(artifact.chunk, '.arcpak'))
-          throw new Error('Cooked package manifest declares an unsafe chunk');
+        if (!safeName(artifact.chunk, '.arcpak')) throw new Error('Cooked package manifest declares an unsafe chunk');
         if (!grouped.has(artifact.chunk)) grouped.set(artifact.chunk, []);
         grouped.get(artifact.chunk)!.push(artifact);
       }

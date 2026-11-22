@@ -65,8 +65,7 @@ TEST_CASE("C9.1 optional cookBuildId is distinct from packaged baseBuildId")
     replace_once(changed, "unsaved-cook-123", "../unsafe");
     CHECK_FALSE(arc::assets::parse_remote_content_release(changed, expectations()).succeeded());
     changed = fixture();
-    replace_once(changed, "\"baseBuildId\": \"build-abc\",",
-                 "\"baseBuildId\": \"build-abc\", \"cookBuildId\": 12,");
+    replace_once(changed, "\"baseBuildId\": \"build-abc\",", "\"baseBuildId\": \"build-abc\", \"cookBuildId\": 12,");
     CHECK_FALSE(arc::assets::parse_remote_content_release(changed, expectations()).succeeded());
 }
 
