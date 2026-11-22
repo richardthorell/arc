@@ -20,6 +20,7 @@
 #endif
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
 #include <arc/network/live_play_dev_client.h>
+#include "windows_live_play_edits.h"
 #include <atomic>
 #include <thread>
 #endif
@@ -399,8 +400,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     // input dispatch, scene simulation or the editor's Authoring World.
     std::atomic<std::uint64_t> live_ticks{0};
     std::atomic<int> live_phase{1}; // running=1, paused=2
+    // The C9 loader must set this only AFTER verifying/mounting/activating
+    // the offered cooked generation. Today's unavailable baseline path never
+    // sets it, so edits cannot touch a stale packaged startup scene.
+    std::atomic<bool> live_baseline_active{false};
+    live::edit_mailbox live_edits;
+    arc::platform::windows::live_play_transform_applier live_edit_applier;
     std::jthread live_worker(
-        [client = std::move(live_client), &live_ticks, &live_phase](std::stop_token stop) mutable
+        [client = std::move(live_client), &live_ticks, &live_phase, &live_baseline_active,
+         &live_edits](std::stop_token stop) mutable
         {
             std::string error;
             int last_phase = 0;
@@ -421,15 +429,37 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                     if (!client->send_heartbeat(error)) break;
                     last_heartbeat = now;
                 }
-                const auto incoming = client->poll(150, error);
+                // Only this worker writes to the TCP client. Runtime thread
+                // results arrive through the bounded mailbox, never via a
+                // cross-thread client.send_* or direct ECS socket callback.
+                for (const auto& result : live_edits.take_results())
+                {
+                    const bool sent = result.applied
+                                          ? client->send_ack(result.request_id, result.applied_revision, error)
+                                          : client->send_rejected_ack(result.request_id, result.code, error);
+                    if (!sent) break;
+                }
+                if (!error.empty()) break;
+                const auto incoming = client->poll(30, error);
                 if (!error.empty()) break;
                 if (incoming && incoming->type == "scene.baseline.offer")
                 {
-                    // L1.3b2: the control bridge cannot activate authored
-                    // snapshots. Until C9 mounts a verified target-cooked
-                    // generation, fail closed instead of silently dropping
-                    // the request or reporting a scene as active.
+                    // C9 delivery and verified scene activation are tracked
+                    // in the other development track. Never claim a baseline
+                    // active merely because the socket received its offer.
+                    live_baseline_active.store(false);
                     if (!client->send_baseline_status("rejected", "unavailable", error)) break;
+                }
+                else if (incoming && incoming->edit)
+                {
+                    if (!live_baseline_active.load())
+                    {
+                        if (!client->send_rejected_ack(incoming->message_id, "restart_required", error)) break;
+                    }
+                    else if (!live_edits.enqueue(*incoming->edit))
+                    {
+                        if (!client->send_rejected_ack(incoming->message_id, "busy", error)) break;
+                    }
                 }
             }
             if (client->connected())
@@ -541,6 +571,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         const auto now = clock::now();
         const double delta = std::chrono::duration<double>(now - last_frame).count();
         last_frame = now;
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+        // The only ECS write path: drain on the owning host frame thread,
+        // before the next simulation advance. Reject if the C9-authored
+        // initial scene has not actually been activated.
+        for (const auto& edit : live_edits.take_edits())
+        {
+            const auto outcome = live_edit_applier.apply(runtime, edit, live_baseline_active.load());
+            if (!live_edits.report(outcome))
+            {
+                state.failure = "Live Play command result mailbox overflow";
+                session->request_stop();
+                break;
+            }
+        }
+#endif
         if (session->state() == project::packaged_runtime_state::running)
         {
             auto frame = session->advance(delta);
@@ -565,8 +610,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     state.runtime = nullptr;
     state.session = nullptr;
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    live_baseline_active.store(false);
     live_worker.request_stop();
     live_worker.join();
+    live_edits.clear();
+    live_edit_applier.clear();
 #endif
     auto stopped = session->shutdown();
     if (!stopped && state.failure.empty()) state.failure = stopped.error().field + ": " + stopped.error().message;
