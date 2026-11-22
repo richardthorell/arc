@@ -22,6 +22,8 @@
 namespace arc::assets
 {
 
+class remote_object_download_coordinator;
+
 /** A single immutable chunk fetch, injectable for native VFS tests. */
 using remote_generation_fetch_executor = std::function<jobs::job_future<http::content_http_fetch_result>(
     jobs::job_system&, http::content_http_request, http::content_http_limits, jobs::cancellation_token)>;
@@ -34,6 +36,10 @@ struct lazy_remote_content_options
     bool offline_only{};
     std::size_t maximum_chunks{100000};
     std::uint64_t maximum_generation_bytes{16ull * 1024ull * 1024ull * 1024ull};
+    /** Optional shared coordinator for deduplication across remote mounts.
+     * When omitted, one bounded coordinator is created per lazy provider.
+     */
+    std::shared_ptr<remote_object_download_coordinator> downloads;
 };
 
 class remote_content_artifact_provider final : public io::virtual_file_provider
