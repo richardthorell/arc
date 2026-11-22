@@ -72,6 +72,7 @@ target_link_libraries(arc-render-vulkan
 
 target_compile_definitions(arc-render-vulkan
     PRIVATE
+        ARC_RENDER_VULKAN_BUILD=1
         VK_NO_PROTOTYPES=1
         VMA_STATIC_VULKAN_FUNCTIONS=1
         VMA_DYNAMIC_VULKAN_FUNCTIONS=0
@@ -93,7 +94,6 @@ if(NOT TARGET arc::render-vulkan)
 endif()
 
 set_target_properties(arc-render-vulkan PROPERTIES
-    WINDOWS_EXPORT_ALL_SYMBOLS ON
     EXPORT_NAME RenderVulkan)
 install(TARGETS arc-render-vulkan
     EXPORT ARCTargets

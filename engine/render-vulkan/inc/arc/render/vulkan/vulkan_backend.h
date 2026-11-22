@@ -9,6 +9,16 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+#if defined(ARC_RENDER_VULKAN_BUILD)
+#define ARC_RENDER_VULKAN_API __declspec(dllexport)
+#else
+#define ARC_RENDER_VULKAN_API __declspec(dllimport)
+#endif
+#else
+#define ARC_RENDER_VULKAN_API __attribute__((visibility("default")))
+#endif
+
 namespace arc::render::vulkan
 {
 
@@ -41,11 +51,12 @@ struct vulkan_backend_config
 /**
  * @brief Return whether the Vulkan loader can be initialized.
  */
-[[nodiscard]] bool vulkan_loader_available() noexcept;
+[[nodiscard]] ARC_RENDER_VULKAN_API bool vulkan_loader_available() noexcept;
 
 /**
  * @brief Create the Vulkan render backend.
  */
-[[nodiscard]] render_backend_create_result create_vulkan_backend(const vulkan_backend_config& config = {});
+[[nodiscard]] ARC_RENDER_VULKAN_API render_backend_create_result
+create_vulkan_backend(const vulkan_backend_config& config = {});
 
 } // namespace arc::render::vulkan
