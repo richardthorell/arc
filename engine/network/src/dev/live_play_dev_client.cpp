@@ -585,7 +585,7 @@ bool client::send_hierarchy_snapshot(const hierarchy_snapshot& snapshot, std::st
     json entities = json::array();
     for (const auto& item : snapshot.entities)
     {
-        if (item.name.size() > 256 || !token(item.entity.id) && !guid(item.entity.id))
+        if (item.name.size() > 256 || (!token(item.entity.id) && !guid(item.entity.id)))
         {
             error = "Invalid runtime hierarchy entity";
             return false;
