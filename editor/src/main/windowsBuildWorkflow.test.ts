@@ -332,6 +332,10 @@ describe('Windows Shipping workflow', () => {
       'package',
     ]);
     expect(calls[0]).toContain('-DARC_WORKFLOW_PROFILE=custom-release');
+    expect(calls[0]).toContain(`-DARC_WORKFLOW_PROJECT_GUID=${value.plan.projectGuid}`);
+    expect(calls[0]).toContain(`-DARC_WORKFLOW_ENGINE_VERSION=${value.plan.engineVersion}`);
+    expect(calls[0]).toContain(`-DARC_WORKFLOW_RENDERER=${value.plan.renderer}`);
+    expect(calls[0]).toContain('-DARC_WORKFLOW_ROLE=client');
     expect(calls[0]).toContain(`-DCMAKE_PREFIX_PATH=${value.environment.sdkRoot}`);
     expect(calls[1]).toContain('arc-runtime-output');
     expect(calls[1]).toContain('Shipping');

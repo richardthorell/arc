@@ -13,6 +13,7 @@ import {
   X,
   XCircle,
   CirclePause,
+  Copy,
   RotateCcw,
   FolderOpen,
   PackageCheck,
@@ -137,6 +138,7 @@ export function BuildDashboard({
   const [retrying, setRetrying] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [copiedOutput, setCopiedOutput] = useState(false);
   const projectRef = useRef<string | null | undefined>(undefined);
   const overviewRequest = useRef(0);
   const selectedRef = useRef<string | null>(null);
@@ -348,6 +350,30 @@ export function BuildDashboard({
     .at(-1);
   const failure = selected ? buildFailureReason(selected, firstError?.message, lastStderr) : null;
   const anyActiveRun = Boolean(activeId);
+
+  const copyOutput = async () => {
+    if (!detail?.logs.length) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable');
+      const text = detail.logs
+        .map((chunk) => `${chunk.stream}\n${chunk.text}${chunk.text.endsWith('\n') ? '' : '\n'}`)
+        .join('');
+      await navigator.clipboard.writeText(text);
+      setCopiedOutput(true);
+    } catch (reason) {
+      setError(`Could not copy build output: ${String(reason)}`);
+    }
+  };
+
+  useEffect(() => {
+    setCopiedOutput(false);
+  }, [selectedRunId]);
+
+  useEffect(() => {
+    if (!copiedOutput) return;
+    const timeout = window.setTimeout(() => setCopiedOutput(false), 2000);
+    return () => window.clearTimeout(timeout);
+  }, [copiedOutput]);
 
   const retrySelected = async (run: BuildMonitorRun) => {
     if (!api || anyActiveRun || !canRetryBuild(run) || retrying) return;
@@ -572,15 +598,26 @@ export function BuildDashboard({
                       <AlertCircle size={14} /> Diagnostics
                     </button>
                   </div>
-                  <label className="build-monitor-search">
-                    <Search size={14} aria-hidden="true" />
-                    <input
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      aria-label="Search build output"
-                      placeholder="Search loaded output"
-                    />
-                  </label>
+                  <div className="build-monitor-output-actions">
+                    <button
+                      className="build-monitor-copy-output"
+                      type="button"
+                      disabled={!detail?.logs.length}
+                      onClick={() => void copyOutput()}
+                    >
+                      {copiedOutput ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                      {copiedOutput ? 'Copied' : 'Copy output'}
+                    </button>
+                    <label className="build-monitor-search">
+                      <Search size={14} aria-hidden="true" />
+                      <input
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        aria-label="Search build output"
+                        placeholder="Search loaded output"
+                      />
+                    </label>
+                  </div>
                 </div>
                 <div className="build-monitor-output-filters">
                   {tab === 'output' ? (

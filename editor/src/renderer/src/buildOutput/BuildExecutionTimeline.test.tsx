@@ -180,7 +180,7 @@ describe('BuildExecutionTimeline', () => {
       [...document.querySelectorAll('.build-stage-gantt-label.is-module > strong')].map((element) =>
         element.textContent?.trim(),
       ),
-    ).toEqual(['arc-assets', 'arc-animation', 'Third-party', 'arc-render', 'arc-audio', 'arc-water']);
+    ).toEqual(['arc-render', 'arc-audio', 'arc-assets', 'arc-animation', 'Third-party', 'arc-water']);
   });
 
   it('uses a fixed 30-second scale and follows the right edge until scrubbed', () => {

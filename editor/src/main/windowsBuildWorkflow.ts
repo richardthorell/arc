@@ -390,6 +390,10 @@ export function createWindowsBuildWorkflow(
             `-DCMAKE_PREFIX_PATH=${environment.sdkRoot}`,
             `-DARC_DIR=${path.join(environment.sdkRoot, 'lib', 'cmake', 'ARC')}`,
             `-DARC_WORKFLOW_PROFILE=${context.plan.profile}`,
+            `-DARC_WORKFLOW_PROJECT_GUID=${context.plan.projectGuid}`,
+            `-DARC_WORKFLOW_ENGINE_VERSION=${context.plan.engineVersion}`,
+            `-DARC_WORKFLOW_RENDERER=${context.plan.renderer}`,
+            '-DARC_WORKFLOW_ROLE=client',
             `-DCMAKE_CONFIGURATION_TYPES=${context.plan.configuration}`,
           ]);
           try {

@@ -59,7 +59,17 @@ include("${CMAKE_CURRENT_LIST_DIR}/ARCProjectReflection.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/ARCRuntimeOutput.cmake")
 set(ARC_COOKER "${PACKAGE_PREFIX_DIR}/bin/arc-cook@CMAKE_EXECUTABLE_SUFFIX@")
 
+if(ARC_WORKFLOW_PROFILE)
+    foreach(_arc_workflow_field IN ITEMS PROJECT_GUID ENGINE_VERSION RENDERER ROLE)
+        if(NOT ARC_WORKFLOW_${_arc_workflow_field})
+            message(FATAL_ERROR "ARC workflow is missing ARC_WORKFLOW_${_arc_workflow_field}")
+        endif()
+    endforeach()
+    arc_enable_workflow_runtime_output_compatibility()
+endif()
+
 check_required_components(ARC)
 
 unset(_arc_component)
 unset(_arc_shipping_index)
+unset(_arc_workflow_field)
