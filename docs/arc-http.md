@@ -90,7 +90,12 @@ bytes, validates status/Range/ETag and feeds the same immutable SHA-256 CAS and
 release parser as desktop. Requests fail closed if a host has not registered
 the bridge; there is no private BoringSSL/NDK TLS symbol dependency.
 
-The host APK includes `INTERNET` permission and compiled Java bytecode. Only
+The host APK includes `INTERNET` permission and compiled Java bytecode.
+The Debug network policy alone does **not** enable HTTP requests: native
+`content_http_limits.allow_loopback_http` must also be set explicitly by a
+trusted Development launch. The generic Java adapter cannot grant cleartext LAN
+access, and neither the Java helper nor the C9 fetch API accepts arbitrary
+redirects or insecure certificate/hostname overrides. Only
 Debug permits **loopback** HTTP in a narrow network-security config for
 `adb reverse`; Release/Shipping uses Android's default cleartext restrictions.
 The SDK host exporter also copies the Java source and Debug-only security
