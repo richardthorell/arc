@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -261,4 +262,55 @@ TEST_CASE("C9.2g1 persistent scope mutations fail closed for read-only cache and
     CHECK_FALSE(arc::assets::clear_remote_content_retention(read_only, active, error));
     CHECK_FALSE(error.message.empty());
     CHECK(read_only.persistent_pins(arc::assets::remote_content_retention_scope(active)).size() == 2);
+}
+
+TEST_CASE("C9.2g1 quota pruning retains protected bytes above budget and reclaims expired temporary downloads")
+{
+    fixture f;
+    auto cfg = f.config();
+    cfg.cleanup.maximum_bytes = 16;
+    cfg.cleanup.prune_threshold = 0.5f;
+    cfg.cleanup.prune_target = 0.25f;
+    cfg.cleanup.temporary_lifetime = std::chrono::hours{0};
+    arc::assets::derived_data_cache cache(cfg);
+    const auto active = release(5, "manifest active");
+    f.store(cache, "manifest active");
+    f.store(cache, "chunk shared");
+    f.store(cache, "unneeded spare object");
+    REQUIRE(arc::assets::retain_remote_content_generations(cache, active).succeeded());
+
+    const auto temporary = f.root / "partial-transfer.tmp-orphan";
+    {
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        REQUIRE(output.good());
+        output << "truncated, unverified bytes";
+    }
+    CHECK(cache.prune(false) == std::string_view("unneeded spare object").size());
+    CHECK_FALSE(std::filesystem::exists(temporary));
+    CHECK(f.has(cache, "manifest active"));
+    CHECK(f.has(cache, "chunk shared"));
+    // Pinned closure can legitimately exceed configured quota: last-good
+    // safety is preferred to eviction of the running generation.
+    CHECK(cache.statistics().local_bytes > cfg.cleanup.maximum_bytes);
+}
+
+TEST_CASE("C9.2g1 project/target scopes do not unpin one another")
+{
+    fixture f;
+    const auto first = release(5, "manifest project one");
+    auto second = release(5, "manifest project two");
+    second.project_guid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    arc::assets::derived_data_cache cache(f.config());
+    f.store(cache, "manifest project one");
+    f.store(cache, "manifest project two");
+    f.store(cache, "chunk shared");
+    REQUIRE(arc::assets::retain_remote_content_generations(cache, first).succeeded());
+    REQUIRE(arc::assets::retain_remote_content_generations(cache, second).succeeded());
+    CHECK(arc::assets::remote_content_retention_scope(first) !=
+          arc::assets::remote_content_retention_scope(second));
+    arc::assets::cache_error error;
+    REQUIRE(arc::assets::clear_remote_content_retention(cache, first, error));
+    CHECK(cache.prune(true) == std::string_view("manifest project one").size());
+    CHECK(f.has(cache, "manifest project two"));
+    CHECK(f.has(cache, "chunk shared"));
 }

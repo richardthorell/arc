@@ -216,3 +216,47 @@ credentials, or resumable partial-object SHA verification; those remain
 separate tracks. Keeping `remote_object_download_coordinator` scoped to
 an explicit cache and job system avoids a process-wide singleton or
 cross-project transfer leak.
+
+## C9.2g1 — Persistent remote cache retention and quota pruning
+
+C9 uses the existing `derived_data_cache` filesystem CAS; no second asset
+cache, cooked registry or blob identity is introduced. The DDC already
+provides a configurable size budget, threshold/target-based LRU-ish
+last-access pruning and temporary/action expiry. C9.2g1 adds **persistent
+scoped SHA-256 retention** so the active and previous verified generation's
+object references cannot be evicted when the process exits.
+
+- `retain_remote_content_generations(cache, active, last_good)` forms the
+  union of the two C9.1 immutable cook-manifest and package-chunk closures.
+  It rejects malformed SHA/path/size references, incompatible project/runtime
+  base/target/profile identity, and a last-good generation that isn't older.
+  Shared object hashes are retained once; retention scopes are stable for a
+  project + engine/runtime base build + target/profile, not for each generation.
+- `derived_data_cache::set_persistent_pins(scope, hashes, error)` replaces
+  a scope in one bounded, versioned `persistent-pins.json` snapshot under
+  the DDC root. Updates write a temporary file and atomically replace the
+  prior snapshot; Windows uses an overwrite-capable OS rename. The cache
+  restores all pin scopes when it opens, **before any prune can execute**.
+  Prune excludes the union of volatile and persisted pins, even when pinned
+  data alone exceeds the normal quota. Stale temporary downloads remain
+  subject to the DDC's configured temporary expiry.
+- Malformed, unreadable or oversized retention metadata disables eviction
+  rather than risking loss of the last-good generation. Errors are available
+  from `persistent_retention_ready()` and failed update results; repair is
+  explicit, never a silent reset. Read-only caches cannot mutate snapshots.
+  Different project/target scopes cannot unpin one another; closing or
+  retiring a project may explicitly call `clear_remote_content_retention`.
+- On process restart the DDC restores **which immutable digests to retain**;
+  it does **not** interpret pin metadata as a trusted release, claim a lazy
+  chunk has already been downloaded, or automatically activate a scene.
+  A runtime must still validate the C9.1 release, load and SHA-verify each
+  required CAS object, then activate via the existing catalog/update receiver.
+  This runtime activation and reconnect policy is the next C9.2g2/C9.3 slice.
+
+Call retention updates and quota pruning off the render/main thread. A single
+DDC cache root should have one retention-metadata writer at a time; multi-process
+writer coordination is not introduced here. No credentials, authoring paths,
+source artifacts or editor-only network code are persisted. The tests cover
+restart/offline recovery, active/last-good rotation, independent scopes,
+corrupt metadata fail-closed behavior, hash tampering, bounded eviction and
+expired temporary-file cleanup.
