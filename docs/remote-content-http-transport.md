@@ -179,3 +179,6 @@ HTTP streaming optimization: whole-object SHA-256 must pass first.
 Concurrent duplicate coalescing, retries, transfer budgets, persistent
 quota/pinning and runtime startup/orchestration are follow-on C9.2f2/g
 and C9.3 tasks.
+
+The new Catch2 coverage uses actual cooker-generated ARC package fixtures and
+an injectable IO-worker fetcher; no external service or credentials are needed.
