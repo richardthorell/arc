@@ -28,7 +28,7 @@ TEST_CASE("C9.2b HTTP fetch validates request before network access")
     CHECK(result.validation.code == arc::io::content_http_error_code::invalid_range);
 }
 
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(ARC_CONTENT_HTTP_CURL)
 TEST_CASE("C9.2b unsupported platforms fail explicitly without network access")
 {
     arc::jobs::job_system jobs(
@@ -98,7 +98,7 @@ TEST_CASE("C9.2d2 release response has strict status, redirect and eight-MiB siz
           content_http_error_code::oversized_response);
 }
 
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(ARC_CONTENT_HTTP_CURL)
 TEST_CASE("C9.2d2 release discovery reports unsupported TLS backend rather than inventing content")
 {
     arc::jobs::job_system jobs(

@@ -33,7 +33,7 @@ jobs:
       - name: Install GCC 14 and Shader Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-14 g++-14 ninja-build ccache
+          sudo apt-get install -y gcc-14 g++-14 ninja-build ccache libcurl4-openssl-dev
       - name: Set Up Slang 2026.14.1
         uses: ./.github/actions/setup-slang
       - name: Set Up Vulkan SDK 1.4.350.0

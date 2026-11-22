@@ -149,6 +149,9 @@ if(ARC_SHIPPING_CONTENT_DIR)
             PATTERN "*.arcpak")
 endif()
 
+# Export the Linux static IO backend's required link dependency to SDK consumers.
+get_property(ARC_IO_NEEDS_CURL GLOBAL PROPERTY ARC_IO_NEEDS_CURL)
+
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ARCConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ARCConfig.cmake"

@@ -33,7 +33,7 @@ jobs:
       - name: Install Clang 18 Toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-18 ninja-build ccache
+          sudo apt-get install -y clang-18 ninja-build ccache libcurl4-openssl-dev
       - name: Set Up Slang 2026.14.1
         uses: ./.github/actions/setup-slang
       - name: Restore Compiler Cache
