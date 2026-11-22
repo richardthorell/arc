@@ -8,9 +8,9 @@ void (async () => {
     const formatted = await prettier.format(fs.readFileSync(file, 'utf8'), { ...options, filepath: file });
     const encoded = Buffer.from(formatted, 'utf8').toString('base64');
     const chunks = encoded.match(/.{1,700}/g) || [];
-    process.stdout.write('ARC_L15A_TS_START_' + index + '_' + chunks.length + '\\n');
+    console.log('ARC_L15A_TS_START_' + index + '_' + chunks.length);
     for (const [part, chunk] of chunks.entries())
-      process.stdout.write('ARC_L15A_TS_DATA_' + index + '_' + part + '_' + chunk + '\\n');
-    process.stdout.write('ARC_L15A_TS_END_' + index + '\\n');
+      console.log('ARC_L15A_TS_DATA_' + index + '_' + part + '_' + chunk);
+    console.log('ARC_L15A_TS_END_' + index);
   }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
