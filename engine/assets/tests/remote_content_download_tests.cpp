@@ -88,8 +88,18 @@ TEST_CASE("C9.2f2 coalesces concurrent immutable CAS misses to one HTTP request"
 
     std::promise<void> start;
     auto go = start.get_future().share();
-    auto a = std::async(std::launch::async, [&] { go.wait(); return downloads.ensure(object, std::string(origin), {}, {}, executor); });
-    auto b = std::async(std::launch::async, [&] { go.wait(); return downloads.ensure(object, std::string(origin), {}, {}, executor); });
+    auto a = std::async(std::launch::async,
+                        [&]
+                        {
+                            go.wait();
+                            return downloads.ensure(object, std::string(origin), {}, {}, executor);
+                        });
+    auto b = std::async(std::launch::async,
+                        [&]
+                        {
+                            go.wait();
+                            return downloads.ensure(object, std::string(origin), {}, {}, executor);
+                        });
     start.set_value();
     auto first = a.get();
     auto second = b.get();
@@ -123,16 +133,16 @@ TEST_CASE("C9.2f2 retries only transient transport failure and reuses verified C
     std::atomic<int> requests{};
 
     arc::assets::remote_generation_fetch_executor executor =
-        [&requests, body](arc::jobs::job_system& jobs, arc::http::content_http_request,
-                          arc::http::content_http_limits, arc::jobs::cancellation_token)
+        [&requests, body](arc::jobs::job_system& jobs, arc::http::content_http_request, arc::http::content_http_limits,
+                          arc::jobs::cancellation_token)
     {
-        return jobs.submit_future(
-            {.name = "assets.download.transient", .affinity = arc::jobs::job_affinity::io_thread},
-            [&requests, body]() -> arc::http::content_http_fetch_result
-            {
-                if (++requests <= 2) return http_failure(arc::http::content_http_error_code::rate_limited);
-                return full_response(body);
-            });
+        return jobs.submit_future({.name = "assets.download.transient", .affinity = arc::jobs::job_affinity::io_thread},
+                                  [&requests, body]() -> arc::http::content_http_fetch_result
+                                  {
+                                      if (++requests <= 2)
+                                          return http_failure(arc::http::content_http_error_code::rate_limited);
+                                      return full_response(body);
+                                  });
     };
 
     auto result = downloads.ensure(object, std::string(origin), {}, {}, executor);
@@ -160,18 +170,17 @@ TEST_CASE("C9.2f2 never retries corrupt content, unauthorized responses or malfo
     std::atomic<int> requests{};
 
     arc::assets::remote_generation_fetch_executor corrupt =
-        [&requests, body](arc::jobs::job_system& jobs, arc::http::content_http_request,
-                          arc::http::content_http_limits, arc::jobs::cancellation_token)
+        [&requests, body](arc::jobs::job_system& jobs, arc::http::content_http_request, arc::http::content_http_limits,
+                          arc::jobs::cancellation_token)
     {
-        return jobs.submit_future(
-            {.name = "assets.download.corrupt", .affinity = arc::jobs::job_affinity::io_thread},
-            [&requests, body]() mutable -> arc::http::content_http_fetch_result
-            {
-                ++requests;
-                auto invalid = body;
-                invalid.back() ^= std::byte{0x01};
-                return full_response(invalid);
-            });
+        return jobs.submit_future({.name = "assets.download.corrupt", .affinity = arc::jobs::job_affinity::io_thread},
+                                  [&requests, body]() mutable -> arc::http::content_http_fetch_result
+                                  {
+                                      ++requests;
+                                      auto invalid = body;
+                                      invalid.back() ^= std::byte{0x01};
+                                      return full_response(invalid);
+                                  });
     };
     auto rejected = downloads.ensure(object, std::string(origin), {}, {}, corrupt);
     CHECK_FALSE(rejected.succeeded());
@@ -180,8 +189,8 @@ TEST_CASE("C9.2f2 never retries corrupt content, unauthorized responses or malfo
     CHECK(requests.load() == 1);
 
     arc::assets::remote_generation_fetch_executor unauthorized =
-        [&requests](arc::jobs::job_system& jobs, arc::http::content_http_request,
-                    arc::http::content_http_limits, arc::jobs::cancellation_token)
+        [&requests](arc::jobs::job_system& jobs, arc::http::content_http_request, arc::http::content_http_limits,
+                    arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.download.unauthorized", .affinity = arc::jobs::job_affinity::io_thread},
@@ -224,20 +233,20 @@ TEST_CASE("C9.2f2 bounds concurrent GET count and aggregate declared in-flight b
         [&active, &peak, &requests, &payloads](arc::jobs::job_system& jobs, arc::http::content_http_request request,
                                                arc::http::content_http_limits, arc::jobs::cancellation_token)
     {
-        return jobs.submit_future(
-            {.name = "assets.download.bound", .affinity = arc::jobs::job_affinity::io_thread},
-            [&active, &peak, &requests, &payloads, request = std::move(request)]()
-                -> arc::http::content_http_fetch_result
-            {
-                const int now = ++active;
-                peak.store(std::max(peak.load(), now));
-                ++requests;
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                --active;
-                for (const auto& payload : payloads)
-                    if (object_for(payload).path == request.object_path) return full_response(bytes(payload));
-                return http_failure(arc::http::content_http_error_code::not_found);
-            });
+        return jobs.submit_future({.name = "assets.download.bound", .affinity = arc::jobs::job_affinity::io_thread},
+                                  [&active, &peak, &requests, &payloads,
+                                   request = std::move(request)]() -> arc::http::content_http_fetch_result
+                                  {
+                                      const int now = ++active;
+                                      peak.store(std::max(peak.load(), now));
+                                      ++requests;
+                                      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                                      --active;
+                                      for (const auto& payload : payloads)
+                                          if (object_for(payload).path == request.object_path)
+                                              return full_response(bytes(payload));
+                                      return http_failure(arc::http::content_http_error_code::not_found);
+                                  });
     };
 
     std::vector<std::future<arc::assets::remote_download_result>> running;
@@ -247,7 +256,8 @@ TEST_CASE("C9.2f2 bounds concurrent GET count and aggregate declared in-flight b
         running.push_back(std::async(std::launch::async, [&, object]
                                      { return downloads.ensure(object, std::string(origin), {}, {}, executor); }));
     }
-    for (auto& task : running) REQUIRE(task.get().succeeded());
+    for (auto& task : running)
+        REQUIRE(task.get().succeeded());
     CHECK(requests.load() == 3);
     CHECK(peak.load() == 1); // Byte budget prevents a second 12-byte body.
 }
@@ -279,12 +289,13 @@ TEST_CASE("C9.2f2 follower cancellation never cancels an unrelated in-flight lea
             });
     };
 
-    auto leader = std::async(std::launch::async, [&]
-                             { return downloads.ensure(object, std::string(origin), {}, {}, executor); });
+    auto leader =
+        std::async(std::launch::async, [&] { return downloads.ensure(object, std::string(origin), {}, {}, executor); });
     entered.wait();
     arc::jobs::cancellation_source cancel_waiter;
-    auto follower = std::async(std::launch::async, [&]
-                               { return downloads.ensure(object, std::string(origin), {}, cancel_waiter.token(), executor); });
+    auto follower =
+        std::async(std::launch::async,
+                   [&] { return downloads.ensure(object, std::string(origin), {}, cancel_waiter.token(), executor); });
     std::this_thread::sleep_for(std::chrono::milliseconds(35));
     REQUIRE(cancel_waiter.request_cancel());
     const auto cancelled = follower.get();

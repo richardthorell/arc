@@ -257,9 +257,9 @@ remote_content_artifact_provider::create_result remote_content_artifact_provider
     state->lazy = std::move(lazy);
     state->executor = std::move(executor);
     if (state->lazy)
-        state->downloads = state->lazy->downloads ? state->lazy->downloads
-                                                  : std::make_shared<remote_object_download_coordinator>(
-                                                        files.scheduler(), cache);
+        state->downloads = state->lazy->downloads
+                               ? state->lazy->downloads
+                               : std::make_shared<remote_object_download_coordinator>(files.scheduler(), cache);
     state->generation = release.generation;
 
     // Validate every immutable chunk and every addressed artifact *before*
@@ -381,14 +381,14 @@ remote_content_artifact_provider::read_range(const io::provider_file& file, std:
                 // concurrent artifact reads for one chunk issue only one GET.
                 // Only transport failures may retry. The coordinator verifies
                 // the entire object and commits it into CAS before returning.
-                const auto downloaded = state->downloads->ensure(found->second.chunk, request.origin,
-                                                                 state->lazy->http, cancellation, state->executor);
+                const auto downloaded = state->downloads->ensure(found->second.chunk, request.origin, state->lazy->http,
+                                                                 cancellation, state->executor);
                 if (!downloaded.succeeded())
                     return read_failure(downloaded.transport_error == http::content_http_error_code::cancelled
                                             ? io::file_error_code::cancelled
-                                            : downloaded.cache_error != remote_object_cache_error::none
-                                                  ? io::file_error_code::corrupt_content
-                                                  : io::file_error_code::read_failed,
+                                        : downloaded.cache_error != remote_object_cache_error::none
+                                            ? io::file_error_code::corrupt_content
+                                            : io::file_error_code::read_failed,
                                         file.key, "Remote immutable chunk download: " + downloaded.error);
                 chunk = load_verified_remote_object(*state->cache, found->second.chunk, error);
             }

@@ -124,9 +124,9 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
                 if (options.policy == remote_generation_transfer_policy::offline_only)
                     return reject(object->path, "Required remote generation object is unavailable offline");
 
-                const auto transfer = downloads->ensure(*object, options.origin, options.http, cancellation,
-                                                        executor,
-                                                        options.policy == remote_generation_transfer_policy::refresh_all);
+                const auto transfer =
+                    downloads->ensure(*object, options.origin, options.http, cancellation, executor,
+                                      options.policy == remote_generation_transfer_policy::refresh_all);
                 if (!transfer.succeeded())
                 {
                     result.transport_error = transfer.transport_error;

@@ -539,8 +539,9 @@ TEST_CASE("C9.2f2 eager generation acquisition retries a transient GET without d
                             .validation = {.code = arc::http::content_http_error_code::timeout,
                                            .message = "Injected timeout"}};
                 auto body = request.object_path == f.release.cook_manifest.path ? f.manifest_bytes : f.package_bytes;
-                return {.response = arc::http::content_http_response{
-                            .status = 200, .content_length = std::to_string(body.size()), .body = std::move(body)},
+                return {.response = arc::http::content_http_response{.status = 200,
+                                                                     .content_length = std::to_string(body.size()),
+                                                                     .body = std::move(body)},
                         .validation = {}};
             });
     };

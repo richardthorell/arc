@@ -114,7 +114,7 @@ struct remote_object_download_coordinator::implementation
                 else if (!future.handle().wait_result().succeeded())
                 {
                     failure_code = cancellation.stop_requested() ? http::content_http_error_code::cancelled
-                                                                  : http::content_http_error_code::network_failure;
+                                                                 : http::content_http_error_code::network_failure;
                     failure_message = "Remote HTTP fetch job failed or was cancelled";
                 }
                 else
@@ -130,7 +130,7 @@ struct remote_object_download_coordinator::implementation
             catch (const std::exception&)
             {
                 failure_code = cancellation.stop_requested() ? http::content_http_error_code::cancelled
-                                                              : http::content_http_error_code::network_failure;
+                                                             : http::content_http_error_code::network_failure;
                 failure_message = "Remote HTTP fetch executor threw an exception";
             }
             release_slot(object.size);
@@ -176,21 +176,19 @@ remote_object_download_coordinator::remote_object_download_coordinator(jobs::job
     // objects into concurrent in-memory buffers.
     limits.maximum_concurrent_requests = std::clamp<std::size_t>(limits.maximum_concurrent_requests, 1, 64);
     limits.maximum_attempts = std::clamp<std::size_t>(limits.maximum_attempts, 1, 8);
-    limits.initial_backoff = std::clamp(limits.initial_backoff, std::chrono::milliseconds{0},
-                                       std::chrono::milliseconds{5000});
-    limits.maximum_backoff = std::clamp(limits.maximum_backoff, limits.initial_backoff,
-                                       std::chrono::milliseconds{10000});
+    limits.initial_backoff =
+        std::clamp(limits.initial_backoff, std::chrono::milliseconds{0}, std::chrono::milliseconds{5000});
+    limits.maximum_backoff =
+        std::clamp(limits.maximum_backoff, limits.initial_backoff, std::chrono::milliseconds{10000});
     implementation_->limits = limits;
 }
 
 remote_object_download_coordinator::~remote_object_download_coordinator() = default;
 
-remote_download_result remote_object_download_coordinator::ensure(const remote_content_object& object,
-                                                                  std::string origin,
-                                                                  http::content_http_limits http_limits,
-                                                                  jobs::cancellation_token cancellation,
-                                                                  remote_generation_fetch_executor executor,
-                                                                  bool force_refresh)
+remote_download_result
+remote_object_download_coordinator::ensure(const remote_content_object& object, std::string origin,
+                                           http::content_http_limits http_limits, jobs::cancellation_token cancellation,
+                                           remote_generation_fetch_executor executor, bool force_refresh)
 {
     if (cancellation.stop_requested())
         return failed("Remote immutable object transfer cancelled", http::content_http_error_code::cancelled);
@@ -204,16 +202,14 @@ remote_download_result remote_object_download_coordinator::ensure(const remote_c
     const auto validation = http::validate_content_http_request(request, http_limits);
     if (!validation.succeeded()) return failed(validation.message, validation.code);
     const auto digest = parse_asset_hash(object.sha256);
-    if (!digest || to_string(*digest) != object.sha256 ||
-        object.path != "objects/sha256/" + object.sha256)
+    if (!digest || to_string(*digest) != object.sha256 || object.path != "objects/sha256/" + object.sha256)
         return failed("Remote immutable object has invalid SHA-256 descriptor",
                       http::content_http_error_code::invalid_request);
 
     if (!force_refresh)
     {
         cache_error error;
-        if (load_verified_remote_object(*implementation_->cache, object, error))
-            return {.reused = true};
+        if (load_verified_remote_object(*implementation_->cache, object, error)) return {.reused = true};
     }
 
     std::shared_ptr<implementation::inflight> flight;
@@ -231,7 +227,8 @@ remote_download_result remote_object_download_coordinator::ensure(const remote_c
         while (!flight->done)
         {
             if (cancellation.stop_requested())
-                return failed("Remote immutable object transfer wait cancelled", http::content_http_error_code::cancelled);
+                return failed("Remote immutable object transfer wait cancelled",
+                              http::content_http_error_code::cancelled);
             implementation_->changed.wait_for(lock, std::chrono::milliseconds(25));
         }
         auto outcome = flight->outcome;

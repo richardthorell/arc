@@ -49,8 +49,8 @@ prepare_lazy_remote_generation(jobs::job_system& jobs, io::async_file_service& f
                 return reject("Remote cook manifest unavailable in offline immutable cache");
             else
             {
-                const auto downloaded = options.downloads->ensure(release.cook_manifest, options.origin,
-                                                                   options.http, cancellation, executor);
+                const auto downloaded = options.downloads->ensure(release.cook_manifest, options.origin, options.http,
+                                                                  cancellation, executor);
                 if (!downloaded.succeeded())
                 {
                     result.transport_error = downloaded.transport_error;
