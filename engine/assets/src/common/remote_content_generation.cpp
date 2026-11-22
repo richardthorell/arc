@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstring>
 #include <exception>
+#include <optional>
 #include <limits>
 #include <span>
 #include <string>
@@ -119,6 +120,8 @@ struct remote_content_artifact_provider::implementation
     };
     derived_data_cache* cache{};
     io::async_file_service* files{};
+    std::optional<lazy_remote_content_options> lazy;
+    remote_generation_fetch_executor executor;
     std::uint64_t generation{};
     cook_manifest manifest;
     std::unordered_map<std::string, record> records;
@@ -134,6 +137,21 @@ remote_content_artifact_provider::~remote_content_artifact_provider() = default;
 remote_content_artifact_provider::create_result
 remote_content_artifact_provider::create(const remote_content_release& release, derived_data_cache& cache,
                                          io::async_file_service& files)
+{
+    return create_impl(release, cache, files, std::nullopt, {});
+}
+
+remote_content_artifact_provider::create_result
+remote_content_artifact_provider::create_lazy(const remote_content_release& release, derived_data_cache& cache,
+                                              io::async_file_service& files, lazy_remote_content_options options,
+                                              remote_generation_fetch_executor executor)
+{
+    return create_impl(release, cache, files, std::move(options), std::move(executor));
+}
+
+remote_content_artifact_provider::create_result remote_content_artifact_provider::create_impl(
+    const remote_content_release& release, derived_data_cache& cache, io::async_file_service& files,
+    std::optional<lazy_remote_content_options> lazy, remote_generation_fetch_executor executor)
 {
     const auto reject = [](std::string message) -> create_result
     { return create_result::failure(invalid(std::move(message))); };
@@ -171,11 +189,47 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
     std::unordered_set<std::string> folded_names;
     std::unordered_set<std::string> object_hashes{release.cook_manifest.sha256};
     chunks.reserve(release.chunks.size());
+    // A lazy release publishes metadata before content bytes arrive, but
+    // never unsafe addresses, oversized objects or unbounded work.
+    if (lazy)
+    {
+        if (lazy->maximum_chunks == 0 || release.chunks.size() >= lazy->maximum_chunks ||
+            lazy->maximum_generation_bytes == 0 || release.cook_manifest.size > 8u * 1024u * 1024u ||
+            release.cook_manifest.size > lazy->http.maximum_object_bytes ||
+            release.cook_manifest.size > lazy->maximum_generation_bytes)
+            return reject("Lazy remote generation exceeds configured manifest, object or chunk limits");
+        if (!lazy->offline_only)
+        {
+            const http::content_http_request probe{.origin = lazy->origin,
+                                                   .object_path = release.cook_manifest.path,
+                                                   .object_size = release.cook_manifest.size};
+            if (!http::validate_content_http_request(probe, lazy->http).succeeded())
+                return reject("Lazy remote generation origin or manifest request is invalid");
+        }
+    }
+    std::uint64_t declared_bytes = release.cook_manifest.size;
     for (const auto& entry : release.chunks)
     {
         if (!safe_filename(entry.name, ".arcpak") || !folded_names.insert(fold_name(entry.name)).second ||
             !object_hashes.insert(entry.object.sha256).second)
             return reject("Remote release has an invalid or duplicate package chunk");
+        if (lazy)
+        {
+            const auto hash = parse_asset_hash(entry.object.sha256);
+            if (!hash || to_string(*hash) != entry.object.sha256 ||
+                entry.object.path != "objects/sha256/" + entry.object.sha256 || entry.object.size < 8 ||
+                entry.object.size > lazy->http.maximum_object_bytes ||
+                entry.object.size > lazy->maximum_generation_bytes - declared_bytes)
+                return reject("Lazy remote release declares an invalid or oversized package chunk");
+            declared_bytes += entry.object.size;
+            if (!lazy->offline_only)
+            {
+                const http::content_http_request probe{
+                    .origin = lazy->origin, .object_path = entry.object.path, .object_size = entry.object.size};
+                if (!http::validate_content_http_request(probe, lazy->http).succeeded())
+                    return reject("Lazy remote release chunk origin or object path is invalid");
+            }
+        }
         chunks.emplace(entry.name, &entry);
     }
 
@@ -198,19 +252,28 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
     auto state = std::make_shared<implementation>();
     state->cache = &cache;
     state->files = &files;
+    state->lazy = std::move(lazy);
+    state->executor = std::move(executor);
     state->generation = release.generation;
 
     // Validate every immutable chunk and every addressed artifact *before*
     // publishing any provider. All checks use the existing cooker offsets.
     for (const auto& entry : release.chunks)
     {
-        auto bytes = load_verified_remote_object(cache, entry.object, cache_error_value);
-        if (!bytes)
-            return reject("Remote package chunk is missing or corrupt (" + entry.name +
-                          "): " + cache_error_value.message);
-        constexpr char magic[] = "ARCPAK1";
-        if (bytes->size() < 8 || std::memcmp(bytes->data(), magic, 7) != 0 || (*bytes)[7] != std::byte{0})
-            return reject("Remote package chunk has an invalid ARC package header: " + entry.name);
+        // Strict mode checks cached bytes now; lazy mode checks declared
+        // lengths and validates immutable chunk/artifact hashes on first read.
+        std::optional<io::file_buffer> bytes;
+        if (!state->lazy)
+        {
+            bytes = load_verified_remote_object(cache, entry.object, cache_error_value);
+            if (!bytes)
+                return reject("Remote package chunk is missing or corrupt (" + entry.name +
+                              "): " + cache_error_value.message);
+            constexpr char magic[] = "ARCPAK1";
+            if (bytes->size() < 8 || std::memcmp(bytes->data(), magic, 7) != 0 || (*bytes)[7] != std::byte{0})
+                return reject("Remote package chunk has an invalid ARC package header: " + entry.name);
+        }
+        const auto chunk_size = bytes ? bytes->size() : entry.object.size;
 
         const auto group = by_chunk.find(entry.name);
         if (group == by_chunk.end())
@@ -220,13 +283,16 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
         ranges.reserve(group->second.size());
         for (const auto* artifact : group->second)
         {
-            if (artifact->offset < 8 || artifact->offset > bytes->size() ||
-                artifact->stored_size > bytes->size() - artifact->offset)
+            if (artifact->offset < 8 || artifact->offset > chunk_size ||
+                artifact->stored_size > chunk_size - artifact->offset)
                 return reject("Remote cook artifact range exceeds package chunk: " + entry.name);
-            const auto begin = static_cast<std::size_t>(artifact->offset);
-            const auto size = static_cast<std::size_t>(artifact->stored_size);
-            if (hash_bytes(std::span<const std::byte>(bytes->data() + begin, size)) != artifact->hash)
-                return reject("Remote cook artifact bytes do not match manifest hash: " + entry.name);
+            if (bytes)
+            {
+                const auto begin = static_cast<std::size_t>(artifact->offset);
+                const auto size = static_cast<std::size_t>(artifact->stored_size);
+                if (hash_bytes(std::span<const std::byte>(bytes->data() + begin, size)) != artifact->hash)
+                    return reject("Remote cook artifact bytes do not match manifest hash: " + entry.name);
+            }
             ranges.emplace_back(artifact->offset, artifact->offset + artifact->stored_size);
 
             auto logical = cooked_artifact_virtual_path(
@@ -276,11 +342,12 @@ remote_content_artifact_provider::read_range(const io::provider_file& file, std:
     return implementation_->files->scheduler().submit_future(
         {.name = "assets.remote_content.read",
          .priority = jobs::job_priority::normal,
-         .affinity = jobs::job_affinity::io_thread,
-         .cancellation = cancellation,
-         .dependency_policy = jobs::job_dependency_policy::cancel_on_failure},
-        [state = implementation_, file, offset, bytes]() -> io::file_result<io::file_buffer>
+         // Coordinate the IO-worker HTTP future from a general worker.
+         .affinity = implementation_->lazy ? jobs::job_affinity::any_worker : jobs::job_affinity::io_thread},
+        [state = implementation_, file, offset, bytes, cancellation]() -> io::file_result<io::file_buffer>
         {
+            if (cancellation.stop_requested())
+                return read_failure(io::file_error_code::cancelled, file.key, "Remote cooked artifact read cancelled");
             const auto found = state->records.find(file.key);
             if (found == state->records.end() || found->second.generation != file.content_generation ||
                 found->second.artifact.stored_size != file.size)
@@ -293,9 +360,72 @@ remote_content_artifact_provider::read_range(const io::provider_file& file, std:
 
             cache_error error;
             auto chunk = load_verified_remote_object(*state->cache, found->second.chunk, error);
+            if (!chunk && state->lazy)
+            {
+                if (state->lazy->offline_only)
+                    return read_failure(io::file_error_code::not_found, file.key,
+                                        "Missing immutable package chunk in offline cache");
+                const http::content_http_request request{.origin = state->lazy->origin,
+                                                         .object_path = found->second.chunk.path,
+                                                         .object_size = found->second.chunk.size};
+                const auto valid = http::validate_content_http_request(request, state->lazy->http);
+                if (!valid.succeeded())
+                    return read_failure(io::file_error_code::invalid_request, file.key, valid.message);
+                auto future =
+                    state->executor
+                        ? state->executor(state->files->scheduler(), request, state->lazy->http, cancellation)
+                        : http::fetch_content_http(state->files->scheduler(), request, state->lazy->http, cancellation);
+                if (!future.valid())
+                    return read_failure(io::file_error_code::provider_unavailable, file.key,
+                                        "Remote HTTP fetch executor unavailable");
+                const auto waited = future.handle().wait_result();
+                if (!waited.succeeded())
+                    return read_failure(cancellation.stop_requested() ? io::file_error_code::cancelled
+                                                                      : io::file_error_code::read_failed,
+                                        file.key, "Remote immutable chunk HTTP fetch was cancelled or failed");
+                http::content_http_fetch_result response;
+                try
+                {
+                    response = future.get();
+                }
+                catch (const std::exception&)
+                {
+                    return read_failure(io::file_error_code::read_failed, file.key,
+                                        "Remote immutable chunk HTTP worker failed");
+                }
+                if (!response.succeeded())
+                    return read_failure(response.validation.code == http::content_http_error_code::cancelled
+                                            ? io::file_error_code::cancelled
+                                            : io::file_error_code::read_failed,
+                                        file.key, "Remote immutable chunk fetch: " + response.validation.message);
+                if (cancellation.stop_requested())
+                    return read_failure(io::file_error_code::cancelled, file.key,
+                                        "Remote cooked artifact read cancelled");
+                const auto ingested = ingest_verified_remote_object(*state->cache, found->second.chunk, request,
+                                                                    *response.response, state->lazy->http);
+                if (!ingested.succeeded())
+                    return read_failure(io::file_error_code::corrupt_content, file.key,
+                                        "Remote immutable chunk failed CAS verification: " + ingested.message);
+                chunk = load_verified_remote_object(*state->cache, found->second.chunk, error);
+            }
             if (!chunk)
                 return read_failure(io::file_error_code::read_failed, file.key,
                                     "Remote cooked package chunk failed CAS verification: " + error.message);
+            if (cancellation.stop_requested())
+                return read_failure(io::file_error_code::cancelled, file.key, "Remote cooked artifact read cancelled");
+            if (state->lazy)
+            {
+                constexpr char magic[] = "ARCPAK1";
+                if (chunk->size() < 8 || std::memcmp(chunk->data(), magic, 7) != 0 || (*chunk)[7] != std::byte{0} ||
+                    artifact.offset > chunk->size() || artifact.stored_size > chunk->size() - artifact.offset)
+                    return read_failure(io::file_error_code::corrupt_content, file.key,
+                                        "Remote lazy chunk header or artifact range is corrupt");
+                const auto begin = static_cast<std::size_t>(artifact.offset);
+                if (hash_bytes(std::span<const std::byte>(
+                        chunk->data() + begin, static_cast<std::size_t>(artifact.stored_size))) != artifact.hash)
+                    return read_failure(io::file_error_code::corrupt_content, file.key,
+                                        "Remote lazy cooked artifact hash differs from verified cook manifest");
+            }
             const auto start = static_cast<std::size_t>(artifact.offset + offset);
             if (start > chunk->size() || bytes > chunk->size() - start)
                 return read_failure(io::file_error_code::read_failed, file.key,

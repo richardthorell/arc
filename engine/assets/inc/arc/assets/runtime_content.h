@@ -88,6 +88,7 @@ struct cooked_asset_catalog_telemetry
 };
 
 class cooked_asset_database;
+class remote_content_artifact_provider;
 class cas_overlay_provider;
 
 class cooked_asset_catalog
@@ -103,6 +104,12 @@ public:
      */
     [[nodiscard]] asset_status mount_remote_generation(const remote_content_release& release, derived_data_cache& cache,
                                                        io::async_file_service& files, std::int32_t priority = 25);
+    /** Mount a constructed/evaluated remote provider (complete or lazy).
+     * Registers its verified cook metadata with the Asset Database as well as VFS.
+     * For lazy mode, missing chunks remain read-time failures until verified.
+     */
+    [[nodiscard]] asset_status mount_remote_provider(std::shared_ptr<remote_content_artifact_provider> provider,
+                                                     std::int32_t priority = 25);
     [[nodiscard]] asset_status mount_provider(std::shared_ptr<io::virtual_file_provider> provider,
                                               std::int32_t priority, std::string debug_name);
     [[nodiscard]] asset_status mount_overlay(const std::shared_ptr<cas_overlay_provider>& provider,

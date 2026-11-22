@@ -1,4 +1,5 @@
 #include <arc/assets/remote_content_generation.h>
+#include <arc/assets/remote_content_lazy.h>
 #include <arc/assets/remote_content_transfer.h>
 #include <arc/assets/terrain_types.h>
 
@@ -346,5 +347,165 @@ TEST_CASE("C9.2d1 propagates cancellation without doing network work")
                          .get();
     CHECK_FALSE(cancelled.succeeded());
     CHECK(cancelled.transport_error == arc::http::content_http_error_code::cancelled);
+    CHECK(requests == 0);
+}
+
+TEST_CASE("C9.2f1 prepares only immutable metadata then downloads a missing chunk on first VFS read")
+{
+    fixture f;
+    arc::assets::derived_data_cache local{{.root = f.root / "lazy-cache"}};
+    arc::assets::lazy_remote_content_options options{.origin = "https://content.example.org"};
+    std::size_t requests{};
+
+    auto prepared = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, f.release, options, {},
+                                                                mock_remote_objects(f, requests))
+                        .get();
+    REQUIRE(prepared.succeeded());
+    CHECK_FALSE(prepared.manifest_reused);
+    CHECK(prepared.downloaded_bytes == f.manifest_bytes.size());
+    CHECK(requests == 1); // Manifest only; no package chunk download.
+    arc::assets::cache_error error;
+    CHECK_FALSE(arc::assets::load_verified_remote_object(local, f.release.chunks.front().object, error));
+    CHECK_FALSE(f.catalog.database().query(f.asset)); // Preparation never mounts.
+
+    REQUIRE(f.catalog.mount_remote_provider(prepared.provider));
+    auto database_record = f.catalog.database().query(f.asset, arc::assets::asset_types::terrain);
+    REQUIRE(database_record);
+    CHECK(database_record->generation == f.release.generation);
+    auto resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    CHECK(resolved.value().size() == f.payload.size());
+    const auto first = f.vfs.read_range(resolved.value(), 2, 6).get();
+    REQUIRE(first);
+    CHECK(first.value() == arc::io::file_buffer(f.payload.begin() + 2, f.payload.begin() + 8));
+    CHECK(requests == 2); // One full immutable chunk was fetched and verified into CAS.
+
+    const auto repeated = f.vfs.read_all(resolved.value()).get();
+    REQUIRE(repeated);
+    CHECK(repeated.value() == f.payload);
+    CHECK(requests == 2); // Verified cached chunk reused.
+
+    auto prepared_again = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, f.release, options, {},
+                                                                      mock_remote_objects(f, requests))
+                              .get();
+    REQUIRE(prepared_again.succeeded());
+    CHECK(prepared_again.manifest_reused);
+    CHECK(prepared_again.downloaded_bytes == 0);
+    CHECK(requests == 2);
+}
+
+TEST_CASE("C9.2f1 rejects corrupt lazy chunks without overwriting a previously mounted generation")
+{
+    fixture f;
+    REQUIRE(f.catalog.mount_remote_generation(f.release, f.cache, f.files));
+    arc::assets::derived_data_cache local{{.root = f.root / "lazy-corrupt-cache"}};
+    auto newer = f.release;
+    newer.generation = 6;
+    arc::assets::lazy_remote_content_options options{.origin = "https://content.example.org"};
+    std::size_t requests{};
+    auto prepared = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, newer, options, {},
+                                                                mock_remote_objects(f, requests, true))
+                        .get();
+    REQUIRE(prepared.succeeded());
+    CHECK(requests == 1);
+    REQUIRE(f.catalog.mount_remote_provider(prepared.provider, 50));
+
+    auto resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    auto rejected = f.vfs.read_all(resolved.value()).get();
+    CHECK_FALSE(rejected);
+    CHECK(rejected.error().code == arc::io::file_error_code::corrupt_content);
+    CHECK(requests == 2);
+    arc::assets::cache_error error;
+    CHECK_FALSE(arc::assets::load_verified_remote_object(local, newer.chunks.front().object, error));
+
+    auto current = f.catalog.database().query(f.asset);
+    REQUIRE(current);
+    CHECK(current->active_provider.find(":remote:6:") != std::string::npos);
+    REQUIRE(f.catalog.unmount_provider(current->active_provider));
+    auto last_good = f.catalog.resolve(f.address);
+    REQUIRE(last_good);
+    auto read = f.vfs.read_all(last_good.value()).get();
+    REQUIRE(read);
+    CHECK(read.value() == f.payload);
+}
+
+TEST_CASE("C9.2f1 rejects invalid lazy chunk metadata and wrong targets before mounting")
+{
+    fixture f;
+    arc::assets::derived_data_cache local{{.root = f.root / "lazy-invalid-cache"}};
+    arc::assets::lazy_remote_content_options options{.origin = "https://content.example.org"};
+    std::size_t requests{};
+
+    auto bad_range = f.release;
+    bad_range.chunks.front().object.size = f.cooked.artifacts.front().offset;
+    auto invalid = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, bad_range, options, {},
+                                                               mock_remote_objects(f, requests))
+                       .get();
+    CHECK_FALSE(invalid.succeeded());
+    CHECK(requests == 1); // May cache verified manifest but never download a chunk.
+    CHECK_FALSE(f.catalog.database().query(f.asset));
+
+    auto bad_target = f.release;
+    bad_target.target.platform = "android";
+    auto wrong_target = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, bad_target, options, {},
+                                                                    mock_remote_objects(f, requests))
+                            .get();
+    CHECK_FALSE(wrong_target.succeeded());
+    CHECK(requests == 1);
+
+    options.origin = "file:///etc/passwd";
+    auto bad_origin = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, f.release, options, {},
+                                                                  mock_remote_objects(f, requests))
+                          .get();
+    CHECK_FALSE(bad_origin.succeeded());
+    CHECK(requests == 1);
+}
+
+TEST_CASE("C9.2f1 metadata-only offline mount fails closed on a missing immutable chunk")
+{
+    fixture f;
+    arc::assets::derived_data_cache local{{.root = f.root / "lazy-offline-cache"}};
+    arc::assets::lazy_remote_content_options options{.origin = "https://content.example.org"};
+    std::size_t requests{};
+    auto initial = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, f.release, options, {},
+                                                               mock_remote_objects(f, requests))
+                       .get();
+    REQUIRE(initial.succeeded());
+    CHECK(requests == 1);
+
+    options.origin.clear();
+    options.offline_only = true;
+    auto offline = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, f.release, options).get();
+    REQUIRE(offline.succeeded());
+    CHECK(offline.manifest_reused);
+    REQUIRE(f.catalog.mount_remote_provider(offline.provider));
+    auto resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    auto missing = f.vfs.read_all(resolved.value()).get();
+    CHECK_FALSE(missing);
+    CHECK(missing.error().code == arc::io::file_error_code::not_found);
+    CHECK(requests == 1);
+
+    arc::jobs::cancellation_source cancelled;
+    REQUIRE(cancelled.request_cancel());
+    auto cancelled_read = f.vfs.read_all(resolved.value(), cancelled.token()).get();
+    CHECK_FALSE(cancelled_read);
+    CHECK(cancelled_read.error().code == arc::io::file_error_code::cancelled);
+}
+
+TEST_CASE("C9.2f1 pre-cancelled preparation returns a typed error without scheduling HTTP")
+{
+    fixture f;
+    arc::assets::derived_data_cache local{{.root = f.root / "lazy-pre-cancelled-cache"}};
+    arc::assets::lazy_remote_content_options options{.origin = "https://content.example.org"};
+    std::size_t requests{};
+    arc::jobs::cancellation_source cancelled;
+    REQUIRE(cancelled.request_cancel());
+    auto prepared = arc::assets::prepare_lazy_remote_generation(f.jobs, f.files, local, f.release, options,
+                                                                cancelled.token(), mock_remote_objects(f, requests))
+                        .get();
+    CHECK_FALSE(prepared.succeeded());
+    CHECK(prepared.transport_error == arc::http::content_http_error_code::cancelled);
     CHECK(requests == 0);
 }
