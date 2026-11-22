@@ -1185,7 +1185,8 @@ void app.whenReady().then(async () => {
   hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
   livePlaySession = new WindowsLivePlaySession(
     (snapshot) => {
-      if (snapshot.state === 'failed' && snapshot.pid === null) livePlayBaselines?.clear(snapshot.sessionId ?? undefined);
+      if (snapshot.state === 'failed' && snapshot.pid === null)
+        livePlayBaselines?.clear(snapshot.sessionId ?? undefined);
       if (snapshot.state === 'disconnected') livePlayAuthoringEdits?.disconnect();
       if (snapshot.state === 'failed' || snapshot.state === 'stopped') livePlayAuthoringEdits?.end();
       sendToActiveRenderer('livePlay:state', snapshot);

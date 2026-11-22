@@ -10,7 +10,14 @@ type SceneSnapshot = { sceneGuid?: unknown; entities?: unknown };
 type HostQuery = { query(type: string): Promise<{ succeeded: boolean; payload?: unknown }> };
 type HostEvent = { type: string; message?: string };
 type SendEdit = (payload: EditPayload) => string | null;
-type Pending = { guid: string; property: Property; value: number[]; revision: number; changedAt: number; lastUpdate: number };
+type Pending = {
+  guid: string;
+  property: Property;
+  value: number[];
+  revision: number;
+  changedAt: number;
+  lastUpdate: number;
+};
 type Outstanding = { key: string; revision: number; phase: 'update' | 'commit' };
 
 const guidPattern = /^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu;
@@ -106,7 +113,10 @@ export class LivePlayAuthoringEdits {
       format?: unknown;
       scene?: { id?: unknown };
     };
-    if (document.format !== 'arc.scene' || document.scene?.id?.toString().toLowerCase() !== baseline.sceneGuid.toLowerCase())
+    if (
+      document.format !== 'arc.scene' ||
+      document.scene?.id?.toString().toLowerCase() !== baseline.sceneGuid.toLowerCase()
+    )
       throw new Error('Live Play authoring edits need a matching captured scene');
     const entities = extractScene(document, true);
     this.baseline = baseline;
@@ -178,7 +188,10 @@ export class LivePlayAuthoringEdits {
   /** Accepts only full native Authoring World snapshots for this scene. */
   observeSnapshot(snapshot: SceneSnapshot): void {
     if (!this.baseline) return;
-    if (typeof snapshot.sceneGuid !== 'string' || snapshot.sceneGuid.toLowerCase() !== this.baseline.sceneGuid.toLowerCase()) {
+    if (
+      typeof snapshot.sceneGuid !== 'string' ||
+      snapshot.sceneGuid.toLowerCase() !== this.baseline.sceneGuid.toLowerCase()
+    ) {
       this.lastError = 'Authoring scene changed during the attached Play session';
       this.active = false;
       this.pending.clear();
@@ -277,20 +290,22 @@ export class LivePlayAuthoringEdits {
       expectedRuntimeRevision: this.runtimeRevision,
       phase,
     };
-    if (!livePlayMessageSchema.safeParse({
-      protocol: 'arc.live-play',
-      protocolVersion: 1,
-      sender: 'editor',
-      projectGuid: this.baseline?.projectGuid,
-      buildId: this.baseline?.buildId,
-      targetProfile: this.baseline?.targetProfile,
-      sessionId: this.baseline?.sessionId,
-      instanceId: this.baseline?.instanceId,
-      messageId: 'preview-validation',
-      sequence: 1,
-      type: 'entity.property.set',
-      payload,
-    }).success) {
+    if (
+      !livePlayMessageSchema.safeParse({
+        protocol: 'arc.live-play',
+        protocolVersion: 1,
+        sender: 'editor',
+        projectGuid: this.baseline?.projectGuid,
+        buildId: this.baseline?.buildId,
+        targetProfile: this.baseline?.targetProfile,
+        sessionId: this.baseline?.sessionId,
+        instanceId: this.baseline?.instanceId,
+        messageId: 'preview-validation',
+        sequence: 1,
+        type: 'entity.property.set',
+        payload,
+      }).success
+    ) {
       this.lastError = 'Invalid authoring transform command';
       this.active = false;
       return false;

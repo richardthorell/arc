@@ -197,7 +197,11 @@ export class LivePlayControlServer {
    */
   sendAuthoringProperty(payload: Extract<LivePlayMessage, { type: 'entity.property.set' }>['payload']): string | null {
     const peer = this.activePeer;
-    if (!peer?.ready || !peer.capabilities.includes('entity.edit') || !this.options.grantedCapabilities.includes('entity.edit'))
+    if (
+      !peer?.ready ||
+      !peer.capabilities.includes('entity.edit') ||
+      !this.options.grantedCapabilities.includes('entity.edit')
+    )
       return null;
     const command = this.message('entity.property.set', payload);
     return this.send(peer, command) ? command.messageId : null;

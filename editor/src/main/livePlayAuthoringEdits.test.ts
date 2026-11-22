@@ -64,11 +64,7 @@ function fixture() {
   return { tracker, send, host, baseline, scenePath };
 }
 
-function runtimeMessage(
-  baseline: LivePlaySceneBaseline,
-  type: string,
-  payload: unknown,
-): LivePlayMessage {
+function runtimeMessage(baseline: LivePlaySceneBaseline, type: string, payload: unknown): LivePlayMessage {
   return {
     protocol: 'arc.live-play',
     protocolVersion: 1,
@@ -124,13 +120,20 @@ describe('Live Play L1.4a authoring transform producer', () => {
       expectedRuntimeRevision: 0,
       phase: 'commit',
     });
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      requestId: 'edit-1', status: 'applied', appliedRevision: 9,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        requestId: 'edit-1',
+        status: 'applied',
+        appliedRevision: 9,
+      }),
+    );
     expect(t.tracker.snapshot().pending).toBe(0);
     t.tracker.observeSnapshot(snapshot([7, 8, 9]));
     expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({
-      value: [7, 8, 9], authoringRevision: 2, expectedRuntimeRevision: 9, phase: 'update',
+      value: [7, 8, 9],
+      authoringRevision: 2,
+      expectedRuntimeRevision: 9,
+      phase: 'update',
     });
   });
 
@@ -147,7 +150,9 @@ describe('Live Play L1.4a authoring transform producer', () => {
     expect(t.send).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(120);
     expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({
-      phase: 'commit', value: [3, 0, 0], authoringRevision: 3,
+      phase: 'commit',
+      value: [3, 0, 0],
+      authoringRevision: 3,
     });
     expect(t.send).toHaveBeenCalledTimes(2);
   });
@@ -200,7 +205,10 @@ describe('Live Play L1.4a authoring transform producer', () => {
     const t = fixture();
     let complete!: (data: { succeeded: boolean; payload: ReturnType<typeof snapshot> }) => void;
     t.host.query.mockImplementation(
-      () => new Promise((resolve) => { complete = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
     );
     t.tracker.onHostEvent({ type: 'component.changed' });
     await vi.advanceTimersByTimeAsync(16);
@@ -209,9 +217,13 @@ describe('Live Play L1.4a authoring transform producer', () => {
     await Promise.resolve();
     expect(t.tracker.snapshot()).toMatchObject({ active: false, sessionId: null, pending: 0 });
     expect(t.send).not.toHaveBeenCalled();
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      status: 'applied', requestId: 'edit-9', appliedRevision: 400,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: 'edit-9',
+        appliedRevision: 400,
+      }),
+    );
     expect(t.tracker.snapshot().revision).toBe(0);
   });
 });
