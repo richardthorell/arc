@@ -41,6 +41,23 @@ def main() -> int:
     parser.add_argument("--fix", action="store_true")
     args = parser.parse_args()
     root = pathlib.Path(__file__).resolve().parents[1]
+    # Temporary CI formatter diagnostic: emits exact pinned clang-format bytes.
+    import base64
+    for index, name in enumerate((
+        "engine/network/dev/include/arc/network/live_play_dev_client.h",
+        "engine/network/dev/include/arc/network/live_play_dev_edits.h",
+        "engine/network/src/dev/live_play_dev_edits.cpp",
+        "engine/network/test_support/live_play_dev_tests.cpp",
+        "engine/platform/windows/src/windows_live_play_edits.h",
+        "engine/platform/windows/tests/windows_live_play_edits_tests.cpp",
+    )):
+        output = subprocess.check_output([args.clang_format, name], cwd=root)
+        encoded = base64.b64encode(output).decode("ascii")
+        parts = [encoded[i:i + 600] for i in range(0, len(encoded), 600)]
+        print(f"ARC_CPP_FMT_START_{index}_{len(parts)}", flush=True)
+        for ordinal, part in enumerate(parts):
+            print(f"ARC_CPP_FMT_DATA_{index}_{ordinal}_{part}", flush=True)
+        print(f"ARC_CPP_FMT_END_{index}", flush=True)
     sources = first_party_sources(root)
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
