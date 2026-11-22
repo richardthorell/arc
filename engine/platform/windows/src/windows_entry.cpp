@@ -21,6 +21,7 @@
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
 #include <arc/network/live_play_dev_client.h>
 #include "windows_live_play_edits.h"
+#include "windows_live_play_inspection.h"
 #include <atomic>
 #include <thread>
 #endif
@@ -405,10 +406,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     // sets it, so edits cannot touch a stale packaged startup scene.
     std::atomic<bool> live_baseline_active{false};
     live::edit_mailbox live_edits;
+    live::inspection_mailbox live_inspections;
     arc::platform::windows::live_play_transform_applier live_edit_applier;
+    arc::platform::windows::live_play_runtime_inspector live_inspector;
     std::jthread live_worker(
         [client = std::move(live_client), &live_ticks, &live_phase, &live_baseline_active,
-         &live_edits](std::stop_token stop) mutable
+         &live_edits, &live_inspections](std::stop_token stop) mutable
         {
             std::string error;
             int last_phase = 0;
@@ -440,6 +443,18 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                     if (!sent) break;
                 }
                 if (!error.empty()) break;
+                // Snapshot/result serialization stays on the socket owner,
+                // never on the world simulation thread.
+                if (auto snapshot = live_inspections.take_snapshot())
+                    if (!client->send_hierarchy_snapshot(*snapshot, error)) break;
+                for (const auto& outcome : live_inspections.take_results())
+                {
+                    const bool sent = outcome.result
+                                          ? client->send_inspection_result(*outcome.result, error)
+                                          : client->send_rejected_ack(outcome.request_id, outcome.error_code, error);
+                    if (!sent) break;
+                }
+                if (!error.empty()) break;
                 const auto incoming = client->poll(30, error);
                 if (!error.empty()) break;
                 if (incoming && incoming->type == "scene.baseline.offer")
@@ -449,6 +464,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                     // active merely because the socket received its offer.
                     live_baseline_active.store(false);
                     if (!client->send_baseline_status("rejected", "unavailable", error)) break;
+                }
+                else if (incoming && incoming->inspection)
+                {
+                    if (!live_inspections.enqueue(*incoming->inspection))
+                        if (!client->send_rejected_ack(incoming->message_id, "busy", error)) break;
                 }
                 else if (incoming && incoming->edit)
                 {
@@ -543,6 +563,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     using clock = std::chrono::steady_clock;
     auto last_frame = clock::now();
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    auto next_inspection_sample = clock::time_point{};
+#endif
     while (session->state() == project::packaged_runtime_state::running ||
            session->state() == project::packaged_runtime_state::suspended)
 #else
@@ -600,6 +623,24 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
         live_phase.store(session->state() == project::packaged_runtime_state::suspended ? 2 : 1);
         ++live_ticks;
+        // Read-only ECS inspection happens on this same owning frame thread.
+        // Its immutable payload is handed to the socket worker through a
+        // bounded mailbox. Sample hierarchy at <=4 Hz and only on changes.
+        for (const auto& request : live_inspections.take_requests())
+        {
+            if (!live_inspections.report(live_inspector.inspect(runtime, request)))
+            {
+                state.failure = "Live Play inspection result mailbox overflow";
+                session->request_stop();
+                break;
+            }
+        }
+        if (clock::now() >= next_inspection_sample)
+        {
+            if (auto snapshot = live_inspector.sample(runtime))
+                live_inspections.publish(std::move(*snapshot));
+            next_inspection_sample = clock::now() + std::chrono::milliseconds(250);
+        }
 #endif
 #else
         if (runtime.running()) runtime.tick();
@@ -615,6 +656,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     live_worker.join();
     live_edits.clear();
     live_edit_applier.clear();
+    live_inspections.clear();
+    live_inspector.reset();
 #endif
     auto stopped = session->shutdown();
     if (!stopped && state.failure.empty()) state.failure = stopped.error().field + ": " + stopped.error().message;
