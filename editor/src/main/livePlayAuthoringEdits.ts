@@ -134,11 +134,9 @@ export class LivePlayAuthoringEdits {
 
   onHostEvent(event: HostEvent): void {
     if (!this.baseline) return;
-    if (event.type === 'scene.changed') {
-      if (!/undo completed|redo completed|edit transaction cancelled/i.test(event.message ?? '')) return;
-    } else if (event.type !== 'component.changed') {
-      return;
-    }
+    // Every native scene mutation, including open/new scene and Undo/Redo,
+    // must recheck the active scene GUID before sending another edit.
+    if (event.type !== 'scene.changed' && event.type !== 'component.changed') return;
     this.scheduleRefresh();
   }
 
@@ -297,7 +295,12 @@ export class LivePlayAuthoringEdits {
       this.active = false;
       return false;
     }
-    const id = this.send(payload);
+    let id: string | null;
+    try {
+      id = this.send(payload);
+    } catch {
+      return false; // Retain the latest final value for explicit retry.
+    }
     if (!id) return false;
     this.outstanding.set(id, { key: `${item.guid}:${item.property}`, revision: item.revision, phase });
     return true;

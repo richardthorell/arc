@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LivePlayMessage } from '../common/livePlayProtocol';
+
+type EditPayload = Extract<LivePlayMessage, { type: 'entity.property.set' }>['payload'];
 import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
 import type { LivePlaySceneBaseline } from './livePlaySceneBaseline';
 
@@ -55,7 +57,7 @@ function fixture() {
     scenePath,
   };
   let count = 0;
-  const send = vi.fn((_payload: unknown): string | null => `edit-${++count}`);
+  const send = vi.fn((_payload: EditPayload): string | null => `edit-${++count}`);
   const host = { query: vi.fn(async () => ({ succeeded: true, payload: snapshot() })) };
   const tracker = new LivePlayAuthoringEdits(host, send);
   tracker.begin(baseline);
@@ -163,7 +165,7 @@ describe('Live Play L1.4a authoring transform producer', () => {
     t.tracker.onHostEvent({ type: 'scene.changed', message: 'Undo completed' });
     await vi.advanceTimersByTimeAsync(16);
     expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({ phase: 'update', value: [0, 0, 0] });
-    t.tracker.onHostEvent({ type: 'scene.changed', message: 'Scene saved' });
+    t.tracker.onHostEvent({ type: 'entity.selected', message: 'Selection only' });
     await vi.advanceTimersByTimeAsync(16);
     expect(t.host.query).toHaveBeenCalledTimes(2);
   });
