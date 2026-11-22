@@ -214,10 +214,19 @@ function moduleRank(target: BuildTargetNode, task: WorkflowTaskSpan): number {
   return 2;
 }
 
+function moduleStart(target: BuildTargetNode): number {
+  const value = target.buildStartedAt ? Date.parse(target.buildStartedAt) : NaN;
+  return Number.isFinite(value) ? value : Number.POSITIVE_INFINITY;
+}
+
 function sortedModules(targets: BuildTargetNode[], task: WorkflowTaskSpan): BuildTargetNode[] {
-  return [...targets].sort(
-    (left, right) => moduleRank(left, task) - moduleRank(right, task) || left.name.localeCompare(right.name),
-  );
+  return [...targets].sort((left, right) => {
+    const leftRank = moduleRank(left, task);
+    const rightRank = moduleRank(right, task);
+    if (leftRank !== rightRank) return leftRank - rightRank;
+    if (leftRank !== 2 && moduleStart(left) !== moduleStart(right)) return moduleStart(left) - moduleStart(right);
+    return left.name.localeCompare(right.name);
+  });
 }
 
 function ModuleRow({
@@ -314,14 +323,15 @@ function WorkflowTaskRows({
   const externalProgress = externalTargets.some((target) => target.artifactObservedAt);
   const externalBuilding = Boolean(externalActive || (externalProgress && task.state === 'running'));
   const moduleEntries: Array<
-    | { kind: 'target'; target: BuildTargetNode; rank: number; name: string }
-    | { kind: 'external'; rank: number; name: string }
+    | { kind: 'target'; target: BuildTargetNode; rank: number; name: string; startedAt: number }
+    | { kind: 'external'; rank: number; name: string; startedAt: number }
   > = [
     ...projectTargets.map((target) => ({
       kind: 'target' as const,
       target,
       rank: moduleRank(target, task),
       name: target.name,
+      startedAt: moduleStart(target),
     })),
     ...(externalTargets.length
       ? [
@@ -329,10 +339,15 @@ function WorkflowTaskRows({
             kind: 'external' as const,
             rank: externalBuilt ? 0 : externalBuilding ? 1 : 2,
             name: 'Third-party',
+            startedAt: Math.min(...externalTargets.map(moduleStart)),
           },
         ]
       : []),
-  ].sort((left, right) => left.rank - right.rank || left.name.localeCompare(right.name));
+  ].sort((left, right) => {
+    if (left.rank !== right.rank) return left.rank - right.rank;
+    if (left.rank !== 2 && left.startedAt !== right.startedAt) return left.startedAt - right.startedAt;
+    return left.name.localeCompare(right.name);
+  });
   const taskMeasured = task.startMs !== undefined && task.durationMs !== undefined;
   const taskStyle = taskMeasured ? timelineSpanStyle(task.startMs!, task.durationMs!, viewport) : undefined;
   return (

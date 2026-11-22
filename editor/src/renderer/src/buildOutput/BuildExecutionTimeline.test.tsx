@@ -60,6 +60,15 @@ const workflow = (): BuildMonitorRun => ({
                 artifacts: [],
               },
               {
+                id: 'animation',
+                name: 'arc-animation',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                buildStartedAt: '2026-11-20T12:00:00.150Z',
+                artifactObservedAt: '2026-11-20T12:00:00.225Z',
+              },
+              {
                 id: 'render',
                 name: 'arc-render',
                 type: 'STATIC_LIBRARY',
@@ -68,6 +77,16 @@ const workflow = (): BuildMonitorRun => ({
                 activePhase: 'compiling',
                 activePhaseStartedAt: '2026-11-20T12:00:00.230Z',
                 buildStartedAt: '2026-11-20T12:00:00.230Z',
+              },
+              {
+                id: 'audio',
+                name: 'arc-audio',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
+                activePhase: 'linking',
+                activePhaseStartedAt: '2026-11-20T12:00:00.240Z',
+                buildStartedAt: '2026-11-20T12:00:00.240Z',
               },
               {
                 id: 'water',
@@ -119,7 +138,7 @@ describe('BuildExecutionTimeline', () => {
     expect(screen.getByText('Third-party')).toBeInTheDocument();
     expect(screen.queryByText('meshoptimizer')).not.toBeInTheDocument();
     expect(screen.queryByText('ZERO_CHECK')).not.toBeInTheDocument();
-    expect(container.querySelectorAll('.build-stage-gantt-bar.is-module')).toHaveLength(1);
+    expect(container.querySelectorAll('.build-stage-gantt-bar.is-module')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Collapse Build SDK modules' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
     expect(screen.getByRole('button', { name: 'Collapse compile subtasks' })).toHaveAttribute('aria-expanded', 'true');
@@ -161,7 +180,7 @@ describe('BuildExecutionTimeline', () => {
       [...document.querySelectorAll('.build-stage-gantt-label.is-module > strong')].map((element) =>
         element.textContent?.trim(),
       ),
-    ).toEqual(['arc-assets', 'Third-party', 'arc-render', 'arc-water']);
+    ).toEqual(['arc-assets', 'arc-animation', 'Third-party', 'arc-render', 'arc-audio', 'arc-water']);
   });
 
   it('uses a fixed 30-second scale and follows the right edge until scrubbed', () => {
