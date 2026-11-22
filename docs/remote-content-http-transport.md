@@ -312,3 +312,8 @@ the runtime revalidates compatible release metadata and CAS bytes before mount.
 This slice does not add C9.3 launch overrides, C9.4 editor HTTP service,
 automatic scene-ready handshake, CDN signing, automatic persisted-release
 reconstruction, live GPU hot reload or remote feed replay.
+
+The session does not change normal Editor Viewport Play, issue a build, or
+silently start a content server. External Play orchestration remains owned by
+#1140 and can activate this verified provider only after the cook/publish path
+and runtime identity checks have completed.
