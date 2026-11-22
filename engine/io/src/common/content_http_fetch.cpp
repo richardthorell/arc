@@ -353,8 +353,7 @@ jobs::job_future<content_http_fetch_result> fetch_content_http(jobs::job_system&
 {
     return jobs.submit_future({.name = "content-http-fetch",
                                .priority = jobs::job_priority::normal,
-                               .affinity = jobs::job_affinity::io_thread,
-                               .cancellation = cancellation},
+                               .affinity = jobs::job_affinity::io_thread},
                               [request = std::move(request), limits, cancellation]() -> content_http_fetch_result
                               {
                                   const auto preflight = validate_content_http_request(request, limits);
