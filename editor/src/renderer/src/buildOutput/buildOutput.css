@@ -2033,6 +2033,11 @@
   background-color: #101e27;
 }
 
+.build-stage-gantt-track.is-module .build-stage-gantt-bar.is-module {
+  top: 7px;
+  height: 20px;
+}
+
 .build-stage-target-milestone {
   position: absolute;
   top: 12px;

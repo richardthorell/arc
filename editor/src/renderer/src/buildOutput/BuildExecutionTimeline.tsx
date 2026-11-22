@@ -208,21 +208,37 @@ function isExternalTarget(target: BuildTargetNode): boolean {
   );
 }
 
+function moduleRank(target: BuildTargetNode, task: WorkflowTaskSpan): number {
+  if (target.artifactObservedAt) return 0;
+  if (task.state === 'running' && target.activePhase) return 1;
+  return 2;
+}
+
+function sortedModules(targets: BuildTargetNode[], task: WorkflowTaskSpan): BuildTargetNode[] {
+  return [...targets].sort(
+    (left, right) => moduleRank(left, task) - moduleRank(right, task) || left.name.localeCompare(right.name),
+  );
+}
+
 function ModuleRow({
   target,
   task,
   viewport,
   runStartedAt,
+  timelineNowMs,
   external,
 }: {
   target: BuildTargetNode;
   task: WorkflowTaskSpan;
   viewport: TimelineViewport;
   runStartedAt: number;
+  timelineNowMs: number;
   external?: boolean;
 }) {
   const observedAt = target.artifactObservedAt ? Date.parse(target.artifactObservedAt) : NaN;
   const observedOffset = Number.isFinite(observedAt) ? Math.max(0, observedAt - runStartedAt) : undefined;
+  const startedAt = target.buildStartedAt ? Date.parse(target.buildStartedAt) : NaN;
+  const startedOffset = Number.isFinite(startedAt) ? Math.max(0, startedAt - runStartedAt) : undefined;
   const active = task.state === 'running' && !target.artifactObservedAt ? target.activePhase : undefined;
   const status = target.artifactObservedAt
     ? 'Built'
@@ -232,6 +248,11 @@ function ModuleRow({
         ? 'Linking…'
         : 'Pending';
   const pointStyle = observedOffset === undefined ? undefined : timelinePointStyle(observedOffset, viewport);
+  const barEnd = observedOffset ?? (active ? timelineNowMs : undefined);
+  const barStyle =
+    startedOffset !== undefined && barEnd !== undefined
+      ? timelineSpanStyle(startedOffset, Math.max(0, barEnd - startedOffset), viewport)
+      : undefined;
   return (
     <div className={`build-stage-gantt-row is-module${external ? ' is-external' : ''}`}>
       <div className={`build-stage-gantt-label is-module${external ? ' is-external' : ''}`}>
@@ -244,7 +265,13 @@ function ModuleRow({
         <small>{status}</small>
       </div>
       <div className="build-stage-gantt-track is-module">
-        {pointStyle ? (
+        {barStyle ? (
+          <span
+            className={`build-stage-gantt-bar is-module ${target.artifactObservedAt ? 'is-succeeded' : 'is-running'}`}
+            style={barStyle}
+            title={`${target.name} · ${formatDuration(Math.max(0, barEnd! - startedOffset!))}`}
+          />
+        ) : pointStyle ? (
           <span className="build-stage-target-milestone" style={pointStyle} title={`${target.name} output observed`} />
         ) : !target.artifactObservedAt ? (
           <span className="build-stage-gantt-unavailable">Pending</span>
@@ -258,6 +285,7 @@ function WorkflowTaskRows({
   task,
   viewport,
   runStartedAt,
+  timelineNowMs,
   nested,
   collapsed,
   onToggle,
@@ -265,6 +293,7 @@ function WorkflowTaskRows({
   task: WorkflowTaskSpan;
   viewport: TimelineViewport;
   runStartedAt: number;
+  timelineNowMs: number;
   nested: boolean;
   collapsed: boolean;
   onToggle: () => void;
@@ -273,12 +302,37 @@ function WorkflowTaskRows({
   const targets = (task.targetGraph?.nodes ?? []).filter(
     (target) => target.id !== task.targetGraph?.rootTargetId && target.name.toLowerCase() !== 'zero_check',
   );
-  const projectTargets = targets.filter((target) => !isExternalTarget(target));
-  const externalTargets = targets.filter(isExternalTarget);
+  const projectTargets = sortedModules(
+    targets.filter((target) => !isExternalTarget(target)),
+    task,
+  );
+  const externalTargets = sortedModules(targets.filter(isExternalTarget), task);
   const externalActive = externalTargets.find(
     (target) => task.state === 'running' && !target.artifactObservedAt && target.activePhase,
   );
   const externalBuilt = externalTargets.length > 0 && externalTargets.every((target) => target.artifactObservedAt);
+  const externalProgress = externalTargets.some((target) => target.artifactObservedAt);
+  const externalBuilding = Boolean(externalActive || (externalProgress && task.state === 'running'));
+  const moduleEntries: Array<
+    | { kind: 'target'; target: BuildTargetNode; rank: number; name: string }
+    | { kind: 'external'; rank: number; name: string }
+  > = [
+    ...projectTargets.map((target) => ({
+      kind: 'target' as const,
+      target,
+      rank: moduleRank(target, task),
+      name: target.name,
+    })),
+    ...(externalTargets.length
+      ? [
+          {
+            kind: 'external' as const,
+            rank: externalBuilt ? 0 : externalBuilding ? 1 : 2,
+            name: 'Third-party',
+          },
+        ]
+      : []),
+  ].sort((left, right) => left.rank - right.rank || left.name.localeCompare(right.name));
   const taskMeasured = task.startMs !== undefined && task.durationMs !== undefined;
   const taskStyle = taskMeasured ? timelineSpanStyle(task.startMs!, task.durationMs!, viewport) : undefined;
   return (
@@ -318,57 +372,62 @@ function WorkflowTaskRows({
       </div>
       {task.targetGraph &&
         !collapsed &&
-        projectTargets.map((target) => (
-          <ModuleRow
-            key={`${task.id}:${target.id}`}
-            target={target}
-            task={task}
-            viewport={viewport}
-            runStartedAt={runStartedAt}
-          />
-        ))}
-      {task.targetGraph && !collapsed && externalTargets.length > 0 && (
-        <>
-          <div className="build-stage-gantt-row is-module-group">
-            <div className="build-stage-gantt-label is-module is-group">
-              <button
-                type="button"
-                className="build-stage-expand"
-                aria-label={`${externalCollapsed ? 'Expand' : 'Collapse'} Third-party modules`}
-                aria-expanded={!externalCollapsed}
-                onClick={() => setExternalCollapsed((value) => !value)}
-              >
-                {externalCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-              </button>
-              <i className={externalBuilt ? 'is-succeeded' : externalActive ? 'is-building' : 'is-pending'} />
-              <strong>Third-party</strong>
-              <small>
-                {externalActive?.activePhase === 'compiling'
-                  ? 'Compiling…'
-                  : externalActive?.activePhase === 'linking'
-                    ? 'Linking…'
-                    : externalBuilt
-                      ? 'Built'
-                      : `${externalTargets.length} modules`}
-              </small>
-            </div>
-            <div className="build-stage-gantt-track is-module">
-              <span className="build-stage-gantt-unavailable">{externalTargets.length} modules</span>
-            </div>
-          </div>
-          {!externalCollapsed &&
-            externalTargets.map((target) => (
-              <ModuleRow
-                key={`${task.id}:${target.id}`}
-                target={target}
-                task={task}
-                viewport={viewport}
-                runStartedAt={runStartedAt}
-                external
-              />
-            ))}
-        </>
-      )}
+        moduleEntries.map((entry) =>
+          entry.kind === 'target' ? (
+            <ModuleRow
+              key={`${task.id}:${entry.target.id}`}
+              target={entry.target}
+              task={task}
+              viewport={viewport}
+              runStartedAt={runStartedAt}
+              timelineNowMs={timelineNowMs}
+            />
+          ) : (
+            <Fragment key={`${task.id}:third-party`}>
+              <div className="build-stage-gantt-row is-module-group">
+                <div className="build-stage-gantt-label is-module is-group">
+                  <button
+                    type="button"
+                    className="build-stage-expand"
+                    aria-label={`${externalCollapsed ? 'Expand' : 'Collapse'} Third-party modules`}
+                    aria-expanded={!externalCollapsed}
+                    onClick={() => setExternalCollapsed((value) => !value)}
+                  >
+                    {externalCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                  </button>
+                  <i className={externalBuilt ? 'is-succeeded' : externalBuilding ? 'is-building' : 'is-pending'} />
+                  <strong>Third-party</strong>
+                  <small>
+                    {externalActive?.activePhase === 'compiling'
+                      ? 'Compiling…'
+                      : externalActive?.activePhase === 'linking'
+                        ? 'Linking…'
+                        : externalBuilt
+                          ? 'Built'
+                          : externalBuilding
+                            ? 'Building…'
+                            : `${externalTargets.length} modules`}
+                  </small>
+                </div>
+                <div className="build-stage-gantt-track is-module">
+                  <span className="build-stage-gantt-unavailable">{externalTargets.length} modules</span>
+                </div>
+              </div>
+              {!externalCollapsed &&
+                externalTargets.map((target) => (
+                  <ModuleRow
+                    key={`${task.id}:${target.id}`}
+                    target={target}
+                    task={task}
+                    viewport={viewport}
+                    runStartedAt={runStartedAt}
+                    timelineNowMs={timelineNowMs}
+                    external
+                  />
+                ))}
+            </Fragment>
+          ),
+        )}
     </>
   );
 }
@@ -494,6 +553,7 @@ function WorkflowHierarchy({
                     task={task}
                     viewport={viewport}
                     runStartedAt={runStartedAt}
+                    timelineNowMs={timeline.durationMs}
                     nested={!flattenTasks}
                     collapsed={collapsedTasks.has(task.id)}
                     onToggle={() => toggleTask(task.id)}

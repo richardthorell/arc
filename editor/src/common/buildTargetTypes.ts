@@ -19,6 +19,8 @@ export type BuildTargetNode = {
   /** Native task phase currently reported for this target. Never inferred from graph order. */
   activePhase?: BuildTargetActivePhase;
   activePhaseStartedAt?: string;
+  /** First authoritative native compile/link event observed for this target. */
+  buildStartedAt?: string;
 };
 
 export type BuildTargetGraph = {

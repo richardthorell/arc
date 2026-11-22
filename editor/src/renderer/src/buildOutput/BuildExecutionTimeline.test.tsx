@@ -49,6 +49,7 @@ const workflow = (): BuildMonitorRun => ({
                 type: 'STATIC_LIBRARY',
                 dependencies: [],
                 artifacts: ['engine/assets/Shipping/arc-assets.lib'],
+                buildStartedAt: '2026-11-20T12:00:00.120Z',
                 artifactObservedAt: '2026-11-20T12:00:00.220Z',
               },
               {
@@ -66,6 +67,14 @@ const workflow = (): BuildMonitorRun => ({
                 artifacts: [],
                 activePhase: 'compiling',
                 activePhaseStartedAt: '2026-11-20T12:00:00.230Z',
+                buildStartedAt: '2026-11-20T12:00:00.230Z',
+              },
+              {
+                id: 'water',
+                name: 'arc-water',
+                type: 'STATIC_LIBRARY',
+                dependencies: [],
+                artifacts: [],
               },
               {
                 id: 'third_party/meshoptimizer/meshoptimizer.vcxproj',
@@ -99,7 +108,7 @@ afterEach(cleanup);
 
 describe('BuildExecutionTimeline', () => {
   it('renders expandable workflow, target and compiler task hierarchy', () => {
-    render(<BuildExecutionTimeline run={workflow()} />);
+    const { container } = render(<BuildExecutionTimeline run={workflow()} />);
     expect(screen.getByRole('region', { name: 'Build execution timeline' })).toHaveTextContent('Hierarchical Gantt');
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('validate');
     expect(screen.getByRole('region', { name: 'Workflow stage hierarchy' })).toHaveTextContent('package');
@@ -110,6 +119,7 @@ describe('BuildExecutionTimeline', () => {
     expect(screen.getByText('Third-party')).toBeInTheDocument();
     expect(screen.queryByText('meshoptimizer')).not.toBeInTheDocument();
     expect(screen.queryByText('ZERO_CHECK')).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.build-stage-gantt-bar.is-module')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Collapse Build SDK modules' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('region', { name: 'Compiler task hierarchy' })).toHaveTextContent('2 measured');
     expect(screen.getByRole('button', { name: 'Collapse compile subtasks' })).toHaveAttribute('aria-expanded', 'true');
@@ -147,6 +157,11 @@ describe('BuildExecutionTimeline', () => {
     const status = screen.getByText('Compiling…');
     expect(status.closest('.build-stage-gantt-label')).toHaveTextContent('arc-render');
     expect(status.closest('.build-stage-gantt-label')?.querySelector('.is-building')).toBeInTheDocument();
+    expect(
+      [...document.querySelectorAll('.build-stage-gantt-label.is-module > strong')].map((element) =>
+        element.textContent?.trim(),
+      ),
+    ).toEqual(['arc-assets', 'Third-party', 'arc-render', 'arc-water']);
   });
 
   it('uses a fixed 30-second scale and follows the right edge until scrubbed', () => {

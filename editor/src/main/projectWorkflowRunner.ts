@@ -216,8 +216,10 @@ export class ProjectWorkflowRunner {
               const normalized = targetName.toLowerCase();
               const target = graph.nodes.find((node) => node.name.toLowerCase() === normalized);
               if (!target || target.artifactObservedAt || target.activePhase === phase) return false;
+              const timestamp = new Date().toISOString();
+              target.buildStartedAt ??= timestamp;
               target.activePhase = phase;
-              target.activePhaseStartedAt = new Date().toISOString();
+              target.activePhaseStartedAt = timestamp;
               return true;
             }),
           reportRequestedTargetSatisfied: () =>

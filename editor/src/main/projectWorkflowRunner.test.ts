@@ -160,6 +160,7 @@ describe('project workflow orchestration', () => {
               id: 'assets',
               name: 'arc-assets',
               artifactObservedAt: expect.any(String),
+              buildStartedAt: expect.any(String),
             },
           ],
         },
