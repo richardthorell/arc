@@ -376,15 +376,15 @@ void test_property_edit_decoding_and_mailbox()
 void test_inspection_protocol_and_bounded_mailbox()
 {
     using arc::network::live_play_dev::decode_inspection_request;
-    using arc::network::live_play_dev::inspection_mailbox;
-    using arc::network::live_play_dev::hierarchy_snapshot;
     using arc::network::live_play_dev::hierarchy_item;
-    const json authored = {{"entity", {{"kind", "authored"},
-                                       {"entityGuid", "33333333-3333-3333-3333-333333333333"}}},
+    using arc::network::live_play_dev::hierarchy_snapshot;
+    using arc::network::live_play_dev::inspection_mailbox;
+    const json authored = {{"entity", {{"kind", "authored"}, {"entityGuid", "33333333-3333-3333-3333-333333333333"}}},
                            {"component", {{"typeId", "arc.transform"}, {"schemaVersion", 1}}}};
     auto parsed = decode_inspection_request("inspect-7", authored.dump());
     check(parsed.has_value() && parsed->entity.authored && parsed->component == "arc.transform" &&
-              parsed->schema_version == 1, "Valid authored inspect request was rejected");
+              parsed->schema_version == 1,
+          "Valid authored inspect request was rejected");
     auto runtime = authored;
     runtime["entity"] = {{"kind", "runtime"}, {"runtimeEntityId", "w1-x1-e9-g2"}};
     parsed = decode_inspection_request("inspect-8", runtime.dump());
@@ -417,12 +417,12 @@ void test_inspection_protocol_and_bounded_mailbox()
     check(!mailbox.enqueue(*parsed), "Unbounded inspector request queue accepted");
     const auto requests = mailbox.take_requests();
     check(requests.size() == 64 && requests.front().request_id == "inspect-0" &&
-              requests.back().request_id == "inspect-63", "Inspector request mailbox reordered work");
+              requests.back().request_id == "inspect-63",
+          "Inspector request mailbox reordered work");
     check(mailbox.take_requests().empty(), "Inspector mailbox replayed drained work");
     hierarchy_snapshot initial;
     initial.world_revision = 3;
-    initial.entities.push_back({.entity = {.authored = false, .id = "w1-x1-e9-g2"},
-                                .name = "Spawned"});
+    initial.entities.push_back({.entity = {.authored = false, .id = "w1-x1-e9-g2"}, .name = "Spawned"});
     mailbox.publish(initial);
     hierarchy_snapshot latest;
     latest.world_revision = 4;
@@ -433,11 +433,12 @@ void test_inspection_protocol_and_bounded_mailbox()
     check(snapshot && snapshot->world_revision == 4 && snapshot->entities.front().name == "Renamed",
           "Hierarchy coalescing did not retain the latest state");
     check(!mailbox.take_snapshot(), "Old snapshot was replayed");
-    check(mailbox.report({.request_id = "inspect-0",
-                          .error_code = "unknown_entity"}), "Failed to report rejected inspect request");
+    check(mailbox.report({.request_id = "inspect-0", .error_code = "unknown_entity"}),
+          "Failed to report rejected inspect request");
     const auto results = mailbox.take_results();
     check(results.size() == 1 && results.front().request_id == "inspect-0" &&
-              results.front().error_code == "unknown_entity", "Inspector error result was lost");
+              results.front().error_code == "unknown_entity",
+          "Inspector error result was lost");
     mailbox.clear();
     check(mailbox.take_results().empty(), "Stop retained stale inspection results");
 }

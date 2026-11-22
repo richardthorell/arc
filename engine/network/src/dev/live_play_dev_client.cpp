@@ -594,25 +594,23 @@ bool client::send_hierarchy_snapshot(const hierarchy_snapshot& snapshot, std::st
                             {"parent", item.parent ? encode_entity(*item.parent) : json(nullptr)},
                             {"name", item.name}});
     }
-    const json payload = {{"worldRevision", snapshot.world_revision},
-                          {"entities", std::move(entities)},
-                          {"complete", snapshot.complete}};
+    const json payload = {
+        {"worldRevision", snapshot.world_revision}, {"entities", std::move(entities)}, {"complete", snapshot.complete}};
     return send_message("hierarchy.snapshot", payload.dump(-1, ' ', false, json::error_handler_t::replace), error);
 }
 
 bool client::send_inspection_result(const component_inspection& result, std::string& error)
 {
     if (std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "entity.inspect") ==
-        negotiated_capabilities_.end() ||
+            negotiated_capabilities_.end() ||
         result.runtime_revision > maximum_js_safe_integer || result.properties.size() > 64)
     {
         error = "Runtime component inspection is not negotiated or exceeds bounds";
         return false;
     }
     const auto& target = result.request;
-    const json entity = target.entity.authored
-                            ? json{{"kind", "authored"}, {"entityGuid", target.entity.id}}
-                            : json{{"kind", "runtime"}, {"runtimeEntityId", target.entity.id}};
+    const json entity = target.entity.authored ? json{{"kind", "authored"}, {"entityGuid", target.entity.id}}
+                                               : json{{"kind", "runtime"}, {"runtimeEntityId", target.entity.id}};
     json properties = json::array();
     for (const auto& item : result.properties)
     {
@@ -636,7 +634,8 @@ bool client::send_inspection_result(const component_inspection& result, std::str
                           {"component", {{"typeId", target.component}, {"schemaVersion", target.schema_version}}},
                           {"runtimeRevision", result.runtime_revision},
                           {"properties", std::move(properties)}};
-    return send_message("component.inspect.result", payload.dump(-1, ' ', false, json::error_handler_t::replace), error);
+    return send_message("component.inspect.result", payload.dump(-1, ' ', false, json::error_handler_t::replace),
+                        error);
 }
 
 bool client::send_content_generation(std::uint64_t generation, std::string_view status, std::string& error)
@@ -803,8 +802,8 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         return std::nullopt;
     }
     inbound_sequence_ = sequence;
-    return incoming_message{std::move(type), std::move(message_id), sequence, std::move(text),
-                            std::move(edit), std::move(inspection)};
+    return incoming_message{std::move(type), std::move(message_id), sequence,
+                            std::move(text), std::move(edit),       std::move(inspection)};
 }
 
 std::uint64_t client::last_received_sequence() const noexcept

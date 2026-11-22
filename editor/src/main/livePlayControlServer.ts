@@ -208,7 +208,9 @@ export class LivePlayControlServer {
   }
 
   /** L1.5a: selected runtime entity/component only; UI routing in L1.5b. */
-  sendInspectRequest(payload: Extract<LivePlayMessage, { type: 'component.inspect.request' }>['payload']): string | null {
+  sendInspectRequest(
+    payload: Extract<LivePlayMessage, { type: 'component.inspect.request' }>['payload'],
+  ): string | null {
     const peer = this.activePeer;
     if (
       !peer?.ready ||
@@ -221,8 +223,7 @@ export class LivePlayControlServer {
   }
 
   private message(
-    type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer' | 'entity.property.set' |
-      'component.inspect.request',
+    type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer' | 'entity.property.set' | 'component.inspect.request',
     payload: unknown,
   ): LivePlayMessage {
     const item = {

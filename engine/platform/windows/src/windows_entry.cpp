@@ -410,8 +410,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     arc::platform::windows::live_play_transform_applier live_edit_applier;
     arc::platform::windows::live_play_runtime_inspector live_inspector;
     std::jthread live_worker(
-        [client = std::move(live_client), &live_ticks, &live_phase, &live_baseline_active,
-         &live_edits, &live_inspections](std::stop_token stop) mutable
+        [client = std::move(live_client), &live_ticks, &live_phase, &live_baseline_active, &live_edits,
+         &live_inspections](std::stop_token stop) mutable
         {
             std::string error;
             int last_phase = 0;
@@ -637,8 +637,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         }
         if (clock::now() >= next_inspection_sample)
         {
-            if (auto snapshot = live_inspector.sample(runtime))
-                live_inspections.publish(std::move(*snapshot));
+            if (auto snapshot = live_inspector.sample(runtime)) live_inspections.publish(std::move(*snapshot));
             next_inspection_sample = clock::now() + std::chrono::milliseconds(250);
         }
 #endif

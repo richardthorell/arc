@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "node scripts/l15a-format-diagnostic.cjs && prettier --check ."
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

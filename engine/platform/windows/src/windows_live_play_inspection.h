@@ -76,8 +76,7 @@ public:
             }
             if (!snapshot.complete) break;
         }
-        if (initialized_ && previous_ == snapshot.entities && complete_ == snapshot.complete)
-            return std::nullopt;
+        if (initialized_ && previous_ == snapshot.entities && complete_ == snapshot.complete) return std::nullopt;
         initialized_ = true;
         previous_ = snapshot.entities;
         complete_ = snapshot.complete;
@@ -88,8 +87,7 @@ public:
     /** Inspect one component at a safe frame boundary, never serialize
      * opaque gameplay component pointers or raw ECS memory.
      */
-    [[nodiscard]] inspection_outcome inspect(const framework::runtime& runtime,
-                                             const inspection_request& request) const
+    [[nodiscard]] inspection_outcome inspect(const framework::runtime& runtime, const inspection_request& request) const
     {
         using namespace network::live_play_dev;
         const auto reject = [&](std::string code) -> inspection_outcome
@@ -127,10 +125,11 @@ public:
             const auto* transform = entities.try_get<scene::transform_component>(selected);
             if (!transform) return reject("unsupported_operation");
             value.properties = {
-                {.path = "position", .numbers = {transform->position[0], transform->position[1],
-                                                 transform->position[2]}},
-                {.path = "rotation", .numbers = {transform->rotation[0], transform->rotation[1],
-                                                 transform->rotation[2], transform->rotation[3]}},
+                {.path = "position",
+                 .numbers = {transform->position[0], transform->position[1], transform->position[2]}},
+                {.path = "rotation",
+                 .numbers = {transform->rotation[0], transform->rotation[1], transform->rotation[2],
+                             transform->rotation[3]}},
                 {.path = "scale", .numbers = {transform->scale[0], transform->scale[1], transform->scale[2]}},
             };
         }
@@ -138,22 +137,21 @@ public:
         {
             const auto* name = entities.try_get<scene::name_component>(selected);
             if (!name) return reject("unsupported_operation");
-            value.properties = {{.path = "value", .kind = inspection_value_kind::text,
-                                 .text = name->value.substr(0, 2048)}};
+            value.properties = {
+                {.path = "value", .kind = inspection_value_kind::text, .text = name->value.substr(0, 2048)}};
         }
         else if (request.component == "arc.scene.tag")
         {
             const auto* tag = entities.try_get<scene::tag_component>(selected);
             if (!tag) return reject("unsupported_operation");
-            value.properties = {{.path = "value", .kind = inspection_value_kind::text,
-                                 .text = tag->value.substr(0, 2048)}};
+            value.properties = {
+                {.path = "value", .kind = inspection_value_kind::text, .text = tag->value.substr(0, 2048)}};
         }
         else if (request.component == "arc.scene.active")
         {
             const auto* active = entities.try_get<scene::active_component>(selected);
             if (!active) return reject("unsupported_operation");
-            value.properties = {{.path = "active", .kind = inspection_value_kind::boolean,
-                                 .flag = active->active}};
+            value.properties = {{.path = "active", .kind = inspection_value_kind::boolean, .flag = active->active}};
         }
         else
             return reject("unsupported_operation");
