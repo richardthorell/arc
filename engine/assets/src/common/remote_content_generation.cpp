@@ -141,9 +141,10 @@ remote_content_artifact_provider::create(const remote_content_release& release, 
     return create_impl(release, cache, files, std::nullopt, {});
 }
 
-remote_content_artifact_provider::create_result remote_content_artifact_provider::create_lazy(
-    const remote_content_release& release, derived_data_cache& cache, io::async_file_service& files,
-    lazy_remote_content_options options, remote_generation_fetch_executor executor)
+remote_content_artifact_provider::create_result
+remote_content_artifact_provider::create_lazy(const remote_content_release& release, derived_data_cache& cache,
+                                              io::async_file_service& files, lazy_remote_content_options options,
+                                              remote_generation_fetch_executor executor)
 {
     return create_impl(release, cache, files, std::move(options), std::move(executor));
 }
@@ -199,9 +200,9 @@ remote_content_artifact_provider::create_result remote_content_artifact_provider
             return reject("Lazy remote generation exceeds configured manifest, object or chunk limits");
         if (!lazy->offline_only)
         {
-            const http::content_http_request probe{
-                .origin = lazy->origin, .object_path = release.cook_manifest.path,
-                .object_size = release.cook_manifest.size};
+            const http::content_http_request probe{.origin = lazy->origin,
+                                                   .object_path = release.cook_manifest.path,
+                                                   .object_size = release.cook_manifest.size};
             if (!http::validate_content_http_request(probe, lazy->http).succeeded())
                 return reject("Lazy remote generation origin or manifest request is invalid");
         }
@@ -216,8 +217,8 @@ remote_content_artifact_provider::create_result remote_content_artifact_provider
         {
             const auto hash = parse_asset_hash(entry.object.sha256);
             if (!hash || to_string(*hash) != entry.object.sha256 ||
-                entry.object.path != "objects/sha256/" + entry.object.sha256 ||
-                entry.object.size < 8 || entry.object.size > lazy->http.maximum_object_bytes ||
+                entry.object.path != "objects/sha256/" + entry.object.sha256 || entry.object.size < 8 ||
+                entry.object.size > lazy->http.maximum_object_bytes ||
                 entry.object.size > lazy->maximum_generation_bytes - declared_bytes)
                 return reject("Lazy remote release declares an invalid or oversized package chunk");
             declared_bytes += entry.object.size;
@@ -364,16 +365,16 @@ remote_content_artifact_provider::read_range(const io::provider_file& file, std:
                 if (state->lazy->offline_only)
                     return read_failure(io::file_error_code::not_found, file.key,
                                         "Missing immutable package chunk in offline cache");
-                const http::content_http_request request{
-                    .origin = state->lazy->origin, .object_path = found->second.chunk.path,
-                    .object_size = found->second.chunk.size};
+                const http::content_http_request request{.origin = state->lazy->origin,
+                                                         .object_path = found->second.chunk.path,
+                                                         .object_size = found->second.chunk.size};
                 const auto valid = http::validate_content_http_request(request, state->lazy->http);
                 if (!valid.succeeded())
                     return read_failure(io::file_error_code::invalid_request, file.key, valid.message);
-                auto future = state->executor
-                                  ? state->executor(state->files->scheduler(), request, state->lazy->http, cancellation)
-                                  : http::fetch_content_http(state->files->scheduler(), request, state->lazy->http,
-                                                             cancellation);
+                auto future =
+                    state->executor
+                        ? state->executor(state->files->scheduler(), request, state->lazy->http, cancellation)
+                        : http::fetch_content_http(state->files->scheduler(), request, state->lazy->http, cancellation);
                 if (!future.valid())
                     return read_failure(io::file_error_code::provider_unavailable, file.key,
                                         "Remote HTTP fetch executor unavailable");
@@ -415,14 +416,13 @@ remote_content_artifact_provider::read_range(const io::provider_file& file, std:
             if (state->lazy)
             {
                 constexpr char magic[] = "ARCPAK1";
-                if (chunk->size() < 8 || std::memcmp(chunk->data(), magic, 7) != 0 ||
-                    (*chunk)[7] != std::byte{0} || artifact.offset > chunk->size() ||
-                    artifact.stored_size > chunk->size() - artifact.offset)
+                if (chunk->size() < 8 || std::memcmp(chunk->data(), magic, 7) != 0 || (*chunk)[7] != std::byte{0} ||
+                    artifact.offset > chunk->size() || artifact.stored_size > chunk->size() - artifact.offset)
                     return read_failure(io::file_error_code::corrupt_content, file.key,
                                         "Remote lazy chunk header or artifact range is corrupt");
                 const auto begin = static_cast<std::size_t>(artifact.offset);
-                if (hash_bytes(std::span<const std::byte>(chunk->data() + begin,
-                                                          static_cast<std::size_t>(artifact.stored_size))) != artifact.hash)
+                if (hash_bytes(std::span<const std::byte>(
+                        chunk->data() + begin, static_cast<std::size_t>(artifact.stored_size))) != artifact.hash)
                     return read_failure(io::file_error_code::corrupt_content, file.key,
                                         "Remote lazy cooked artifact hash differs from verified cook manifest");
             }

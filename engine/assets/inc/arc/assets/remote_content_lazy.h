@@ -43,6 +43,7 @@ struct [[nodiscard]] remote_lazy_generation_result
 [[nodiscard]] jobs::job_future<remote_lazy_generation_result>
 prepare_lazy_remote_generation(jobs::job_system& jobs, io::async_file_service& files, derived_data_cache& cache,
                                remote_content_release release, lazy_remote_content_options options,
-                               jobs::cancellation_token cancellation = {}, remote_generation_fetch_executor executor = {});
+                               jobs::cancellation_token cancellation = {},
+                               remote_generation_fetch_executor executor = {});
 
 } // namespace arc::assets

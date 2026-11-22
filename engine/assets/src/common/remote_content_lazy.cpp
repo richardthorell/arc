@@ -44,10 +44,9 @@ prepare_lazy_remote_generation(jobs::job_system& jobs, io::async_file_service& f
                 return reject("Remote cook manifest unavailable in offline immutable cache");
             else
             {
-                http::content_http_request request{
-                    .origin = options.origin,
-                    .object_path = release.cook_manifest.path,
-                    .object_size = release.cook_manifest.size};
+                http::content_http_request request{.origin = options.origin,
+                                                   .object_path = release.cook_manifest.path,
+                                                   .object_size = release.cook_manifest.size};
                 const auto valid = http::validate_content_http_request(request, options.http);
                 if (!valid.succeeded())
                 {
@@ -88,8 +87,8 @@ prepare_lazy_remote_generation(jobs::job_system& jobs, io::async_file_service& f
                     result.transport_error = http::content_http_error_code::cancelled;
                     return reject("Remote generation preparation cancelled before CAS ingestion");
                 }
-                auto ingested =
-                    ingest_verified_remote_object(cache, release.cook_manifest, request, *response.response, options.http);
+                auto ingested = ingest_verified_remote_object(cache, release.cook_manifest, request, *response.response,
+                                                              options.http);
                 if (!ingested.succeeded())
                 {
                     result.cache_error = ingested.code;
@@ -106,8 +105,7 @@ prepare_lazy_remote_generation(jobs::job_system& jobs, io::async_file_service& f
 
             // Metadata comes from the verified immutable cook manifest, not
             // from an untrusted URL or directly from the release descriptor.
-            auto provider = remote_content_artifact_provider::create_lazy(
-                release, cache, files, options, executor);
+            auto provider = remote_content_artifact_provider::create_lazy(release, cache, files, options, executor);
             if (!provider) return reject("Remote lazy manifest layout validation failed: " + provider.error().message);
             result.provider = std::move(provider).value();
             return result;
