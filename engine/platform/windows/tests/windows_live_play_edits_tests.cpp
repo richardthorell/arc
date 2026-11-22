@@ -1,4 +1,5 @@
 #include "../src/windows_live_play_edits.h"
+#include "../src/windows_live_play_inspection.h"
 
 #include <arc/framework/application.h>
 #include <arc/framework/runtime.h>
@@ -54,6 +55,26 @@ void run()
     edit.values = {2.0f, 4.0f, 6.0f, 0.0f};
     edit.authoring_revision = 1;
 
+    arc::platform::windows::live_play_runtime_inspector inspector;
+    auto initial = inspector.sample(runtime);
+    check(initial && initial->complete && initial->entities.size() == 2 &&
+              initial->world_revision == 1, "Initial runtime hierarchy snapshot missing");
+    check(!inspector.sample(runtime), "Unchanged runtime hierarchy was resent");
+    check(initial->entities.front().entity.authored &&
+              initial->entities.front().entity.id == arc::ecs::to_string(arc::ecs::entity_guid{3, 4}),
+          "Native hierarchy lost authored entity identity");
+    arc::network::live_play_dev::inspection_request inspect_request{
+        .request_id = "inspect-1",
+        .entity = initial->entities.front().entity,
+        .component = "arc.transform",
+        .schema_version = 1
+    };
+    auto inspected = inspector.inspect(runtime, inspect_request);
+    check(inspected.result && inspected.result->properties.size() == 3,
+          "Read-only Transform inspection did not return component properties");
+    check(inspected.result->properties.front().numbers[0] == 0.0f,
+          "Initial inspected transform does not match the live ECS");
+
     auto result = applier.apply(runtime, edit, false);
     check(!result.applied && result.code == "restart_required", "Unactivated baseline mutated the runtime");
     result = applier.apply(runtime, edit, true);
@@ -76,6 +97,45 @@ void run()
     check(moved.position[0] == 2.0f && moved.position[1] == 4.0f && moved.position[2] == 6.0f,
           "Valid authored position did not reach ECS");
     check(still.position[0] == 0.0f && still.position[1] == 0.0f, "Edit mutated an unrelated entity");
+    inspected = inspector.inspect(runtime, inspect_request);
+    check(inspected.result && inspected.result->properties.front().numbers[0] == 2.0f &&
+              inspected.result->properties.front().numbers[1] == 4.0f,
+          "Runtime inspection returned stale transform after a valid edit");
+    inspect_request.entity = {.authored = false, .id = "w999-x1-e999-g1"};
+    check(inspector.inspect(runtime, inspect_request).error_code == "unknown_entity",
+          "Unknown runtime-only entity was inspected");
+    inspect_request.entity = initial->entities.front().entity;
+    inspect_request.component = "arc.unsafe";
+    check(inspector.inspect(runtime, inspect_request).error_code == "unsupported_operation",
+          "Inspector leaked an unsupported component");
+    inspect_request.component = "arc.transform";
+    inspect_request.schema_version = 2;
+    check(inspector.inspect(runtime, inspect_request).error_code == "schema_mismatch",
+          "Inspector accepted a mismatched component schema");
+    inspect_request.schema_version = 1;
+    auto spawned = world->entities().create();
+    world->entities().emplace<arc::scene::name_component>(
+        spawned, arc::scene::name_component{"Runtime Spawned"});
+    world->entities().emplace<arc::scene::transform_component>(spawned);
+    auto added = inspector.sample(runtime);
+    check(added && added->entities.size() == 3 && added->world_revision == 2,
+          "Runtime spawn was not reflected in read-only hierarchy");
+    const auto spawned_ref = added->entities.back().entity;
+    check(!spawned_ref.authored && spawned_ref.id.find("-e") != std::string::npos,
+          "Spawned entity was not given a session-scoped runtime ID");
+    inspect_request.entity = spawned_ref;
+    inspect_request.component = "arc.scene.name";
+    inspected = inspector.inspect(runtime, inspect_request);
+    check(inspected.result && inspected.result->properties.size() == 1 &&
+              inspected.result->properties.front().text == "Runtime Spawned",
+          "Spawned entity name was not inspectable");
+    check(world->entities().destroy(spawned), "Runtime entity deletion failed");
+    auto removed = inspector.sample(runtime);
+    check(removed && removed->entities.size() == 2 && removed->world_revision == 3,
+          "Runtime deletion was not observed");
+    check(inspector.inspect(runtime, inspect_request).error_code == "unknown_entity",
+          "Deleted runtime entity ID incorrectly resolved");
+
 
     edit.request_id = "edit-2";
     edit.phase = "commit";
