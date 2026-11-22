@@ -183,7 +183,9 @@ export function readMsbuildProjectGraph(
       for (const match of content.matchAll(references)) {
         const include = match[1].replace(/&amp;/giu, '&');
         if (!include || /[\0\r\n]/u.test(include) || path.extname(include).toLowerCase() !== '.vcxproj') continue;
-        const resolved = path.resolve(path.dirname(filename), include);
+        // Generated Visual Studio projects use Windows separators even when a
+        // fixture is inspected on another host (for example Linux CI).
+        const resolved = path.resolve(path.dirname(filename), include.replace(/[\\/]/gu, path.sep));
         if (!inside(root, resolved) || !fs.existsSync(resolved)) continue;
         if (path.basename(resolved, path.extname(resolved)).toLowerCase() === 'zero_check') continue;
         const dependencyId = id(resolved);
