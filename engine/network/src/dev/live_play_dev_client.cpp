@@ -546,6 +546,24 @@ bool client::send_ack(std::string_view request_id, std::uint64_t applied_revisio
         error);
 }
 
+bool client::send_rejected_ack(std::string_view request_id, std::string_view code, std::string& error)
+{
+    if (!token(request_id) ||
+        (code != "unknown_entity" && code != "stale_revision" && code != "permission_denied" &&
+         code != "unsupported_operation" && code != "schema_mismatch" && code != "invalid_request" &&
+         code != "restart_required" && code != "resync_required" && code != "busy"))
+    {
+        error = "Invalid Live Play command rejection";
+        return false;
+    }
+    return send_message("command.ack",
+                        json{{"status", "rejected"},
+                             {"requestId", std::string(request_id)},
+                             {"error", {{"code", std::string(code)}, {"message", "Runtime edit was not applied"}}}}
+                            .dump(),
+                        error);
+}
+
 bool client::send_content_generation(std::uint64_t generation, std::string_view status, std::string& error)
 {
     if (status != "available" && status != "active" && status != "rejected")
@@ -650,6 +668,7 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
     }
     const auto& payload = parsed.at("payload");
     std::uint64_t seen = 0;
+    std::optional<property_edit> edit;
     // L1.3b1 recognizes cooked baseline metadata but does not touch ECS or
     // content IO. The game host must ask the verified C9 loader to activate it.
     if (type == "scene.baseline.offer")
@@ -676,6 +695,18 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         pending_baseline_release_ = std::move(release_hash);
         pending_baseline_generation_ = generation;
     }
+    else if (type == "entity.property.set")
+    {
+        const bool allowed = std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(),
+                                       "entity.edit") != negotiated_capabilities_.end();
+        if (allowed) edit = decode_property_edit(message_id, payload.dump());
+        if (!allowed || !edit)
+        {
+            error = "Invalid or unauthorized Live Play entity edit";
+            close();
+            return std::nullopt;
+        }
+    }
     else if (type != "heartbeat" || !exact_keys(payload, {"lastReceivedSequence"}) ||
              !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_)
     {
@@ -684,7 +715,7 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         return std::nullopt;
     }
     inbound_sequence_ = sequence;
-    return incoming_message{std::move(type), std::move(message_id), sequence, std::move(text)};
+    return incoming_message{std::move(type), std::move(message_id), sequence, std::move(text), std::move(edit)};
 }
 
 std::uint64_t client::last_received_sequence() const noexcept
