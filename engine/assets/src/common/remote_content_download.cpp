@@ -147,8 +147,10 @@ struct remote_object_download_coordinator::implementation
                     result.error = "Remote immutable object integrity/CAS failure: " + ingested.message;
                     return result;
                 }
-                result.downloaded = !ingested.reused;
-                result.reused = ingested.reused;
+                // HTTP was transferred even if CAS found a matching blob
+                // during the fetch. Report network bytes, not CAS writes.
+                result.downloaded = true;
+                result.reused = false;
                 return result;
             }
 
@@ -192,11 +194,6 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
 {
     if (cancellation.stop_requested())
         return failed("Remote immutable object transfer cancelled", http::content_http_error_code::cancelled);
-    if (implementation_->limits.maximum_inflight_bytes == 0 ||
-        object.size > implementation_->limits.maximum_inflight_bytes)
-        return failed("Remote immutable object exceeds in-flight byte budget",
-                      http::content_http_error_code::oversized_response);
-
     const http::content_http_request request{
         .origin = std::move(origin), .object_path = object.path, .object_size = object.size};
     const auto validation = http::validate_content_http_request(request, http_limits);
@@ -211,6 +208,12 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
         cache_error error;
         if (load_verified_remote_object(*implementation_->cache, object, error)) return {.reused = true};
     }
+
+    // A verified local cache hit never consumes a network-transfer budget.
+    if (implementation_->limits.maximum_inflight_bytes == 0 ||
+        object.size > implementation_->limits.maximum_inflight_bytes)
+        return failed("Remote immutable object exceeds in-flight byte budget",
+                      http::content_http_error_code::oversized_response);
 
     std::shared_ptr<implementation::inflight> flight;
     bool leader = false;
