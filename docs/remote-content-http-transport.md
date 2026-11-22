@@ -135,3 +135,15 @@ end-to-end device acceptance remain separate C9.2 follow-ups.
 
 **Ownership:** #1135. The editor content server is #1137; Dev-only endpoint
 overrides are #1136; publish-on-edit is #1138; runtime hot reload is #1139.
+
+## Shared engine HTTP extraction
+
+As of C9.2 module extraction, the transport and its platform backends live in
+\`engine/http\` / \`arc-http\` (public \`arc::http\`, \`<arc/http/content_http.h>\`),
+not in \`arc-io\`. All existing C9.2 response validation, TLS requirements,
+immutable byte framing, cancellation and cache identity stay in place.
+
+\`arc-assets\` depends on \`arc-http\`. The network transport is no longer
+coupled to VFS or packaged runtime hosting. \`arc-io\` remains responsible for
+filesystem, async file services and VFS. See \`docs/arc-http.md\` for the
+editor/runtime integration boundary.
