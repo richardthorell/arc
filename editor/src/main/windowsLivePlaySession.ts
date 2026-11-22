@@ -26,6 +26,7 @@ type Session = {
   connectedTimer: ReturnType<typeof setTimeout> | null;
   stopRequested: boolean;
   baselineOutcome: LivePlayBaselineOutcomeGate;
+  baselineActive: boolean;
 };
 
 const connectionTimeoutMs = 15_000;
@@ -67,6 +68,17 @@ export class WindowsLivePlaySession {
     return session.baselineOutcome.waitForStatus(() => session.server.sendBaselineOffer(payload), timeoutMs);
   }
 
+  /**
+   * L1.4a: fail closed until an attached runtime explicitly reports the
+   * verified unsaved cooked baseline as active and negotiates entity.edit.
+   */
+  sendAuthoringProperty(payload: Extract<LivePlayMessage, { type: 'entity.property.set' }>['payload']): string | null {
+    const session = this.current;
+    if (!session || session.stopRequested || !session.baselineActive || this.snapshotValue.state !== 'connected')
+      return null;
+    return session.server.sendAuthoringProperty(payload);
+  }
+
   private update(change: Partial<WindowsLivePlaySnapshot>): void {
     this.snapshotValue = { ...this.snapshotValue, ...change };
     try {
@@ -93,7 +105,10 @@ export class WindowsLivePlaySession {
       grantedCapabilities: context.capabilities,
       onMessage: (message) => {
         if (this.current?.epoch !== epoch) return;
-        if (message.type === 'scene.baseline.status') this.current.baselineOutcome.receive(message.payload);
+        if (message.type === 'scene.baseline.status') {
+          this.current.baselineActive = message.payload.status === 'active';
+          this.current.baselineOutcome.receive(message.payload);
+        }
         this.onMessage(message);
       },
       onStatus: (status) => this.onServerStatus(epoch, status),
@@ -107,6 +122,7 @@ export class WindowsLivePlaySession {
       connectedTimer: null,
       stopRequested: false,
       baselineOutcome: new LivePlayBaselineOutcomeGate(),
+      baselineActive: false,
     };
     this.current = session;
     this.update({
@@ -179,6 +195,7 @@ export class WindowsLivePlaySession {
       this.update({ state: 'connected', lastReceivedSequence: status.lastReceivedSequence, error: null });
       session.resolveConnected?.();
     } else if (status.state === 'disconnected' || status.state === 'error') {
+      session.baselineActive = false;
       session.baselineOutcome.cancel('Live Play runtime disconnected before scene activation');
       this.update({
         state: status.state === 'error' ? 'failed' : 'disconnected',
@@ -195,6 +212,7 @@ export class WindowsLivePlaySession {
 
   private onProcessExit(session: Session, message: string): void {
     if (this.current !== session || session.stopRequested) return;
+    session.baselineActive = false;
     session.baselineOutcome.cancel('Live Play runtime exited before scene activation');
     this.update({ state: 'failed', pid: null, error: message });
     session.rejectConnected?.(new Error(message));

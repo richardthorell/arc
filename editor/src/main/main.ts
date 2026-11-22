@@ -33,6 +33,7 @@ import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windowsLivePlaySession';
 import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
+import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
 import { BuildMonitorService } from './buildMonitorService';
 import { resolveBuildArtifactPath } from './buildArtifactAccess';
 import { ProjectSettingsService } from './projectSettingsService';
@@ -76,6 +77,7 @@ let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
 let livePlaySession: WindowsLivePlaySession | null = null;
 let livePlayBaselines: LivePlaySceneBaselineStore | null = null;
+let livePlayAuthoringEdits: LivePlayAuthoringEdits | null = null;
 let projectSettingsService: ProjectSettingsService | null = null;
 let allowWindowClose = false;
 let closeConfirmationPending = false;
@@ -1176,10 +1178,20 @@ void app.whenReady().then(async () => {
     (project, runId, stream, text) => buildMonitor.appendRaw(project, runId, stream, text),
   );
   livePlayBaselines = new LivePlaySceneBaselineStore(hostClient);
-  livePlaySession = new WindowsLivePlaySession((snapshot) => {
-    if (snapshot.state === 'failed' && snapshot.pid === null) livePlayBaselines?.clear(snapshot.sessionId ?? undefined);
-    sendToActiveRenderer('livePlay:state', snapshot);
-  });
+  livePlayAuthoringEdits = new LivePlayAuthoringEdits(
+    hostClient,
+    (payload) => livePlaySession?.sendAuthoringProperty(payload) ?? null,
+  );
+  hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
+  livePlaySession = new WindowsLivePlaySession(
+    (snapshot) => {
+      if (snapshot.state === 'failed' && snapshot.pid === null) livePlayBaselines?.clear(snapshot.sessionId ?? undefined);
+      if (snapshot.state === 'disconnected') livePlayAuthoringEdits?.disconnect();
+      if (snapshot.state === 'failed' || snapshot.state === 'stopped') livePlayAuthoringEdits?.end();
+      sendToActiveRenderer('livePlay:state', snapshot);
+    },
+    (message) => livePlayAuthoringEdits?.onRuntimeMessage(message),
+  );
   projectSettingsService = new ProjectSettingsService(
     () => projectService?.active() ?? null,
     () => projectService?.projectTool() ?? '',
@@ -1324,6 +1336,7 @@ void app.whenReady().then(async () => {
     async (_event, candidate: string, options: { readOnly?: boolean; upgrade?: boolean } = {}) => {
       await livePlaySession?.stop();
       livePlayBaselines?.clear();
+      livePlayAuthoringEdits?.end();
       const result = await projectService?.open(candidate, options);
       if (result?.succeeded && result.project) {
         recoveryService?.start(result.project);
@@ -1339,6 +1352,7 @@ void app.whenReady().then(async () => {
       return (await livePlaySession?.stop()) ?? null;
     } finally {
       livePlayBaselines?.clear();
+      livePlayAuthoringEdits?.end();
     }
   });
   ipcMain.handle('livePlay:start', async () => {
@@ -1383,8 +1397,9 @@ void app.whenReady().then(async () => {
       // L1.3a: capture current unsaved Authoring World, without a Save or C9 cook.
       // The private staged scene is reserved for L1.3b; it is not sent to
       // the runtime or reused across sessions.
-      await livePlayBaselines.prepare({ ...authority, projectRoot: project.projectRoot });
+      const baseline = await livePlayBaselines.prepare({ ...authority, projectRoot: project.projectRoot });
       if (projectService?.active() !== project) throw new Error('Project changed during Live Play scene capture');
+      livePlayAuthoringEdits?.begin(baseline);
       return await livePlaySession.start({
         executable: published.executable,
         cwd: published.cwd,
@@ -1395,6 +1410,7 @@ void app.whenReady().then(async () => {
         },
       });
     } catch (error) {
+      livePlayAuthoringEdits?.end();
       livePlayBaselines.clear(authority.sessionId);
       throw error;
     }

@@ -205,13 +205,13 @@ export class LivePlayAuthoringEdits {
       }
       for (const property of properties) {
         if (!differs(before[property], after[property])) continue;
-        if (this.revision >= Number.MAX_SAFE_INTEGER || this.pending.size >= maxPending) {
+        const key = `${guid}:${property}`;
+        if (this.revision >= Number.MAX_SAFE_INTEGER || (!this.pending.has(key) && this.pending.size >= maxPending)) {
           this.lastError = 'Live Play transform queue exceeded safe limits';
           this.active = false;
           this.pending.clear();
           return;
         }
-        const key = `${guid}:${property}`;
         const previous = this.pending.get(key);
         this.pending.set(key, {
           guid,
@@ -247,8 +247,9 @@ export class LivePlayAuthoringEdits {
 
   onRuntimeMessage(message: LivePlayMessage): void {
     if (!this.baseline || message.sessionId !== this.baseline.sessionId) return;
-    if (message.type === 'scene.baseline.status' && message.payload.status === 'active') {
-      this.activate(message.sessionId);
+    if (message.type === 'scene.baseline.status') {
+      if (message.payload.status === 'active') this.activate(message.sessionId);
+      else this.disconnect();
     } else if (message.type === 'command.ack') {
       const request = this.outstanding.get(message.payload.requestId);
       if (!request) return;
