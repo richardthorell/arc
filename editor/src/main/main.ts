@@ -1407,7 +1407,10 @@ void app.whenReady().then(async () => {
         context: {
           authority,
           schemaHash: createHash('sha256').update('arc.live-play/v1').digest('hex'),
-          capabilities: ['session.observe', 'content.observe'],
+          // L1.4b: the native bridge validates and queues entity edits.
+          // WindowsLivePlaySession still blocks sending until the C9 scene
+          // baseline is verified and reported active by the runtime.
+          capabilities: ['session.observe', 'content.observe', 'entity.edit'],
         },
       });
     } catch (error) {

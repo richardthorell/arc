@@ -310,6 +310,72 @@ void test_successful_connection()
     if (server_error) std::rethrow_exception(server_error);
 }
 
+void test_property_edit_decoding_and_mailbox()
+{
+    using arc::network::live_play_dev::decode_property_edit;
+    using arc::network::live_play_dev::edit_mailbox;
+    const json valid = {
+        {"entity", {{"kind", "authored"}, {"entityGuid", "33333333-3333-3333-3333-333333333333"}}},
+        {"component", {{"typeId", "arc.transform"}, {"schemaVersion", 1}}},
+        {"property", "position"},
+        {"value", {2.0, 1.5, 0.0}},
+        {"authoringRevision", 12},
+        {"expectedRuntimeRevision", 8},
+        {"phase", "commit"}};
+    auto edit = decode_property_edit("editor-edit-42", valid.dump());
+    check(edit.has_value(), "Valid native authored transform was rejected");
+    check(edit->entity_guid == "33333333-3333-3333-3333-333333333333" &&
+              edit->value_count == 3 && edit->values[0] == 2.0f &&
+              edit->authoring_revision == 12 && edit->expected_runtime_revision == 8,
+          "Decoded native transform differs from editor protocol");
+    check(!decode_property_edit("bad request", valid.dump()), "Invalid message ID was accepted");
+    auto mutated = valid;
+    mutated["entity"]["kind"] = "runtime";
+    check(!decode_property_edit("edit-1", mutated.dump()), "Runtime-only ECS identity was accepted");
+    mutated = valid;
+    mutated["entity"]["entityGuid"] = "non-guid";
+    check(!decode_property_edit("edit-1", mutated.dump()), "Invalid stable GUID was accepted");
+    mutated = valid;
+    mutated["value"] = json::array({2.0, "invalid", 0.0});
+    check(!decode_property_edit("edit-1", mutated.dump()), "Non-numeric transform was accepted");
+    mutated = valid;
+    mutated["value"] = json::array({2.0, 1.0, 0.0, 0.0, 0.0});
+    check(!decode_property_edit("edit-1", mutated.dump()), "Oversized transform was accepted");
+    mutated = valid;
+    mutated["extra"] = 1;
+    check(!decode_property_edit("edit-1", mutated.dump()), "Unexpected property field was accepted");
+    mutated = valid;
+    mutated["authoringRevision"] = -1;
+    check(!decode_property_edit("edit-1", mutated.dump()), "Negative authoring revision was accepted");
+    mutated = valid;
+    mutated["expectedRuntimeRevision"] = 9007199254740992ULL;
+    check(!decode_property_edit("edit-1", mutated.dump()), "Unsafe JavaScript revision was accepted");
+    mutated = valid;
+    mutated["phase"] = "publish";
+    check(!decode_property_edit("edit-1", mutated.dump()), "Unknown edit phase was accepted");
+
+    edit_mailbox mailbox;
+    for (int i = 0; i < 256; ++i)
+    {
+        auto candidate = *edit;
+        candidate.request_id = "edit-" + std::to_string(i);
+        check(mailbox.enqueue(std::move(candidate)), "Mailbox rejected in-bounds edit");
+    }
+    check(!mailbox.enqueue(*edit), "Mailbox accepted unbounded producer backlog");
+    const auto received = mailbox.take_edits();
+    check(received.size() == 256 && received.front().request_id == "edit-0" &&
+              received.back().request_id == "edit-255",
+          "Mailbox dropped or reordered authored edits");
+    check(mailbox.take_edits().empty(), "Mailbox replayed a drained edit");
+    check(mailbox.report({.request_id = "edit-0", .applied = true, .applied_revision = 42}),
+          "Runtime result could not be handed back to the socket owner");
+    const auto outcomes = mailbox.take_results();
+    check(outcomes.size() == 1 && outcomes.front().applied && outcomes.front().applied_revision == 42,
+          "Mailbox lost applied revision ACK");
+    mailbox.clear();
+    check(mailbox.take_results().empty(), "Stop leaked old runtime results");
+}
+
 void test_invalid_editor_identity()
 {
     fixture_server fixture;
@@ -344,6 +410,7 @@ int main()
     {
         test_successful_connection();
         test_invalid_editor_identity();
+        test_property_edit_decoding_and_mailbox();
     }
     catch (const std::exception& error)
     {
