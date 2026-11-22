@@ -57,7 +57,7 @@ struct incoming_message
     std::string type;
     std::string message_id;
     std::uint64_t sequence{};
-    std::string json; ///< Strictly bounded, validated wire envelope. Never blindly execute it.
+    std::string json;                  ///< Strictly bounded, validated wire envelope. Never blindly execute it.
     std::optional<property_edit> edit; ///< Parsed typed edit, never raw ECS mutation.
 };
 

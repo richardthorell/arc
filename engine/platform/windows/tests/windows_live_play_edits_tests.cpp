@@ -75,8 +75,7 @@ void run()
     const auto& still = world->entities().get<arc::scene::transform_component>(unrelated);
     check(moved.position[0] == 2.0f && moved.position[1] == 4.0f && moved.position[2] == 6.0f,
           "Valid authored position did not reach ECS");
-    check(still.position[0] == 0.0f && still.position[1] == 0.0f,
-          "Edit mutated an unrelated entity");
+    check(still.position[0] == 0.0f && still.position[1] == 0.0f, "Edit mutated an unrelated entity");
 
     edit.request_id = "edit-2";
     edit.phase = "commit";

@@ -24,19 +24,17 @@ public:
     apply(framework::runtime& runtime, const network::live_play_dev::property_edit& edit, bool baseline_active)
     {
         using namespace network::live_play_dev;
-        const auto reject = [&](std::string code) -> edit_result {
-            return {.request_id = edit.request_id, .applied = false, .code = std::move(code)};
-        };
+        const auto reject = [&](std::string code) -> edit_result
+        { return {.request_id = edit.request_id, .applied = false, .code = std::move(code)}; };
         if (!baseline_active) return reject("restart_required");
         if (runtime.worlds().executing()) return reject("busy");
-        if (edit.component != "arc.transform" || edit.schema_version != 1)
-            return reject("schema_mismatch");
+        if (edit.component != "arc.transform" || edit.schema_version != 1) return reject("schema_mismatch");
         if (edit.phase != "update" && edit.phase != "commit") return reject("unsupported_operation");
         if ((edit.property != "position" && edit.property != "rotation" && edit.property != "scale") ||
             edit.value_count != (edit.property == "rotation" ? 4 : 3))
             return reject("unsupported_operation");
-        if (edit.expected_runtime_revision > applied_revision_ ||
-            edit.authoring_revision == 0 || edit.authoring_revision > 9007199254740991ULL)
+        if (edit.expected_runtime_revision > applied_revision_ || edit.authoring_revision == 0 ||
+            edit.authoring_revision > 9007199254740991ULL)
             return reject("stale_revision");
 
         const auto entity_guid = ecs::parse_entity_guid(edit.entity_guid);
@@ -63,8 +61,7 @@ public:
         const auto* current = found_world->try_get<scene::transform_component>(found_entity);
         if (!current) return reject("unsupported_operation");
         const auto* mobility = found_world->try_get<scene::mobility_component>(found_entity);
-        if (mobility && mobility->value != render::render_mobility::movable)
-            return reject("permission_denied");
+        if (mobility && mobility->value != render::render_mobility::movable) return reject("permission_denied");
 
         const std::string key = ecs::to_string(*entity_guid) + ":" + edit.property;
         const auto previous = applied_authoring_.find(key);
@@ -72,8 +69,7 @@ public:
         {
             const auto& [revision, phase] = previous->second;
             if (edit.authoring_revision < revision ||
-                (edit.authoring_revision == revision &&
-                 !(phase == "update" && edit.phase == "commit")))
+                (edit.authoring_revision == revision && !(phase == "update" && edit.phase == "commit")))
                 return reject("stale_revision");
         }
         if (applied_revision_ >= 9007199254740991ULL) return reject("resync_required");

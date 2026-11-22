@@ -314,19 +314,17 @@ void test_property_edit_decoding_and_mailbox()
 {
     using arc::network::live_play_dev::decode_property_edit;
     using arc::network::live_play_dev::edit_mailbox;
-    const json valid = {
-        {"entity", {{"kind", "authored"}, {"entityGuid", "33333333-3333-3333-3333-333333333333"}}},
-        {"component", {{"typeId", "arc.transform"}, {"schemaVersion", 1}}},
-        {"property", "position"},
-        {"value", {2.0, 1.5, 0.0}},
-        {"authoringRevision", 12},
-        {"expectedRuntimeRevision", 8},
-        {"phase", "commit"}};
+    const json valid = {{"entity", {{"kind", "authored"}, {"entityGuid", "33333333-3333-3333-3333-333333333333"}}},
+                        {"component", {{"typeId", "arc.transform"}, {"schemaVersion", 1}}},
+                        {"property", "position"},
+                        {"value", {2.0, 1.5, 0.0}},
+                        {"authoringRevision", 12},
+                        {"expectedRuntimeRevision", 8},
+                        {"phase", "commit"}};
     auto edit = decode_property_edit("editor-edit-42", valid.dump());
     check(edit.has_value(), "Valid native authored transform was rejected");
-    check(edit->entity_guid == "33333333-3333-3333-3333-333333333333" &&
-              edit->value_count == 3 && edit->values[0] == 2.0f &&
-              edit->authoring_revision == 12 && edit->expected_runtime_revision == 8,
+    check(edit->entity_guid == "33333333-3333-3333-3333-333333333333" && edit->value_count == 3 &&
+              edit->values[0] == 2.0f && edit->authoring_revision == 12 && edit->expected_runtime_revision == 8,
           "Decoded native transform differs from editor protocol");
     check(!decode_property_edit("bad request", valid.dump()), "Invalid message ID was accepted");
     auto mutated = valid;
@@ -363,8 +361,7 @@ void test_property_edit_decoding_and_mailbox()
     }
     check(!mailbox.enqueue(*edit), "Mailbox accepted unbounded producer backlog");
     const auto received = mailbox.take_edits();
-    check(received.size() == 256 && received.front().request_id == "edit-0" &&
-              received.back().request_id == "edit-255",
+    check(received.size() == 256 && received.front().request_id == "edit-0" && received.back().request_id == "edit-255",
           "Mailbox dropped or reordered authored edits");
     check(mailbox.take_edits().empty(), "Mailbox replayed a drained edit");
     check(mailbox.report({.request_id = "edit-0", .applied = true, .applied_revision = 42}),

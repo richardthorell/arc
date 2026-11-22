@@ -40,7 +40,7 @@ struct edit_result
 
 /** Parse strictly the L1.1 entity.property.set payload; no ECS effects. */
 [[nodiscard]] std::optional<property_edit> decode_property_edit(std::string_view request_id,
-                                                                 std::string_view payload_json);
+                                                                std::string_view payload_json);
 
 /** Bounded network-worker <-> runtime-frame handoff. Never owns an ECS world. */
 class edit_mailbox final

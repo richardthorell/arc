@@ -25,9 +25,12 @@ bool exact_keys(const json& object, std::initializer_list<std::string_view> keys
 bool id_token(std::string_view value)
 {
     if (value.empty() || value.size() > 128) return false;
-    return std::all_of(value.begin(), value.end(), [](unsigned char c)
-                       { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                                (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' || c == ':'; });
+    return std::all_of(value.begin(), value.end(),
+                       [](unsigned char c)
+                       {
+                           return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                                  c == '_' || c == '.' || c == '-' || c == ':';
+                       });
 }
 
 bool guid(std::string_view value)
@@ -67,12 +70,10 @@ std::optional<property_edit> decode_property_edit(std::string_view request_id, s
     if (!exact_keys(entity, {"kind", "entityGuid"}) || entity.at("kind") != "authored" ||
         !entity.at("entityGuid").is_string() || !guid(entity.at("entityGuid").get<std::string>()) ||
         !exact_keys(component, {"typeId", "schemaVersion"}) || !component.at("typeId").is_string() ||
-        !id_token(component.at("typeId").get<std::string>()) ||
-        !component.at("schemaVersion").is_number_unsigned())
+        !id_token(component.at("typeId").get<std::string>()) || !component.at("schemaVersion").is_number_unsigned())
         return std::nullopt;
     const auto version = component.at("schemaVersion").get<std::uint64_t>();
-    if (version == 0 || version > 65535 || !payload.at("property").is_string() ||
-        !payload.at("phase").is_string())
+    if (version == 0 || version > 65535 || !payload.at("property").is_string() || !payload.at("phase").is_string())
         return std::nullopt;
     property_edit result;
     result.request_id = request_id;
@@ -82,8 +83,7 @@ std::optional<property_edit> decode_property_edit(std::string_view request_id, s
     result.property = payload.at("property").get<std::string>();
     result.phase = payload.at("phase").get<std::string>();
     if (!id_token(result.property) ||
-        (result.phase != "begin" && result.phase != "update" && result.phase != "commit" &&
-         result.phase != "cancel") ||
+        (result.phase != "begin" && result.phase != "update" && result.phase != "commit" && result.phase != "cancel") ||
         !bounded_revision(payload, "authoringRevision", result.authoring_revision) ||
         !bounded_revision(payload, "expectedRuntimeRevision", result.expected_runtime_revision))
         return std::nullopt;
