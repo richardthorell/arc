@@ -6,14 +6,14 @@ if("Vulkan" IN_LIST ARC_FIND_COMPONENTS)
     find_dependency(Vulkan REQUIRED)
 endif()
 
-if(@ARC_IO_NEEDS_CURL@)
+if(@ARC_HTTP_NEEDS_CURL@)
     find_dependency(CURL REQUIRED)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/ARCTargets.cmake")
 
 foreach(_arc_component IN ITEMS
-        Core Framework Assets Persistence ECS Input Render Scene Project
+        Core Framework Assets HTTP Persistence ECS Input Render Scene Project
         Runtime Server EditorModuleSDK PlatformWindows LivePlayDev PlatformWindowsLivePlayEntry)
     if(TARGET "ARC::${_arc_component}")
         set("ARC_${_arc_component}_FOUND" TRUE)
