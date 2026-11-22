@@ -53,6 +53,10 @@ struct remote_content_release
     std::string project_guid;
     std::string engine_version;
     std::string base_build_id;
+    /** Optional C9 v1 cooked source identity. Empty in in-memory legacy
+     * descriptors means the same ID as the packaged runtime base build.
+     */
+    std::string cook_build_id;
     remote_content_target target;
     std::uint64_t generation{};
     std::string cook_manifest_name;

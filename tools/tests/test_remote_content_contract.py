@@ -72,6 +72,20 @@ class RemoteContentContractTests(unittest.TestCase):
             with self.subTest(field=key), self.assertRaisesRegex(ContractError, "target"):
                 self.validate(value)
 
+    def test_cooked_build_override_keeps_runtime_identity(self):
+        release = copy.deepcopy(self.release)
+        release["cookBuildId"] = "unsaved-cook-123"
+        parsed = self.validate(release)
+        self.assertEqual(parsed["baseBuildId"], "build-abc")
+        self.assertEqual(parsed["cookBuildId"], "unsaved-cook-123")
+        self.assertNotIn("cookBuildId", self.validate())
+        release["cookBuildId"] = "../unsafe"
+        with self.assertRaisesRegex(ContractError, "cookBuildId"):
+            self.validate(release)
+        release["cookBuildId"] = 12
+        with self.assertRaisesRegex(ContractError, "cookBuildId"):
+            self.validate(release)
+
     def test_rejects_unsupported_version_and_stale_generation(self):
         value = copy.deepcopy(self.release)
         value["formatVersion"] = 2

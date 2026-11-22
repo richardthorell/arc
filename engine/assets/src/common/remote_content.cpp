@@ -136,6 +136,13 @@ remote_content_parse_result parse_remote_content_release(std::string_view bytes,
     if (!base_build_id || base_build_id->empty() || *base_build_id != expected.base_build_id)
         return failure("incompatible baseBuildId");
 
+    // A Development scene may be recooked after the packaged runtime was
+    // built. Legacy descriptors omit cookBuildId and retain prior behavior.
+    const auto cook_build_id = string_field(document, "cookBuildId");
+    if (document.contains("cookBuildId") &&
+        (!cook_build_id || cook_build_id->size() > 128 || !safe_name(*cook_build_id)))
+        return failure("invalid cookBuildId");
+
     const auto target = document.find("target");
     if (target == document.end() || !matches_target(*target, expected.target))
         return failure("incompatible remote release target");
@@ -161,6 +168,7 @@ remote_content_parse_result parse_remote_content_release(std::string_view bytes,
     remote_content_release release{.project_guid = *project_guid,
                                    .engine_version = *engine_version,
                                    .base_build_id = *base_build_id,
+                                   .cook_build_id = cook_build_id.value_or(*base_build_id),
                                    .target = expected.target,
                                    .generation = *generation,
                                    .cook_manifest_name = *manifest_name,

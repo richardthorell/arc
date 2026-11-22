@@ -85,6 +85,12 @@ def validate_release(document: Any, *, project_guid: str, engine_version: str,
                           ("baseBuildId", base_build_id)):
         if not isinstance(expected, str) or not expected or release.get(key) != expected:
             raise ContractError(f"incompatible {key}")
+    # Optional C9 v1 field: ephemeral cooked scene hash differs from the
+    # compiled/packaged runtime's still-required baseBuildId.
+    cook_build_id = release.get("cookBuildId", base_build_id)
+    if (not isinstance(cook_build_id, str) or len(cook_build_id) > 128 or
+            not _NAME.fullmatch(cook_build_id)):
+        raise ContractError("cookBuildId must be a bounded safe build identity")
     published_target = _mapping(release.get("target"), "target")
     for key in _TARGET_KEYS:
         value = published_target.get(key)
@@ -123,7 +129,7 @@ def validate_release(document: Any, *, project_guid: str, engine_version: str,
     # existing cooked manifest is parsed by C9.2.
     if not isinstance(release.get("complete"), bool) or release["complete"] is not True:
         raise ContractError("release generation is not completely published")
-    return {
+    result = {
         "format": FORMAT, "formatVersion": FORMAT_VERSION,
         "projectGuid": guid, "engineVersion": engine_version,
         "baseBuildId": base_build_id,
@@ -132,6 +138,9 @@ def validate_release(document: Any, *, project_guid: str, engine_version: str,
         "cookManifestName": manifest_name, "cookManifest": manifest,
         "chunks": sorted(validated_chunks, key=lambda x: x["name"]),
     }
+    if "cookBuildId" in release:
+        result["cookBuildId"] = cook_build_id
+    return result
 
 
 def feed_recovery(*, last_acknowledged: int, oldest_available: int,
