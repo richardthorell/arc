@@ -44,7 +44,7 @@ TEST_CASE("C9.2b unsupported platforms fail explicitly without network access")
 
 TEST_CASE("C9.2d2 release lookup preflight restricts origin, project and target path")
 {
-    using namespace arc::io;
+    using namespace arc::http;
     content_http_release_request request{.origin = "https://content.example.org",
                                          .project_guid = "11111111-2222-4333-8444-555555555555",
                                          .target_profile = "windows-x64-vulkan"};
@@ -70,7 +70,7 @@ TEST_CASE("C9.2d2 release lookup preflight restricts origin, project and target 
 
 TEST_CASE("C9.2d2 release response has strict status, redirect and eight-MiB size bounds")
 {
-    using namespace arc::io;
+    using namespace arc::http;
     content_http_release_request request{.origin = "https://content.example.org",
                                          .project_guid = "11111111-2222-4333-8444-555555555555",
                                          .target_profile = "windows-x64-vulkan"};
