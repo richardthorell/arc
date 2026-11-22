@@ -54,6 +54,13 @@ class AndroidHostSdkExportTests(unittest.TestCase):
         self.assertEqual(manifest["engineVersion"], "0.1.0")
         self.assertEqual(set(manifest["configurations"]), {"debug", "release"})
         self.assertTrue((output / "gradle/app/src/main/AndroidManifest.xml").is_file())
+        for relative in GRADLE_FILES:
+            self.assertEqual(
+                (output / "gradle" / relative).read_bytes(),
+                (self.source / relative).read_bytes(),
+                f"Android SDK missed the host-side HTTP source: {relative}",
+            )
+
         self.assertTrue((output / "android_apk_finalizer.py").is_file())
         self.assertTrue((output / "android_build_workflow.py").is_file())
         self.assertEqual((output / "host/debug/jniLibs/arm64-v8a/libarc_android_host.so").read_bytes(), elf())
