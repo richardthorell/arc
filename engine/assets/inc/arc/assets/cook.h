@@ -314,6 +314,20 @@ public:
     bool put_action(const cache_action& action, cache_error& error);
     bool pin(content_hash hash);
     bool unpin(content_hash hash);
+    /** Atomically replace the persistent immutable-object pin set for one
+     * validated owner scope. Empty hashes release that scope. Retention is
+     * restored before any cache pruning on the next process start.
+     * Persistence is a cache-lifetime hint, NOT content authentication.
+     */
+    [[nodiscard]] bool set_persistent_pins(std::string_view scope, std::span<const content_hash> hashes,
+                                           cache_error& error);
+    /** The immutable digests retained for a scope, including after restart. */
+    [[nodiscard]] std::vector<content_hash> persistent_pins(std::string_view scope) const;
+    /** Corrupt/unreadable persistence disables pruning rather than risking
+     * eviction of the last-good remote content generation.
+     */
+    [[nodiscard]] bool persistent_retention_ready() const;
+
     std::size_t verify(std::vector<std::string>* diagnostics = nullptr);
     std::uint64_t prune(bool force = false);
     void note_avoided_processor_run();

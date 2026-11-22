@@ -3,6 +3,15 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
+#include <unordered_map>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 #include <charconv>
 #include <fstream>
 #include <iomanip>
@@ -90,6 +99,56 @@ bool write_atomic(const std::filesystem::path& destination, std::span<const std:
     }
     std::filesystem::remove(temporary, filesystem_error);
     error = "Could not atomically publish cache file";
+    return false;
+}
+
+constexpr std::uint64_t maximum_retention_file_bytes = 16ull * 1024ull * 1024ull;
+constexpr std::size_t maximum_retention_scopes = 128;
+constexpr std::size_t maximum_retention_hashes = 100000;
+
+bool valid_retention_scope(std::string_view scope)
+{
+    if (scope.empty() || scope.size() > 128) return false;
+    return std::all_of(scope.begin(), scope.end(), [](unsigned char c)
+                       { return std::isalnum(c) || c == '.' || c == '-' || c == '_'; });
+}
+
+/** Replaces mutable retention metadata (unlike immutable CAS write_atomic).
+ * The new file is fully written before the old snapshot is replaced.
+ */
+bool replace_atomic(const std::filesystem::path& destination, std::string_view contents, std::string& error)
+{
+    const auto temporary =
+        destination.string() + ".tmp-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        if (!stream)
+        {
+            error = "Could not create temporary cache retention metadata";
+            return false;
+        }
+        stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+        stream.flush();
+        if (!stream)
+        {
+            error = "Could not flush cache retention metadata";
+            std::error_code ignored;
+            std::filesystem::remove(temporary, ignored);
+            return false;
+        }
+    }
+#ifdef _WIN32
+    const bool published = MoveFileExW(std::filesystem::path(temporary).c_str(), destination.c_str(),
+                                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+    if (published) return true;
+#else
+    std::error_code rename_error;
+    std::filesystem::rename(temporary, destination, rename_error);
+    if (!rename_error) return true;
+#endif
+    std::error_code ignored;
+    std::filesystem::remove(temporary, ignored);
+    error = "Could not atomically replace cache retention metadata";
     return false;
 }
 
@@ -472,6 +531,86 @@ struct derived_data_cache::implementation
     mutable std::mutex mutex;
     cache_statistics statistics;
     std::unordered_set<std::string> pins;
+    // Volatile pins and persistent scoped pins are independent. A blob is
+    // evictable only when neither set contains its canonical SHA-256 name.
+    std::unordered_map<std::string, std::vector<content_hash>> retained_scopes;
+    std::unordered_set<std::string> retained_hashes;
+    bool retention_ready{true};
+
+    void rebuild_retention()
+    {
+        retained_hashes.clear();
+        for (const auto& [scope, hashes] : retained_scopes)
+            for (const auto& hash : hashes) retained_hashes.insert(to_string(hash));
+    }
+
+    void load_retention()
+    {
+        const auto path = config.root / "persistent-pins.json";
+        std::error_code filesystem_error;
+        if (!std::filesystem::exists(path, filesystem_error))
+        {
+            if (filesystem_error) retention_ready = false;
+            return;
+        }
+        std::ifstream stream(path, std::ios::binary | std::ios::ate);
+        if (!stream)
+        {
+            retention_ready = false;
+            return;
+        }
+        const auto size = stream.tellg();
+        if (size < 0 || static_cast<std::uint64_t>(size) > maximum_retention_file_bytes)
+        {
+            retention_ready = false;
+            return;
+        }
+        stream.seekg(0);
+        const auto document = json::parse(stream, nullptr, false);
+        if (!document.is_object() || !document.contains("format") || !document["format"].is_string() ||
+            document["format"] != "arc.ddc-persistent-pins" || !document.contains("version") ||
+            !document["version"].is_number_integer() || document["version"] != 1 ||
+            !document.contains("scopes") || !document["scopes"].is_object() ||
+            document["scopes"].size() > maximum_retention_scopes)
+        {
+            retention_ready = false;
+            return;
+        }
+        std::size_t total{};
+        for (const auto& [scope, hashes] : document["scopes"].items())
+        {
+            if (!valid_retention_scope(scope) || !hashes.is_array() ||
+                hashes.size() > maximum_retention_hashes - total)
+            {
+                retention_ready = false;
+                retained_scopes.clear();
+                return;
+            }
+            std::vector<content_hash> values;
+            values.reserve(hashes.size());
+            for (const auto& name : hashes)
+            {
+                if (!name.is_string())
+                {
+                    retention_ready = false;
+                    retained_scopes.clear();
+                    return;
+                }
+                const auto text = name.get<std::string>();
+                const auto hash = parse_asset_hash(text);
+                if (!hash || to_string(*hash) != text)
+                {
+                    retention_ready = false;
+                    retained_scopes.clear();
+                    return;
+                }
+                values.push_back(*hash);
+            }
+            total += values.size();
+            retained_scopes.emplace(scope, std::move(values));
+        }
+        rebuild_retention();
+    }
 
     void load_statistics()
     {
@@ -537,6 +676,7 @@ derived_data_cache::derived_data_cache(derived_data_cache_config config)
     std::filesystem::create_directories(implementation_->config.root / "cas" / "sha256", error);
     std::filesystem::create_directories(implementation_->config.root / "actions", error);
     implementation_->load_statistics();
+    implementation_->load_retention();
     implementation_->refresh_size();
 }
 
@@ -707,6 +847,90 @@ bool derived_data_cache::unpin(content_hash hash)
     return implementation_->pins.erase(to_string(hash)) != 0;
 }
 
+bool derived_data_cache::set_persistent_pins(std::string_view scope, std::span<const content_hash> hashes,
+                                             cache_error& error)
+{
+    error = {};
+    if (!valid_retention_scope(scope) || hashes.size() > maximum_retention_hashes)
+    {
+        error.message = "Invalid persistent cache retention scope or excessive hashes";
+        return false;
+    }
+    std::lock_guard lock(implementation_->mutex);
+    if (!implementation_->retention_ready)
+    {
+        error.message = "Persistent retention state is invalid; pruning is disabled until repaired";
+        return false;
+    }
+    if (implementation_->config.access == cache_access::read_only)
+    {
+        error.message = "Cannot change persistent pins in a read-only cache";
+        return false;
+    }
+    auto next = implementation_->retained_scopes;
+    const std::string name(scope);
+    if (hashes.empty())
+        next.erase(name);
+    else
+        next[name] = std::vector<content_hash>(hashes.begin(), hashes.end());
+    if (next.size() > maximum_retention_scopes)
+    {
+        error.message = "Too many persistent retention scopes";
+        return false;
+    }
+
+    std::size_t total{};
+    json scopes = json::object();
+    for (auto& [key, values] : next)
+    {
+        // A deterministic minimal snapshot is safe to replay on restart.
+        std::vector<std::string> strings;
+        strings.reserve(values.size());
+        for (const auto& hash : values) strings.push_back(to_string(hash));
+        std::sort(strings.begin(), strings.end());
+        strings.erase(std::unique(strings.begin(), strings.end()), strings.end());
+        if (strings.size() > maximum_retention_hashes - total)
+        {
+            error.message = "Too many persistent retained cache objects";
+            return false;
+        }
+        total += strings.size();
+        json entries = json::array();
+        values.clear();
+        for (const auto& text : strings)
+        {
+            entries.push_back(text);
+            values.push_back(*parse_asset_hash(text));
+        }
+        scopes[key] = std::move(entries);
+    }
+    const std::string document = json{{"format", "arc.ddc-persistent-pins"},
+                                      {"version", 1},
+                                      {"scopes", std::move(scopes)}}.dump();
+    if (document.size() > maximum_retention_file_bytes ||
+        !replace_atomic(implementation_->config.root / "persistent-pins.json", document, error.message))
+    {
+        if (error.message.empty()) error.message = "Persistent cache retention metadata exceeds its size limit";
+        return false;
+    }
+    implementation_->retained_scopes = std::move(next);
+    implementation_->rebuild_retention();
+    return true;
+}
+
+std::vector<content_hash> derived_data_cache::persistent_pins(std::string_view scope) const
+{
+    std::lock_guard lock(implementation_->mutex);
+    const auto it = implementation_->retained_scopes.find(std::string(scope));
+    return it == implementation_->retained_scopes.end() ? std::vector<content_hash>{} : it->second;
+}
+
+bool derived_data_cache::persistent_retention_ready() const
+{
+    std::lock_guard lock(implementation_->mutex);
+    return implementation_->retention_ready;
+}
+
 std::size_t derived_data_cache::verify(std::vector<std::string>* diagnostics)
 {
     std::lock_guard lock(implementation_->mutex);
@@ -734,6 +958,9 @@ std::uint64_t derived_data_cache::prune(bool force)
 {
     std::lock_guard lock(implementation_->mutex);
     implementation_->refresh_size();
+    // A corrupt retention journal may describe the only surviving last-good
+    // generation. Do not reclaim any object until the metadata is repaired.
+    if (!implementation_->retention_ready) return 0;
     const auto& policy = implementation_->config.cleanup;
     if (!force && implementation_->statistics.local_bytes <=
                       static_cast<std::uint64_t>(policy.maximum_bytes * policy.prune_threshold))
@@ -751,7 +978,8 @@ std::uint64_t derived_data_cache::prune(bool force)
     if (std::filesystem::exists(root, error))
         for (std::filesystem::recursive_directory_iterator it(root, error), end; it != end && !error;
              it.increment(error))
-            if (it->is_regular_file(error) && !implementation_->pins.contains(it->path().filename().string()))
+            if (it->is_regular_file(error) && !implementation_->pins.contains(it->path().filename().string()) &&
+                 !implementation_->retained_hashes.contains(it->path().filename().string()))
                 candidates.push_back({it->path(), it->file_size(error), it->last_write_time(error)});
     std::sort(candidates.begin(), candidates.end(),
               [](const auto& lhs, const auto& rhs) { return lhs.time < rhs.time; });
