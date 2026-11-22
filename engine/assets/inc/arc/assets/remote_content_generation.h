@@ -71,6 +71,10 @@ public:
     [[nodiscard]] const cook_manifest& manifest() const noexcept;
 
 private:
+    [[nodiscard]] static create_result create_impl(const remote_content_release& release, derived_data_cache& cache,
+                                                   io::async_file_service& files,
+                                                   std::optional<lazy_remote_content_options> lazy,
+                                                   remote_generation_fetch_executor executor);
     struct implementation;
     explicit remote_content_artifact_provider(std::shared_ptr<implementation> state);
     std::shared_ptr<implementation> implementation_;
