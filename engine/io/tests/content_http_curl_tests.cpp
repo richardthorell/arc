@@ -30,8 +30,7 @@ struct loopback_server
     std::atomic_bool saw_no_cache{};
     std::jthread worker;
 
-    loopback_server(std::string expected_path, std::string response, bool expect_range = false,
-                    bool expect_no_cache = false)
+    loopback_server(std::string expected_path, std::string response)
     {
         listener = socket(AF_INET, SOCK_STREAM, 0);
         REQUIRE(listener >= 0);
@@ -48,7 +47,7 @@ struct loopback_server
         REQUIRE(listen(listener, 1) == 0);
 
         worker = std::jthread(
-            [this, path = std::move(expected_path), reply = std::move(response), expect_range, expect_no_cache]
+            [this, path = std::move(expected_path), reply = std::move(response)]
             {
                 const int client = accept(listener, nullptr, nullptr);
                 if (client < 0) return;
@@ -74,8 +73,6 @@ struct loopback_server
                 shutdown(client, SHUT_RDWR);
                 close(client);
             });
-        (void)expect_range;
-        (void)expect_no_cache;
     }
 
     ~loopback_server()
