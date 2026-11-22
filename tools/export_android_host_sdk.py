@@ -26,6 +26,9 @@ GRADLE_FILES = (
     "gradle.properties",
     "app/build.gradle.kts",
     "app/src/main/AndroidManifest.xml",
+    "app/src/main/java/org/arcengine/host/http/ArcHttpTransport.java",
+    "app/src/debug/AndroidManifest.xml",
+    "app/src/debug/res/xml/arc_http_debug_network.xml",
     "app/src/main/cpp/project_module/CMakeLists.txt",
 )
 

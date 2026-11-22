@@ -57,6 +57,17 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Test Android platform HTTP Java adapter on loopback
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/arc-http-java-test"
+          mkdir -p "$out"
+          javac --add-modules jdk.httpserver -d "$out" \
+            engine/platform/android/app/src/main/java/org/arcengine/host/http/ArcHttpTransport.java \
+            tools/tests/java/ArcHttpTransportHostTest.java
+          java --add-modules jdk.httpserver -cp "$out" ArcHttpTransportHostTest
+
       - name: Build Android arm64 Debug APK
         working-directory: engine/platform/android
         run: gradle --no-daemon :app:assembleDebug --stacktrace

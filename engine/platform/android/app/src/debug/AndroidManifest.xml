@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Permit cleartext for the Development ADB-reversed loopback endpoint only.
+         Shipping retains Android's standard HTTPS-only platform policy. -->
+    <application android:networkSecurityConfig="@xml/arc_http_debug_network" />
+</manifest>
