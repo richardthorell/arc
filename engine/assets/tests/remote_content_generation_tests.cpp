@@ -1,3 +1,4 @@
+#include <arc/assets/remote_content_download.h>
 #include <arc/assets/remote_content_generation.h>
 #include <arc/assets/remote_content_lazy.h>
 #include <arc/assets/remote_content_transfer.h>
@@ -5,7 +6,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <filesystem>
+#include <memory>
 #include <fstream>
 #include <iterator>
 #include <span>
@@ -508,4 +511,51 @@ TEST_CASE("C9.2f1 pre-cancelled preparation returns a typed error without schedu
     CHECK_FALSE(prepared.succeeded());
     CHECK(prepared.transport_error == arc::http::content_http_error_code::cancelled);
     CHECK(requests == 0);
+}
+
+TEST_CASE("C9.2f2 eager generation acquisition retries a transient GET without duplicating CAS publication")
+{
+    fixture f;
+    arc::assets::derived_data_cache local{{.root = f.root / "eager-retry-cache"}};
+    arc::assets::remote_generation_transfer_options options{.origin = "https://content.example.org"};
+    arc::assets::remote_download_limits policy;
+    policy.maximum_attempts = 2;
+    policy.initial_backoff = std::chrono::milliseconds{0};
+    policy.maximum_backoff = std::chrono::milliseconds{0};
+    options.downloads = std::make_shared<arc::assets::remote_object_download_coordinator>(f.jobs, local, policy);
+
+    std::size_t attempts{};
+    arc::assets::remote_generation_fetch_executor transient =
+        [&f, &attempts](arc::jobs::job_system& jobs, arc::http::content_http_request request,
+                        arc::http::content_http_limits, arc::jobs::cancellation_token)
+    {
+        return jobs.submit_future(
+            {.name = "assets.remote_content.test_retry", .affinity = arc::jobs::job_affinity::io_thread},
+            [&f, &attempts, request = std::move(request)]() -> arc::http::content_http_fetch_result
+            {
+                ++attempts;
+                if (attempts == 1)
+                    return {.response = std::nullopt,
+                            .validation = {.code = arc::http::content_http_error_code::timeout,
+                                           .message = "Injected timeout"}};
+                auto body = request.object_path == f.release.cook_manifest.path ? f.manifest_bytes : f.package_bytes;
+                return {.response = arc::http::content_http_response{.status = 200,
+                                                                     .content_length = std::to_string(body.size()),
+                                                                     .body = std::move(body)},
+                        .validation = {}};
+            });
+    };
+
+    const auto result =
+        arc::assets::acquire_remote_generation(f.jobs, f.files, local, f.release, options, {}, transient).get();
+    REQUIRE(result.succeeded());
+    CHECK(result.downloaded_objects == 2);
+    CHECK(result.reused_objects == 0);
+    CHECK(attempts == 3); // 1 failed manifest attempt, then manifest and package.
+    REQUIRE(f.catalog.mount_remote_generation(f.release, local, f.files));
+    auto resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    const auto read = f.vfs.read_all(resolved.value()).get();
+    REQUIRE(read);
+    CHECK(read.value() == f.payload);
 }

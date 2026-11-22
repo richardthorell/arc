@@ -1,4 +1,5 @@
 #include <arc/assets/remote_content_generation.h>
+#include <arc/assets/remote_content_download.h>
 
 #include <algorithm>
 #include <cctype>
@@ -122,6 +123,7 @@ struct remote_content_artifact_provider::implementation
     io::async_file_service* files{};
     std::optional<lazy_remote_content_options> lazy;
     remote_generation_fetch_executor executor;
+    std::shared_ptr<remote_object_download_coordinator> downloads;
     std::uint64_t generation{};
     cook_manifest manifest;
     std::unordered_map<std::string, record> records;
@@ -254,6 +256,10 @@ remote_content_artifact_provider::create_result remote_content_artifact_provider
     state->files = &files;
     state->lazy = std::move(lazy);
     state->executor = std::move(executor);
+    if (state->lazy)
+        state->downloads = state->lazy->downloads
+                               ? state->lazy->downloads
+                               : std::make_shared<remote_object_download_coordinator>(files.scheduler(), cache);
     state->generation = release.generation;
 
     // Validate every immutable chunk and every addressed artifact *before*
@@ -371,41 +377,19 @@ remote_content_artifact_provider::read_range(const io::provider_file& file, std:
                 const auto valid = http::validate_content_http_request(request, state->lazy->http);
                 if (!valid.succeeded())
                     return read_failure(io::file_error_code::invalid_request, file.key, valid.message);
-                auto future =
-                    state->executor
-                        ? state->executor(state->files->scheduler(), request, state->lazy->http, cancellation)
-                        : http::fetch_content_http(state->files->scheduler(), request, state->lazy->http, cancellation);
-                if (!future.valid())
-                    return read_failure(io::file_error_code::provider_unavailable, file.key,
-                                        "Remote HTTP fetch executor unavailable");
-                const auto waited = future.handle().wait_result();
-                if (!waited.succeeded())
-                    return read_failure(cancellation.stop_requested() ? io::file_error_code::cancelled
-                                                                      : io::file_error_code::read_failed,
-                                        file.key, "Remote immutable chunk HTTP fetch was cancelled or failed");
-                http::content_http_fetch_result response;
-                try
-                {
-                    response = future.get();
-                }
-                catch (const std::exception&)
-                {
-                    return read_failure(io::file_error_code::read_failed, file.key,
-                                        "Remote immutable chunk HTTP worker failed");
-                }
-                if (!response.succeeded())
-                    return read_failure(response.validation.code == http::content_http_error_code::cancelled
+                // Immutable SHA-256 downloads share a bounded in-flight map:
+                // concurrent artifact reads for one chunk issue only one GET.
+                // Only transport failures may retry. The coordinator verifies
+                // the entire object and commits it into CAS before returning.
+                const auto downloaded = state->downloads->ensure(found->second.chunk, request.origin, state->lazy->http,
+                                                                 cancellation, state->executor);
+                if (!downloaded.succeeded())
+                    return read_failure(downloaded.transport_error == http::content_http_error_code::cancelled
                                             ? io::file_error_code::cancelled
+                                        : downloaded.cache_error != remote_object_cache_error::none
+                                            ? io::file_error_code::corrupt_content
                                             : io::file_error_code::read_failed,
-                                        file.key, "Remote immutable chunk fetch: " + response.validation.message);
-                if (cancellation.stop_requested())
-                    return read_failure(io::file_error_code::cancelled, file.key,
-                                        "Remote cooked artifact read cancelled");
-                const auto ingested = ingest_verified_remote_object(*state->cache, found->second.chunk, request,
-                                                                    *response.response, state->lazy->http);
-                if (!ingested.succeeded())
-                    return read_failure(io::file_error_code::corrupt_content, file.key,
-                                        "Remote immutable chunk failed CAS verification: " + ingested.message);
+                                        file.key, "Remote immutable chunk download: " + downloaded.error);
                 chunk = load_verified_remote_object(*state->cache, found->second.chunk, error);
             }
             if (!chunk)

@@ -1,4 +1,5 @@
 #include <arc/assets/remote_content_lazy.h>
+#include <arc/assets/remote_content_download.h>
 
 #include <exception>
 #include <string>
@@ -36,6 +37,10 @@ prepare_lazy_remote_generation(jobs::job_system& jobs, io::async_file_service& f
                 release.cook_manifest.size > options.http.maximum_object_bytes)
                 return reject("Remote cook manifest exceeds metadata or HTTP object limits");
 
+            // Reuse a caller-owned coordinator across generations or create
+            // one for this prepared lazy provider and its future chunk reads.
+            if (!options.downloads)
+                options.downloads = std::make_shared<remote_object_download_coordinator>(jobs, cache);
             cache_error error;
             auto manifest = load_verified_remote_object(cache, release.cook_manifest, error);
             if (manifest)
@@ -44,57 +49,16 @@ prepare_lazy_remote_generation(jobs::job_system& jobs, io::async_file_service& f
                 return reject("Remote cook manifest unavailable in offline immutable cache");
             else
             {
-                http::content_http_request request{.origin = options.origin,
-                                                   .object_path = release.cook_manifest.path,
-                                                   .object_size = release.cook_manifest.size};
-                const auto valid = http::validate_content_http_request(request, options.http);
-                if (!valid.succeeded())
+                const auto downloaded = options.downloads->ensure(release.cook_manifest, options.origin, options.http,
+                                                                  cancellation, executor);
+                if (!downloaded.succeeded())
                 {
-                    result.transport_error = valid.code;
-                    return reject(valid.message);
+                    result.transport_error = downloaded.transport_error;
+                    result.cache_error = downloaded.cache_error;
+                    return reject("Remote immutable cook manifest acquisition failed: " + downloaded.error);
                 }
-                auto fetch = executor ? executor(jobs, request, options.http, cancellation)
-                                      : http::fetch_content_http(jobs, request, options.http, cancellation);
-                if (!fetch.valid())
-                {
-                    result.transport_error = http::content_http_error_code::transport_unavailable;
-                    return reject("Remote manifest fetch executor unavailable");
-                }
-                if (!fetch.handle().wait_result().succeeded())
-                {
-                    result.transport_error = cancellation.stop_requested()
-                                                 ? http::content_http_error_code::cancelled
-                                                 : http::content_http_error_code::network_failure;
-                    return reject("Remote manifest fetch worker failed or was cancelled");
-                }
-                http::content_http_fetch_result response;
-                try
-                {
-                    response = fetch.get();
-                }
-                catch (const std::exception&)
-                {
-                    result.transport_error = http::content_http_error_code::network_failure;
-                    return reject("Remote manifest fetch worker failed");
-                }
-                if (!response.succeeded())
-                {
-                    result.transport_error = response.validation.code;
-                    return reject(response.validation.message);
-                }
-                if (cancellation.stop_requested())
-                {
-                    result.transport_error = http::content_http_error_code::cancelled;
-                    return reject("Remote generation preparation cancelled before CAS ingestion");
-                }
-                auto ingested = ingest_verified_remote_object(cache, release.cook_manifest, request, *response.response,
-                                                              options.http);
-                if (!ingested.succeeded())
-                {
-                    result.cache_error = ingested.code;
-                    return reject("Remote manifest SHA-256/CAS verification failed: " + ingested.message);
-                }
-                result.downloaded_bytes = ingested.reused ? 0 : release.cook_manifest.size;
+                result.manifest_reused = downloaded.reused;
+                result.downloaded_bytes = downloaded.downloaded ? release.cook_manifest.size : 0;
             }
 
             if (cancellation.stop_requested())

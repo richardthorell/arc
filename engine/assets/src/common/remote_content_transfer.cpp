@@ -1,4 +1,5 @@
 #include <arc/assets/remote_content_transfer.h>
+#include <arc/assets/remote_content_download.h>
 
 #include <algorithm>
 #include <cctype>
@@ -100,6 +101,9 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
                     return reject(chunk.object.path, "Remote generation has a duplicate or invalid chunk object");
             }
 
+            const auto downloads = options.downloads
+                                       ? options.downloads
+                                       : std::make_shared<remote_object_download_coordinator>(jobs, cache);
             for (const auto* object : objects)
             {
                 if (cancellation.stop_requested())
@@ -120,63 +124,21 @@ acquire_remote_generation(jobs::job_system& jobs, io::async_file_service& files,
                 if (options.policy == remote_generation_transfer_policy::offline_only)
                     return reject(object->path, "Required remote generation object is unavailable offline");
 
-                http::content_http_request request{
-                    .origin = options.origin, .object_path = object->path, .object_size = object->size};
-                auto valid = http::validate_content_http_request(request, options.http);
-                if (!valid.succeeded())
+                const auto transfer =
+                    downloads->ensure(*object, options.origin, options.http, cancellation, executor,
+                                      options.policy == remote_generation_transfer_policy::refresh_all);
+                if (!transfer.succeeded())
                 {
-                    result.transport_error = valid.code;
-                    return reject(object->path, valid.message);
+                    result.transport_error = transfer.transport_error;
+                    result.cache_error = transfer.cache_error;
+                    return reject(object->path, transfer.error);
                 }
-
-                // C9.2b uses a dedicated IO worker. The coordinator itself
-                // runs on a general worker, so a single IO worker cannot
-                // deadlock waiting for another IO-thread job.
-                auto fetch = executor ? executor(jobs, request, options.http, cancellation)
-                                      : http::fetch_content_http(jobs, request, options.http, cancellation);
-                if (!fetch.valid())
+                if (transfer.reused) ++result.reused_objects;
+                if (transfer.downloaded)
                 {
-                    result.transport_error = http::content_http_error_code::transport_unavailable;
-                    return reject(object->path, "Remote HTTP executor returned no job");
+                    ++result.downloaded_objects;
+                    result.downloaded_bytes += object->size;
                 }
-                const auto waited = fetch.handle().wait_result();
-                if (!waited.succeeded())
-                {
-                    result.transport_error = cancellation.stop_requested()
-                                                 ? http::content_http_error_code::cancelled
-                                                 : http::content_http_error_code::network_failure;
-                    return reject(object->path, "Remote HTTP fetch job was cancelled or failed");
-                }
-                http::content_http_fetch_result response;
-                try
-                {
-                    response = fetch.get();
-                }
-                catch (const std::exception&)
-                {
-                    result.transport_error = http::content_http_error_code::network_failure;
-                    return reject(object->path, "Remote HTTP fetch job failed");
-                }
-                if (!response.succeeded())
-                {
-                    result.transport_error = response.validation.code;
-                    return reject(object->path, response.validation.message);
-                }
-                if (cancellation.stop_requested())
-                {
-                    result.transport_error = http::content_http_error_code::cancelled;
-                    return reject(object->path, "Remote generation acquisition cancelled");
-                }
-
-                const auto ingested =
-                    ingest_verified_remote_object(cache, *object, request, *response.response, options.http);
-                if (!ingested.succeeded())
-                {
-                    result.cache_error = ingested.code;
-                    return reject(object->path, ingested.message);
-                }
-                ++result.downloaded_objects;
-                result.downloaded_bytes += object->size;
             }
 
             if (cancellation.stop_requested())

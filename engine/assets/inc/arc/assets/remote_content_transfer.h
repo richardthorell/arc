@@ -32,6 +32,10 @@ struct remote_generation_transfer_options
     remote_generation_transfer_policy policy{remote_generation_transfer_policy::cache_first};
     std::uint64_t maximum_generation_bytes{16ull * 1024ull * 1024ull * 1024ull};
     std::size_t maximum_objects{100000};
+    /** Optional coordinator shared with lazy mounts; eager processing stays
+     * serial but uses the same retry and verified immutable CAS policy.
+     */
+    std::shared_ptr<remote_object_download_coordinator> downloads;
 };
 
 struct [[nodiscard]] remote_generation_transfer_result
@@ -56,8 +60,9 @@ struct [[nodiscard]] remote_generation_transfer_result
  * argument and use fetch_content_http.
  */
 /** Runs the transfer coordinator on a general worker and each HTTP GET on an
- * IO worker. Fetches serially to keep at most one object body in memory; later
- * work may add bounded parallelism and request coalescing.
+ * IO worker. Eager generation acquisition stays serial to cap memory;
+ * a shared coordinator coalesces identical immutable objects across callers,
+ * retries only transient transport failures, and bounds parallel lazy reads.
  *
  * The caller is responsible for validating the C9.1 release descriptor and
  * performing catalog.mount_remote_generation(...) only *after* this future
