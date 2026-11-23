@@ -530,8 +530,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   });
   const [externalRuntimeMode, setExternalRuntimeMode] = useState(false);
   const externalInspection = useLivePlayRuntimeInspection(externalPlay);
-  const externalRuntimeVisible =
-    externalRuntimeMode && !runtimeWorldActive && externalPlay.state !== 'stopped';
+  const externalRuntimeVisible = externalRuntimeMode && !runtimeWorldActive && externalPlay.state !== 'stopped';
   useEffect(() => {
     if (!window.arc?.livePlay) return;
     let alive = true;
