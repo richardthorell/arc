@@ -250,9 +250,7 @@ export function RuntimeHierarchyPanel({ inspection }: { inspection: LivePlayRunt
 
 function valueText(value: unknown): string {
   if (Array.isArray(value)) {
-    return value
-      .map((item) => (typeof item === 'number' ? Number(item.toFixed(4)) : item))
-      .join(', ');
+    return value.map((item) => (typeof item === 'number' ? Number(item.toFixed(4)) : item)).join(', ');
   }
   if (typeof value === 'boolean') return value ? 'True' : 'False';
   if (typeof value === 'string') return value;
