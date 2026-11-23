@@ -47,7 +47,8 @@ const guidPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u;
 const digestPattern = /^[a-f0-9]{64}$/u;
 const profilePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const familyPattern = /^[a-z0-9_-]{1,32}$/u;
-const releasePath = /^\/releases\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/current\.json$/u;
+const releasePath =
+  /^\/releases\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/current\.json$/u;
 const objectPath = /^\/objects\/sha256\/([a-f0-9]{64})$/u;
 const maxDescriptor = 8 * 1024 * 1024;
 const maxTransfer = 256 * 1024 * 1024;
@@ -68,8 +69,7 @@ function sealedFile(root: string, candidate: string): string {
 
 async function hashFile(file: string): Promise<string> {
   const digest = createHash('sha256');
-  for await (const block of fs.createReadStream(file, { highWaterMark: 1024 * 1024 }))
-    digest.update(block as Buffer);
+  for await (const block of fs.createReadStream(file, { highWaterMark: 1024 * 1024 })) digest.update(block as Buffer);
   return digest.digest('hex');
 }
 
@@ -91,7 +91,8 @@ function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile
     target.textureFamily !== family ||
     !Array.isArray(data.chunks) ||
     data.chunks.length > 100_000
-  ) throw new Error('C9 descriptor does not match the approved runtime, target or generation');
+  )
+    throw new Error('C9 descriptor does not match the approved runtime, target or generation');
   const entries = [data.cookManifest, ...data.chunks];
   const objects: Array<{ sha256: string; size: number }> = [];
   const seen = new Set<string>();
@@ -107,7 +108,8 @@ function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile
       ref.size < 1 ||
       ref.size > 2 * 1024 * 1024 * 1024 ||
       seen.has(ref.sha256)
-    ) throw new Error('Unsafe or duplicate immutable object reference');
+    )
+      throw new Error('Unsafe or duplicate immutable object reference');
     seen.add(ref.sha256);
     objects.push({ sha256: ref.sha256, size: ref.size });
   }
@@ -139,10 +141,12 @@ export class EditorCookedContentServer {
   constructor(private readonly options: EditorContentServerOptions) {
     if (
       !guidPattern.test(options.projectGuid) ||
-      !options.runtimeBuildId || !options.sessionId || !options.instanceId ||
-      (options.port !== undefined &&
-        (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535))
-    ) throw new Error('C9 editor content server requires a trusted session identity');
+      !options.runtimeBuildId ||
+      !options.sessionId ||
+      !options.instanceId ||
+      (options.port !== undefined && (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535))
+    )
+      throw new Error('C9 editor content server requires a trusted session identity');
     this.projectRoot = fs.realpathSync(options.projectRoot);
     this.sessionRoot = fs.realpathSync(options.sessionRoot);
     if (
@@ -151,7 +155,8 @@ export class EditorCookedContentServer {
       !path.isAbsolute(options.sessionRoot) ||
       this.projectRoot === this.sessionRoot ||
       within(this.projectRoot, this.sessionRoot)
-    ) throw new Error('C9 content session must be outside the authoring workspace');
+    )
+      throw new Error('C9 content session must be outside the authoring workspace');
   }
 
   snapshot(): EditorContentServerSnapshot {
@@ -161,7 +166,9 @@ export class EditorCookedContentServer {
       projectGuid: this.options.projectGuid,
       sessionId: this.options.sessionId,
       profiles: [...this.publications].map(([profile, p]) => ({
-        profile, family: p.family, generation: p.generation,
+        profile,
+        family: p.family,
+        generation: p.generation,
       })),
       activeClients: this.sockets.size,
       activeTransfers: this.activeTransfers,
@@ -200,9 +207,14 @@ export class EditorCookedContentServer {
         for (const socket of this.sockets) socket.destroy();
       });
     } catch (error) {
-      try { server.close(); } catch { /* failed listen has no open port */ }
-      throw new Error('Unable to bind C9 loopback listener: ' +
-        (error instanceof Error ? error.message : 'unknown error'));
+      try {
+        server.close();
+      } catch {
+        /* failed listen has no open port */
+      }
+      throw new Error(
+        'Unable to bind C9 loopback listener: ' + (error instanceof Error ? error.message : 'unknown error'),
+      );
     }
   }
 
@@ -223,59 +235,67 @@ export class EditorCookedContentServer {
     if (this.publishing) throw new Error('C9 publication is already being verified');
     this.publishing = true;
     try {
-    if (
-      release.projectGuid !== this.options.projectGuid ||
-      release.runtimeBuildId !== this.options.runtimeBuildId ||
-      release.sessionId !== this.options.sessionId ||
-      release.instanceId !== this.options.instanceId ||
-      !Number.isSafeInteger(release.generation) || release.generation < 1 ||
-      !profilePattern.test(cookProfile)
-    ) throw new Error('C9 release belongs to a different project, target or session');
-    if (!release.variants.length || (release.variants.length > 1 && !family))
-      throw new Error('Explicit texture family required for multi-variant C9 publication');
+      if (
+        release.projectGuid !== this.options.projectGuid ||
+        release.runtimeBuildId !== this.options.runtimeBuildId ||
+        release.sessionId !== this.options.sessionId ||
+        release.instanceId !== this.options.instanceId ||
+        !Number.isSafeInteger(release.generation) ||
+        release.generation < 1 ||
+        !profilePattern.test(cookProfile)
+      )
+        throw new Error('C9 release belongs to a different project, target or session');
+      if (!release.variants.length || (release.variants.length > 1 && !family))
+        throw new Error('Explicit texture family required for multi-variant C9 publication');
 
-    const root = fs.realpathSync(release.root);
-    if (
-      !within(this.sessionRoot, root) ||
-      path.basename(root) !== 'release' ||
-      fs.lstatSync(release.root).isSymbolicLink() ||
-      !fs.statSync(root).isDirectory()
-    ) throw new Error('Release is outside sealed private session storage');
-    const variant = family ? release.variants.find((item) => item.family === family) : release.variants[0];
-    if (!variant || !familyPattern.test(variant.family)) throw new Error('Unknown C9 texture family');
-    const current = this.publications.get(cookProfile);
-    if (current && release.generation <= current.generation)
-      throw new Error('C9 generation must increase monotonically for the selected target');
+      const root = fs.realpathSync(release.root);
+      if (
+        !within(this.sessionRoot, root) ||
+        path.basename(root) !== 'release' ||
+        fs.lstatSync(release.root).isSymbolicLink() ||
+        !fs.statSync(root).isDirectory()
+      )
+        throw new Error('Release is outside sealed private session storage');
+      const variant = family ? release.variants.find((item) => item.family === family) : release.variants[0];
+      if (!variant || !familyPattern.test(variant.family)) throw new Error('Unknown C9 texture family');
+      const current = this.publications.get(cookProfile);
+      if (current && release.generation <= current.generation)
+        throw new Error('C9 generation must increase monotonically for the selected target');
 
-    const descriptorFile = sealedFile(root, variant.descriptorPath);
-    if (descriptorFile !== path.join(root, 'targets', variant.family, 'current.json'))
-      throw new Error('C9 descriptor is outside its selected target inventory');
-    const descriptor = await fs.promises.readFile(descriptorFile);
-    const hash = createHash('sha256').update(descriptor).digest('hex');
-    if (hash !== variant.descriptorSha256) throw new Error('C9 descriptor SHA-256 changed');
-    const references = parseRelease(descriptor, release, cookProfile, variant.family);
+      const descriptorFile = sealedFile(root, variant.descriptorPath);
+      if (descriptorFile !== path.join(root, 'targets', variant.family, 'current.json'))
+        throw new Error('C9 descriptor is outside its selected target inventory');
+      const descriptor = await fs.promises.readFile(descriptorFile);
+      const hash = createHash('sha256').update(descriptor).digest('hex');
+      if (hash !== variant.descriptorSha256) throw new Error('C9 descriptor SHA-256 changed');
+      const references = parseRelease(descriptor, release, cookProfile, variant.family);
 
-    const nextObjects = new Map(this.objects);
-    for (const reference of references) {
-      const file = sealedFile(root, path.join(root, 'objects', 'sha256', reference.sha256));
-      const stat = fs.statSync(file);
-      if (stat.size !== reference.size || (await hashFile(file)) !== reference.sha256)
-        throw new Error('C9 object failed size/hash verification');
-      const old = nextObjects.get(reference.sha256);
-      if (old && old.size !== reference.size) throw new Error('Incompatible C9 object identity');
-      nextObjects.set(reference.sha256, {
-        file, size: reference.size, sha256: reference.sha256,
-        dev: stat.dev, ino: stat.ino, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs,
-      });
-    }
+      const nextObjects = new Map(this.objects);
+      for (const reference of references) {
+        const file = sealedFile(root, path.join(root, 'objects', 'sha256', reference.sha256));
+        const stat = fs.statSync(file);
+        if (stat.size !== reference.size || (await hashFile(file)) !== reference.sha256)
+          throw new Error('C9 object failed size/hash verification');
+        const old = nextObjects.get(reference.sha256);
+        if (old && old.size !== reference.size) throw new Error('Incompatible C9 object identity');
+        nextObjects.set(reference.sha256, {
+          file,
+          size: reference.size,
+          sha256: reference.sha256,
+          dev: stat.dev,
+          ino: stat.ino,
+          mtimeMs: stat.mtimeMs,
+          ctimeMs: stat.ctimeMs,
+        });
+      }
 
-    if (this.server !== originalServer) throw new Error('C9 listener changed during release verification');
-    const nextPublications = new Map(this.publications);
-    nextPublications.set(cookProfile, { descriptor, hash, generation: release.generation, family: variant.family });
-    this.objects.clear();
-    for (const [name, entry] of nextObjects) this.objects.set(name, entry);
-    this.publications.clear();
-    for (const [name, entry] of nextPublications) this.publications.set(name, entry);
+      if (this.server !== originalServer) throw new Error('C9 listener changed during release verification');
+      const nextPublications = new Map(this.publications);
+      nextPublications.set(cookProfile, { descriptor, hash, generation: release.generation, family: variant.family });
+      this.objects.clear();
+      for (const [name, entry] of nextObjects) this.objects.set(name, entry);
+      this.publications.clear();
+      for (const [name, entry] of nextPublications) this.publications.set(name, entry);
     } finally {
       this.publishing = false;
     }
@@ -299,8 +319,7 @@ export class EditorCookedContentServer {
 
   private authorized(req: IncomingMessage): boolean {
     const header = req.headers.authorization;
-    if (!this.authorizationHash || Date.now() >= this.authorizationExpires || typeof header !== 'string')
-      return false;
+    if (!this.authorizationHash || Date.now() >= this.authorizationExpires || typeof header !== 'string') return false;
     const match = /^Bearer ([a-f0-9]{64})$/u.exec(header);
     if (!match) return false;
     return timingSafeEqual(createHash('sha256').update(match[1]).digest(), this.authorizationHash);
@@ -327,19 +346,20 @@ export class EditorCookedContentServer {
     if (++this.windowRequests > 100) return this.reject(res, 429, 'Request limit exceeded');
     if (!this.server || this.port === null) return this.reject(res, 503, 'Content server stopping');
     if (req.socket.remoteAddress !== '127.0.0.1') return this.reject(res, 403, 'Loopback only');
-    if (req.headers.host !== '127.0.0.1:' + this.port)
-      return this.reject(res, 400, 'Invalid content authority');
-    if (req.rawHeaders.length / 2 > 64)
-      return this.reject(res, 431, 'Invalid request headers');
+    if (req.headers.host !== '127.0.0.1:' + this.port) return this.reject(res, 400, 'Invalid content authority');
+    if (req.rawHeaders.length / 2 > 64) return this.reject(res, 431, 'Invalid request headers');
     if (!this.authorized(req)) return this.reject(res, 401, 'Content pairing required');
     if (req.method !== 'GET') return this.reject(res, 405, 'Only read-only GET is supported');
-    if (req.headers['content-length'] !== undefined)
-      return this.reject(res, 431, 'Request body is not permitted');
+    if (req.headers['content-length'] !== undefined) return this.reject(res, 431, 'Request body is not permitted');
     const requested = req.url ?? '';
     if (
-      requested.length > 512 || requested.includes('%') ||
-      requested.includes('?') || requested.includes('#') || requested.includes('\\')
-    ) return this.reject(res, 400, 'Unsafe content URL');
+      requested.length > 512 ||
+      requested.includes('%') ||
+      requested.includes('?') ||
+      requested.includes('#') ||
+      requested.includes('\\')
+    )
+      return this.reject(res, 400, 'Unsafe content URL');
 
     const release = releasePath.exec(requested);
     if (release) {
@@ -350,7 +370,7 @@ export class EditorCookedContentServer {
         'Content-Type': 'application/json',
         'Content-Length': entry.descriptor.length,
         'Cache-Control': noStore,
-        'ETag': '"' + entry.hash + '"',
+        ETag: '"' + entry.hash + '"',
         'X-Content-Type-Options': 'nosniff',
       });
       res.end(entry.descriptor);
@@ -363,8 +383,7 @@ export class EditorCookedContentServer {
     const entry = this.objects.get(object[1]);
     if (!entry) return this.reject(res, 404, 'Unpublished object');
     const etag = '"' + entry.sha256 + '"';
-    if (req.headers['if-match'] && req.headers['if-match'] !== etag)
-      return this.reject(res, 412, 'ETag mismatch');
+    if (req.headers['if-match'] && req.headers['if-match'] !== etag) return this.reject(res, 412, 'ETag mismatch');
     let start = 0;
     let end = entry.size - 1;
     const range = req.headers.range;
@@ -375,8 +394,11 @@ export class EditorCookedContentServer {
       start = Number(match[1]);
       end = Number(match[2]);
       if (
-        !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
-        start > end || end >= entry.size || end - start + 1 > maxTransfer
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start > end ||
+        end >= entry.size ||
+        end - start + 1 > maxTransfer
       ) {
         res.setHeader('Content-Range', 'bytes */' + entry.size);
         return this.reject(res, 416, 'Range not satisfiable');
@@ -388,11 +410,16 @@ export class EditorCookedContentServer {
     try {
       const stat = fs.lstatSync(entry.file);
       if (
-        !stat.isFile() || stat.isSymbolicLink() ||
-        stat.size !== entry.size || stat.dev !== entry.dev || stat.ino !== entry.ino ||
-        stat.mtimeMs !== entry.mtimeMs || stat.ctimeMs !== entry.ctimeMs ||
+        !stat.isFile() ||
+        stat.isSymbolicLink() ||
+        stat.size !== entry.size ||
+        stat.dev !== entry.dev ||
+        stat.ino !== entry.ino ||
+        stat.mtimeMs !== entry.mtimeMs ||
+        stat.ctimeMs !== entry.ctimeMs ||
         fs.realpathSync(entry.file) !== entry.file
-      ) return this.reject(res, 503, 'Published object changed after verification');
+      )
+        return this.reject(res, 503, 'Published object changed after verification');
       const stream = fs.createReadStream(entry.file, { start, end, highWaterMark: 64 * 1024 });
       this.activeTransfers++;
       res.once('close', () => {
@@ -403,13 +430,15 @@ export class EditorCookedContentServer {
         if (!res.headersSent) this.reject(res, 503, 'Cooked object unavailable');
         else res.destroy();
       });
-      res.once('finish', () => { this.bytesSent += end - start + 1; });
+      res.once('finish', () => {
+        this.bytesSent += end - start + 1;
+      });
       const headers: Record<string, string | number> = {
         'Content-Type': 'application/octet-stream',
         'Content-Length': end - start + 1,
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'private, max-age=31536000, immutable',
-        'ETag': etag,
+        ETag: etag,
         'X-Content-Type-Options': 'nosniff',
       };
       if (range !== undefined) headers['Content-Range'] = 'bytes ' + start + '-' + end + '/' + entry.size;
