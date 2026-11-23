@@ -67,10 +67,25 @@ public:
         const auto previous = applied_authoring_.find(key);
         if (previous != applied_authoring_.end())
         {
-            const auto& [revision, phase] = previous->second;
-            if (edit.authoring_revision < revision ||
-                (edit.authoring_revision == revision && !(phase == "update" && edit.phase == "commit")))
-                return reject("stale_revision");
+            const auto& applied = previous->second;
+            if (edit.authoring_revision < applied.revision) return reject("stale_revision");
+            if (edit.authoring_revision == applied.revision)
+            {
+                const bool same_value = edit.value_count == applied.value_count &&
+                                        std::equal(edit.values.begin(),
+                                                   edit.values.begin() + edit.value_count,
+                                                   applied.value.begin());
+                if (!same_value) return reject("stale_revision");
+                if (applied.phase == edit.phase)
+                {
+                    // A final commit's ACK may be lost; acknowledge identical
+                    // replay without applying ECS twice or advancing revision.
+                    return {.request_id = edit.request_id,
+                            .applied = true,
+                            .applied_revision = applied.applied_revision};
+                }
+                if (applied.phase != "update" || edit.phase != "commit") return reject("stale_revision");
+            }
         }
         if (applied_revision_ >= 9007199254740991ULL) return reject("resync_required");
 
@@ -92,8 +107,13 @@ public:
         found_world->emplace<scene::transform_component>(found_entity, updated);
         scene::mark_transform_subtree_dirty(*found_world, found_entity);
         scene::update_world_transforms(*found_world);
-        applied_authoring_[key] = {edit.authoring_revision, edit.phase};
-        return {.request_id = edit.request_id, .applied = true, .applied_revision = ++applied_revision_};
+        const auto applied_revision = ++applied_revision_;
+        applied_authoring_[key] = {.revision = edit.authoring_revision,
+                                   .phase = edit.phase,
+                                   .value = edit.values,
+                                   .value_count = edit.value_count,
+                                   .applied_revision = applied_revision};
+        return {.request_id = edit.request_id, .applied = true, .applied_revision = applied_revision};
     }
 
     void clear() noexcept
@@ -103,7 +123,16 @@ public:
     }
 
 private:
-    std::unordered_map<std::string, std::pair<std::uint64_t, std::string>> applied_authoring_;
+    struct applied_property
+    {
+        std::uint64_t revision{};
+        std::string phase;
+        std::array<float, 4> value{};
+        std::uint8_t value_count{};
+        std::uint64_t applied_revision{};
+    };
+
+    std::unordered_map<std::string, applied_property> applied_authoring_;
     std::uint64_t applied_revision_{};
 };
 
