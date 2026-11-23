@@ -220,7 +220,7 @@ describe('C9.4b editor live-play publication orchestration', () => {
     expect(Buffer.from(await chunk.arrayBuffer())).toEqual(f.packaged);
     expect(fs.readFileSync(f.baseline.sourceScenePath, 'utf8')).not.toContain('[1,2,3]');
     expect(fs.readFileSync(f.baseline.scenePath, 'utf8')).toContain('[1,2,3]');
-    await expect(publication.start()).rejects.toThrow(/already started/);
+    expect(() => publication.start()).toThrow(/already started/);
     await publication.cancel();
   });
 
@@ -262,7 +262,7 @@ describe('C9.4b editor live-play publication orchestration', () => {
     await rejected;
     expect(f.server.snapshot().profiles).toHaveLength(0);
     expect(fs.readdirSync(f.baseline.directory).sort()).toEqual(['initial-scene.arcscene']);
-    await expect(publication.start()).rejects.toThrow(/cancelled/);
+    expect(() => publication.start()).toThrow(/cancelled/);
   });
 
   it('rejects stale projects while cooking and never promotes their private release', async () => {
