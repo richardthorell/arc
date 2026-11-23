@@ -149,6 +149,21 @@ async function handshake(server: LivePlayControlServer, sequence = 1): Promise<T
 }
 
 describe('Live Play L1.2a editor control endpoint', () => {
+  it('reports only negotiated capabilities and authenticated runtime heartbeats', async () => {
+    const server = await start();
+    const peer = await handshake(server);
+    expect(server.status().capabilities).toEqual(['session.observe', 'entity.inspect', 'content.observe']);
+    expect(server.status().lastHeartbeatAtMs).toBeNull();
+
+    peer.write(frame('heartbeat', { lastReceivedSequence: 1 }, 2));
+    await expect.poll(() => server.status().lastHeartbeatAtMs).not.toBeNull();
+    expect(server.status().lastHeartbeatAtMs).toEqual(expect.any(Number));
+
+    peer.socket.destroy();
+    await peer.closed;
+    expect(server.status().capabilities).toEqual([]);
+  });
+
   it('binds loopback, performs token authentication and L1.1 handshake, and relays only validated runtime state', async () => {
     const received: LivePlayMessage[] = [];
     const statuses: LivePlayControlStatus[] = [];
