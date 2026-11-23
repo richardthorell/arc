@@ -35,6 +35,7 @@ import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windo
 import { livePlayInspectPayloadSchema } from '../common/livePlayProtocol';
 import { applyLivePlayHierarchy, emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
 import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
+import { EditorCookedContentServer } from './editorCookedContentServer';
 import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
 import { BuildMonitorService } from './buildMonitorService';
 import { resolveBuildArtifactPath } from './buildArtifactAccess';
@@ -80,6 +81,7 @@ let buildService: BuildService | null = null;
 let livePlaySession: WindowsLivePlaySession | null = null;
 let latestLivePlayHierarchy = emptyLivePlayHierarchy();
 let livePlayBaselines: LivePlaySceneBaselineStore | null = null;
+let livePlayContentServer: EditorCookedContentServer | null = null;
 let livePlayAuthoringEdits: LivePlayAuthoringEdits | null = null;
 let projectSettingsService: ProjectSettingsService | null = null;
 let allowWindowClose = false;
@@ -88,6 +90,12 @@ let closeChoiceResolve: ((choice: 'save' | 'discard' | 'cancel') => void) | null
 let shutdownPending = false;
 let shutdownComplete = false;
 let fatalHostExitPending = false;
+
+async function stopLivePlayContentServer(): Promise<void> {
+  const server = livePlayContentServer;
+  livePlayContentServer = null;
+  await server?.stop();
+}
 
 const activeWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
 
@@ -1188,8 +1196,11 @@ void app.whenReady().then(async () => {
   hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
   livePlaySession = new WindowsLivePlaySession(
     (snapshot) => {
-      if (snapshot.state === 'failed' && snapshot.pid === null)
-        livePlayBaselines?.clear(snapshot.sessionId ?? undefined);
+      if (snapshot.state === 'failed' && snapshot.pid === null) {
+        const sessionId = snapshot.sessionId;
+        // Close sockets before the private L1.3 staging directory is deleted.
+        void stopLivePlayContentServer().finally(() => livePlayBaselines?.clear(sessionId ?? undefined));
+      }
       if (snapshot.state === 'disconnected') livePlayAuthoringEdits?.disconnect();
       if (snapshot.state === 'failed' || snapshot.state === 'stopped') livePlayAuthoringEdits?.end();
       if (snapshot.state === 'starting' || snapshot.state === 'stopped' || snapshot.state === 'failed')
@@ -1354,6 +1365,7 @@ void app.whenReady().then(async () => {
     'project:open',
     async (_event, candidate: string, options: { readOnly?: boolean; upgrade?: boolean } = {}) => {
       await livePlaySession?.stop();
+      await stopLivePlayContentServer();
       livePlayBaselines?.clear();
       livePlayAuthoringEdits?.end();
       const result = await projectService?.open(candidate, options);
@@ -1382,6 +1394,7 @@ void app.whenReady().then(async () => {
     try {
       return (await livePlaySession?.stop()) ?? null;
     } finally {
+      await stopLivePlayContentServer();
       livePlayBaselines?.clear();
       livePlayAuthoringEdits?.end();
     }
@@ -1430,6 +1443,23 @@ void app.whenReady().then(async () => {
       // the runtime or reused across sessions.
       const baseline = await livePlayBaselines.prepare({ ...authority, projectRoot: project.projectRoot });
       if (projectService?.active() !== project) throw new Error('Project changed during Live Play scene capture');
+      // C9.4a owns a loopback-only data-plane listener for external Play.
+      // It remains empty until the verified L1.3 release is explicitly
+      // published in C9.4b; never expose raw .arcscene project files.
+      const contentServer = new EditorCookedContentServer({
+        projectRoot: project.projectRoot,
+        sessionRoot: baseline.directory,
+        projectGuid: authority.projectGuid,
+        runtimeBuildId: authority.buildId,
+        sessionId: authority.sessionId,
+        instanceId: authority.instanceId,
+      });
+      await contentServer.start();
+      if (projectService?.active() !== project) {
+        await contentServer.stop();
+        throw new Error('Project changed while starting the C9 content listener');
+      }
+      livePlayContentServer = contentServer;
       livePlayAuthoringEdits?.begin(baseline);
       return await livePlaySession.start({
         executable: published.executable,
@@ -1444,6 +1474,7 @@ void app.whenReady().then(async () => {
         },
       });
     } catch (error) {
+      await stopLivePlayContentServer();
       livePlayAuthoringEdits?.end();
       livePlayBaselines.clear(authority.sessionId);
       throw error;
@@ -1476,6 +1507,7 @@ void app.whenReady().then(async () => {
       }
     }
     await livePlaySession?.stop();
+    await stopLivePlayContentServer();
     livePlayBaselines?.clear();
     const result = await projectService?.close();
     if (result?.succeeded) {
@@ -2043,6 +2075,7 @@ app.on('before-quit', (event) => {
       const target = activeWindow();
       if (target) await quiesceSharedViewportsForWindow(target);
       await livePlaySession?.stop();
+      await stopLivePlayContentServer();
       livePlayBaselines?.clear();
       await aiGateway?.stop();
     } finally {
