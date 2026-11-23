@@ -96,11 +96,7 @@ export class LivePlayHierarchyRecovery {
   /** Call on a bounded timer in editor main (no renderer or native ECS reads). */
   tick(): void {
     if (this.connection !== 'connected') return;
-    if (
-      this.hierarchyState.pending &&
-      this.lastPageAtMs !== null &&
-      this.now() - this.lastPageAtMs >= pageTimeoutMs
-    ) {
+    if (this.hierarchyState.pending && this.lastPageAtMs !== null && this.now() - this.lastPageAtMs >= pageTimeoutMs) {
       this.hierarchyState = { ...this.hierarchyState, pending: null, requiresSnapshot: true };
       this.lastPageAtMs = null;
       this.ask('overflow');
