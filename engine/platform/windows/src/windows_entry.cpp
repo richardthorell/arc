@@ -28,12 +28,16 @@
 
 #include <windows.h>
 #include <windowsx.h>
+#if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
+#include <shellapi.h>
+#endif
 
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -311,6 +315,52 @@ std::filesystem::path writable_data_root(const std::string& project_guid)
     return std::filesystem::path(value) / L"ARC" / widen(project_guid);
 }
 
+// Extract Unicode process arguments using the Windows parser; do not split
+// WinMain's LPSTR at whitespace (it would corrupt quoted paths and values).
+// No raw argv or invalid endpoint is ever included in an error diagnostic.
+arc::project::runtime_content_options_result content_options_from_windows_command_line()
+{
+    namespace project = arc::project;
+    int count = 0;
+    auto* arguments = CommandLineToArgvW(GetCommandLineW(), &count);
+    if (!arguments)
+        return project::runtime_content_options_result::failure(
+            {.code = project::project_error_code::invalid_descriptor,
+             .field = "content",
+             .message = "Unable to parse Windows launch arguments"});
+    std::vector<std::string> owned;
+    bool valid = true;
+    for (int index = 1; index < count; ++index)
+    {
+        const int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, arguments[index], -1,
+                                               nullptr, 0, nullptr, nullptr);
+        if (length <= 0)
+        {
+            valid = false;
+            break;
+        }
+        std::string utf8(static_cast<std::size_t>(length), '\0');
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, arguments[index], -1,
+                                utf8.data(), length, nullptr, nullptr) != length)
+        {
+            valid = false;
+            break;
+        }
+        utf8.resize(static_cast<std::size_t>(length - 1));
+        owned.push_back(std::move(utf8));
+    }
+    LocalFree(arguments);
+    if (!valid)
+        return project::runtime_content_options_result::failure(
+            {.code = project::project_error_code::invalid_descriptor,
+             .field = "content",
+             .message = "Invalid Unicode launch argument"});
+    std::vector<std::string_view> views;
+    views.reserve(owned.size());
+    for (const auto& value : owned) views.emplace_back(value);
+    return project::parse_runtime_content_arguments(views);
+}
+
 // GUI-subsystem applications do not necessarily have stdout/stderr. Write a
 // deterministic CI-only diagnostic file rather than displaying modal UI.
 bool write_ci_smoke_diagnostic(std::string_view text)
@@ -380,7 +430,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         {.worker_count = 1, .run_inline = false, .io_worker_count = 2, .enable_render_thread = false}};
     arc::io::async_file_service native_files{jobs};
     arc::io::virtual_file_system files{jobs};
+    const auto content_options = content_options_from_windows_command_line();
+    if (!content_options)
+        return boot_failure(content_options.error().field + ": " + content_options.error().message);
+
     project::runtime_boot_request boot;
+    boot.content.trusted_launch = content_options.value();
     boot.role = project::runtime_launch_role::client;
     boot.host.distribution.kind = project::runtime_distribution_location_kind::executable;
     boot.host.distribution.native_path = executable;
