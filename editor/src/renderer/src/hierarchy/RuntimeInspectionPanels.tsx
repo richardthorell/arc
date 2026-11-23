@@ -39,9 +39,9 @@ const emptyView = (scope: string): InspectionView => ({
 function sameSession(message: LivePlayMessage, snapshot: WindowsLivePlaySnapshot): boolean {
   return Boolean(
     snapshot.sessionId &&
-      snapshot.instanceId &&
-      message.sessionId === snapshot.sessionId &&
-      message.instanceId === snapshot.instanceId,
+    snapshot.instanceId &&
+    message.sessionId === snapshot.sessionId &&
+    message.instanceId === snapshot.instanceId,
   );
 }
 
@@ -58,13 +58,14 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
   useEffect(() => {
     if (!scope || !window.arc?.livePlay) return;
     let subscribed = true;
-    pending.current.clear();
+    const pendingRequests = pending.current;
+    pendingRequests.clear();
     const onMessage = (message: LivePlayMessage) => {
       if (!sameSession(message, snapshot)) return;
       if (message.type === 'component.inspect.result' && message.payload.requestId) {
-        const sent = pending.current.get(message.payload.requestId);
+        const sent = pendingRequests.get(message.payload.requestId);
         if (sent) {
-          pending.current.delete(message.payload.requestId);
+          pendingRequests.delete(message.payload.requestId);
           if (
             sent.scope !== scope ||
             sent.entity !== runtimeEntityKey(message.payload.entity) ||
@@ -74,9 +75,9 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
         }
       }
       if (message.type === 'command.ack') {
-        const sent = pending.current.get(message.payload.requestId);
+        const sent = pendingRequests.get(message.payload.requestId);
         if (!sent) return;
-        pending.current.delete(message.payload.requestId);
+        pendingRequests.delete(message.payload.requestId);
         if (message.payload.status === 'rejected' && message.payload.error.code !== 'unsupported_operation') {
           const errorMessage = message.payload.error.message;
           setView((previous) => (previous.scope === scope ? { ...previous, notice: errorMessage } : previous));
@@ -90,8 +91,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
             return previous;
           const selected = previous.selected;
           const present =
-            selected &&
-            message.payload.entities.some((item) => matchesRuntimeEntity(selected, item.entity));
+            selected && message.payload.entities.some((item) => matchesRuntimeEntity(selected, item.entity));
           const keepSelection = present || !message.payload.complete;
           return {
             ...previous,
@@ -131,7 +131,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
       .catch(() => {});
     return () => {
       subscribed = false;
-      pending.current.clear();
+      pendingRequests.clear();
       unsubscribe();
     };
     // Scope is the complete session/instance identity. State changes do not reset the hierarchy.
@@ -275,7 +275,11 @@ export function RuntimeInspectorPanel({ inspection }: { inspection: LivePlayRunt
             : 'Runtime inspection unavailable.'}
         </p>
       )}
-      {inspection.notice && <p className="live-runtime-warning" role="status">{inspection.notice}</p>}
+      {inspection.notice && (
+        <p className="live-runtime-warning" role="status">
+          {inspection.notice}
+        </p>
+      )}
       {!selected ? (
         <p className="live-runtime-empty">Select an entity in Runtime Hierarchy to inspect the running game.</p>
       ) : (
