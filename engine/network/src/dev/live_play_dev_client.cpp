@@ -456,11 +456,10 @@ bool client::connect_impl(const launch_handoff& handoff, std::string& error, boo
         !result.at("protocolVersion").is_number_integer() || result.at("protocolVersion") != protocol_version ||
         !field(result, "sender", sender) || sender != "editor" || !field(result, "type", type) ||
         type != "hello.accepted" || !safe_number(result, "sequence", sequence) ||
-        (resume ? sequence <= inbound_sequence_ : sequence != 1) ||
-        !result.at("messageId").is_string() || !token(result.at("messageId").get<std::string>()) ||
-        result.at("projectGuid") != project_guid_ || result.at("buildId") != build_id_ ||
-        result.at("targetProfile") != target_profile_ || result.at("sessionId") != session_id_ ||
-        result.at("instanceId") != instance_id_)
+        (resume ? sequence <= inbound_sequence_ : sequence != 1) || !result.at("messageId").is_string() ||
+        !token(result.at("messageId").get<std::string>()) || result.at("projectGuid") != project_guid_ ||
+        result.at("buildId") != build_id_ || result.at("targetProfile") != target_profile_ ||
+        result.at("sessionId") != session_id_ || result.at("instanceId") != instance_id_)
     {
         error = "Live Play editor handshake identity or protocol mismatch";
         close();
@@ -889,8 +888,7 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
                                        "entity.inspect") != negotiated_capabilities_.end();
         if (!allowed || !exact_keys(payload, {"lastReceivedSequence", "reason"}) ||
             !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_ ||
-            !field(payload, "reason", reason) ||
-            (reason != "reconnected" && reason != "gap" && reason != "overflow"))
+            !field(payload, "reason", reason) || (reason != "reconnected" && reason != "gap" && reason != "overflow"))
         {
             error = "Invalid or unauthorized Live Play resynchronization request";
             close();
