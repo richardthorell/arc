@@ -29,7 +29,13 @@ const snapshot: LivePlayDiagnosticsSnapshot = {
   droppedLogLines: 0,
   events: [
     { id: 1, timestampMs: 1700000000000, kind: 'log', level: 'info', message: 'Game started' },
-    { id: 2, timestampMs: 1700000001000, kind: 'command', level: 'warning', message: 'Command rejected: stale_revision' },
+    {
+      id: 2,
+      timestampMs: 1700000001000,
+      kind: 'command',
+      level: 'warning',
+      message: 'Command rejected: stale_revision',
+    },
   ],
 };
 
