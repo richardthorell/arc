@@ -181,6 +181,9 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
         worldRevision: revision,
         entities: z.array(hierarchyEntity).max(128),
         complete: z.boolean(),
+        // L1.5d: optional bounded pages; a page is NEVER independently authoritative.
+        pageIndex: z.number().int().min(0).max(63).optional(),
+        pageCount: z.number().int().min(1).max(64).optional(),
       })
       .strict(),
   ),
@@ -188,6 +191,8 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
     'hierarchy.changed',
     z
       .object({
+        // The receiver must have this exact base. Unknown bases require a new snapshot.
+        baseRevision: revision.optional(),
         worldRevision: revision,
         changes: z
           .array(
