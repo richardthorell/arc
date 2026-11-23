@@ -150,6 +150,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
       .then((state) => {
         if (!subscribed) return;
         const hierarchy = state?.hierarchy;
+        const stale = state?.requiresSnapshot ?? false;
         if (hierarchy && sameSession(hierarchy, snapshot)) {
           setView((previous) => {
             const currentView = previous.scope === scope ? previous : emptyView(scope);
@@ -159,9 +160,9 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
               ...currentView,
               hierarchy,
               pending: null,
-              requiresSnapshot: state.requiresSnapshot,
+              requiresSnapshot: stale,
               properties: {},
-              notice: state.requiresSnapshot ? 'Waiting for a full hierarchy resynchronization.' : null,
+              notice: stale ? 'Waiting for a full hierarchy resynchronization.' : null,
             };
           });
         }
