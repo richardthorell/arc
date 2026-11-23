@@ -1,0 +1,154 @@
+/* External Live Play is always a read-only view of the native game process. */
+.live-runtime-mode-switch {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, #343842);
+}
+
+.live-runtime-mode-switch button,
+.live-runtime-inspector-actions button {
+  border: 1px solid var(--border, #454951);
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.live-runtime-mode-switch button[aria-pressed='true'] {
+  background: var(--surface-hover, #35445b);
+  border-color: var(--accent, #7299cc);
+}
+
+.live-runtime-panel {
+  min-height: 0;
+  overflow: auto;
+  color: inherit;
+  font-size: 12px;
+}
+
+.live-runtime-panel-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border, #343842);
+}
+
+.live-runtime-panel-heading strong {
+  font-size: 13px;
+}
+
+.live-runtime-panel-heading span,
+.live-runtime-identity small,
+.live-runtime-entity-list small,
+.live-runtime-footer {
+  color: var(--text-muted, #9aa2af);
+  font-size: 11px;
+}
+
+.live-runtime-warning {
+  margin: 8px 10px;
+  padding: 9px;
+  border: 1px solid var(--border, #454951);
+  border-radius: 4px;
+}
+
+.live-runtime-entity-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.live-runtime-entity-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 0;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  min-height: 29px;
+  cursor: pointer;
+  padding: 4px 12px;
+}
+
+.live-runtime-entity-list button.selected {
+  background: var(--surface-hover, #35445b);
+}
+
+.live-runtime-entity-list button:hover,
+.live-runtime-entity-list button:focus-visible {
+  outline: 1px solid var(--accent, #7299cc);
+}
+
+.live-runtime-entity-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-runtime-empty,
+.live-runtime-footer {
+  padding: 12px;
+}
+
+.live-runtime-inspector .live-runtime-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+}
+
+.live-runtime-identity code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.live-runtime-inspector-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.live-runtime-inspector-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.live-runtime-component {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border, #343842);
+}
+
+.live-runtime-component h4,
+.live-runtime-component dl,
+.live-runtime-component dt,
+.live-runtime-component dd {
+  margin: 0;
+}
+
+.live-runtime-component h4 {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.live-runtime-component dl > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  gap: 12px;
+}
+
+.live-runtime-component dt {
+  color: var(--text-muted, #9aa2af);
+}
+
+.live-runtime-component dd {
+  text-align: right;
+  overflow-wrap: anywhere;
+}

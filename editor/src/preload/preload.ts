@@ -21,6 +21,7 @@ import type {
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
 import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
+import type { LivePlayMessage, LivePlayEntity } from '../common/livePlayProtocol';
 import type { BuildMonitorEvent, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
 import type { BuildHistoryDetail, BuildHistoryPage } from '../common/buildHistoryTypes';
 import type {
@@ -517,6 +518,16 @@ const arcApi = {
     snapshot: (): Promise<WindowsLivePlaySnapshot | null> => ipcRenderer.invoke('livePlay:snapshot'),
     start: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:start'),
     stop: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:stop'),
+    /** Read-only native inspection: never routes to the authoring host. */
+    inspect: (entity: LivePlayEntity, typeId: string): Promise<string | null> =>
+      ipcRenderer.invoke('livePlay:inspect', { entity, component: { typeId, schemaVersion: 1 } }),
+    latestHierarchy: (): Promise<Extract<LivePlayMessage, { type: 'hierarchy.snapshot' }> | null> =>
+      ipcRenderer.invoke('livePlay:inspectionSnapshot'),
+    onMessage: (callback: (message: LivePlayMessage) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, message: LivePlayMessage) => callback(message);
+      ipcRenderer.on('livePlay:message', listener);
+      return () => ipcRenderer.removeListener('livePlay:message', listener);
+    },
     onState: (callback: (snapshot: WindowsLivePlaySnapshot) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, snapshot: WindowsLivePlaySnapshot) => callback(snapshot);
       ipcRenderer.on('livePlay:state', listener);
