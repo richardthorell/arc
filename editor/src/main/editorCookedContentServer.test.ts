@@ -106,13 +106,9 @@ function releaseFixture(
 async function request(server: EditorCookedContentServer, url: string, token?: string, init: RequestInit = {}) {
   const origin = server.snapshot().origin;
   if (!origin) throw new Error('C9 test server is not listening');
-  return fetch(origin + url, {
-    ...init,
-    headers: {
-      ...(token ? { Authorization: 'Bearer ' + token } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
+  const headers = new Headers(init.headers);
+  if (token) headers.set('Authorization', 'Bearer ' + token);
+  return fetch(origin + url, { ...init, headers });
 }
 
 describe('C9.4a editor-owned cooked HTTP server', () => {
