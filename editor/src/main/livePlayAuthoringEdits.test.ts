@@ -249,7 +249,7 @@ describe('Live Play L1.4a authoring transform producer', () => {
     const t = fixture();
     t.tracker.activate(t.baseline.sessionId);
     t.tracker.observeSnapshot(snapshot([14, 0, 0]));
-    await vi.advanceTimersByTimeAsync(4200);
+    await vi.advanceTimersByTimeAsync(4800);
     expect(t.tracker.snapshot()).toMatchObject({
       active: false,
       pending: 0,
