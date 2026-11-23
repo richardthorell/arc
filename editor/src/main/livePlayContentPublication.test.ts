@@ -287,7 +287,7 @@ describe('C9.4b editor live-play publication orchestration', () => {
         { family: 'bc', descriptorPath: '', descriptorSha256: '', cookedBuildId: '', chunkCount: 1 },
         { family: 'portable', descriptorPath: '', descriptorSha256: '', cookedBuildId: '', chunkCount: 1 },
       ],
-    } as LivePlayRemoteRelease;
+    } satisfies Pick<LivePlayRemoteRelease, 'variants'>;
     expect(selectLivePlayTextureFamily(release, ['bc'])).toBe('bc');
     expect(() => selectLivePlayTextureFamily(release, ['astc'])).toThrow(/No cooked texture family/);
     expect(() => selectLivePlayTextureFamily(release, ['bc', 'portable'])).toThrow(/Multiple compatible/);
