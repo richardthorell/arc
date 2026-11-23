@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { LivePlayDiagnosticsSnapshot } from '../../../common/livePlayDiagnosticsTypes';
 import type { WindowsLivePlaySnapshot } from '../../../common/livePlaySessionTypes';
+import './livePlayDiagnostics.css';
 
 function sameSession(diagnostics: LivePlayDiagnosticsSnapshot, session: WindowsLivePlaySnapshot): boolean {
   return Boolean(
