@@ -108,7 +108,10 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
         // Never display a potentially incorrect tree after seeing a delta.
         if (message.type === 'hierarchy.changed')
           return { ...previous, requiresSnapshot: true, notice: 'Runtime hierarchy changed; full resync required.' };
-        if (message.type === 'component.inspect.result' && matchesRuntimeEntity(previous.selected, message.payload.entity)) {
+        if (
+          message.type === 'component.inspect.result' &&
+          matchesRuntimeEntity(previous.selected, message.payload.entity)
+        ) {
           const typeId = message.payload.component.typeId;
           return {
             ...previous,
@@ -248,7 +251,11 @@ export function RuntimeHierarchyPanel({ inspection }: { inspection: LivePlayRunt
 }
 
 function valueText(value: unknown): string {
-  if (Array.isArray(value)) return value.map((item) => (typeof item === 'number' ? Number(item.toFixed(4)) : item)).join(', ');
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'number' ? Number(item.toFixed(4)) : item))
+      .join(', ');
+  }
   if (typeof value === 'boolean') return value ? 'True' : 'False';
   if (typeof value === 'string') return value;
   return 'Unavailable';
@@ -267,7 +274,9 @@ export function RuntimeInspectorPanel({ inspection }: { inspection: LivePlayRunt
       </header>
       {disconnected && (
         <p className="live-runtime-warning" role="status">
-          {inspection.status === 'disconnected' ? 'Disconnected — values are stale.' : 'Runtime inspection unavailable.'}
+          {inspection.status === 'disconnected'
+            ? 'Disconnected — values are stale.'
+            : 'Runtime inspection unavailable.'}
         </p>
       )}
       {inspection.notice && <p className="live-runtime-warning" role="status">{inspection.notice}</p>}
