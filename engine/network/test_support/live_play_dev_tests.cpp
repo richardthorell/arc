@@ -466,8 +466,8 @@ void test_revisioned_hierarchy_diffs()
     check(delta->changes[0].kind == hierarchy_change_kind::upsert && delta->changes[0].item.name == "Renamed" &&
               !delta->changes[0].item.parent,
           "Native diff did not include the changed hierarchy parent/name");
-    check(delta->changes[1].kind == hierarchy_change_kind::upsert && delta->changes[2].kind == hierarchy_change_kind::removed &&
-              delta->changes[2].item.entity.authored,
+    check(delta->changes[1].kind == hierarchy_change_kind::upsert &&
+              delta->changes[2].kind == hierarchy_change_kind::removed && delta->changes[2].item.entity.authored,
           "Native diff mixed entity identity namespaces or lost a removal");
 
     hierarchy_snapshot overflow = initial;
