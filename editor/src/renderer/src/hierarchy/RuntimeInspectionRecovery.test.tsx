@@ -57,19 +57,21 @@ afterEach(() => {
 
 describe('Live Play reconnect renderer hydration', () => {
   it('replays early revisioned hierarchy changes after loading the verified base', async () => {
-    let notify: ((message: LivePlayMessage) => void) | null = null;
-    let resolveCache: ((state: LivePlayHierarchyState) => void) | null = null;
+    const handlers: {
+      notify?: (message: LivePlayMessage) => void;
+      resolveCache?: (state: LivePlayHierarchyState) => void;
+    } = {};
     const cache = new Promise<LivePlayHierarchyState>((resolve) => {
-      resolveCache = resolve;
+      handlers.resolveCache = resolve;
     });
     Object.defineProperty(window, 'arc', {
       configurable: true,
       value: {
         livePlay: {
           onMessage: (listener: (message: LivePlayMessage) => void) => {
-            notify = listener;
+            handlers.notify = listener;
             return () => {
-              notify = null;
+              handlers.notify = undefined;
             };
           },
           latestHierarchyState: () => cache,
@@ -79,11 +81,11 @@ describe('Live Play reconnect renderer hydration', () => {
     });
     const { result } = renderHook(() => useLivePlayRuntimeInspection(session));
     await act(async () => {
-      notify?.(next);
+      handlers.notify?.(next);
     });
     expect(result.current.hierarchy).toBeNull();
     await act(async () => {
-      resolveCache?.({ hierarchy: base, pending: null, requiresSnapshot: false });
+      handlers.resolveCache?.({ hierarchy: base, pending: null, requiresSnapshot: false });
       await cache;
     });
     await waitFor(() => {
