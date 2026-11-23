@@ -43,19 +43,36 @@ struct remote_object_download_coordinator::implementation
     std::unordered_map<std::string, std::shared_ptr<inflight>> requests;
     std::size_t active_requests{};
     std::uint64_t active_bytes{};
+    remote_download_metrics metrics;
 
     [[nodiscard]] bool acquire_slot(std::uint64_t size, const jobs::cancellation_token& cancellation)
     {
         std::unique_lock lock(mutex);
+        bool queued = false;
         while (active_requests >= limits.maximum_concurrent_requests ||
                size > limits.maximum_inflight_bytes - active_bytes)
         {
-            if (cancellation.stop_requested()) return false;
+            if (!queued)
+            {
+                queued = true;
+                ++metrics.queued_requests;
+                metrics.peak_queued_requests = std::max(metrics.peak_queued_requests, metrics.queued_requests);
+            }
+            if (cancellation.stop_requested())
+            {
+                --metrics.queued_requests;
+                return false;
+            }
             changed.wait_for(lock, std::chrono::milliseconds(25));
         }
+        if (queued) --metrics.queued_requests;
         if (cancellation.stop_requested()) return false;
         ++active_requests;
         active_bytes += size;
+        metrics.active_requests = active_requests;
+        metrics.active_declared_bytes = active_bytes;
+        metrics.peak_active_requests = std::max(metrics.peak_active_requests, active_requests);
+        metrics.peak_declared_bytes = std::max(metrics.peak_declared_bytes, active_bytes);
         return true;
     }
 
@@ -65,6 +82,8 @@ struct remote_object_download_coordinator::implementation
             std::lock_guard lock(mutex);
             --active_requests;
             active_bytes -= size;
+            metrics.active_requests = active_requests;
+            metrics.active_declared_bytes = active_bytes;
         }
         changed.notify_all();
     }
@@ -194,28 +213,61 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
                                            http::content_http_limits http_limits, jobs::cancellation_token cancellation,
                                            remote_generation_fetch_executor executor, bool force_refresh)
 {
+    const auto started = std::chrono::steady_clock::now();
+    const auto finish = [&](remote_download_result outcome)
+    {
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::steady_clock::now() - started)
+                                 .count();
+        std::lock_guard lock(implementation_->mutex);
+        auto& stats = implementation_->metrics;
+        ++stats.calls;
+        if (outcome.reused && !outcome.coalesced) ++stats.cache_hits;
+        if (outcome.coalesced) ++stats.coalesced_calls;
+        if (!outcome.coalesced)
+        {
+            stats.network_attempts += outcome.attempts;
+            if (outcome.attempts > 1) stats.retry_attempts += outcome.attempts - 1;
+        }
+        if (outcome.downloaded)
+        {
+            ++stats.completed_downloads;
+            stats.downloaded_bytes += object.size;
+        }
+        if (!outcome.succeeded())
+        {
+            ++stats.failed_calls;
+            if (outcome.transport_error == http::content_http_error_code::cancelled)
+                ++stats.cancelled_calls;
+            if (outcome.cache_error == remote_object_cache_error::hash_mismatch ||
+                outcome.cache_error == remote_object_cache_error::incompatible_response)
+                ++stats.integrity_failures;
+        }
+        stats.elapsed_milliseconds += static_cast<std::uint64_t>(std::max<std::int64_t>(0, elapsed));
+        return outcome;
+    };
     if (cancellation.stop_requested())
-        return failed("Remote immutable object transfer cancelled", http::content_http_error_code::cancelled);
+        return finish(failed("Remote immutable object transfer cancelled", http::content_http_error_code::cancelled));
     const http::content_http_request request{
         .origin = std::move(origin), .object_path = object.path, .object_size = object.size};
     const auto validation = http::validate_content_http_request(request, http_limits);
-    if (!validation.succeeded()) return failed(validation.message, validation.code);
+    if (!validation.succeeded()) return finish(failed(validation.message, validation.code));
     const auto digest = parse_asset_hash(object.sha256);
     if (!digest || to_string(*digest) != object.sha256 || object.path != "objects/sha256/" + object.sha256)
-        return failed("Remote immutable object has invalid SHA-256 descriptor",
-                      http::content_http_error_code::invalid_request);
+        return finish(failed("Remote immutable object has invalid SHA-256 descriptor",
+                             http::content_http_error_code::invalid_request));
 
     if (!force_refresh)
     {
         cache_error error;
-        if (load_verified_remote_object(*implementation_->cache, object, error)) return {.reused = true};
+        if (load_verified_remote_object(*implementation_->cache, object, error)) return finish({.reused = true});
     }
 
     // A verified local cache hit never consumes a network-transfer budget.
     if (implementation_->limits.maximum_inflight_bytes == 0 ||
         object.size > implementation_->limits.maximum_inflight_bytes)
-        return failed("Remote immutable object exceeds in-flight byte budget",
-                      http::content_http_error_code::oversized_response);
+        return finish(failed("Remote immutable object exceeds in-flight byte budget",
+                             http::content_http_error_code::oversized_response));
 
     std::shared_ptr<implementation::inflight> flight;
     bool leader = false;
@@ -232,24 +284,24 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
         while (!flight->done)
         {
             if (cancellation.stop_requested())
-                return failed("Remote immutable object transfer wait cancelled",
-                              http::content_http_error_code::cancelled);
+                return finish(failed("Remote immutable object transfer wait cancelled",
+                                     http::content_http_error_code::cancelled));
             implementation_->changed.wait_for(lock, std::chrono::milliseconds(25));
         }
         auto outcome = flight->outcome;
         lock.unlock();
         outcome.coalesced = true;
         outcome.downloaded = false;
-        if (!outcome.succeeded()) return outcome;
+        if (!outcome.succeeded()) return finish(std::move(outcome));
         cache_error error;
         if (!load_verified_remote_object(*implementation_->cache, object, error))
         {
             outcome.cache_error = remote_object_cache_error::cache_failure;
             outcome.error = "Coalesced remote object missing after successful CAS publication";
-            return outcome;
+            return finish(std::move(outcome));
         }
         outcome.reused = true;
-        return outcome;
+        return finish(std::move(outcome));
     }
 
     remote_download_result result;
@@ -270,7 +322,13 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
         implementation_->requests.erase(object.sha256);
     }
     implementation_->changed.notify_all();
-    return result;
+    return finish(std::move(result));
+}
+
+remote_download_metrics remote_object_download_coordinator::metrics() const
+{
+    std::lock_guard lock(implementation_->mutex);
+    return implementation_->metrics;
 }
 
 } // namespace arc::assets
