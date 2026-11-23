@@ -670,6 +670,41 @@
   gap: 4px;
 }
 
+.build-monitor-output-actions,
+.build-monitor-copy-output {
+  display: flex;
+  align-items: center;
+}
+
+.build-monitor-output-actions {
+  gap: 8px;
+  min-width: 0;
+}
+
+.build-monitor-copy-output {
+  flex: 0 0 auto;
+  gap: 6px;
+  height: 31px;
+  padding: 0 10px;
+  border: 1px solid #3a4c5b;
+  border-radius: 5px;
+  background: #172630;
+  color: #c9d9e5;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.build-monitor-copy-output:hover:not(:disabled) {
+  border-color: #557084;
+  background: #203440;
+}
+
+.build-monitor-copy-output:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .build-monitor-tabs button {
   display: flex;
   align-items: center;

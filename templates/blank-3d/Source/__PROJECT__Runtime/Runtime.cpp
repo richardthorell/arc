@@ -8,9 +8,10 @@ namespace {{PROJECT_TOKEN}}
 void register_runtime(arc::project::packaged_game_registrations& registrations)
 {
     registrations.materialize_scene = [](arc::framework::runtime_world& world,
-                                         const arc::project::packaged_scene_payload& scene)
+                                         const arc::project::packaged_scene_payload& scene,
+                                         arc::scene::cooked_scene_mesh_bindings& bindings)
     {
-        const auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes);
+        const auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes, &bindings);
         if (!error.empty())
             return arc::project::project_status::failure({
                 .code = arc::project::project_error_code::invalid_scene,

@@ -337,6 +337,19 @@ describe('Build Monitor BM3', () => {
     expect(screen.queryByText('error: archive page two')).not.toBeInTheDocument();
   });
 
+  it('copies the selected build output with stream labels', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...window.navigator, clipboard: { writeText } });
+    mockApi();
+    render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);
+
+    await screen.findByText('build log for current-run');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy output' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('stdout\nbuild log for current-run\n'));
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+  });
+
   it('retains a selected historical run when another live build sends events', async () => {
     const { handlers, api } = mockApi();
     render(<BuildDashboard snapshot={null} onClose={vi.fn()} onOpenDiagnostic={vi.fn()} />);

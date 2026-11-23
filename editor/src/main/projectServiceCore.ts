@@ -523,10 +523,10 @@ export class ProjectService {
         // Upgrade the managed Quick Start project without overriding an explicit disabled target.
         const targets = Array.isArray(rawDescriptor.targetPlatforms) ? rawDescriptor.targetPlatforms : [];
         const profiles = Array.isArray(rawDescriptor.cookProfiles) ? rawDescriptor.cookProfiles : [];
-        let androidAdded = false;
+        let descriptorChanged = false;
         if (!targets.some((entry) => objectValue(entry).id === 'android-arm64-vulkan')) {
           rawDescriptor.targetPlatforms = [...targets, { id: 'android-arm64-vulkan', enabled: true }];
-          androidAdded = true;
+          descriptorChanged = true;
         }
         if (!profiles.some((entry) => objectValue(entry).id === 'android-arm64-vulkan')) {
           rawDescriptor.cookProfiles = [
@@ -541,26 +541,47 @@ export class ProjectService {
               configuration: 'Shipping',
             },
           ];
-          androidAdded = true;
+          descriptorChanged = true;
         }
-        if (androidAdded) writeJsonAtomic(descriptorPath, rawDescriptor);
-        const defaultScene = objectValue(rawDescriptor.defaultScene);
         const startupScenes = Array.isArray(rawDescriptor.startupScenes) ? rawDescriptor.startupScenes : [];
-        const normalizedPath = (value: unknown): string =>
-          typeof value === 'string' ? value.replaceAll('\\', '/') : '';
-        const referencesLegacyScene =
-          normalizedPath(defaultScene.pathHint) === legacyScenePath ||
-          startupScenes.some(
-            (entry) =>
-              normalizedPath(typeof entry === 'string' ? entry : objectValue(entry).pathHint) === legacyScenePath,
+        const startupScenePath = path.join(projectRoot, legacyScenePath);
+        const startupSceneMetaPath = `${startupScenePath}.arcmeta`;
+        if (!startupScenes.length && (!fs.existsSync(startupScenePath) || !fs.existsSync(startupSceneMetaPath))) {
+          const repairRoot = path.join(
+            path.dirname(this.recentPath),
+            `.quick-start-scene-${process.pid}-${Date.now()}`,
           );
-        if (referencesLegacyScene) {
-          rawDescriptor.defaultScene = null;
-          rawDescriptor.startupScenes = [];
-          writeJsonAtomic(descriptorPath, rawDescriptor);
-          fs.rmSync(path.join(projectRoot, legacyScenePath), { force: true });
-          fs.rmSync(path.join(projectRoot, `${legacyScenePath}.arcmeta`), { force: true });
+          try {
+            const repair = this.create({
+              name: 'ARC Quick Start Scene',
+              destination: repairRoot,
+              template: 'blank-3d',
+            });
+            const reference = repair.project?.descriptor.startupScenes[0];
+            if (!repair.succeeded || !reference || reference.pathHint !== legacyScenePath)
+              throw new Error(repair.error || 'Quick Start template has no runtime startup scene');
+            const sourceScene = path.join(repairRoot, reference.pathHint);
+            fs.mkdirSync(path.dirname(startupScenePath), { recursive: true });
+            const temporaryScene = `${startupScenePath}.tmp-${process.pid}-${Date.now()}`;
+            const temporaryMeta = `${temporaryScene}.arcmeta`;
+            try {
+              fs.copyFileSync(sourceScene, temporaryScene);
+              fs.copyFileSync(`${sourceScene}.arcmeta`, temporaryMeta);
+              fs.rmSync(startupScenePath, { force: true });
+              fs.rmSync(startupSceneMetaPath, { force: true });
+              fs.renameSync(temporaryScene, startupScenePath);
+              fs.renameSync(temporaryMeta, startupSceneMetaPath);
+            } finally {
+              fs.rmSync(temporaryScene, { force: true });
+              fs.rmSync(temporaryMeta, { force: true });
+            }
+            rawDescriptor.startupScenes = [reference];
+            descriptorChanged = true;
+          } finally {
+            fs.rmSync(repairRoot, { recursive: true, force: true });
+          }
         }
+        if (descriptorChanged) writeJsonAtomic(descriptorPath, rawDescriptor);
       }
 
       return await this.open(descriptorPath, { upgrade: true });

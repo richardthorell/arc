@@ -115,7 +115,7 @@ describe('ProjectService', () => {
     expect(inspected.diagnostics[0]).toContain('Project format v2');
   });
 
-  it('creates and reuses a Blank 3D quick-start project with the native default scene', async () => {
+  it('creates and repairs a Blank 3D quick-start project with a runtime startup scene', async () => {
     const root = temporary();
     const commands: string[] = [];
     const service = new ProjectService({
@@ -137,13 +137,17 @@ describe('ProjectService', () => {
     const first = await service.openOrCreateQuickStartProject(destination);
     expect(first.succeeded, first.error).toBe(true);
     expect(first.project?.descriptor.name).toBe('ARC Editor Development');
-    expect(first.project?.descriptor.defaultScene).toBeNull();
-    expect(first.project?.descriptor.startupScenes).toEqual([]);
+    expect(first.project?.descriptor.defaultScene).toEqual(
+      expect.objectContaining({ expectedType: 'scene', pathHint: 'Content/Scenes/Startup.arcscene' }),
+    );
+    expect(first.project?.descriptor.startupScenes).toEqual([
+      expect.objectContaining({ expectedType: 'scene', pathHint: 'Content/Scenes/Startup.arcscene' }),
+    ]);
     expect(first.project?.descriptor.targetPlatforms).toContainEqual({ id: 'android-arm64-vulkan', enabled: true });
     expect(first.project?.descriptor.cookProfiles).toContainEqual(
       expect.objectContaining({ id: 'android-arm64-vulkan', platform: 'android', architecture: 'arm64' }),
     );
-    expect(fs.existsSync(path.join(destination, 'Content/Scenes/Startup.arcscene'))).toBe(false);
+    expect(fs.existsSync(path.join(destination, 'Content/Scenes/Startup.arcscene'))).toBe(true);
 
     await service.close();
     const legacy = JSON.parse(fs.readFileSync(first.project!.descriptorPath, 'utf8'));
@@ -153,6 +157,9 @@ describe('ProjectService', () => {
     legacy.cookProfiles = legacy.cookProfiles.filter(
       (profile: { id: string }) => profile.id !== 'android-arm64-vulkan',
     );
+    legacy.startupScenes = [];
+    fs.rmSync(path.join(destination, 'Content/Scenes/Startup.arcscene'));
+    fs.rmSync(path.join(destination, 'Content/Scenes/Startup.arcscene.arcmeta'));
     fs.writeFileSync(first.project!.descriptorPath, JSON.stringify(legacy));
     const second = await service.openOrCreateQuickStartProject(destination);
     expect(second.succeeded, second.error).toBe(true);
@@ -160,6 +167,10 @@ describe('ProjectService', () => {
     expect(
       second.project?.descriptor.targetPlatforms.filter((target) => target.id === 'android-arm64-vulkan'),
     ).toHaveLength(1);
+    expect(second.project?.descriptor.startupScenes).toEqual([
+      expect.objectContaining({ expectedType: 'scene', pathHint: 'Content/Scenes/Startup.arcscene' }),
+    ]);
+    expect(fs.existsSync(path.join(destination, 'Content/Scenes/Startup.arcscene'))).toBe(true);
     expect(commands.filter((type) => type === 'project.open')).toHaveLength(2);
     const disabled = JSON.parse(fs.readFileSync(second.project!.descriptorPath, 'utf8'));
     disabled.targetPlatforms.find((target: { id: string }) => target.id === 'android-arm64-vulkan').enabled = false;

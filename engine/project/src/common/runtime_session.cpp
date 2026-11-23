@@ -64,6 +64,12 @@ runtime_catalog_session* packaged_runtime_session::catalog() noexcept
     return catalog_.get();
 }
 
+const std::vector<packaged_scene_payload>& packaged_runtime_session::scenes() const noexcept
+{
+    static const std::vector<packaged_scene_payload> empty;
+    return application_ ? application_->scenes() : empty;
+}
+
 project_status packaged_runtime_session::check_active() const
 {
     if (stopped_ || !runtime_)

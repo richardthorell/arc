@@ -66,6 +66,8 @@ public:
 
     /** Borrowed mounted catalog, valid only while the session is not stopped. */
     [[nodiscard]] runtime_catalog_session* catalog() noexcept;
+    /** Ordered startup payloads and retained renderer-generation bindings. */
+    [[nodiscard]] const std::vector<packaged_scene_payload>& scenes() const noexcept;
 
     /** Advance an explicit host-measured delta. No work is run while suspended. */
     [[nodiscard]] packaged_frame_result advance(double delta_seconds);

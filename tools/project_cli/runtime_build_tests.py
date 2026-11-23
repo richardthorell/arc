@@ -118,4 +118,29 @@ arc_register_runtime_output(TARGET Game PROJECT_GUID "{project['guid']}"
     assert manifest.read_bytes() == last_good, "Failed emission must preserve last successful metadata"
     verify(False)
 
+    # Projects created before runtime-output registration still receive the
+    # editor workflow target when they have one unambiguous executable.
+    legacy_source = root / "legacy-fixture"
+    legacy_source.mkdir()
+    (legacy_source / "main.cpp").write_text("int main() { return 0; }\n", encoding="utf-8")
+    (legacy_source / "CMakeLists.txt").write_text(f'''
+cmake_minimum_required(VERSION 3.20)
+project(LegacyRuntime LANGUAGES CXX)
+set(ARC_WORKFLOW_PROJECT_GUID "{project['guid']}")
+set(ARC_WORKFLOW_ENGINE_VERSION "{version}")
+set(ARC_WORKFLOW_PROFILE legacy-runtime)
+set(ARC_WORKFLOW_RENDERER none)
+set(ARC_WORKFLOW_ROLE client)
+include("{Path(module).as_posix()}")
+arc_enable_workflow_runtime_output_compatibility()
+add_executable(LegacyGame main.cpp)
+''', encoding="utf-8")
+    legacy_build = root / "legacy-build"
+    run(cmake, "-S", str(legacy_source), "-B", str(legacy_build), "-DCMAKE_BUILD_TYPE=RelWithDebInfo")
+    run(cmake, "--build", str(legacy_build), "--config", "RelWithDebInfo",
+        "--target", "arc-runtime-output")
+    legacy_manifest = json.loads((legacy_build / "arc-runtime-RelWithDebInfo.json").read_text(encoding="utf-8"))
+    assert legacy_manifest["cmakeTarget"] == "LegacyGame", legacy_manifest
+    assert legacy_manifest["profile"] == "legacy-runtime", legacy_manifest
+
 print("Runtime build manifest producer/consumer checks passed")

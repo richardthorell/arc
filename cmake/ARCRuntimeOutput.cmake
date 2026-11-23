@@ -76,3 +76,65 @@ function(arc_register_runtime_output)
         DEPENDS ${ARG_TARGET} ${ARG_LIBRARIES} ${ARG_PLUGINS}
         VERBATIM)
 endfunction()
+
+function(_arc_collect_directory_targets directory output)
+    get_property(targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+    get_property(subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+    foreach(subdirectory IN LISTS subdirectories)
+        _arc_collect_directory_targets("${subdirectory}" nested_targets)
+        list(APPEND targets ${nested_targets})
+    endforeach()
+    set(${output} "${targets}" PARENT_SCOPE)
+endfunction()
+
+# Compatibility for projects created before ARC exposed arc-runtime-output.
+# Registration is deferred until the complete project target graph exists and
+# refuses to guess when a project contains more than one runtime executable.
+function(_arc_register_workflow_runtime_output)
+    if(TARGET arc-runtime-output)
+        return()
+    endif()
+    _arc_collect_directory_targets("${CMAKE_SOURCE_DIR}" project_targets)
+    set(runtime_targets)
+    foreach(target IN LISTS project_targets)
+        get_target_property(imported "${target}" IMPORTED)
+        get_target_property(kind "${target}" TYPE)
+        if(kind STREQUAL "EXECUTABLE" AND NOT imported)
+            list(APPEND runtime_targets "${target}")
+        endif()
+    endforeach()
+    list(LENGTH runtime_targets runtime_target_count)
+    if(NOT runtime_target_count EQUAL 1)
+        message(FATAL_ERROR
+            "ARC workflow requires exactly one runtime executable when arc-runtime-output is not registered; "
+            "found ${runtime_target_count}. Call arc_register_runtime_output(...) explicitly in the project CMakeLists.txt.")
+    endif()
+    list(GET runtime_targets 0 runtime_target)
+    get_target_property(linked_targets "${runtime_target}" LINK_LIBRARIES)
+    set(runtime_libraries)
+    foreach(linked IN LISTS linked_targets)
+        if(TARGET "${linked}")
+            get_target_property(linked_kind "${linked}" TYPE)
+            if(linked_kind MATCHES "^(SHARED_LIBRARY|MODULE_LIBRARY)$")
+                list(APPEND runtime_libraries "${linked}")
+            endif()
+        endif()
+    endforeach()
+    arc_register_runtime_output(
+        TARGET "${runtime_target}"
+        PROJECT_GUID "${ARC_WORKFLOW_PROJECT_GUID}"
+        ENGINE_VERSION "${ARC_WORKFLOW_ENGINE_VERSION}"
+        PROFILE "${ARC_WORKFLOW_PROFILE}"
+        RENDERER "${ARC_WORKFLOW_RENDERER}"
+        ROLE "${ARC_WORKFLOW_ROLE}"
+        LIBRARIES ${runtime_libraries})
+endfunction()
+
+function(arc_enable_workflow_runtime_output_compatibility)
+    get_property(enabled GLOBAL PROPERTY ARC_WORKFLOW_RUNTIME_OUTPUT_COMPATIBILITY)
+    if(enabled)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY ARC_WORKFLOW_RUNTIME_OUTPUT_COMPATIBILITY TRUE)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _arc_register_workflow_runtime_output)
+endfunction()

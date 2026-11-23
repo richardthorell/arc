@@ -209,8 +209,8 @@ function isExternalTarget(target: BuildTargetNode): boolean {
 }
 
 function moduleRank(target: BuildTargetNode, task: WorkflowTaskSpan): number {
-  if (target.artifactObservedAt) return 0;
-  if (task.state === 'running' && target.activePhase) return 1;
+  if (task.state === 'running' && target.activePhase && !target.artifactObservedAt) return 0;
+  if (target.artifactObservedAt) return 1;
   return 2;
 }
 
@@ -321,7 +321,7 @@ function WorkflowTaskRows({
   );
   const externalBuilt = externalTargets.length > 0 && externalTargets.every((target) => target.artifactObservedAt);
   const externalProgress = externalTargets.some((target) => target.artifactObservedAt);
-  const externalBuilding = Boolean(externalActive || (externalProgress && task.state === 'running'));
+  const externalBuilding = !externalBuilt && Boolean(externalActive || (externalProgress && task.state === 'running'));
   const moduleEntries: Array<
     | { kind: 'target'; target: BuildTargetNode; rank: number; name: string; startedAt: number }
     | { kind: 'external'; rank: number; name: string; startedAt: number }
@@ -337,7 +337,7 @@ function WorkflowTaskRows({
       ? [
           {
             kind: 'external' as const,
-            rank: externalBuilt ? 0 : externalBuilding ? 1 : 2,
+            rank: externalBuilding ? 0 : externalBuilt ? 1 : 2,
             name: 'Third-party',
             startedAt: Math.min(...externalTargets.map(moduleStart)),
           },

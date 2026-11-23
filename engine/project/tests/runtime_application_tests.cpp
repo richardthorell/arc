@@ -216,13 +216,15 @@ TEST_CASE("D1.4 packaged client loads verified scene bytes then explicitly regis
         events.push_back("modules:register");
         registry.emplace<recording_module>(events);
     };
-    registrations.materialize_scene = [&](framework::runtime_world& world, const project::packaged_scene_payload& scene)
+    registrations.materialize_scene = [&](framework::runtime_world& world, const project::packaged_scene_payload& scene,
+                                          arc::scene::cooked_scene_mesh_bindings& bindings)
     {
         materialized.push_back(scene.guid);
         CHECK(scene.bytes == fixture.scene_data);
         CHECK(scene.artifact_name == "main/scene");
         CHECK(world.entities().live_count() == 0);
         CHECK(world.entities().create().valid());
+        bindings.push_back({.subresource = scene.artifact_name});
         events.push_back("scene:materialized");
         return project::project_status::success();
     };
@@ -235,6 +237,12 @@ TEST_CASE("D1.4 packaged client loads verified scene bytes then explicitly regis
     framework::runtime host(*app.value());
     host.start();
     REQUIRE(host.worlds().size() == 2);
+    REQUIRE(app.value()->scenes().size() == 2);
+    for (const auto& scene : app.value()->scenes())
+    {
+        REQUIRE(scene.render_bindings.size() == 1);
+        CHECK(scene.render_bindings.front().subresource == scene.artifact_name);
+    }
     CHECK(materialized == std::vector<assets::asset_guid>{fixture.first, fixture.second});
     for (const auto id : host.worlds().ordered_worlds())
     {
@@ -304,7 +312,8 @@ TEST_CASE("D1.4 incorrect startup GUID order fails instead of launching a differ
     auto app = project::prepare_packaged_application(
         {.boot = boot,
          .catalog = *catalog,
-         .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&)
+         .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&,
+                                                   arc::scene::cooked_scene_mesh_bindings&)
                            { return project::project_status::success(); }}});
     REQUIRE_FALSE(app);
     CHECK(app.error().code == project::project_error_code::invalid_scene);
@@ -321,7 +330,8 @@ TEST_CASE("D1.4 rejects corrupted cooked scene payload before a runtime exists")
     auto app = project::prepare_packaged_application(
         {.boot = boot,
          .catalog = *catalog,
-         .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&)
+         .registrations = {.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&,
+                                                   arc::scene::cooked_scene_mesh_bindings&)
                            { return project::project_status::success(); }}});
     REQUIRE_FALSE(app);
     CHECK(app.error().code == project::project_error_code::corrupt_content);
@@ -339,7 +349,8 @@ TEST_CASE("D1.4 scene materialization failure rolls back worlds and propagates s
         {.boot = boot,
          .catalog = *catalog,
          .registrations = {
-             .materialize_scene = [&](framework::runtime_world& world, const project::packaged_scene_payload&)
+             .materialize_scene = [&](framework::runtime_world& world, const project::packaged_scene_payload&,
+                                      arc::scene::cooked_scene_mesh_bindings&)
              {
                  CHECK(world.entities().create().valid());
                  if (++attempted == 2)

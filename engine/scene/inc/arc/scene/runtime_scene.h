@@ -25,6 +25,7 @@ struct cooked_scene_mesh_binding
     assets::asset_reference source;
     assets::asset_reference material;
     std::string subresource;
+    bool procedural_primitive{};
 };
 
 using cooked_scene_mesh_bindings = std::vector<cooked_scene_mesh_binding>;

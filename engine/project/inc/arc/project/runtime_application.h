@@ -6,6 +6,7 @@
 
 #include <arc/framework/runtime.h>
 #include <arc/project/runtime_catalog.h>
+#include <arc/scene/runtime_scene.h>
 
 #include <cstddef>
 #include <functional>
@@ -23,6 +24,7 @@ struct packaged_scene_payload
     assets::asset_guid guid{};
     std::string artifact_name;
     io::file_buffer bytes;
+    scene::cooked_scene_mesh_bindings render_bindings;
 };
 
 /**
@@ -36,7 +38,9 @@ struct packaged_game_registrations
     std::function<void(framework::runtime_service_registry&)> services;
     std::function<void(framework::module_registry&)> modules;
     /** Required when startup scenes are present; must populate the provided world or report failure. */
-    std::function<project_status(framework::runtime_world&, const packaged_scene_payload&)> materialize_scene;
+    std::function<project_status(framework::runtime_world&, const packaged_scene_payload&,
+                                 scene::cooked_scene_mesh_bindings&)>
+        materialize_scene;
     /** Optional server world assembly for dedicated servers with no startup scene. */
     std::function<project_status(framework::runtime_world&)> initialize_headless_world;
 };

@@ -146,7 +146,7 @@ void packaged_runtime_application::register_worlds(framework::runtime_world_mana
         {
             for (std::size_t index = 0; index < scenes_.size(); ++index)
             {
-                const auto& scene = scenes_[index];
+                auto& scene = scenes_[index];
                 auto& world =
                     worlds.create({.name = "Scene " + assets::to_string(scene.guid),
                                    .role = role_ == runtime_launch_role::server ? framework::runtime_world_role::server
@@ -161,7 +161,7 @@ void packaged_runtime_application::register_worlds(framework::runtime_world_mana
                         failure(project_error_code::invalid_scene, "startupScenes",
                                 "Missing cooked scene materializer for " + assets::to_string(scene.guid)));
 
-                auto result = registrations_.materialize_scene(world, scene);
+                auto result = registrations_.materialize_scene(world, scene, scene.render_bindings);
                 if (!result)
                 {
                     auto error = std::move(result).error();

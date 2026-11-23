@@ -2,6 +2,29 @@
 
 include(CMakeFindDependencyMacro)
 
+# Shipping is an ARC project configuration, not one of CMake's built-in
+# configurations. Register it for every SDK consumer so generated and custom
+# projects can select the same configuration exposed by the installed targets.
+if(CMAKE_CONFIGURATION_TYPES)
+    list(FIND CMAKE_CONFIGURATION_TYPES Shipping _arc_shipping_index)
+    if(_arc_shipping_index EQUAL -1)
+        list(APPEND CMAKE_CONFIGURATION_TYPES Shipping)
+        set(CMAKE_CONFIGURATION_TYPES "${CMAKE_CONFIGURATION_TYPES}" CACHE STRING
+            "Available build configurations" FORCE)
+    endif()
+endif()
+
+# Start consumer Shipping flags from the toolchain's Release policy. Projects
+# may still provide any of these cache entries explicitly before finding ARC.
+set(CMAKE_CXX_FLAGS_SHIPPING "${CMAKE_CXX_FLAGS_RELEASE}" CACHE STRING
+    "C++ flags used by Shipping builds")
+set(CMAKE_EXE_LINKER_FLAGS_SHIPPING "${CMAKE_EXE_LINKER_FLAGS_RELEASE}" CACHE STRING
+    "Executable linker flags used by Shipping builds")
+set(CMAKE_SHARED_LINKER_FLAGS_SHIPPING "${CMAKE_SHARED_LINKER_FLAGS_RELEASE}" CACHE STRING
+    "Shared-library linker flags used by Shipping builds")
+set(CMAKE_MODULE_LINKER_FLAGS_SHIPPING "${CMAKE_MODULE_LINKER_FLAGS_RELEASE}" CACHE STRING
+    "Module linker flags used by Shipping builds")
+
 if("Vulkan" IN_LIST ARC_FIND_COMPONENTS)
     find_dependency(Vulkan REQUIRED)
 endif()
@@ -36,6 +59,17 @@ include("${CMAKE_CURRENT_LIST_DIR}/ARCProjectReflection.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/ARCRuntimeOutput.cmake")
 set(ARC_COOKER "${PACKAGE_PREFIX_DIR}/bin/arc-cook@CMAKE_EXECUTABLE_SUFFIX@")
 
+if(ARC_WORKFLOW_PROFILE)
+    foreach(_arc_workflow_field IN ITEMS PROJECT_GUID ENGINE_VERSION RENDERER ROLE)
+        if(NOT ARC_WORKFLOW_${_arc_workflow_field})
+            message(FATAL_ERROR "ARC workflow is missing ARC_WORKFLOW_${_arc_workflow_field}")
+        endif()
+    endforeach()
+    arc_enable_workflow_runtime_output_compatibility()
+endif()
+
 check_required_components(ARC)
 
 unset(_arc_component)
+unset(_arc_shipping_index)
+unset(_arc_workflow_field)
