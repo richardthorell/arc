@@ -34,7 +34,7 @@ describe('external Live Play inspection identity and presentation', () => {
         entity: { kind: 'runtime', runtimeEntityId: 'orphan' },
         parent: { kind: 'runtime', runtimeEntityId: 'missing' },
         name: 'Orphan',
-      }
+      },
     ];
     expect(runtimeHierarchyRows(rows).map((row) => row.depth)).toEqual([0, 1, 2, 0, 0]);
   });
