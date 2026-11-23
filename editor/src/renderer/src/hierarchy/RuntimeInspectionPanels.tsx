@@ -65,8 +65,10 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
     let subscribed = true;
     const pendingRequests = pending.current;
     pendingRequests.clear();
+    let sawLiveHierarchy = false;
     const onMessage = (message: LivePlayMessage) => {
       if (!sameSession(message, snapshot)) return;
+      if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed') sawLiveHierarchy = true;
       if (message.type === 'component.inspect.result' && message.payload.requestId) {
         const sent = pendingRequests.get(message.payload.requestId);
         if (sent) {
@@ -114,6 +116,8 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
         }
         if (
           message.type === 'component.inspect.result' &&
+          !previous.requiresSnapshot &&
+          !previous.pending &&
           matchesRuntimeEntity(previous.selected, message.payload.entity)
         ) {
           const typeId = message.payload.component.typeId;
@@ -130,9 +134,22 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
     };
     const unsubscribe = window.arc.livePlay.onMessage(onMessage);
     void window.arc.livePlay
-      .latestHierarchy()
-      .then((message) => {
-        if (subscribed && message && sameSession(message, snapshot)) onMessage(message);
+      .latestHierarchyState()
+      .then((state) => {
+        if (!subscribed || sawLiveHierarchy || !state?.hierarchy || !sameSession(state.hierarchy, snapshot)) return;
+        setView((previous) => {
+          const currentView = previous.scope === scope ? previous : emptyView(scope);
+          if (currentView.hierarchy && currentView.hierarchy.payload.worldRevision >= state.hierarchy!.payload.worldRevision)
+            return previous;
+          return {
+            ...currentView,
+            hierarchy: state.hierarchy,
+            pending: null,
+            requiresSnapshot: state.requiresSnapshot,
+            properties: {},
+            notice: state.requiresSnapshot ? 'Waiting for a full hierarchy resynchronization.' : null,
+          };
+        });
       })
       .catch(() => {});
     return () => {
@@ -196,7 +213,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
 
   const selected = current.selected;
   const requestSelected = useCallback(() => {
-    if (!selected || !scope || snapshot.state !== 'connected') return;
+    if (!selected || !scope || snapshot.state !== 'connected' || current.requiresSnapshot || current.pending) return;
     const entityKey = runtimeEntityKey(selected);
     for (const component of inspectableComponents) {
       void window.arc.livePlay
@@ -212,7 +229,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
           );
         });
     }
-  }, [scope, selected, snapshot.state]);
+  }, [scope, selected, snapshot.state, current.requiresSnapshot, current.pending]);
 
   useEffect(() => {
     if (!selected || snapshot.state !== 'connected') return;
