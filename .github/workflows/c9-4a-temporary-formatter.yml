@@ -1,0 +1,33 @@
+name: C9.4a Temporary Formatter
+
+on:
+  push:
+    branches:
+      - feat/c9-4a-editor-cooked-content-server
+
+permissions:
+  contents: read
+
+jobs:
+  print-formatted-files:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.2'
+          cache: npm
+          cache-dependency-path: editor/package-lock.json
+      - name: Format and emit patch content
+        working-directory: editor
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx prettier --write src/main/editorCookedContentServer.ts src/main/editorCookedContentServer.test.ts
+          echo 'ARC_PRETTIER_SERVER_BEGIN'
+          base64 -w0 src/main/editorCookedContentServer.ts
+          echo
+          echo 'ARC_PRETTIER_SERVER_END'
+          echo 'ARC_PRETTIER_TEST_BEGIN'
+          base64 -w0 src/main/editorCookedContentServer.test.ts
+          echo
+          echo 'ARC_PRETTIER_TEST_END'
