@@ -149,7 +149,12 @@ describe('Live Play L1 wire contract', () => {
       receiveLivePlayFrame(
         frame(
           'component.inspect.result',
-          { ...inspection, runtimeRevision: 11, properties: [{ path: 'position', value: [3, 4, 5] }] },
+          {
+            ...inspection,
+            requestId: 'message-3',
+            runtimeRevision: 11,
+            properties: [{ path: 'position', value: [3, 4, 5] }],
+          },
           'runtime',
           3,
         ),

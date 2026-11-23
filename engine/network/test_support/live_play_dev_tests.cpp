@@ -373,6 +373,76 @@ void test_property_edit_decoding_and_mailbox()
     check(mailbox.take_results().empty(), "Stop leaked old runtime results");
 }
 
+void test_inspection_protocol_and_bounded_mailbox()
+{
+    using arc::network::live_play_dev::decode_inspection_request;
+    using arc::network::live_play_dev::hierarchy_item;
+    using arc::network::live_play_dev::hierarchy_snapshot;
+    using arc::network::live_play_dev::inspection_mailbox;
+    const json authored = {{"entity", {{"kind", "authored"}, {"entityGuid", "33333333-3333-3333-3333-333333333333"}}},
+                           {"component", {{"typeId", "arc.transform"}, {"schemaVersion", 1}}}};
+    auto parsed = decode_inspection_request("inspect-7", authored.dump());
+    check(parsed.has_value() && parsed->entity.authored && parsed->component == "arc.transform" &&
+              parsed->schema_version == 1,
+          "Valid authored inspect request was rejected");
+    auto runtime = authored;
+    runtime["entity"] = {{"kind", "runtime"}, {"runtimeEntityId", "w1-x1-e9-g2"}};
+    parsed = decode_inspection_request("inspect-8", runtime.dump());
+    check(parsed && !parsed->entity.authored && parsed->entity.id == "w1-x1-e9-g2",
+          "Runtime-only inspect identity was not preserved");
+    auto altered = authored;
+    altered["entity"]["kind"] = "runtime";
+    check(!decode_inspection_request("inspect-1", altered.dump()), "Mismatched entity kind accepted");
+    altered = authored;
+    altered["entity"]["entityGuid"] = "not-a-guid";
+    check(!decode_inspection_request("inspect-1", altered.dump()), "Invalid authored GUID accepted");
+    altered = authored;
+    altered["component"]["schemaVersion"] = 0;
+    check(!decode_inspection_request("inspect-1", altered.dump()), "Zero component version accepted");
+    altered = authored;
+    altered["component"]["typeId"] = "../unsafe";
+    check(!decode_inspection_request("inspect-1", altered.dump()), "Unsafe component type accepted");
+    altered = authored;
+    altered["extra"] = 123;
+    check(!decode_inspection_request("inspect-1", altered.dump()), "Unexpected inspect field accepted");
+    check(!decode_inspection_request("unsafe request", authored.dump()), "Unsafe request ID accepted");
+
+    inspection_mailbox mailbox;
+    for (int i = 0; i < 64; ++i)
+    {
+        auto request = *parsed;
+        request.request_id = "inspect-" + std::to_string(i);
+        check(mailbox.enqueue(std::move(request)), "In-bounds inspector request was dropped");
+    }
+    check(!mailbox.enqueue(*parsed), "Unbounded inspector request queue accepted");
+    const auto requests = mailbox.take_requests();
+    check(requests.size() == 64 && requests.front().request_id == "inspect-0" &&
+              requests.back().request_id == "inspect-63",
+          "Inspector request mailbox reordered work");
+    check(mailbox.take_requests().empty(), "Inspector mailbox replayed drained work");
+    hierarchy_snapshot initial;
+    initial.world_revision = 3;
+    initial.entities.push_back({.entity = {.authored = false, .id = "w1-x1-e9-g2"}, .name = "Spawned"});
+    mailbox.publish(initial);
+    hierarchy_snapshot latest;
+    latest.world_revision = 4;
+    latest.entities = initial.entities;
+    latest.entities.front().name = "Renamed";
+    mailbox.publish(latest);
+    const auto snapshot = mailbox.take_snapshot();
+    check(snapshot && snapshot->world_revision == 4 && snapshot->entities.front().name == "Renamed",
+          "Hierarchy coalescing did not retain the latest state");
+    check(!mailbox.take_snapshot(), "Old snapshot was replayed");
+    check(mailbox.report({.request_id = "inspect-0", .error_code = "unknown_entity"}),
+          "Failed to report rejected inspect request");
+    const auto results = mailbox.take_results();
+    check(results.size() == 1 && results.front().request_id == "inspect-0" &&
+              results.front().error_code == "unknown_entity",
+          "Inspector error result was lost");
+    mailbox.clear();
+    check(mailbox.take_results().empty(), "Stop retained stale inspection results");
+}
+
 void test_invalid_editor_identity()
 {
     fixture_server fixture;
@@ -408,6 +478,7 @@ int main()
         test_successful_connection();
         test_invalid_editor_identity();
         test_property_edit_decoding_and_mailbox();
+        test_inspection_protocol_and_bounded_mailbox();
     }
     catch (const std::exception& error)
     {

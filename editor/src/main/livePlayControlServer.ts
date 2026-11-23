@@ -207,8 +207,23 @@ export class LivePlayControlServer {
     return this.send(peer, command) ? command.messageId : null;
   }
 
+  /** L1.5a: selected runtime entity/component only; UI routing in L1.5b. */
+  sendInspectRequest(
+    payload: Extract<LivePlayMessage, { type: 'component.inspect.request' }>['payload'],
+  ): string | null {
+    const peer = this.activePeer;
+    if (
+      !peer?.ready ||
+      !peer.capabilities.includes('entity.inspect') ||
+      !this.options.grantedCapabilities.includes('entity.inspect')
+    )
+      return null;
+    const command = this.message('component.inspect.request', payload);
+    return this.send(peer, command) ? command.messageId : null;
+  }
+
   private message(
-    type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer' | 'entity.property.set',
+    type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer' | 'entity.property.set' | 'component.inspect.request',
     payload: unknown,
   ): LivePlayMessage {
     const item = {

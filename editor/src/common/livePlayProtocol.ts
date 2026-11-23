@@ -194,6 +194,7 @@ export const livePlayMessageSchema = z.discriminatedUnion('type', [
       .object({
         entity: livePlayEntitySchema,
         component,
+        requestId: id.optional(),
         runtimeRevision: revision,
         properties: z.array(z.object({ path: propertyPath, value }).strict()).max(64),
       })

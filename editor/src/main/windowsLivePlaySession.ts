@@ -79,6 +79,15 @@ export class WindowsLivePlaySession {
     return session.server.sendAuthoringProperty(payload);
   }
 
+  /** Read-only inspection remains separate from the Authoring World. */
+  requestRuntimeComponent(
+    payload: Extract<LivePlayMessage, { type: 'component.inspect.request' }>['payload'],
+  ): string | null {
+    const session = this.current;
+    if (!session || session.stopRequested || this.snapshotValue.state !== 'connected') return null;
+    return session.server.sendInspectRequest(payload);
+  }
+
   private update(change: Partial<WindowsLivePlaySnapshot>): void {
     this.snapshotValue = { ...this.snapshotValue, ...change };
     try {

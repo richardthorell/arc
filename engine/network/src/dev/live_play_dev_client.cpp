@@ -564,6 +564,80 @@ bool client::send_rejected_ack(std::string_view request_id, std::string_view cod
                         error);
 }
 
+bool client::send_hierarchy_snapshot(const hierarchy_snapshot& snapshot, std::string& error)
+{
+    if (std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "entity.inspect") ==
+        negotiated_capabilities_.end())
+    {
+        error = "Runtime inspection is not negotiated";
+        return false;
+    }
+    if (snapshot.entities.size() > 128 || snapshot.world_revision > maximum_js_safe_integer)
+    {
+        error = "Runtime hierarchy snapshot exceeds protocol bounds";
+        return false;
+    }
+    const auto encode_entity = [](const inspection_entity& entity) -> json
+    {
+        return entity.authored ? json{{"kind", "authored"}, {"entityGuid", entity.id}}
+                               : json{{"kind", "runtime"}, {"runtimeEntityId", entity.id}};
+    };
+    json entities = json::array();
+    for (const auto& item : snapshot.entities)
+    {
+        if (item.name.size() > 256 || (!token(item.entity.id) && !guid(item.entity.id)))
+        {
+            error = "Invalid runtime hierarchy entity";
+            return false;
+        }
+        entities.push_back({{"entity", encode_entity(item.entity)},
+                            {"parent", item.parent ? encode_entity(*item.parent) : json(nullptr)},
+                            {"name", item.name}});
+    }
+    const json payload = {
+        {"worldRevision", snapshot.world_revision}, {"entities", std::move(entities)}, {"complete", snapshot.complete}};
+    return send_message("hierarchy.snapshot", payload.dump(-1, ' ', false, json::error_handler_t::replace), error);
+}
+
+bool client::send_inspection_result(const component_inspection& result, std::string& error)
+{
+    if (std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "entity.inspect") ==
+            negotiated_capabilities_.end() ||
+        result.runtime_revision > maximum_js_safe_integer || result.properties.size() > 64)
+    {
+        error = "Runtime component inspection is not negotiated or exceeds bounds";
+        return false;
+    }
+    const auto& target = result.request;
+    const json entity = target.entity.authored ? json{{"kind", "authored"}, {"entityGuid", target.entity.id}}
+                                               : json{{"kind", "runtime"}, {"runtimeEntityId", target.entity.id}};
+    json properties = json::array();
+    for (const auto& item : result.properties)
+    {
+        json value;
+        if (item.kind == inspection_value_kind::numeric_array)
+        {
+            value = item.numbers;
+            if (item.numbers.size() > 16) return false;
+        }
+        else if (item.kind == inspection_value_kind::boolean)
+            value = item.flag;
+        else
+        {
+            if (item.text.size() > 2048) return false;
+            value = item.text;
+        }
+        properties.push_back({{"path", item.path}, {"value", std::move(value)}});
+    }
+    const json payload = {{"requestId", target.request_id},
+                          {"entity", entity},
+                          {"component", {{"typeId", target.component}, {"schemaVersion", target.schema_version}}},
+                          {"runtimeRevision", result.runtime_revision},
+                          {"properties", std::move(properties)}};
+    return send_message("component.inspect.result", payload.dump(-1, ' ', false, json::error_handler_t::replace),
+                        error);
+}
+
 bool client::send_content_generation(std::uint64_t generation, std::string_view status, std::string& error)
 {
     if (status != "available" && status != "active" && status != "rejected")
@@ -669,6 +743,7 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
     const auto& payload = parsed.at("payload");
     std::uint64_t seen = 0;
     std::optional<property_edit> edit;
+    std::optional<inspection_request> inspection;
     // L1.3b1 recognizes cooked baseline metadata but does not touch ECS or
     // content IO. The game host must ask the verified C9 loader to activate it.
     if (type == "scene.baseline.offer")
@@ -707,6 +782,18 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
             return std::nullopt;
         }
     }
+    else if (type == "component.inspect.request")
+    {
+        const bool allowed = std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(),
+                                       "entity.inspect") != negotiated_capabilities_.end();
+        if (allowed) inspection = decode_inspection_request(message_id, payload.dump());
+        if (!allowed || !inspection)
+        {
+            error = "Invalid or unauthorized Live Play inspection request";
+            close();
+            return std::nullopt;
+        }
+    }
     else if (type != "heartbeat" || !exact_keys(payload, {"lastReceivedSequence"}) ||
              !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_)
     {
@@ -715,7 +802,8 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         return std::nullopt;
     }
     inbound_sequence_ = sequence;
-    return incoming_message{std::move(type), std::move(message_id), sequence, std::move(text), std::move(edit)};
+    return incoming_message{std::move(type), std::move(message_id), sequence,
+                            std::move(text), std::move(edit),       std::move(inspection)};
 }
 
 std::uint64_t client::last_received_sequence() const noexcept

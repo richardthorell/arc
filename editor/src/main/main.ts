@@ -1410,7 +1410,7 @@ void app.whenReady().then(async () => {
           // L1.4b: the native bridge validates and queues entity edits.
           // WindowsLivePlaySession still blocks sending until the C9 scene
           // baseline is verified and reported active by the runtime.
-          capabilities: ['session.observe', 'content.observe', 'entity.edit'],
+          capabilities: ['session.observe', 'content.observe', 'entity.edit', 'entity.inspect'],
         },
       });
     } catch (error) {

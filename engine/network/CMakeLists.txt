@@ -17,7 +17,10 @@ endif()
 # arc-network / arc-runtime / packaged Shipping games.
 option(ARC_BUILD_LIVE_PLAY_DEV "Build the optional native Live Play Development bridge" OFF)
 if(ARC_BUILD_LIVE_PLAY_DEV OR (BUILD_TESTING AND ARC_BUILD_ENGINE_TESTS))
-    add_library(arc-live-play-dev STATIC src/dev/live_play_dev_client.cpp src/dev/live_play_dev_edits.cpp)
+    add_library(arc-live-play-dev STATIC
+        src/dev/live_play_dev_client.cpp
+        src/dev/live_play_dev_edits.cpp
+        src/dev/live_play_dev_inspection.cpp)
     arc_configure_first_party_target(arc-live-play-dev)
     target_compile_features(arc-live-play-dev PUBLIC cxx_std_20)
     target_include_directories(arc-live-play-dev PUBLIC
