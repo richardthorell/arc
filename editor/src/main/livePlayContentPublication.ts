@@ -46,7 +46,7 @@ type CookRunner = (request: WorkflowProcessRequest) => Promise<string>;
  * Target/device-specific selection for multiple variants arrives in C9.4c.
  */
 export function selectLivePlayTextureFamily(
-  release: LivePlayRemoteRelease,
+  release: Pick<LivePlayRemoteRelease, 'variants'>,
   configuredFamilies: readonly string[],
 ): string {
   const familyPattern = /^[a-z0-9_-]{1,32}$/u;
