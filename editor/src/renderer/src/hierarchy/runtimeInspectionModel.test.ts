@@ -25,8 +25,16 @@ describe('external Live Play inspection identity and presentation', () => {
       { entity: authored, parent: null, name: 'Authoring Cube' },
       { entity: spawned, parent: authored, name: 'Runtime Spawn' },
       { entity: { kind: 'runtime', runtimeEntityId: 'child' }, parent: spawned, name: 'Child' },
-      { entity: { kind: 'runtime', runtimeEntityId: 'loop' }, parent: { kind: 'runtime', runtimeEntityId: 'loop' }, name: 'Cycle' },
-      { entity: { kind: 'runtime', runtimeEntityId: 'orphan' }, parent: { kind: 'runtime', runtimeEntityId: 'missing' }, name: 'Orphan' },
+      {
+        entity: { kind: 'runtime', runtimeEntityId: 'loop' },
+        parent: { kind: 'runtime', runtimeEntityId: 'loop' },
+        name: 'Cycle',
+      },
+      {
+        entity: { kind: 'runtime', runtimeEntityId: 'orphan' },
+        parent: { kind: 'runtime', runtimeEntityId: 'missing' },
+        name: 'Orphan',
+      }
     ];
     expect(runtimeHierarchyRows(rows).map((row) => row.depth)).toEqual([0, 1, 2, 0, 0]);
   });
