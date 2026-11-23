@@ -1,0 +1,114 @@
+.live-play-diagnostics {
+  border-top: 1px solid var(--border, #343842);
+  font-size: 12px;
+  color: inherit;
+}
+
+.live-play-diagnostics-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+}
+
+.live-play-diagnostics-header strong {
+  font-size: 13px;
+}
+
+.live-play-diagnostics-header span,
+.live-play-diagnostics-capabilities span,
+.live-play-diagnostics-footnote {
+  color: var(--text-muted, #9aa2af);
+  font-size: 11px;
+}
+
+.live-play-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0 12px 12px;
+}
+
+.live-play-diagnostics-grid div {
+  min-width: 0;
+}
+
+.live-play-diagnostics-grid dt,
+.live-play-diagnostics-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.live-play-diagnostics-grid dt {
+  color: var(--text-muted, #9aa2af);
+  margin-bottom: 3px;
+}
+
+.live-play-diagnostics-grid dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.live-play-diagnostics-capabilities {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border, #343842);
+}
+
+.live-play-diagnostics-capabilities p {
+  overflow-wrap: anywhere;
+  margin: 4px 0 0;
+}
+
+.live-play-diagnostics-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border, #343842);
+}
+
+.live-play-diagnostics-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.live-play-diagnostics-events {
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0 12px;
+}
+
+.live-play-diagnostic-entry {
+  display: grid;
+  grid-template-columns: 72px 65px minmax(0, 1fr);
+  gap: 5px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border, #343842);
+  font-size: 11px;
+}
+
+.live-play-diagnostic-entry time,
+.live-play-diagnostic-entry span {
+  color: var(--text-muted, #9aa2af);
+  font-variant-numeric: tabular-nums;
+}
+
+.live-play-diagnostic-entry p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.live-play-diagnostic-entry.level-warning p,
+.live-play-diagnostic-entry.level-error p {
+  font-weight: 600;
+}
+
+.live-play-diagnostics-footnote {
+  padding: 10px 12px;
+  margin: 0;
+}
