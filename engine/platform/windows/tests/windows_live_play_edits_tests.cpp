@@ -161,6 +161,20 @@ void run()
     result = applier.apply(runtime, edit, true);
     check(result.applied && result.applied_revision == 3, "Valid rotation update was rejected");
 
+    // A real ECS world larger than the former 128-entity ceiling must be
+    // captured completely; the transport will paginate this immutable sample.
+    for (int i = 0; i < 260; ++i)
+    {
+        const auto extra = world->entities().create();
+        world->entities().emplace<arc::scene::name_component>(
+            extra, arc::scene::name_component{"Extra " + std::to_string(i)});
+    }
+    const auto large = inspector.sample(runtime);
+    check(large && large->complete && large->entities.size() == 262 && large->world_revision == 4,
+          "Native hierarchy unexpectedly truncated a >128-entity scene");
+    const auto bulk_diff = live::diff_hierarchy(*removed, *large);
+    check(!bulk_diff, "Over-budget native hierarchy change should use paged snapshot instead of delta");
+
     applier.clear();
     runtime.shutdown();
 }
