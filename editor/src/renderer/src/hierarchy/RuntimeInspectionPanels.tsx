@@ -79,9 +79,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
         pending.current.delete(message.payload.requestId);
         if (message.payload.status === 'rejected' && message.payload.error.code !== 'unsupported_operation') {
           const errorMessage = message.payload.error.message;
-          setView((previous) =>
-            previous.scope === scope ? { ...previous, notice: errorMessage } : previous,
-          );
+          setView((previous) => (previous.scope === scope ? { ...previous, notice: errorMessage } : previous));
         }
         return;
       }
@@ -300,7 +298,9 @@ export function RuntimeInspectorPanel({ inspection }: { inspection: LivePlayRunt
             if (!result) return null;
             return (
               <section className="live-runtime-component" key={typeId}>
-                <h4>{title} <small>Rev {result.runtimeRevision}</small></h4>
+                <h4>
+                  {title} <small>Rev {result.runtimeRevision}</small>
+                </h4>
                 <dl>
                   {result.properties.map((property) => (
                     <div key={property.path}>
