@@ -231,17 +231,27 @@ describe('Live Play L1.4a authoring transform producer', () => {
 
     // The original ACK may arrive after retry has been sent. Both IDs refer
     // to the same immutable revision; either valid ACK settles the final value.
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      status: 'applied', requestId: firstCommitId, appliedRevision: 1,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: firstCommitId,
+        appliedRevision: 1,
+      }),
+    );
     expect(t.tracker.snapshot()).toMatchObject({
-      pending: 0, lastAppliedRevision: 1, applied: 1,
+      pending: 0,
+      lastAppliedRevision: 1,
+      applied: 1,
     });
     await vi.advanceTimersByTimeAsync(1000);
     expect(t.tracker.snapshot().pending).toBe(0);
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      status: 'applied', requestId: retryId, appliedRevision: 1,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: retryId,
+        appliedRevision: 1,
+      }),
+    );
     expect(t.tracker.snapshot().applied).toBe(1);
   });
 
@@ -267,9 +277,13 @@ describe('Live Play L1.4a authoring transform producer', () => {
     await vi.advanceTimersByTimeAsync(120);
     const oldCommit = t.send.mock.results.at(-1)?.value as string;
     t.tracker.observeSnapshot(snapshot([8, 0, 0]));
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      status: 'applied', requestId: oldCommit, appliedRevision: 2,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: oldCommit,
+        appliedRevision: 2,
+      }),
+    );
     expect(t.tracker.snapshot().pending).toBe(1);
     t.tracker.disconnect();
     expect(t.tracker.snapshot()).toMatchObject({ active: false, pending: 0 });

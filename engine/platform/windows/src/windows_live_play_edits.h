@@ -71,18 +71,16 @@ public:
             if (edit.authoring_revision < applied.revision) return reject("stale_revision");
             if (edit.authoring_revision == applied.revision)
             {
-                const bool same_value = edit.value_count == applied.value_count &&
-                                        std::equal(edit.values.begin(),
-                                                   edit.values.begin() + edit.value_count,
-                                                   applied.value.begin());
+                const bool same_value =
+                    edit.value_count == applied.value_count &&
+                    std::equal(edit.values.begin(), edit.values.begin() + edit.value_count, applied.value.begin());
                 if (!same_value) return reject("stale_revision");
                 if (applied.phase == edit.phase)
                 {
                     // A final commit's ACK may be lost; acknowledge identical
                     // replay without applying ECS twice or advancing revision.
-                    return {.request_id = edit.request_id,
-                            .applied = true,
-                            .applied_revision = applied.applied_revision};
+                    return {
+                        .request_id = edit.request_id, .applied = true, .applied_revision = applied.applied_revision};
                 }
                 if (applied.phase != "update" || edit.phase != "commit") return reject("stale_revision");
             }
