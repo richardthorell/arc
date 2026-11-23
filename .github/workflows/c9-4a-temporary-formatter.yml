@@ -1,7 +1,7 @@
 name: C9.4a Temporary Formatter
 
 on:
-  push:
+  pull_request:
     branches:
       - feat/c9-4a-editor-cooked-content-server
 
