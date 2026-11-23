@@ -134,6 +134,7 @@ export class EditorCookedContentServer {
   private activeTransfers = 0;
   private windowStart = 0;
   private windowRequests = 0;
+  private publishing = false;
 
   constructor(private readonly options: EditorContentServerOptions) {
     if (
@@ -217,7 +218,11 @@ export class EditorCookedContentServer {
    * and object inventory. Failed candidates leave the old generation visible.
    */
   async publish(release: LivePlayRemoteRelease, cookProfile: string, family?: string): Promise<void> {
-    if (!this.server) throw new Error('C9 listener is not active');
+    const originalServer = this.server;
+    if (!originalServer) throw new Error('C9 listener is not active');
+    if (this.publishing) throw new Error('C9 publication is already being verified');
+    this.publishing = true;
+    try {
     if (
       release.projectGuid !== this.options.projectGuid ||
       release.runtimeBuildId !== this.options.runtimeBuildId ||
@@ -264,13 +269,16 @@ export class EditorCookedContentServer {
       });
     }
 
-    if (!this.server) throw new Error('C9 listener stopped during release verification');
+    if (this.server !== originalServer) throw new Error('C9 listener changed during release verification');
     const nextPublications = new Map(this.publications);
     nextPublications.set(cookProfile, { descriptor, hash, generation: release.generation, family: variant.family });
     this.objects.clear();
     for (const [name, entry] of nextObjects) this.objects.set(name, entry);
     this.publications.clear();
     for (const [name, entry] of nextPublications) this.publications.set(name, entry);
+    } finally {
+      this.publishing = false;
+    }
   }
 
   async stop(): Promise<void> {
