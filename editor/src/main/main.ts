@@ -1377,6 +1377,20 @@ void app.whenReady().then(async () => {
   );
   ipcMain.handle('livePlay:snapshot', () => livePlaySession?.snapshot() ?? null);
   ipcMain.handle('livePlay:diagnosticsSnapshot', () => livePlaySession?.diagnosticsSnapshot() ?? null);
+  ipcMain.handle('livePlay:inspectionStateSnapshot', () => {
+    const active = livePlaySession?.snapshot();
+    const state = hierarchyRecovery?.snapshot();
+    const hierarchy = state?.hierarchy;
+    if (!active?.sessionId || !active.instanceId || !state || !hierarchy) return null;
+    if (hierarchy.sessionId !== active.sessionId || hierarchy.instanceId !== active.instanceId) return null;
+    // Never leak a partial page as a current tree. A renderer reload may show
+    // the last verified tree, but it must know when that tree is stale.
+    return {
+      hierarchy,
+      pending: null,
+      requiresSnapshot: state.requiresSnapshot || Boolean(state.pending) || active.state !== 'connected',
+    };
+  });
   ipcMain.handle('livePlay:inspectionSnapshot', () => {
     const active = livePlaySession?.snapshot();
     const snapshot = latestLivePlayHierarchy.hierarchy;
