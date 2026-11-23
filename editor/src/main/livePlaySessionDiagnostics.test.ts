@@ -79,12 +79,17 @@ describe('L1.5c authenticated session diagnostics', () => {
 
   it('measures ACK and inspection response round trips, never claiming visible-frame latency', () => {
     let now = 100;
-    const diagnostics = new LivePlaySessionDiagnostics(() => {}, () => now);
+    const diagnostics = new LivePlaySessionDiagnostics(
+      () => {},
+      () => now,
+    );
     diagnostics.begin(authority.sessionId, authority.instanceId);
     diagnostics.observeStatus(connected, transport);
     diagnostics.requestSent('edit-one', 'edit');
     now = 137;
-    diagnostics.observeMessage(message('command.ack', { status: 'applied', requestId: 'edit-one', appliedRevision: 9 }));
+    diagnostics.observeMessage(
+      message('command.ack', { status: 'applied', requestId: 'edit-one', appliedRevision: 9 }),
+    );
     diagnostics.requestSent('inspect-one', 'inspect');
     now = 171;
     diagnostics.observeMessage(
@@ -126,7 +131,8 @@ describe('L1.5c authenticated session diagnostics', () => {
         text: 'Auth Bearer secret-jwt token=abc123 https://host.test/assets?secret=leak',
       }),
     );
-    for (let i = 0; i < 200; i++) diagnostics.observeMessage(message('log.record', { level: 'debug', text: 'x'.repeat(500) }));
+    for (let i = 0; i < 200; i++)
+      diagnostics.observeMessage(message('log.record', { level: 'debug', text: 'x'.repeat(500) }));
     for (let i = 0; i < 32; i++) diagnostics.observeProcessOutput('stdout', Buffer.from('line\n'));
     const snapshot = diagnostics.snapshot();
     expect(snapshot.events).toHaveLength(160);
@@ -147,7 +153,9 @@ describe('L1.5c authenticated session diagnostics', () => {
     diagnostics.observeStatus(connected, transport);
     diagnostics.requestSent('edit-one', 'edit');
     diagnostics.begin('next-session', 'next-instance');
-    diagnostics.observeMessage(message('command.ack', { status: 'applied', requestId: 'edit-one', appliedRevision: 4 }));
+    diagnostics.observeMessage(
+      message('command.ack', { status: 'applied', requestId: 'edit-one', appliedRevision: 4 }),
+    );
     diagnostics.observeStatus({ ...connected, state: 'disconnected', error: 'old connection' }, transport);
     expect(diagnostics.snapshot()).toMatchObject({
       sessionId: 'next-session',
