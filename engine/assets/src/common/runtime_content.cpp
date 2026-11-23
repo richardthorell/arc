@@ -550,7 +550,7 @@ asset_status cooked_asset_catalog::mount_remote_generation(const remote_content_
 }
 
 asset_status cooked_asset_catalog::mount_remote_provider(std::shared_ptr<remote_content_artifact_provider> package,
-                                                         std::int32_t priority)
+                                                         std::int32_t priority, std::string* mounted_provider_id)
 {
     if (!package)
         return asset_status::failure(asset_failure(asset_error_code::invalid_request, "Null remote cooked provider"));
@@ -582,6 +582,7 @@ asset_status cooked_asset_catalog::mount_remote_provider(std::shared_ptr<remote_
              .guid = artifact.asset,
              .provider_id = provider_id});
     }
+    if (mounted_provider_id) *mounted_provider_id = provider_id;
     return asset_status::success();
 }
 

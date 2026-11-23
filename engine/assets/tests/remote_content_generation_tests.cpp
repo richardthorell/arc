@@ -1,11 +1,13 @@
 #include <arc/assets/remote_content_download.h>
 #include <arc/assets/remote_content_generation.h>
 #include <arc/assets/remote_content_lazy.h>
+#include <arc/assets/remote_runtime_generation.h>
 #include <arc/assets/remote_content_transfer.h>
 #include <arc/assets/terrain_types.h>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -558,4 +560,205 @@ TEST_CASE("C9.2f2 eager generation acquisition retries a transient GET without d
     const auto read = f.vfs.read_all(resolved.value()).get();
     REQUIRE(read);
     CHECK(read.value() == f.payload);
+}
+
+namespace
+{
+
+arc::assets::remote_content_expectations expectations_for(const fixture& f)
+{
+    return {.project_guid = f.release.project_guid,
+            .engine_version = f.release.engine_version,
+            .base_build_id = f.release.base_build_id,
+            .target = f.release.target};
+}
+
+} // namespace
+
+TEST_CASE("C9.2g2 promotes verified remote bases over packaged content and preserves bounded last-good")
+{
+    fixture f;
+    arc::assets::remote_runtime_generation_session runtime(f.catalog, f.cache, f.files, expectations_for(f));
+    REQUIRE(runtime.activate_verified(f.release));
+    auto first = runtime.state();
+    CHECK(first.active_generation == 5);
+    CHECK(first.last_good_generation == 0);
+    CHECK(first.active_provider_id.find(":remote:5:") != std::string::npos);
+    const auto scope = arc::assets::remote_content_retention_scope(f.release);
+    CHECK(f.cache.persistent_pins(scope).size() == 2);
+
+    auto next = f.release;
+    next.generation = 6;
+    REQUIRE(runtime.activate_verified(next));
+    auto second = runtime.state();
+    CHECK(second.active_generation == 6);
+    CHECK(second.last_good_generation == 5);
+    CHECK(second.active_provider_id != first.active_provider_id);
+    auto record = f.catalog.database().query(f.asset);
+    REQUIRE(record);
+    CHECK(record->active_provider == second.active_provider_id);
+    CHECK(record->providers.size() == 2);
+
+    auto third = f.release;
+    third.generation = 7;
+    REQUIRE(runtime.activate_verified(third));
+    const auto state = runtime.state();
+    CHECK(state.active_generation == 7);
+    CHECK(state.last_good_generation == 6);
+    CHECK(state.highest_accepted_generation == 7);
+    CHECK(state.retired_mount_cleanup_failures == 0);
+    record = f.catalog.database().query(f.asset);
+    REQUIRE(record);
+    CHECK(record->providers.size() == 2); // Generation 5 has been retired.
+    CHECK(record->active_provider == state.active_provider_id);
+
+    auto resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    auto read = f.vfs.read_all(resolved.value()).get();
+    REQUIRE(read);
+    CHECK(read.value() == f.payload);
+    CHECK(f.cache.persistent_pins(scope).size() == 2);
+}
+
+TEST_CASE("C9.2g2 rejects corrupt or mismatched candidate without changing active VFS or cache retention")
+{
+    fixture f;
+    arc::assets::remote_runtime_generation_session runtime(f.catalog, f.cache, f.files, expectations_for(f));
+    REQUIRE(runtime.activate_verified(f.release));
+    const auto current = runtime.state();
+    const auto scope = arc::assets::remote_content_retention_scope(f.release);
+    const auto retained = f.cache.persistent_pins(scope);
+
+    auto wrong_target = f.release;
+    wrong_target.generation = 6;
+    wrong_target.target.platform = "android";
+    CHECK_FALSE(runtime.activate_verified(wrong_target));
+
+    auto wrong_build = f.release;
+    wrong_build.generation = 6;
+    wrong_build.base_build_id = "different-game-runtime";
+    CHECK_FALSE(runtime.activate_verified(wrong_build));
+
+    auto missing_chunk = f.release;
+    missing_chunk.generation = 6;
+    missing_chunk.chunks.front().object.sha256 = std::string(64, 'f');
+    missing_chunk.chunks.front().object.path = "objects/sha256/" + missing_chunk.chunks.front().object.sha256;
+    CHECK_FALSE(runtime.activate_verified(missing_chunk));
+
+    auto invalid_manifest = f.release;
+    invalid_manifest.generation = 6;
+    invalid_manifest.cook_build_id = "invalid-cook-manifest-build";
+    CHECK_FALSE(runtime.activate_verified(invalid_manifest));
+
+    auto replay = f.release;
+    CHECK_FALSE(runtime.activate_verified(replay));
+    CHECK(runtime.state().rejected_activations == 5);
+    CHECK(runtime.state().active_provider_id == current.active_provider_id);
+    CHECK(runtime.state().active_generation == 5);
+    CHECK(f.cache.persistent_pins(scope) == retained);
+    auto resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    auto read = f.vfs.read_all(resolved.value()).get();
+    REQUIRE(read);
+    CHECK(read.value() == f.payload);
+}
+
+TEST_CASE("C9.2g2 explicit base rollback restores prior provider and retention but rejects replay")
+{
+    fixture f;
+    arc::assets::remote_runtime_generation_session runtime(f.catalog, f.cache, f.files, expectations_for(f));
+    REQUIRE(runtime.activate_verified(f.release));
+    const auto previous_id = runtime.state().active_provider_id;
+    auto newer = f.release;
+    newer.generation = 6;
+    REQUIRE(runtime.activate_verified(newer));
+    REQUIRE(runtime.rollback());
+    auto state = runtime.state();
+    CHECK(state.active_generation == 5);
+    CHECK(state.last_good_generation == 0);
+    CHECK(state.highest_accepted_generation == 6);
+    CHECK(state.active_provider_id == previous_id);
+    auto record = f.catalog.database().query(f.asset);
+    REQUIRE(record);
+    CHECK(record->active_provider == previous_id);
+    CHECK(record->providers.size() == 1);
+    const auto scope = arc::assets::remote_content_retention_scope(f.release);
+    CHECK(f.cache.persistent_pins(scope).size() == 2);
+    CHECK_FALSE(runtime.activate_verified(newer)); // No stale replay after rollback.
+    CHECK_FALSE(runtime.rollback());               // Only one active base remains.
+    auto newest = newer;
+    newest.generation = 7;
+    REQUIRE(runtime.activate_verified(newest));
+    CHECK(runtime.state().active_generation == 7);
+    CHECK(runtime.state().last_good_generation == 5);
+}
+
+TEST_CASE("C9.2g2 reuses native runtime_update_receiver for atomic higher priority artifact updates")
+{
+    fixture f;
+    arc::assets::remote_runtime_generation_session runtime(f.catalog, f.cache, f.files, expectations_for(f));
+    CHECK_FALSE(runtime.attach_overlay(f.root / "live"));
+    REQUIRE(runtime.activate_verified(f.release));
+    REQUIRE(runtime.attach_overlay(f.root / "live"));
+    CHECK(runtime.state().overlay_attached);
+    CHECK_FALSE(runtime.attach_overlay(f.root / "live-again"));
+
+    const auto new_bytes = bytes("an updated terrain payload");
+    const auto replacement_hash = arc::assets::hash_bytes(new_bytes);
+    arc::assets::runtime_update_manifest update{.target_profile = f.release.target.cook_profile,
+                                                .base_build_id = f.release.base_build_id,
+                                                .update_sequence = 1,
+                                                .artifacts = {{.address = f.address,
+                                                               .type = arc::assets::asset_types::terrain,
+                                                               .schema_version = 1,
+                                                               .hash = replacement_hash,
+                                                               .size = new_bytes.size()}}};
+    const std::array blobs{std::pair{replacement_hash, new_bytes}};
+    REQUIRE(runtime.ingest_overlay(update, blobs));
+    CHECK(runtime.state().overlay_sequence == 1);
+    auto resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    auto body = f.vfs.read_all(resolved.value()).get();
+    REQUIRE(body);
+    CHECK(body.value() == new_bytes);
+    CHECK_FALSE(runtime.rollback());
+
+    auto stale = update;
+    CHECK_FALSE(runtime.ingest_overlay(stale, blobs));
+    auto forged = update;
+    forged.update_sequence = 2;
+    forged.base_build_id = "wrong-build";
+    CHECK_FALSE(runtime.ingest_overlay(forged, blobs));
+    CHECK(runtime.state().overlay_sequence == 1);
+    resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    body = f.vfs.read_all(resolved.value()).get();
+    REQUIRE(body);
+    CHECK(body.value() == new_bytes);
+
+    auto newer = f.release;
+    newer.generation = 6;
+    REQUIRE(runtime.activate_verified(newer));
+    resolved = f.catalog.resolve(f.address);
+    REQUIRE(resolved);
+    body = f.vfs.read_all(resolved.value()).get();
+    REQUIRE(body);
+    CHECK(body.value() == new_bytes); // Existing overlay retains priority.
+}
+
+TEST_CASE("C9.2g2 refuses activation when persistent retention cannot be safely restored")
+{
+    fixture f;
+    const auto journal = f.root / "cache" / "persistent-pins.json";
+    {
+        std::ofstream stream(journal, std::ios::binary | std::ios::trunc);
+        REQUIRE(stream.good());
+        stream << "{\"format\":\"arc.ddc-persistent-pins\",\"version\":1,\"scopes\":[]}";
+    }
+    arc::assets::derived_data_cache corrupt{{.root = f.root / "cache"}};
+    REQUIRE_FALSE(corrupt.persistent_retention_ready());
+    arc::assets::remote_runtime_generation_session runtime(f.catalog, corrupt, f.files, expectations_for(f));
+    CHECK_FALSE(runtime.activate_verified(f.release));
+    CHECK(runtime.state().active_generation == 0);
+    CHECK_FALSE(f.catalog.database().query(f.asset));
 }
