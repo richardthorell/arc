@@ -328,6 +328,8 @@ can keep a shared coordinator in its session owner and poll metrics for
 structured diagnostics; callers who use the default temporary coordinator can
 still access per-operation errors and eager acquisition's existing byte/object
 counts. Collection does not require a logger or introduce a second transport.
+Snapshot retrieval is safe while other workers are waiting, fetching,
+retrying, cancelling, or publishing into the verified cache.
 
 The snapshot includes:
 
