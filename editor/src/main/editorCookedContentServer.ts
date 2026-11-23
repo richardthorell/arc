@@ -329,10 +329,12 @@ export class EditorCookedContentServer {
     if (req.socket.remoteAddress !== '127.0.0.1') return this.reject(res, 403, 'Loopback only');
     if (req.headers.host !== '127.0.0.1:' + this.port)
       return this.reject(res, 400, 'Invalid content authority');
-    if (req.rawHeaders.length / 2 > 64 || req.headers['content-length'] !== undefined)
+    if (req.rawHeaders.length / 2 > 64)
       return this.reject(res, 431, 'Invalid request headers');
     if (!this.authorized(req)) return this.reject(res, 401, 'Content pairing required');
     if (req.method !== 'GET') return this.reject(res, 405, 'Only read-only GET is supported');
+    if (req.headers['content-length'] !== undefined)
+      return this.reject(res, 431, 'Request body is not permitted');
     const requested = req.url ?? '';
     if (
       requested.length > 512 || requested.includes('%') ||
