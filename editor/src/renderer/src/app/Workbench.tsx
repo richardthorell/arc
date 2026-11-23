@@ -93,6 +93,7 @@ import {
   RuntimeInspectorPanel,
   useLivePlayRuntimeInspection,
 } from '../hierarchy/RuntimeInspectionPanels';
+import { useLivePlayDiagnostics } from '../hierarchy/LivePlayDiagnosticsPanel';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
@@ -530,6 +531,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
   });
   const [externalRuntimeMode, setExternalRuntimeMode] = useState(false);
   const externalInspection = useLivePlayRuntimeInspection(externalPlay);
+  const externalDiagnostics = useLivePlayDiagnostics(externalPlay);
   const externalRuntimeVisible = externalRuntimeMode && !runtimeWorldActive && externalPlay.state !== 'stopped';
   useEffect(() => {
     if (!window.arc?.livePlay) return;
@@ -1816,7 +1818,8 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
-      if (externalRuntimeVisible) return <RuntimeInspectorPanel inspection={externalInspection} />;
+      if (externalRuntimeVisible)
+        return <RuntimeInspectorPanel inspection={externalInspection} diagnostics={externalDiagnostics} />;
       if (selectedEntityId === worldSelectionId) {
         if (runtimeWorldActive) return <RuntimeWorldPanel runtime={runtimeState} />;
         return (

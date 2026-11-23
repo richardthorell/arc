@@ -35,6 +35,9 @@ export type LivePlayControlStatus = {
   instanceId: string;
   lastReceivedSequence: number;
   lastError: string | null;
+  /** Only negotiated permissions of the currently authenticated game peer. */
+  capabilities: readonly LivePlayCapability[];
+  lastHeartbeatAtMs: number | null;
 };
 
 type Peer = {
@@ -69,6 +72,7 @@ export class LivePlayControlServer {
   private port: number | null = null;
   private lastError: string | null = null;
   private lastReceivedSequence = 0;
+  private lastHeartbeatAtMs: number | null = null;
   private outgoingSequence = 0;
   private pendingBaseline: Extract<LivePlayMessage, { type: 'scene.baseline.offer' }> | null = null;
 
@@ -82,6 +86,8 @@ export class LivePlayControlServer {
       instanceId: this.options.authority.instanceId,
       lastReceivedSequence: this.lastReceivedSequence,
       lastError: this.lastError,
+      capabilities: [...(this.activePeer?.ready ? this.activePeer.capabilities : [])],
+      lastHeartbeatAtMs: this.lastHeartbeatAtMs,
     };
   }
 
@@ -114,6 +120,7 @@ export class LivePlayControlServer {
     this.secret.fill(0);
     this.secret = randomBytes(authSecretBytes);
     this.lastReceivedSequence = 0;
+    this.lastHeartbeatAtMs = null;
     this.outgoingSequence = 0;
     this.lastError = null;
     const server = createServer((socket) => this.accept(socket));
@@ -163,6 +170,7 @@ export class LivePlayControlServer {
     for (const peer of this.peers) peer.socket.destroy();
     this.peers.clear();
     this.activePeer = null;
+    this.lastHeartbeatAtMs = null;
     this.lastReceivedSequence = 0;
     this.outgoingSequence = 0;
     this.pendingBaseline = null;
@@ -376,6 +384,7 @@ export class LivePlayControlServer {
       this.pendingBaseline = null;
     }
     this.lastReceivedSequence = result.nextSequence;
+    if (item.type === 'heartbeat') this.lastHeartbeatAtMs = Date.now();
     this.notify();
     try {
       this.options.onMessage?.(item);

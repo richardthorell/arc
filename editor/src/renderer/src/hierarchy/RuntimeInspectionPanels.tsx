@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LivePlayEntity, LivePlayMessage } from '../../../common/livePlayProtocol';
 import type { WindowsLivePlaySnapshot } from '../../../common/livePlaySessionTypes';
+import type { LivePlayDiagnosticsSnapshot } from '../../../common/livePlayDiagnosticsTypes';
+import { LivePlayDiagnosticsPanel } from './LivePlayDiagnosticsPanel';
 import {
   chooseRuntimeInspection,
   matchesRuntimeEntity,
@@ -257,7 +259,13 @@ function valueText(value: unknown): string {
   return 'Unavailable';
 }
 
-export function RuntimeInspectorPanel({ inspection }: { inspection: LivePlayRuntimeInspection }) {
+export function RuntimeInspectorPanel({
+  inspection,
+  diagnostics,
+}: {
+  inspection: LivePlayRuntimeInspection;
+  diagnostics?: LivePlayDiagnosticsSnapshot | null;
+}) {
   const selected = inspection.selected;
   const rows = inspection.hierarchy?.payload.entities ?? [];
   const matching = rows.find((item) => selected && matchesRuntimeEntity(selected, item.entity));
@@ -321,6 +329,7 @@ export function RuntimeInspectorPanel({ inspection }: { inspection: LivePlayRunt
           )}
         </>
       )}
+      <LivePlayDiagnosticsPanel snapshot={diagnostics ?? null} />
     </section>
   );
 }

@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { LivePlayMessage } from '../common/livePlayProtocol';
 import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
+import type { LivePlayDiagnosticsSnapshot } from '../common/livePlayDiagnosticsTypes';
+import { LivePlaySessionDiagnostics } from './livePlaySessionDiagnostics';
 import type { NativeLivePlayLaunchContext } from './livePlayNativeHandoff';
 import { writeLivePlayNativeHandoff } from './livePlayNativeHandoff';
 import { LivePlayControlServer, type LivePlayControlStatus } from './livePlayControlServer';
@@ -33,6 +35,7 @@ const connectionTimeoutMs = 15_000;
 
 export class WindowsLivePlaySession {
   private current: Session | null = null;
+  private readonly diagnostics: LivePlaySessionDiagnostics;
   private epoch = 0;
   private snapshotValue: WindowsLivePlaySnapshot = {
     state: 'stopped',
@@ -47,7 +50,14 @@ export class WindowsLivePlaySession {
     private readonly publish: (snapshot: WindowsLivePlaySnapshot) => void = () => {},
     private readonly onMessage: (message: LivePlayMessage) => void = () => {},
     private readonly platform: NodeJS.Platform = process.platform,
-  ) {}
+    publishDiagnostics: (snapshot: LivePlayDiagnosticsSnapshot) => void = () => {},
+  ) {
+    this.diagnostics = new LivePlaySessionDiagnostics(publishDiagnostics);
+  }
+
+  diagnosticsSnapshot(): LivePlayDiagnosticsSnapshot {
+    return this.diagnostics.snapshot();
+  }
 
   snapshot(): WindowsLivePlaySnapshot {
     return { ...this.snapshotValue };
@@ -76,7 +86,9 @@ export class WindowsLivePlaySession {
     const session = this.current;
     if (!session || session.stopRequested || !session.baselineActive || this.snapshotValue.state !== 'connected')
       return null;
-    return session.server.sendAuthoringProperty(payload);
+    const requestId = session.server.sendAuthoringProperty(payload);
+    this.diagnostics.requestSent(requestId, 'edit');
+    return requestId;
   }
 
   /** Read-only inspection remains separate from the Authoring World. */
@@ -85,11 +97,14 @@ export class WindowsLivePlaySession {
   ): string | null {
     const session = this.current;
     if (!session || session.stopRequested || this.snapshotValue.state !== 'connected') return null;
-    return session.server.sendInspectRequest(payload);
+    const requestId = session.server.sendInspectRequest(payload);
+    this.diagnostics.requestSent(requestId, 'inspect');
+    return requestId;
   }
 
   private update(change: Partial<WindowsLivePlaySnapshot>): void {
     this.snapshotValue = { ...this.snapshotValue, ...change };
+    this.diagnostics.observeStatus(this.snapshotValue, this.current?.server.status());
     try {
       this.publish(this.snapshot());
     } catch {
@@ -108,6 +123,7 @@ export class WindowsLivePlaySession {
 
     const epoch = ++this.epoch;
     const context = input.context;
+    this.diagnostics.begin(context.authority.sessionId, context.authority.instanceId);
     const server = new LivePlayControlServer({
       authority: context.authority,
       schemaHash: context.schemaHash,
@@ -118,6 +134,7 @@ export class WindowsLivePlaySession {
           this.current.baselineActive = message.payload.status === 'active';
           this.current.baselineOutcome.receive(message.payload);
         }
+        this.diagnostics.observeMessage(message);
         this.onMessage(message);
       },
       onStatus: (status) => this.onServerStatus(epoch, status),
@@ -160,8 +177,12 @@ export class WindowsLivePlaySession {
       // The child may exit before the secret handoff; never leave an
       // unhandled error from an early closed stdin pipe.
       child.stdin.on('error', () => {});
-      child.stdout.on('data', () => {});
-      child.stderr.on('data', () => {});
+      child.stdout.on('data', (chunk: Buffer) => {
+        if (this.current === session) this.diagnostics.observeProcessOutput('stdout', chunk);
+      });
+      child.stderr.on('data', (chunk: Buffer) => {
+        if (this.current === session) this.diagnostics.observeProcessOutput('stderr', chunk);
+      });
       child.once('error', (error) => this.onProcessExit(session, error.message));
       child.once('close', (code, signal) =>
         this.onProcessExit(

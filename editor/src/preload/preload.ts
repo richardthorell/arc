@@ -21,6 +21,7 @@ import type {
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
 import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
+import type { LivePlayDiagnosticsSnapshot } from '../common/livePlayDiagnosticsTypes';
 import type { LivePlayMessage, LivePlayEntity } from '../common/livePlayProtocol';
 import type { BuildMonitorEvent, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
 import type { BuildHistoryDetail, BuildHistoryPage } from '../common/buildHistoryTypes';
@@ -516,6 +517,13 @@ const arcApi = {
   },
   livePlay: {
     snapshot: (): Promise<WindowsLivePlaySnapshot | null> => ipcRenderer.invoke('livePlay:snapshot'),
+    diagnosticsSnapshot: (): Promise<LivePlayDiagnosticsSnapshot | null> =>
+      ipcRenderer.invoke('livePlay:diagnosticsSnapshot'),
+    onDiagnostics: (callback: (snapshot: LivePlayDiagnosticsSnapshot) => void): (() => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, snapshot: LivePlayDiagnosticsSnapshot) => callback(snapshot);
+      ipcRenderer.on('livePlay:diagnostics', listener);
+      return () => ipcRenderer.removeListener('livePlay:diagnostics', listener);
+    },
     start: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:start'),
     stop: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:stop'),
     /** Read-only native inspection: never routes to the authoring host. */
