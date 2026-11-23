@@ -260,6 +260,15 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
     auto boot = discover_runtime_boot(std::move(request.boot));
     if (!boot) return packaged_runtime_result::failure(std::move(boot).error());
 
+    // Until C9.4/6 wires verified remote acquisition before world creation,
+    // remote-only must not silently fall back to the packaged startup scene.
+    // Hybrid explicitly allows packaged fallback; the selection remains
+    // inspectable from session.boot().content for future C9 integration.
+    if (boot.value().content.mode == runtime_content_mode::remote)
+        return packaged_runtime_result::failure(
+            failure(project_error_code::invalid_descriptor, "content.mode",
+                    "Remote-only content selected but verified HTTP startup activation is not yet integrated"));
+
     auto session = std::unique_ptr<packaged_runtime_session>(new packaged_runtime_session(std::move(boot).value()));
     try
     {
