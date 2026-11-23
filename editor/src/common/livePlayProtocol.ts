@@ -333,7 +333,7 @@ function capabilityFor(type: LivePlayMessageType): LivePlayCapability | undefine
     type === 'entity.reparent'
   )
     return 'entity.edit';
-  if (type === 'component.inspect.request') return 'entity.inspect';
+  if (type === 'component.inspect.request' || type === 'session.resync.request') return 'entity.inspect';
   if (type === 'session.command') return 'session.control';
   if (type === 'scene.baseline.offer' || type === 'scene.baseline.status') return 'content.observe';
   return undefined;
