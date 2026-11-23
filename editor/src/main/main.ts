@@ -1206,6 +1206,8 @@ void app.whenReady().then(async () => {
       )
         sendToActiveRenderer('livePlay:message', message);
     },
+    process.platform,
+    (snapshot) => sendToActiveRenderer('livePlay:diagnostics', snapshot),
   );
   projectSettingsService = new ProjectSettingsService(
     () => projectService?.active() ?? null,
@@ -1362,6 +1364,7 @@ void app.whenReady().then(async () => {
     },
   );
   ipcMain.handle('livePlay:snapshot', () => livePlaySession?.snapshot() ?? null);
+  ipcMain.handle('livePlay:diagnosticsSnapshot', () => livePlaySession?.diagnosticsSnapshot() ?? null);
   ipcMain.handle('livePlay:inspectionSnapshot', () => {
     const active = livePlaySession?.snapshot();
     if (active?.state !== 'connected' || !latestLivePlayHierarchy) return null;
