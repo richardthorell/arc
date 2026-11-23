@@ -49,10 +49,8 @@ export function applyLivePlayHierarchy(
   message: HierarchySnapshotMessage | HierarchyChangeMessage,
 ): LivePlayHierarchyState {
   const current = previous.hierarchy;
-  if (
-    current &&
-    (current.sessionId !== message.sessionId || current.instanceId !== message.instanceId)
-  ) return { hierarchy: null, pending: null, requiresSnapshot: true };
+  if (current && (current.sessionId !== message.sessionId || current.instanceId !== message.instanceId))
+    return { hierarchy: null, pending: null, requiresSnapshot: true };
 
   if (message.type === 'hierarchy.changed') {
     const { baseRevision, worldRevision, changes } = message.payload;
@@ -65,7 +63,8 @@ export function applyLivePlayHierarchy(
       baseRevision === undefined ||
       baseRevision !== current.payload.worldRevision ||
       worldRevision <= baseRevision
-    ) return { ...previous, pending: null, requiresSnapshot: true };
+    )
+      return { ...previous, pending: null, requiresSnapshot: true };
 
     const items = new Map(current.payload.entities.map((item) => [entityKey(item.entity), item]));
     for (const change of changes) {
@@ -104,13 +103,18 @@ export function applyLivePlayHierarchy(
     pageIndex >= pageCount ||
     entities.length > maxPageEntities ||
     pageCount * maxPageEntities > maxHierarchyEntities
-  ) return { ...previous, pending: null, requiresSnapshot: true };
+  )
+    return { ...previous, pending: null, requiresSnapshot: true };
 
   if (current && worldRevision === current.payload.worldRevision) return previous;
   const original = previous.pending;
   const pending: PendingSnapshot =
-    original && original.sessionId === message.sessionId && original.instanceId === message.instanceId &&
-    original.revision === worldRevision && original.pageCount === pageCount && original.complete === complete
+    original &&
+    original.sessionId === message.sessionId &&
+    original.instanceId === message.instanceId &&
+    original.revision === worldRevision &&
+    original.pageCount === pageCount &&
+    original.complete === complete
       ? { ...original, pages: [...original.pages] }
       : {
           sessionId: message.sessionId,
