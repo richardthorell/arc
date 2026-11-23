@@ -653,10 +653,10 @@ bool client::send_hierarchy_changed(const hierarchy_delta& delta, std::string& e
                 return false;
             }
             changes.push_back({{"kind", "upsert"},
-                               {"value", {{"entity", encode_entity(change.item.entity)},
-                                          {"parent", change.item.parent ? encode_entity(*change.item.parent)
-                                                                        : json(nullptr)},
-                                          {"name", change.item.name}}}});
+                               {"value",
+                                {{"entity", encode_entity(change.item.entity)},
+                                 {"parent", change.item.parent ? encode_entity(*change.item.parent) : json(nullptr)},
+                                 {"name", change.item.name}}}});
         }
     }
     const json payload = {{"baseRevision", delta.base_revision},
