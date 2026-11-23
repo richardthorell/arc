@@ -105,7 +105,7 @@ target_compile_features(arc-platform-windows-packaged-entry PUBLIC cxx_std_20)
 target_compile_definitions(arc-platform-windows-packaged-entry PRIVATE
     ARC_WINDOWS_PACKAGED_BOOTSTRAP=1 WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(arc-platform-windows-packaged-entry PUBLIC
-    arc-platform-windows arc-project)
+    arc-platform-windows arc-project shell32)
 set_target_properties(arc-platform-windows-packaged-entry PROPERTIES EXPORT_NAME PlatformWindowsPackagedEntry)
 install(TARGETS arc-platform-windows-packaged-entry EXPORT ARCTargets
     ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
@@ -121,7 +121,7 @@ if(ARC_BUILD_LIVE_PLAY_DEV AND TARGET arc-live-play-dev)
     target_compile_definitions(arc-platform-windows-live-play-entry PRIVATE
         ARC_WINDOWS_PACKAGED_BOOTSTRAP=1 ARC_WINDOWS_LIVE_PLAY_DEV=1 WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(arc-platform-windows-live-play-entry PUBLIC
-        arc-platform-windows arc-project arc-live-play-dev)
+        arc-platform-windows arc-project arc-live-play-dev shell32)
     set_target_properties(arc-platform-windows-live-play-entry PROPERTIES EXPORT_NAME PlatformWindowsLivePlayEntry)
     install(TARGETS arc-platform-windows-live-play-entry EXPORT ARCTargets
         ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
