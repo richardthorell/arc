@@ -12,9 +12,7 @@ namespace
 
 project_error invalid(std::string field, std::string message)
 {
-    return {.code = project_error_code::invalid_descriptor,
-            .field = std::move(field),
-            .message = std::move(message)};
+    return {.code = project_error_code::invalid_descriptor, .field = std::move(field), .message = std::move(message)};
 }
 
 runtime_content_options_result bad_option(std::string field, std::string message)
@@ -41,9 +39,12 @@ std::string_view runtime_content_mode_name(runtime_content_mode mode) noexcept
 {
     switch (mode)
     {
-        case runtime_content_mode::packaged: return "packaged";
-        case runtime_content_mode::remote: return "remote";
-        case runtime_content_mode::hybrid: return "hybrid";
+        case runtime_content_mode::packaged:
+            return "packaged";
+        case runtime_content_mode::remote:
+            return "remote";
+        case runtime_content_mode::hybrid:
+            return "hybrid";
     }
     return "invalid";
 }
@@ -52,9 +53,12 @@ std::string_view runtime_content_origin_name(runtime_content_origin origin) noex
 {
     switch (origin)
     {
-        case runtime_content_origin::distribution: return "distribution";
-        case runtime_content_origin::project_development: return "project-development";
-        case runtime_content_origin::trusted_launch: return "trusted-launch";
+        case runtime_content_origin::distribution:
+            return "distribution";
+        case runtime_content_origin::project_development:
+            return "project-development";
+        case runtime_content_origin::trusted_launch:
+            return "trusted-launch";
     }
     return "invalid";
 }
@@ -126,9 +130,9 @@ runtime_content_selection_result select_runtime_content(const distribution_manif
     selected.target_id = manifest.target.id;
     selected.cook_profile = manifest.target.cook_profile;
     selected.cache_root = writable_storage_root / "RemoteContent";
-    selected.origin = from_launch ? runtime_content_origin::trusted_launch
-                                  : from_project ? runtime_content_origin::project_development
-                                                 : runtime_content_origin::distribution;
+    selected.origin = from_launch    ? runtime_content_origin::trusted_launch
+                      : from_project ? runtime_content_origin::project_development
+                                     : runtime_content_origin::distribution;
 
     const auto& launch = config.trusted_launch;
     const auto& project = config.project_development;
@@ -153,15 +157,14 @@ runtime_content_selection_result select_runtime_content(const distribution_manif
     // The shared C9 HTTP request policy rejects userinfo, paths, query,
     // fragment, redirects and non-loopback plaintext. Never echo rejected
     // URLs in diagnostics: malformed inputs may contain credential material.
-    http::content_http_release_request probe{.origin = *server,
-                                             .project_guid = manifest.project_guid,
-                                             .target_profile = manifest.target.cook_profile};
+    http::content_http_release_request probe{
+        .origin = *server, .project_guid = manifest.project_guid, .target_profile = manifest.target.cook_profile};
     http::content_http_limits policy;
     policy.allow_loopback_http = true;
     const auto checked = http::validate_content_http_release_request(probe, policy);
     if (!checked.succeeded())
-        return runtime_content_selection_result::failure(
-            invalid("content.server", "Invalid Development content-server origin (HTTPS or explicit loopback HTTP required)"));
+        return runtime_content_selection_result::failure(invalid(
+            "content.server", "Invalid Development content-server origin (HTTPS or explicit loopback HTTP required)"));
 
     selected.server_origin = *server;
     return runtime_content_selection_result::success(std::move(selected));

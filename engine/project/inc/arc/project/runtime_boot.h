@@ -57,7 +57,7 @@ struct runtime_boot_context
 {
     runtime_launch_context launch;
     std::filesystem::path native_distribution_root; ///< Canonical native root, empty for mounted providers.
-    runtime_content_selection content; ///< Validated source, scope, and private cache root.
+    runtime_content_selection content;              ///< Validated source, scope, and private cache root.
 };
 
 using runtime_boot_result = core::result<runtime_boot_context, project_error>;

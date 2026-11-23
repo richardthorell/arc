@@ -31,20 +31,18 @@ project::runtime_content_options_result parse(std::initializer_list<std::string_
 }
 
 project::runtime_content_selection_result select(const project::runtime_content_launch& config,
-                                                std::string_view configuration = "Debug")
+                                                 std::string_view configuration = "Debug")
 {
     auto manifest = development_manifest();
     manifest.target.configuration = configuration;
-    return project::select_runtime_content(manifest, config,
-                                           std::filesystem::temp_directory_path() / "arc-c9-3-test");
+    return project::select_runtime_content(manifest, config, std::filesystem::temp_directory_path() / "arc-c9-3-test");
 }
 
 } // namespace
 
 TEST_CASE("C9.3 content launch parser supports Windows split/equal forms and unrelated host arguments")
 {
-    auto options = parse({"--ci-smoke", "--content-server", "http://127.0.0.1:8123",
-                          "--content-mode=hybrid"});
+    auto options = parse({"--ci-smoke", "--content-server", "http://127.0.0.1:8123", "--content-mode=hybrid"});
     REQUIRE(options);
     CHECK(options.value().server == "http://127.0.0.1:8123");
     CHECK(options.value().mode == project::runtime_content_mode::hybrid);
@@ -137,11 +135,10 @@ TEST_CASE("C9.3 Development endpoint rejects credentials, arbitrary paths and pl
 {
     project::runtime_content_launch config;
     config.trusted_launch.mode = project::runtime_content_mode::remote;
-    for (const std::string_view origin : {
-             "http://example.org:8123", "https://user:password@example.org",
-             "https://example.org/path", "https://example.org?token=abc",
-             "https://example.org/#fragment", "ftp://example.org",
-             "http://127.0.0.1:0", "https://example.org:abc"})
+    for (const std::string_view origin :
+         {"http://example.org:8123", "https://user:password@example.org", "https://example.org/path",
+          "https://example.org?token=abc", "https://example.org/#fragment", "ftp://example.org", "http://127.0.0.1:0",
+          "https://example.org:abc"})
     {
         config.trusted_launch.server = std::string(origin);
         auto result = select(config);

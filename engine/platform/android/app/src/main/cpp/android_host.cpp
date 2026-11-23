@@ -64,8 +64,7 @@ content_intent read_content_intent(ANativeActivity* activity)
     const auto status = activity->vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
     if (status == JNI_EDETACHED)
     {
-        if (activity->vm->AttachCurrentThread(&env, nullptr) != JNI_OK)
-            return {.valid = false};
+        if (activity->vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return {.valid = false};
         attached = true;
     }
     else if (status != JNI_OK)
@@ -75,12 +74,11 @@ content_intent read_content_intent(ANativeActivity* activity)
     const auto get_intent = cls ? env->GetMethodID(cls, "getIntent", "()Landroid/content/Intent;") : nullptr;
     const auto intent = get_intent ? env->CallObjectMethod(activity->clazz, get_intent) : nullptr;
     const auto intent_cls = intent ? env->GetObjectClass(intent) : nullptr;
-    const auto get_extra = intent_cls ? env->GetMethodID(
-        intent_cls, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;") : nullptr;
-    result.valid = get_extra &&
-                   read_string_extra(env, intent, get_extra, "org.arcengine.CONTENT_SERVER", result.server) &&
-                   read_string_extra(env, intent, get_extra, "org.arcengine.CONTENT_MODE", result.mode) &&
-                   !env->ExceptionCheck();
+    const auto get_extra =
+        intent_cls ? env->GetMethodID(intent_cls, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;") : nullptr;
+    result.valid =
+        get_extra && read_string_extra(env, intent, get_extra, "org.arcengine.CONTENT_SERVER", result.server) &&
+        read_string_extra(env, intent, get_extra, "org.arcengine.CONTENT_MODE", result.mode) && !env->ExceptionCheck();
     if (env->ExceptionCheck()) env->ExceptionClear();
     if (intent_cls) env->DeleteLocalRef(intent_cls);
     if (intent) env->DeleteLocalRef(intent);
@@ -225,12 +223,9 @@ extern "C" void android_main(android_app* app)
                                                            app->activity ? app->activity->internalDataPath : nullptr);
     const auto extras = read_content_intent(app->activity);
     const auto view = [](const std::optional<std::string>& value) -> std::optional<std::string_view>
-    {
-        return value ? std::optional<std::string_view>(*value) : std::nullopt;
-    };
+    { return value ? std::optional<std::string_view>(*value) : std::nullopt; };
     const auto selected = arc::project::parse_android_content_metadata(view(extras.server), view(extras.mode));
-    if (!extras.valid || !selected)
-        arc::diagnostics::error("Android", "Invalid Development content Intent metadata");
+    if (!extras.valid || !selected) arc::diagnostics::error("Android", "Invalid Development content Intent metadata");
     const bool booted = module_ready && extras.valid && selected &&
                         runtime.boot(project_module.project_guid(), selected.value()) && project_module.start();
     if (!booted) arc::diagnostics::warn("Android", "Host remains alive; packaged startup did not complete");

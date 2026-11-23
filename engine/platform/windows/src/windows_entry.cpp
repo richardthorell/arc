@@ -332,16 +332,16 @@ arc::project::runtime_content_options_result content_options_from_windows_comman
     bool valid = true;
     for (int index = 1; index < count; ++index)
     {
-        const int length = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, arguments[index], -1,
-                                               nullptr, 0, nullptr, nullptr);
+        const int length =
+            WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, arguments[index], -1, nullptr, 0, nullptr, nullptr);
         if (length <= 0)
         {
             valid = false;
             break;
         }
         std::string utf8(static_cast<std::size_t>(length), '\0');
-        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, arguments[index], -1,
-                                utf8.data(), length, nullptr, nullptr) != length)
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, arguments[index], -1, utf8.data(), length, nullptr,
+                                nullptr) != length)
         {
             valid = false;
             break;
@@ -357,7 +357,8 @@ arc::project::runtime_content_options_result content_options_from_windows_comman
              .message = "Invalid Unicode launch argument"});
     std::vector<std::string_view> views;
     views.reserve(owned.size());
-    for (const auto& value : owned) views.emplace_back(value);
+    for (const auto& value : owned)
+        views.emplace_back(value);
     return project::parse_runtime_content_arguments(views);
 }
 
@@ -431,8 +432,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     arc::io::async_file_service native_files{jobs};
     arc::io::virtual_file_system files{jobs};
     const auto content_options = content_options_from_windows_command_line();
-    if (!content_options)
-        return boot_failure(content_options.error().field + ": " + content_options.error().message);
+    if (!content_options) return boot_failure(content_options.error().field + ": " + content_options.error().message);
 
     project::runtime_boot_request boot;
     boot.content.trusted_launch = content_options.value();

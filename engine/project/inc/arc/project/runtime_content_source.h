@@ -68,23 +68,23 @@ using runtime_content_selection_result = core::result<runtime_content_selection,
  * --ci-smoke; reject duplicate, malformed, or unknown --content-* options.
  * Supports both --content-server URL and --content-server=URL, similarly mode.
  */
-[[nodiscard]] runtime_content_options_result parse_runtime_content_arguments(
-    std::span<const std::string_view> arguments);
+[[nodiscard]] runtime_content_options_result
+parse_runtime_content_arguments(std::span<const std::string_view> arguments);
 
 /** Android NativeActivity supplies non-secret Intent metadata rather than
  * command-line arguments. Empty optional means absent; present-but-empty is
  * invalid. Both hosts use the same selector and Shipping policy.
  */
-[[nodiscard]] runtime_content_options_result parse_android_content_metadata(
-    std::optional<std::string_view> server, std::optional<std::string_view> mode);
+[[nodiscard]] runtime_content_options_result parse_android_content_metadata(std::optional<std::string_view> server,
+                                                                            std::optional<std::string_view> mode);
 
 /** Only callable after manifest and compiled host identity have been checked.
  * Shipping always uses packaged content, rejecting even a "packaged" override.
  * Endpoint policy reuses arc-http's strict HTTPS / opt-in loopback origin rules.
  */
-[[nodiscard]] runtime_content_selection_result select_runtime_content(
-    const distribution_manifest& manifest, const runtime_content_launch& config,
-    const std::filesystem::path& writable_storage_root);
+[[nodiscard]] runtime_content_selection_result
+select_runtime_content(const distribution_manifest& manifest, const runtime_content_launch& config,
+                       const std::filesystem::path& writable_storage_root);
 
 [[nodiscard]] std::string_view runtime_content_mode_name(runtime_content_mode mode) noexcept;
 [[nodiscard]] std::string_view runtime_content_origin_name(runtime_content_origin origin) noexcept;

@@ -184,8 +184,7 @@ android_runtime_bridge::~android_runtime_bridge()
     jobs_.shutdown(arc::jobs::job_shutdown_mode::drain);
 }
 
-bool android_runtime_bridge::boot(std::string_view project_guid,
-                                  arc::project::runtime_content_options trusted_content)
+bool android_runtime_bridge::boot(std::string_view project_guid, arc::project::runtime_content_options trusted_content)
 {
     if (catalog_) return true;
     if (!assets_.available() || writable_storage_.empty() || !writable_storage_.is_absolute())
@@ -255,10 +254,9 @@ bool android_runtime_bridge::boot(std::string_view project_guid,
         boot_.reset();
         return false;
     }
-    arc::diagnostics::info(
-        "Android", "ARC content selection: " +
-            std::string(arc::project::runtime_content_mode_name(boot_->content.mode)) +
-            " (currently packaged content)");
+    arc::diagnostics::info("Android", "ARC content selection: " +
+                                          std::string(arc::project::runtime_content_mode_name(boot_->content.mode)) +
+                                          " (currently packaged content)");
     auto mounted_catalog = arc::project::bootstrap_runtime_catalog({.boot = *boot_, .files = vfs_});
     if (!mounted_catalog)
     {

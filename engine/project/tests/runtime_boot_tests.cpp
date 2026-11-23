@@ -386,7 +386,6 @@ TEST_CASE("D1.2 fails closed on missing or modified Android package inputs")
     REQUIRE(project::discover_runtime_boot(std::move(full)));
 }
 
-
 TEST_CASE("C9.3 Windows Development boot preserves selected remote endpoint and target identity")
 {
     temporary_directory temp;
