@@ -20,7 +20,7 @@ const identity = {
   instanceId: 'instance-1',
   messageId: 'hierarchy-1',
   sequence: 1,
-};
+} as const;
 const item = (n: number) => ({
   entity: { kind: 'runtime' as const, runtimeEntityId: `w1-x1-e${n}-g1` },
   parent: null,
