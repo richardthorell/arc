@@ -882,6 +882,21 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
             return std::nullopt;
         }
     }
+    else if (type == "session.resync.request")
+    {
+        std::string reason;
+        const bool allowed = std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(),
+                                       "entity.inspect") != negotiated_capabilities_.end();
+        if (!allowed || !exact_keys(payload, {"lastReceivedSequence", "reason"}) ||
+            !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_ ||
+            !field(payload, "reason", reason) ||
+            (reason != "reconnected" && reason != "gap" && reason != "overflow"))
+        {
+            error = "Invalid or unauthorized Live Play resynchronization request";
+            close();
+            return std::nullopt;
+        }
+    }
     else if (type != "heartbeat" || !exact_keys(payload, {"lastReceivedSequence"}) ||
              !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_)
     {
