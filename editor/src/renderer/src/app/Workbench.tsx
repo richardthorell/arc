@@ -88,6 +88,11 @@ import { BuildToolbar, type BuildDialogAction } from '../buildOutput/BuildToolba
 import { BuildCreationDialog } from '../buildOutput/BuildCreationDialog';
 import { detectHostTargetPlatform, EDITOR_VIEWPORT_TARGET_ID, STANDALONE_TARGET_ID } from '../layout/MainToolbar';
 import type { WindowsLivePlaySnapshot } from '../../../common/livePlaySessionTypes';
+import {
+  RuntimeHierarchyPanel,
+  RuntimeInspectorPanel,
+  useLivePlayRuntimeInspection,
+} from '../hierarchy/RuntimeInspectionPanels';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../../../common/buildTypes';
 import { AiGatewayApprovalPrompt, AiGatewayPanel } from '../ai/AiGatewayPanel';
 import type { ArcAiGatewayStatus } from '../../../preload/preload';
@@ -523,6 +528,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     lastReceivedSequence: 0,
     error: null,
   });
+  const [externalRuntimeMode, setExternalRuntimeMode] = useState(false);
+  const externalInspection = useLivePlayRuntimeInspection(externalPlay);
+  const externalRuntimeVisible =
+    externalRuntimeMode && !runtimeWorldActive && externalPlay.state !== 'stopped';
   useEffect(() => {
     if (!window.arc?.livePlay) return;
     let alive = true;
@@ -1545,7 +1554,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
     }
 
     if (requestedPanel === 'hierarchy' || (!requestedPanel && layout.activeActivity === 'scene')) {
-      return (
+      const authoringHierarchy = (
         <ExplorerPanel
           project={inspectedProject}
           selectedEntityId={selectedEntityId}
@@ -1562,6 +1571,28 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
           readOnly={runtimeWorldActive}
           worldLabel={runtimeWorldActive ? 'Play World' : 'World'}
         />
+      );
+      if (runtimeWorldActive || externalPlay.state === 'stopped') return authoringHierarchy;
+      return (
+        <div className="live-runtime-workspace">
+          <nav className="live-runtime-mode-switch" aria-label="Hierarchy world view">
+            <button
+              type="button"
+              aria-pressed={!externalRuntimeVisible}
+              onClick={() => setExternalRuntimeMode(false)}
+            >
+              Authoring
+            </button>
+            <button
+              type="button"
+              aria-pressed={externalRuntimeVisible}
+              onClick={() => setExternalRuntimeMode(true)}
+            >
+              Runtime
+            </button>
+          </nav>
+          {externalRuntimeVisible ? <RuntimeHierarchyPanel inspection={externalInspection} /> : authoringHierarchy}
+        </div>
       );
     }
 
@@ -1794,6 +1825,7 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
 
   const renderRightPanel = (panel: WorkbenchPanelId) => {
     if (panel === 'inspector') {
+      if (externalRuntimeVisible) return <RuntimeInspectorPanel inspection={externalInspection} />;
       if (selectedEntityId === worldSelectionId) {
         if (runtimeWorldActive) return <RuntimeWorldPanel runtime={runtimeState} />;
         return (
