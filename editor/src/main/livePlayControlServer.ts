@@ -75,6 +75,7 @@ export class LivePlayControlServer {
   private lastHeartbeatAtMs: number | null = null;
   private outgoingSequence = 0;
   private pendingBaseline: Extract<LivePlayMessage, { type: 'scene.baseline.offer' }> | null = null;
+  private lastResyncAtMs = 0;
 
   constructor(private readonly options: LivePlayControlOptions) {}
 
@@ -121,6 +122,7 @@ export class LivePlayControlServer {
     this.secret = randomBytes(authSecretBytes);
     this.lastReceivedSequence = 0;
     this.lastHeartbeatAtMs = null;
+    this.lastResyncAtMs = 0;
     this.outgoingSequence = 0;
     this.lastError = null;
     const server = createServer((socket) => this.accept(socket));
@@ -171,6 +173,7 @@ export class LivePlayControlServer {
     this.peers.clear();
     this.activePeer = null;
     this.lastHeartbeatAtMs = null;
+    this.lastResyncAtMs = 0;
     this.lastReceivedSequence = 0;
     this.outgoingSequence = 0;
     this.pendingBaseline = null;
@@ -230,8 +233,28 @@ export class LivePlayControlServer {
     return this.send(peer, command) ? command.messageId : null;
   }
 
+  /** Trusted, rate-limited full hierarchy repair; no runtime mutation or raw ECS reads. */
+  sendResyncRequest(reason: 'reconnected' | 'gap' | 'overflow'): boolean {
+    const peer = this.activePeer;
+    if (!peer?.ready || !peer.capabilities.includes('entity.inspect')) return false;
+    if (Date.now() - this.lastResyncAtMs < 600) return false;
+    const request = this.message('session.resync.request', {
+      lastReceivedSequence: this.lastReceivedSequence,
+      reason,
+    });
+    if (!this.send(peer, request)) return false;
+    this.lastResyncAtMs = Date.now();
+    return true;
+  }
+
   private message(
-    type: 'heartbeat' | 'hello.accepted' | 'scene.baseline.offer' | 'entity.property.set' | 'component.inspect.request',
+    type:
+      | 'heartbeat'
+      | 'hello.accepted'
+      | 'scene.baseline.offer'
+      | 'entity.property.set'
+      | 'component.inspect.request'
+      | 'session.resync.request',
     payload: unknown,
   ): LivePlayMessage {
     const item = {
@@ -337,6 +360,7 @@ export class LivePlayControlServer {
         this.reject(peer, 'invalid_resume_sequence');
         return;
       }
+      const resumed = this.state === 'disconnected' || this.state === 'error';
       const capabilities = item.payload.capabilities.filter((cap) => this.options.grantedCapabilities.includes(cap));
       const accepted = this.message('hello.accepted', {
         capabilities,
@@ -350,7 +374,9 @@ export class LivePlayControlServer {
       peer.socket.setTimeout(this.options.idleTimeoutMs ?? 30000);
       this.state = 'connected';
       this.lastError = null;
+      this.lastResyncAtMs = 0;
       this.notify();
+      if (resumed) this.sendResyncRequest('reconnected');
       return;
     }
     if (item.type === 'hello' || item.type === 'hello.accepted' || item.type === 'hello.rejected') {
@@ -383,6 +409,7 @@ export class LivePlayControlServer {
       }
       this.pendingBaseline = null;
     }
+    const skippedSequence = item.sequence > this.lastReceivedSequence + 1;
     this.lastReceivedSequence = result.nextSequence;
     if (item.type === 'heartbeat') this.lastHeartbeatAtMs = Date.now();
     this.notify();
@@ -391,6 +418,7 @@ export class LivePlayControlServer {
     } catch {
       // Never dispatch untrusted frames a second time after an observer failure.
     }
+    if (skippedSequence) this.sendResyncRequest('gap');
   }
 
   private reject(peer: Peer, reason: string): void {
