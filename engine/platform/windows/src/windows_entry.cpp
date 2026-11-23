@@ -480,7 +480,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                 {
                     const auto now = std::chrono::steady_clock::now();
                     if (reconnect_deadline == std::chrono::steady_clock::time_point{})
+                    {
+                        // Revoke edit authority as soon as the socket is lost,
+                        // not only after a new connection is established.
+                        live_baseline_active.store(false);
+                        live_edits.clear();
+                        live_inspections.clear();
+                        last_sent_hierarchy.reset();
                         reconnect_deadline = now + std::chrono::seconds(12);
+                    }
                     if (now >= reconnect_deadline) break;
                     std::string retry_error;
                     if (!client->reconnect(handoff, retry_error))
