@@ -21,6 +21,7 @@ import type {
 import type { ArcExtensionSnapshot } from '../common/extensionTypes';
 import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
 import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
+import type { LivePlayHierarchyState } from '../common/livePlayHierarchyState';
 import type { LivePlayDiagnosticsSnapshot } from '../common/livePlayDiagnosticsTypes';
 import type { LivePlayMessage, LivePlayEntity } from '../common/livePlayProtocol';
 import type { BuildMonitorEvent, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
@@ -531,6 +532,8 @@ const arcApi = {
       ipcRenderer.invoke('livePlay:inspect', { entity, component: { typeId, schemaVersion: 1 } }),
     latestHierarchy: (): Promise<Extract<LivePlayMessage, { type: 'hierarchy.snapshot' }> | null> =>
       ipcRenderer.invoke('livePlay:inspectionSnapshot'),
+    latestHierarchyState: (): Promise<LivePlayHierarchyState | null> =>
+      ipcRenderer.invoke('livePlay:inspectionStateSnapshot'),
     onMessage: (callback: (message: LivePlayMessage) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, message: LivePlayMessage) => callback(message);
       ipcRenderer.on('livePlay:message', listener);
