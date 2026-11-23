@@ -91,6 +91,17 @@ export class WindowsLivePlaySession {
     return requestId;
   }
 
+  /** Read-only repair request, strictly bound to the authenticated game peer. */
+  requestHierarchyResync(reason: 'reconnected' | 'gap' | 'overflow'): boolean {
+    const session = this.current;
+    return Boolean(
+      session &&
+      !session.stopRequested &&
+      this.snapshotValue.state === 'connected' &&
+      session.server.sendResyncRequest(reason),
+    );
+  }
+
   /** Read-only inspection remains separate from the Authoring World. */
   requestRuntimeComponent(
     payload: Extract<LivePlayMessage, { type: 'component.inspect.request' }>['payload'],
