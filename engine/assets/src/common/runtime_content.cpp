@@ -534,7 +534,6 @@ asset_status cooked_asset_catalog::mount_package(const io::virtual_path& manifes
              .guid = artifact.asset,
              .provider_id = provider_id});
     }
-    if (mounted_provider_id) *mounted_provider_id = provider_id;
     return asset_status::success();
 }
 
@@ -583,6 +582,7 @@ asset_status cooked_asset_catalog::mount_remote_provider(std::shared_ptr<remote_
              .guid = artifact.asset,
              .provider_id = provider_id});
     }
+    if (mounted_provider_id) *mounted_provider_id = provider_id;
     return asset_status::success();
 }
 
