@@ -5,6 +5,7 @@
  */
 
 #include <arc/project/runtime_launch.h>
+#include <arc/project/runtime_content_source.h>
 
 #include <filesystem>
 #include <string>
@@ -44,6 +45,7 @@ struct runtime_boot_request
     runtime_boot_expectations expected;
     std::vector<assets::content_bundle_id> startup_bundles;
     runtime_boot_integrity integrity{runtime_boot_integrity::startup};
+    runtime_content_launch content; ///< Development-only host-supplied content settings, never D0.
 };
 
 /**
@@ -55,6 +57,7 @@ struct runtime_boot_context
 {
     runtime_launch_context launch;
     std::filesystem::path native_distribution_root; ///< Canonical native root, empty for mounted providers.
+    runtime_content_selection content; ///< Validated source, scope, and private cache root.
 };
 
 using runtime_boot_result = core::result<runtime_boot_context, project_error>;
