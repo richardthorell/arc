@@ -1023,7 +1023,7 @@ json serialize_entity(const editor_scene_state& state, ecs::entity value, const 
     if (const auto* component = state.scene.try_get<scene::tag_component>(value))
         components["Tag"] = {{"version", 1}, {"value", component->value}};
     if (const auto* component = state.scene.try_get<scene::active_component>(value))
-        components["Active"] = {{"version", 1}, {"value", component->active}};
+        components["Active"] = {{"version", 2}, {"active", component->active}};
     if (const auto* component = state.scene.try_get<scene::render_layer_component>(value))
         components["RenderLayer"] = {{"version", 1}, {"mask", component->mask}};
     if (const auto* component = state.scene.try_get<scene::mobility_component>(value))
@@ -1645,7 +1645,11 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
             if (components.contains("Tag"))
                 loaded.scene.emplace<scene::tag_component>(entity, components["Tag"].value("value", "Untagged"));
             if (components.contains("Active"))
-                loaded.scene.emplace<scene::active_component>(entity, components["Active"].value("value", true));
+            {
+                const auto& active = components["Active"];
+                loaded.scene.emplace<scene::active_component>(entity,
+                                                              active.value("active", active.value("value", true)));
+            }
             if (components.contains("Flow"))
             {
                 const auto& flow = components["Flow"];

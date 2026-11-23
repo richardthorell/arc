@@ -294,8 +294,9 @@ project::packaged_runtime_request request_for(packaged_world_fixture& fixture, b
 
     project::packaged_runtime_request request{
         .boot = std::move(boot), .files = fixture.files, .native_files = &fixture.native_files};
-    request.registrations.materialize_scene =
-        [](framework::runtime_world& world, const project::packaged_scene_payload& scene)
+    request.registrations.materialize_scene = [](framework::runtime_world& world,
+                                                 const project::packaged_scene_payload& scene,
+                                                 arc::scene::cooked_scene_mesh_bindings&)
     {
         if (scene.bytes.empty())
             return project::project_status::failure(
@@ -428,8 +429,8 @@ TEST_CASE("D1.5 failed project scene setup propagates error and unmounts every o
     packaged_world_fixture fixture;
     fixture.stage();
     auto request = request_for(fixture);
-    request.registrations.materialize_scene = [](framework::runtime_world&,
-                                                 const project::packaged_scene_payload&) -> project::project_status
+    request.registrations.materialize_scene = [](framework::runtime_world&, const project::packaged_scene_payload&,
+                                                 arc::scene::cooked_scene_mesh_bindings&) -> project::project_status
     { throw std::runtime_error("deliberate scene failure"); };
     auto started = project::start_packaged_runtime(std::move(request));
     REQUIRE_FALSE(started);
@@ -516,8 +517,9 @@ TEST_CASE("D1.5 faulted simulation world is reported and unmounted")
     packaged_world_fixture fixture;
     fixture.stage();
     auto request = request_for(fixture);
-    request.registrations.materialize_scene =
-        [](framework::runtime_world& world, const project::packaged_scene_payload&)
+    request.registrations.materialize_scene = [](framework::runtime_world& world,
+                                                 const project::packaged_scene_payload&,
+                                                 arc::scene::cooked_scene_mesh_bindings&)
     {
         world.systems().add(
             {.name = "intentional fault",
@@ -658,9 +660,9 @@ TEST_CASE("D1.6 failing host stop callback preserves diagnostic and shuts the se
     packaged_world_fixture fixture;
     fixture.stage(true);
     const auto result = project::run_packaged_headless_server(
-        {.runtime = request_for(fixture, true), .sleep_to_clock = false, .stop_requested = []() -> bool {
-             throw std::runtime_error("host stop signal failed");
-         }});
+        {.runtime = request_for(fixture, true),
+         .sleep_to_clock = false,
+         .stop_requested = []() -> bool { throw std::runtime_error("host stop signal failed"); }});
     REQUIRE_FALSE(result);
     CHECK(result.error().field == "serverLoop");
     CHECK(result.error().message.find("host stop signal failed") != std::string::npos);
@@ -755,11 +757,12 @@ TEST_CASE("D1.8 relocated packaged Windows client loads a real cooked scene thro
     std::vector<std::string> events;
     auto request = request_for(fixture);
     use_executable_discovery(request, fixture, false);
-    request.registrations.materialize_scene =
-        [&](framework::runtime_world& world, const project::packaged_scene_payload& scene)
+    request.registrations.materialize_scene = [&](framework::runtime_world& world,
+                                                  const project::packaged_scene_payload& scene,
+                                                  arc::scene::cooked_scene_mesh_bindings& bindings)
     {
         events.push_back("scene:materialize");
-        const auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes);
+        const auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes, &bindings);
         if (!error.empty())
             return project::project_status::failure(
                 {.code = project::project_error_code::invalid_scene, .field = "startupScenes", .message = error});
@@ -856,10 +859,11 @@ TEST_CASE("D1.8 relocated client can restart and release mounts repeatedly with 
     {
         auto request = request_for(fixture);
         use_executable_discovery(request, fixture, false);
-        request.registrations.materialize_scene =
-            [](framework::runtime_world& world, const project::packaged_scene_payload& scene)
+        request.registrations.materialize_scene = [](framework::runtime_world& world,
+                                                     const project::packaged_scene_payload& scene,
+                                                     arc::scene::cooked_scene_mesh_bindings& bindings)
         {
-            auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes);
+            auto error = arc::scene::materialize_cooked_scene(world.entities(), scene.bytes, &bindings);
             if (!error.empty())
                 return project::project_status::failure({.code = project::project_error_code::invalid_scene,
                                                          .field = "startupScenes",

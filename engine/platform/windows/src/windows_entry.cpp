@@ -11,6 +11,7 @@
 #include <arc/framework/framework.h>
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
 #include <arc/platform/windows/packaged_client.h>
+#include "windows_vulkan_presenter.h"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -349,6 +350,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     namespace fs = std::filesystem;
     namespace project = arc::project;
+    const std::string_view packaged_arguments = command_line ? std::string_view(command_line) : std::string_view{};
+    const bool render_smoke = packaged_arguments.find("--ci-render-smoke") != std::string_view::npos;
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
     namespace live = arc::network::live_play_dev;
     auto handoff_pipe = GetStdHandle(STD_INPUT_HANDLE);
@@ -394,6 +397,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     auto started = project::start_packaged_runtime(std::move(request));
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
+    if (render_smoke) static_cast<void>(write_ci_smoke_diagnostic("packaged runtime started"));
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
     // The network worker owns the client; socket timeouts cannot stall rendering,
     // input dispatch, scene simulation or the editor's Authoring World.
@@ -439,7 +443,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 #endif
     // This exercises the real Shipping bootstrap and startup scene on CI
     // without requiring a GPU or opening a window. Normal launches are unchanged.
-    if (command_line && std::string_view(command_line) == "--ci-smoke")
+    if (packaged_arguments.find("--ci-smoke") != std::string_view::npos)
     {
         auto stopped = session->shutdown();
         if (!stopped) return boot_failure(stopped.error().field + ": " + stopped.error().message);
@@ -500,6 +504,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     runtime.start();
 #else
     record_status(&state, session->surface_ready(config.initial_width, config.initial_height));
+    arc::platform::windows::windows_vulkan_presenter presenter;
+    if (render_smoke) static_cast<void>(write_ci_smoke_diagnostic("initializing packaged renderer"));
+    if (const auto error = presenter.initialize(window, *session); !error.empty())
+    {
+        DestroyWindow(window);
+        static_cast<void>(session->shutdown());
+        return boot_failure("Renderer startup failed: " + error);
+    }
+    if (render_smoke) static_cast<void>(write_ci_smoke_diagnostic("presenting packaged renderer frame"));
 #endif
 
     if (config.visible)
@@ -549,6 +562,25 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                 state.failure = frame.error().field + ": " + frame.error().message;
                 session->request_stop();
             }
+            else
+            {
+                RECT client{};
+                if (GetClientRect(window, &client))
+                {
+                    const auto width = static_cast<std::uint32_t>(client.right - client.left);
+                    const auto height = static_cast<std::uint32_t>(client.bottom - client.top);
+                    if (const auto error = presenter.present(width, height, static_cast<float>(delta)); !error.empty())
+                    {
+                        state.failure = "Renderer frame failed: " + error;
+                        session->request_stop();
+                    }
+                    else if (render_smoke)
+                    {
+                        static_cast<void>(write_ci_smoke_diagnostic("packaged renderer frame presented"));
+                        session->request_stop();
+                    }
+                }
+            }
         }
         else if (session->state() == project::packaged_runtime_state::suspended)
             Sleep(8);
@@ -564,6 +596,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 #if defined(ARC_WINDOWS_PACKAGED_BOOTSTRAP)
     state.runtime = nullptr;
     state.session = nullptr;
+    presenter.shutdown();
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
     live_worker.request_stop();
     live_worker.join();
@@ -571,6 +604,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     auto stopped = session->shutdown();
     if (!stopped && state.failure.empty()) state.failure = stopped.error().field + ": " + stopped.error().message;
     if (!state.failure.empty()) return boot_failure(state.failure);
+    if (render_smoke && !write_ci_smoke_diagnostic("ARC packaged client render smoke passed"))
+        return boot_failure("Cannot publish CI render smoke success diagnostic");
 #else
     runtime.shutdown();
 #endif

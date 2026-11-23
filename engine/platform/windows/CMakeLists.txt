@@ -99,13 +99,16 @@ target_compile_definitions(arc-platform-windows
 
 # A distinct Windows entry archive keeps the existing create_application()
 # diagnostics/samples unchanged. Packaged clients link this entry explicitly.
-add_library(arc-platform-windows-packaged-entry STATIC src/windows_entry.cpp)
+add_library(arc-platform-windows-packaged-entry STATIC
+    src/windows_entry.cpp
+    src/windows_vulkan_presenter.cpp
+    src/windows_vulkan_presenter.h)
 arc_configure_first_party_target(arc-platform-windows-packaged-entry)
 target_compile_features(arc-platform-windows-packaged-entry PUBLIC cxx_std_20)
 target_compile_definitions(arc-platform-windows-packaged-entry PRIVATE
     ARC_WINDOWS_PACKAGED_BOOTSTRAP=1 WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(arc-platform-windows-packaged-entry PUBLIC
-    arc-platform-windows arc-project)
+    arc-platform-windows arc-project arc-render-vulkan arc-scene)
 set_target_properties(arc-platform-windows-packaged-entry PROPERTIES EXPORT_NAME PlatformWindowsPackagedEntry)
 install(TARGETS arc-platform-windows-packaged-entry EXPORT ARCTargets
     ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"
@@ -115,13 +118,16 @@ install(TARGETS arc-platform-windows-packaged-entry EXPORT ARCTargets
 # client. Test-only builds may also create arc-live-play-dev, but must not
 # export a Windows entry depending on a library absent from the installed SDK.
 if(ARC_BUILD_LIVE_PLAY_DEV AND TARGET arc-live-play-dev)
-    add_library(arc-platform-windows-live-play-entry STATIC src/windows_entry.cpp)
+    add_library(arc-platform-windows-live-play-entry STATIC
+        src/windows_entry.cpp
+        src/windows_vulkan_presenter.cpp
+        src/windows_vulkan_presenter.h)
     arc_configure_first_party_target(arc-platform-windows-live-play-entry)
     target_compile_features(arc-platform-windows-live-play-entry PUBLIC cxx_std_20)
     target_compile_definitions(arc-platform-windows-live-play-entry PRIVATE
         ARC_WINDOWS_PACKAGED_BOOTSTRAP=1 ARC_WINDOWS_LIVE_PLAY_DEV=1 WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(arc-platform-windows-live-play-entry PUBLIC
-        arc-platform-windows arc-project arc-live-play-dev)
+        arc-platform-windows arc-project arc-live-play-dev arc-render-vulkan arc-scene)
     set_target_properties(arc-platform-windows-live-play-entry PROPERTIES EXPORT_NAME PlatformWindowsLivePlayEntry)
     install(TARGETS arc-platform-windows-live-play-entry EXPORT ARCTargets
         ARCHIVE DESTINATION "lib/${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/$<CONFIG>"

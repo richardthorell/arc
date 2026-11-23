@@ -53,14 +53,18 @@ bool populate_component(ecs::world& destination, ecs::entity entity,
         error = "Cooked scene has an unregistered component '" + record.name + "'";
         return false;
     }
-    for (const auto& field : record.fields)
-    {
-        if (!field.known)
+    const auto* persistence = registry.find(record.type);
+    const bool custom_serialization =
+        persistence && persistence->component && persistence->component->custom_serialization;
+    if (!custom_serialization)
+        for (const auto& field : record.fields)
         {
-            error = "Cooked component '" + record.name + "' has an unsupported field '" + field.name + "'";
-            return false;
+            if (!field.known)
+            {
+                error = "Cooked component '" + record.name + "' has an unsupported field '" + field.name + "'";
+                return false;
+            }
         }
-    }
 #define ARC_DECODE_SCENE_COMPONENT(Type)                                                                               \
     if (record.type == ecs::component_metadata<Type>().id)                                                             \
     return decode_component<Type>(destination, entity, record, registry, error)

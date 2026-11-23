@@ -246,6 +246,27 @@ TEST_CASE("V3.4b editor v4 MeshRenderer field names migrate to the runtime schem
     CHECK(field->known);
 }
 
+TEST_CASE("Active value fields migrate to the canonical runtime schema")
+{
+    arc::persistence::archive_component_record component;
+    component.type = arc::ecs::component_metadata<arc::scene::active_component>().id;
+    component.name = "Active";
+    component.schema_version = 1;
+    arc::persistence::archive_value value;
+    value.kind = arc::persistence::archive_value_kind::boolean;
+    value.boolean = false;
+    component.fields.push_back({0, "value", std::move(value), false});
+
+    arc::persistence::schema_migration_registry migrations;
+    REQUIRE(arc::scene::register_persistence_migrations(migrations));
+    REQUIRE(migrations.migrate(component, 2));
+    REQUIRE(component.fields.size() == 1);
+    CHECK(component.schema_version == 2);
+    CHECK(component.fields.front().name == "active");
+    CHECK(component.fields.front().id == 1u);
+    CHECK(component.fields.front().known);
+}
+
 TEST_CASE("Android device smoke Camera codec preserves projection exposure and rejects unknown fields")
 {
     arc::persistence::component_persistence_registry registry;
@@ -272,4 +293,48 @@ TEST_CASE("Android device smoke Camera codec preserves projection exposure and r
     invalid.fields.push_back({99u, "unexpected", {}, true});
     CHECK_FALSE(registry.decode(id, &restored, invalid));
     CHECK(restored.exposure.manual_ev100 == 12.0f);
+}
+
+TEST_CASE("Authored Camera field names bind to stable cooked runtime fields")
+{
+    arc::persistence::component_persistence_registry registry;
+    REQUIRE(arc::scene::register_persistence_components(registry));
+    arc::scene::camera_component input;
+    input.fov_y_radians = 0.9f;
+    input.near_plane = 0.25f;
+    input.far_plane = 800.0f;
+    input.orthographic_height = 12.0f;
+    input.clear_color = {0.15f, 0.25f, 0.35f, 1.0f};
+
+    const auto id = arc::ecs::component_metadata<arc::scene::camera_component>().id;
+    arc::persistence::archive_component_record authored;
+    REQUIRE(registry.encode(id, &input, authored));
+    for (auto& field : authored.fields)
+    {
+        field.known = false;
+        field.id = 0;
+        if (field.name == "fov_y_radians")
+            field.name = "fovY";
+        else if (field.name == "near_plane")
+            field.name = "near";
+        else if (field.name == "far_plane")
+            field.name = "far";
+        else if (field.name == "orthographic_height")
+            field.name = "orthographicHeight";
+        else if (field.name == "clear_color")
+            field.name = "clearColor";
+        else if (field.name == "anti_aliasing")
+            field.name = "antiAliasing";
+    }
+
+    arc::scene::camera_component restored;
+    REQUIRE(registry.decode(id, &restored, authored));
+    CHECK(restored.fov_y_radians == input.fov_y_radians);
+    CHECK(restored.near_plane == input.near_plane);
+    CHECK(restored.far_plane == input.far_plane);
+    CHECK(restored.orthographic_height == input.orthographic_height);
+    CHECK(restored.clear_color[0] == input.clear_color[0]);
+    CHECK(restored.clear_color[1] == input.clear_color[1]);
+    CHECK(restored.clear_color[2] == input.clear_color[2]);
+    CHECK(restored.clear_color[3] == input.clear_color[3]);
 }

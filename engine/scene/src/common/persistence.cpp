@@ -218,8 +218,32 @@ persistence::persistence_status decode_camera(void* component, const persistence
     auto next = *static_cast<camera_component*>(component);
     for (const auto& field : record.fields)
     {
+        auto field_id = field.id;
+        if (!field.known)
+        {
+            constexpr std::pair<std::string_view, ecs::component_field_id> names[]{
+                {"projection", 1u},
+                {"fov_y_radians", 2u},
+                {"fovY", 2u},
+                {"near_plane", 3u},
+                {"near", 3u},
+                {"far_plane", 4u},
+                {"far", 4u},
+                {"orthographic_height", 5u},
+                {"orthographicHeight", 5u},
+                {"active", 6u},
+                {"clear_color", 7u},
+                {"clearColor", 7u},
+                {"exposure", 8u},
+                {"anti_aliasing", 9u},
+                {"antiAliasing", 9u},
+            };
+            const auto found = std::find_if(std::begin(names), std::end(names),
+                                            [&](const auto& entry) { return field.name == entry.first; });
+            if (found != std::end(names)) field_id = found->second;
+        }
         bool valid = false;
-        switch (field.id)
+        switch (field_id)
         {
             case 1u:
             {
@@ -455,6 +479,24 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
     { return persistence::persistence_status::success(); };
     const auto component_upgrade = [](persistence::archive_component_record&)
     { return persistence::persistence_status::success(); };
+    const auto active_v1_to_v2 = [](persistence::archive_component_record& component)
+    {
+        const auto fields = ecs::component_metadata<active_component>().fields;
+        const auto metadata =
+            std::find_if(fields.begin(), fields.end(), [](const auto& entry) { return entry.name == "active"; });
+        if (metadata == fields.end())
+            return persistence::persistence_status::failure(
+                {.code = persistence::persistence_error_code::migration_invalid,
+                 .message = "Active schema is missing the canonical active field"});
+        for (auto& field : component.fields)
+        {
+            if (field.known || field.name != "value") continue;
+            field.id = metadata->id;
+            field.name = std::string(metadata->name);
+            field.known = true;
+        }
+        return persistence::persistence_status::success();
+    };
     const auto mesh_v4_to_v5 = [](persistence::archive_component_record& component)
     {
         // Editor v4 scene documents use camelCase, while schema v5 uses the
@@ -497,6 +539,7 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
     if (!registry.register_document(persistence::document_kind::scene, 1, 2, document_upgrade) ||
         !registry.register_document(persistence::document_kind::scene, 2, 3, document_upgrade) ||
         !registry.register_document(persistence::document_kind::prefab, 1, 2, document_upgrade) ||
+        !registry.register_component(ecs::component_metadata<active_component>().id, 1, 2, active_v1_to_v2) ||
         !registry.register_component(ecs::component_metadata<terrain_component>().id, 1, 2, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<terrain_component>().id, 2, 3, component_upgrade) ||
         !registry.register_component(ecs::component_metadata<terrain_component>().id, 3, 4, component_upgrade) ||

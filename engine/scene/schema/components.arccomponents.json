@@ -106,6 +106,7 @@
                            "type":  "active_component",
                            "id":  "a7c00000000000010000000000000004",
                            "display":  "Active",
+                           "version":  2,
                            "fields":  [
                                           {
                                               "name":  "active",
