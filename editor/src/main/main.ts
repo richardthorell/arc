@@ -33,6 +33,7 @@ import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windowsLivePlaySession';
 import { livePlayInspectPayloadSchema, type LivePlayMessage } from '../common/livePlayProtocol';
+import { applyLivePlayHierarchy, emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
 import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
 import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
 import { BuildMonitorService } from './buildMonitorService';
@@ -77,7 +78,7 @@ let recoveryService: RecoveryService | null = null;
 let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
 let livePlaySession: WindowsLivePlaySession | null = null;
-let latestLivePlayHierarchy: Extract<LivePlayMessage, { type: 'hierarchy.snapshot' }> | null = null;
+let latestLivePlayHierarchy = emptyLivePlayHierarchy();
 let livePlayBaselines: LivePlaySceneBaselineStore | null = null;
 let livePlayAuthoringEdits: LivePlayAuthoringEdits | null = null;
 let projectSettingsService: ProjectSettingsService | null = null;
@@ -1192,12 +1193,13 @@ void app.whenReady().then(async () => {
       if (snapshot.state === 'disconnected') livePlayAuthoringEdits?.disconnect();
       if (snapshot.state === 'failed' || snapshot.state === 'stopped') livePlayAuthoringEdits?.end();
       if (snapshot.state === 'starting' || snapshot.state === 'stopped' || snapshot.state === 'failed')
-        latestLivePlayHierarchy = null;
+        latestLivePlayHierarchy = emptyLivePlayHierarchy();
       sendToActiveRenderer('livePlay:state', snapshot);
     },
     (message) => {
       livePlayAuthoringEdits?.onRuntimeMessage(message);
-      if (message.type === 'hierarchy.snapshot') latestLivePlayHierarchy = message;
+      if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed')
+        latestLivePlayHierarchy = applyLivePlayHierarchy(latestLivePlayHierarchy, message);
       if (
         message.type === 'hierarchy.snapshot' ||
         message.type === 'hierarchy.changed' ||
@@ -1367,11 +1369,9 @@ void app.whenReady().then(async () => {
   ipcMain.handle('livePlay:diagnosticsSnapshot', () => livePlaySession?.diagnosticsSnapshot() ?? null);
   ipcMain.handle('livePlay:inspectionSnapshot', () => {
     const active = livePlaySession?.snapshot();
-    if (active?.state !== 'connected' || !latestLivePlayHierarchy) return null;
-    return latestLivePlayHierarchy.sessionId === active.sessionId &&
-      latestLivePlayHierarchy.instanceId === active.instanceId
-      ? latestLivePlayHierarchy
-      : null;
+    const snapshot = latestLivePlayHierarchy.hierarchy;
+    if (active?.state !== 'connected' || latestLivePlayHierarchy.requiresSnapshot || !snapshot) return null;
+    return snapshot.sessionId === active.sessionId && snapshot.instanceId === active.instanceId ? snapshot : null;
   });
   ipcMain.handle('livePlay:inspect', (_event, raw: unknown) => {
     const parsed = livePlayInspectPayloadSchema.safeParse(raw);
