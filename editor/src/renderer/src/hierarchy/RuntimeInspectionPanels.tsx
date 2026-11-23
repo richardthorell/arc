@@ -65,8 +65,18 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
     let subscribed = true;
     const pendingRequests = pending.current;
     pendingRequests.clear();
+    let hydrating = true;
+    const earlyHierarchy: LivePlayMessage[] = [];
     const onMessage = (message: LivePlayMessage) => {
       if (!sameSession(message, snapshot)) return;
+      if (hydrating && (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed')) {
+        // Always apply the cached base BEFORE messages received during IPC
+        // hydration. Without this, an early delta can falsely mark a live
+        // session stale even though main has the verified base revision.
+        if (earlyHierarchy.length >= 128) earlyHierarchy.shift();
+        earlyHierarchy.push(message);
+        return;
+      }
       if (message.type === 'component.inspect.result' && message.payload.requestId) {
         const sent = pendingRequests.get(message.payload.requestId);
         if (sent) {
@@ -114,6 +124,8 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
         }
         if (
           message.type === 'component.inspect.result' &&
+          !previous.requiresSnapshot &&
+          !previous.pending &&
           matchesRuntimeEntity(previous.selected, message.payload.entity)
         ) {
           const typeId = message.payload.component.typeId;
@@ -129,14 +141,39 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
       });
     };
     const unsubscribe = window.arc.livePlay.onMessage(onMessage);
+    const finishHydration = () => {
+      hydrating = false;
+      for (const queued of earlyHierarchy.splice(0)) onMessage(queued);
+    };
     void window.arc.livePlay
-      .latestHierarchy()
-      .then((message) => {
-        if (subscribed && message && sameSession(message, snapshot)) onMessage(message);
+      .latestHierarchyState()
+      .then((state) => {
+        if (!subscribed) return;
+        const hierarchy = state?.hierarchy;
+        const stale = state?.requiresSnapshot ?? false;
+        if (hierarchy && sameSession(hierarchy, snapshot)) {
+          setView((previous) => {
+            const currentView = previous.scope === scope ? previous : emptyView(scope);
+            if (currentView.hierarchy && currentView.hierarchy.payload.worldRevision >= hierarchy.payload.worldRevision)
+              return previous;
+            return {
+              ...currentView,
+              hierarchy,
+              pending: null,
+              requiresSnapshot: stale,
+              properties: {},
+              notice: stale ? 'Waiting for a full hierarchy resynchronization.' : null,
+            };
+          });
+        }
+        finishHydration();
       })
-      .catch(() => {});
+      .catch(() => {
+        if (subscribed) finishHydration();
+      });
     return () => {
       subscribed = false;
+      earlyHierarchy.length = 0;
       pendingRequests.clear();
       unsubscribe();
     };
@@ -157,9 +194,46 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
     [scope],
   );
 
+  // A disconnected Development game can still have a useful cached tree,
+  // but never retain component values or a half-received snapshot as live.
+  useEffect(() => {
+    if (!scope || snapshot.state === 'connected') return;
+    pending.current.clear();
+    setView((previous) =>
+      previous.scope === scope
+        ? {
+            ...previous,
+            pending: null,
+            properties: {},
+            requiresSnapshot: previous.requiresSnapshot || previous.hierarchy !== null,
+          }
+        : previous,
+    );
+  }, [scope, snapshot.state]);
+
+  // Bound renderer-side page assembly too; main owns the actual authenticated
+  // resync request and its retry budget.
+  useEffect(() => {
+    if (!scope || !current.pending || snapshot.state !== 'connected') return;
+    const revision = current.pending.revision;
+    const timeout = window.setTimeout(() => {
+      setView((previous) =>
+        previous.scope === scope && previous.pending?.revision === revision
+          ? {
+              ...previous,
+              pending: null,
+              requiresSnapshot: true,
+              notice: 'Runtime hierarchy page timeout; requesting a full snapshot.',
+            }
+          : previous,
+      );
+    }, 2000);
+    return () => window.clearTimeout(timeout);
+  }, [scope, current.pending, snapshot.state]);
+
   const selected = current.selected;
   const requestSelected = useCallback(() => {
-    if (!selected || !scope || snapshot.state !== 'connected') return;
+    if (!selected || !scope || snapshot.state !== 'connected' || current.requiresSnapshot || current.pending) return;
     const entityKey = runtimeEntityKey(selected);
     for (const component of inspectableComponents) {
       void window.arc.livePlay
@@ -175,7 +249,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
           );
         });
     }
-  }, [scope, selected, snapshot.state]);
+  }, [scope, selected, snapshot.state, current.requiresSnapshot, current.pending]);
 
   useEffect(() => {
     if (!selected || snapshot.state !== 'connected') return;

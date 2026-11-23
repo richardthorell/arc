@@ -47,7 +47,7 @@ public:
     /** Returns changed hierarchy snapshots capped at 4096 runtime entities.
      * Oversized scenes are explicitly marked incomplete, never silently accepted.
      */
-    [[nodiscard]] std::optional<hierarchy_snapshot> sample(const framework::runtime& runtime)
+    [[nodiscard]] std::optional<hierarchy_snapshot> sample(const framework::runtime& runtime, bool force = false)
     {
         if (runtime.worlds().executing()) return std::nullopt;
         hierarchy_snapshot snapshot;
@@ -76,7 +76,8 @@ public:
             }
             if (!snapshot.complete) break;
         }
-        if (initialized_ && previous_ == snapshot.entities && complete_ == snapshot.complete) return std::nullopt;
+        if (!force && initialized_ && previous_ == snapshot.entities && complete_ == snapshot.complete)
+            return std::nullopt;
         initialized_ = true;
         previous_ = snapshot.entities;
         complete_ = snapshot.complete;

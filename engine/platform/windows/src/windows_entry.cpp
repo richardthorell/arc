@@ -460,32 +460,73 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     // the offered cooked generation. Today's unavailable baseline path never
     // sets it, so edits cannot touch a stale packaged startup scene.
     std::atomic<bool> live_baseline_active{false};
+    std::atomic<bool> live_force_hierarchy{false};
     live::edit_mailbox live_edits;
     live::inspection_mailbox live_inspections;
     arc::platform::windows::live_play_transform_applier live_edit_applier;
     arc::platform::windows::live_play_runtime_inspector live_inspector;
     std::jthread live_worker(
-        [client = std::move(live_client), &live_ticks, &live_phase, &live_baseline_active, &live_edits,
-         &live_inspections](std::stop_token stop) mutable
+        [client = std::move(live_client), &handoff, &live_ticks, &live_phase, &live_baseline_active,
+         &live_force_hierarchy, &live_edits, &live_inspections](std::stop_token stop) mutable
         {
             std::string error;
             std::optional<live::hierarchy_snapshot> last_sent_hierarchy;
             int last_phase = 0;
             auto last_heartbeat = std::chrono::steady_clock::now();
-            while (!stop.stop_requested() && client->connected())
+            auto reconnect_deadline = std::chrono::steady_clock::time_point{};
+            while (!stop.stop_requested())
             {
+                if (!client->connected())
+                {
+                    const auto now = std::chrono::steady_clock::now();
+                    if (reconnect_deadline == std::chrono::steady_clock::time_point{})
+                    {
+                        // Revoke edit authority as soon as the socket is lost,
+                        // not only after a new connection is established.
+                        live_baseline_active.store(false);
+                        live_edits.clear();
+                        live_inspections.clear();
+                        last_sent_hierarchy.reset();
+                        reconnect_deadline = now + std::chrono::seconds(12);
+                    }
+                    if (now >= reconnect_deadline) break;
+                    std::string retry_error;
+                    if (!client->reconnect(handoff, retry_error))
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        continue;
+                    }
+                    // Reconnected Development transport never reuses stale pending
+                    // edit authority or component inspection requests.
+                    live_baseline_active.store(false);
+                    live_edits.clear();
+                    live_inspections.clear();
+                    last_sent_hierarchy.reset();
+                    live_force_hierarchy.store(true);
+                    last_phase = 0;
+                    last_heartbeat = now;
+                    reconnect_deadline = std::chrono::steady_clock::time_point{};
+                }
+                error.clear();
                 const int phase = live_phase.load();
                 if (phase != last_phase)
                 {
                     if (!client->send_state(phase == 2 ? "paused" : "running", live_ticks.load(), live_ticks.load(),
                                             error))
-                        break;
+                    {
+                        client->close();
+                        continue;
+                    }
                     last_phase = phase;
                 }
                 const auto now = std::chrono::steady_clock::now();
                 if (now - last_heartbeat >= std::chrono::seconds(1))
                 {
-                    if (!client->send_heartbeat(error)) break;
+                    if (!client->send_heartbeat(error))
+                    {
+                        client->close();
+                        continue;
+                    }
                     last_heartbeat = now;
                 }
                 // Only this worker writes to the TCP client. Runtime thread
@@ -498,7 +539,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                                           : client->send_rejected_ack(result.request_id, result.code, error);
                     if (!sent) break;
                 }
-                if (!error.empty()) break;
+                if (!error.empty())
+                {
+                    client->close();
+                    continue;
+                }
                 // Snapshot/result serialization stays on the socket owner,
                 // never on the world simulation thread.
                 if (auto snapshot = live_inspections.take_snapshot())
@@ -509,7 +554,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                         last_sent_hierarchy ? live::diff_hierarchy(*last_sent_hierarchy, *snapshot) : std::nullopt;
                     const bool sent = delta ? client->send_hierarchy_changed(*delta, error)
                                             : client->send_hierarchy_snapshot(*snapshot, error);
-                    if (!sent) break;
+                    if (!sent)
+                    {
+                        client->close();
+                        continue;
+                    }
                     last_sent_hierarchy = std::move(*snapshot);
                 }
                 for (const auto& outcome : live_inspections.take_results())
@@ -519,27 +568,56 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                                           : client->send_rejected_ack(outcome.request_id, outcome.error_code, error);
                     if (!sent) break;
                 }
-                if (!error.empty()) break;
+                if (!error.empty())
+                {
+                    client->close();
+                    continue;
+                }
                 const auto incoming = client->poll(30, error);
-                if (!error.empty()) break;
-                if (incoming && incoming->type == "scene.baseline.offer")
+                if (!error.empty())
+                {
+                    client->close();
+                    continue;
+                }
+                if (incoming && incoming->type == "session.resync.request")
+                {
+                    // Only the runtime frame thread may inspect the ECS. The
+                    // socket worker invalidates its delta base and asks the
+                    // frame thread for one forced full snapshot.
+                    last_sent_hierarchy.reset();
+                    static_cast<void>(live_inspections.take_snapshot());
+                    live_force_hierarchy.store(true);
+                }
+                else if (incoming && incoming->type == "scene.baseline.offer")
                 {
                     // C9 delivery and verified scene activation are tracked
                     // in the other development track. Never claim a baseline
                     // active merely because the socket received its offer.
                     live_baseline_active.store(false);
-                    if (!client->send_baseline_status("rejected", "unavailable", error)) break;
+                    if (!client->send_baseline_status("rejected", "unavailable", error))
+                    {
+                        client->close();
+                        continue;
+                    }
                 }
                 else if (incoming && incoming->inspection)
                 {
                     if (!live_inspections.enqueue(*incoming->inspection))
-                        if (!client->send_rejected_ack(incoming->message_id, "busy", error)) break;
+                        if (!client->send_rejected_ack(incoming->message_id, "busy", error))
+                        {
+                            client->close();
+                            continue;
+                        }
                 }
                 else if (incoming && incoming->edit)
                 {
                     if (!live_baseline_active.load())
                     {
-                        if (!client->send_rejected_ack(incoming->message_id, "restart_required", error)) break;
+                        if (!client->send_rejected_ack(incoming->message_id, "restart_required", error))
+                        {
+                            client->close();
+                            continue;
+                        }
                     }
                     else if (!live_edits.enqueue(*incoming->edit))
                     {
@@ -700,9 +778,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                 break;
             }
         }
-        if (clock::now() >= next_inspection_sample)
+        const bool force_hierarchy = live_force_hierarchy.exchange(false);
+        if (force_hierarchy || clock::now() >= next_inspection_sample)
         {
-            if (auto snapshot = live_inspector.sample(runtime)) live_inspections.publish(std::move(*snapshot));
+            if (auto snapshot = live_inspector.sample(runtime, force_hierarchy))
+                live_inspections.publish(std::move(*snapshot));
             next_inspection_sample = clock::now() + std::chrono::milliseconds(250);
         }
 #endif

@@ -174,6 +174,11 @@ void run()
           "Native hierarchy unexpectedly truncated a >128-entity scene");
     const auto bulk_diff = live::diff_hierarchy(*removed, *large);
     check(!bulk_diff, "Over-budget native hierarchy change should use paged snapshot instead of delta");
+    const auto forced = inspector.sample(runtime, true);
+    check(forced && forced->complete && forced->entities == large->entities &&
+              forced->world_revision == large->world_revision + 1,
+          "Native resync did not produce a fresh full hierarchy revision");
+    check(!inspector.sample(runtime), "Forced resync incorrectly invalidated hierarchy change coalescing");
 
     applier.clear();
     runtime.shutdown();

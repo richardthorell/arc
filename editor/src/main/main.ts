@@ -33,7 +33,8 @@ import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windowsLivePlaySession';
 import { livePlayInspectPayloadSchema } from '../common/livePlayProtocol';
-import { applyLivePlayHierarchy, emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
+import { emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
+import { LivePlayHierarchyRecovery } from './livePlayHierarchyRecovery';
 import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
 import { EditorCookedContentServer } from './editorCookedContentServer';
 import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
@@ -80,6 +81,7 @@ let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
 let livePlaySession: WindowsLivePlaySession | null = null;
 let latestLivePlayHierarchy = emptyLivePlayHierarchy();
+let hierarchyRecovery: LivePlayHierarchyRecovery | null = null;
 let livePlayBaselines: LivePlaySceneBaselineStore | null = null;
 let livePlayContentServer: EditorCookedContentServer | null = null;
 let livePlayAuthoringEdits: LivePlayAuthoringEdits | null = null;
@@ -1194,6 +1196,14 @@ void app.whenReady().then(async () => {
     (payload) => livePlaySession?.sendAuthoringProperty(payload) ?? null,
   );
   hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
+  hierarchyRecovery = new LivePlayHierarchyRecovery(
+    (reason) => livePlaySession?.requestHierarchyResync(reason) ?? false,
+  );
+  const hierarchyRepairTick = setInterval(() => {
+    hierarchyRecovery?.tick();
+    latestLivePlayHierarchy = hierarchyRecovery?.snapshot() ?? emptyLivePlayHierarchy();
+  }, 400);
+  hierarchyRepairTick.unref();
   livePlaySession = new WindowsLivePlaySession(
     (snapshot) => {
       if (snapshot.state === 'failed' && snapshot.pid === null) {
@@ -1203,14 +1213,16 @@ void app.whenReady().then(async () => {
       }
       if (snapshot.state === 'disconnected') livePlayAuthoringEdits?.disconnect();
       if (snapshot.state === 'failed' || snapshot.state === 'stopped') livePlayAuthoringEdits?.end();
-      if (snapshot.state === 'starting' || snapshot.state === 'stopped' || snapshot.state === 'failed')
-        latestLivePlayHierarchy = emptyLivePlayHierarchy();
+      hierarchyRecovery?.connectionState(snapshot.state);
+      latestLivePlayHierarchy = hierarchyRecovery?.snapshot() ?? emptyLivePlayHierarchy();
       sendToActiveRenderer('livePlay:state', snapshot);
     },
     (message) => {
       livePlayAuthoringEdits?.onRuntimeMessage(message);
-      if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed')
-        latestLivePlayHierarchy = applyLivePlayHierarchy(latestLivePlayHierarchy, message);
+      if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed') {
+        hierarchyRecovery?.observe(message);
+        latestLivePlayHierarchy = hierarchyRecovery?.snapshot() ?? emptyLivePlayHierarchy();
+      }
       if (
         message.type === 'hierarchy.snapshot' ||
         message.type === 'hierarchy.changed' ||
@@ -1379,6 +1391,20 @@ void app.whenReady().then(async () => {
   );
   ipcMain.handle('livePlay:snapshot', () => livePlaySession?.snapshot() ?? null);
   ipcMain.handle('livePlay:diagnosticsSnapshot', () => livePlaySession?.diagnosticsSnapshot() ?? null);
+  ipcMain.handle('livePlay:inspectionStateSnapshot', () => {
+    const active = livePlaySession?.snapshot();
+    const state = hierarchyRecovery?.snapshot();
+    const hierarchy = state?.hierarchy;
+    if (!active?.sessionId || !active.instanceId || !state || !hierarchy) return null;
+    if (hierarchy.sessionId !== active.sessionId || hierarchy.instanceId !== active.instanceId) return null;
+    // Never leak a partial page as a current tree. A renderer reload may show
+    // the last verified tree, but it must know when that tree is stale.
+    return {
+      hierarchy,
+      pending: null,
+      requiresSnapshot: state.requiresSnapshot || Boolean(state.pending) || active.state !== 'connected',
+    };
+  });
   ipcMain.handle('livePlay:inspectionSnapshot', () => {
     const active = livePlaySession?.snapshot();
     const snapshot = latestLivePlayHierarchy.hierarchy;

@@ -339,6 +339,8 @@ bool client::connected() const noexcept
 
 void client::close() noexcept
 {
+    resume_outbound_sequence_ = std::max(resume_outbound_sequence_, outbound_sequence_);
+    resume_inbound_sequence_ = std::max(resume_inbound_sequence_, inbound_sequence_);
     if (connected()) close_socket(native_socket(socket_));
     socket_ = -1;
     outbound_sequence_ = 0;
@@ -362,7 +364,22 @@ void client::close() noexcept
 bool client::connect(const launch_handoff& handoff, std::string& error)
 {
     close();
+    resume_outbound_sequence_ = 0;
+    resume_inbound_sequence_ = 0;
+    return connect_impl(handoff, error, false);
+}
+
+bool client::reconnect(const launch_handoff& handoff, std::string& error)
+{
+    close();
+    return connect_impl(handoff, error, true);
+}
+
+bool client::connect_impl(const launch_handoff& handoff, std::string& error, bool resume)
+{
     error.clear();
+    outbound_sequence_ = resume ? resume_outbound_sequence_ : 0;
+    inbound_sequence_ = resume ? resume_inbound_sequence_ : 0;
     if (!valid_authority(handoff))
     {
         error = "Invalid Live Play session authority";
@@ -412,8 +429,9 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
         close();
         return false;
     }
-    const json hello = {
-        {"schemaHash", handoff.schema_hash}, {"lastReceivedSequence", 0}, {"capabilities", handoff.capabilities}};
+    const json hello = {{"schemaHash", handoff.schema_hash},
+                        {"lastReceivedSequence", inbound_sequence_},
+                        {"capabilities", handoff.capabilities}};
     if (!send_message("hello", hello.dump(), error))
     {
         close();
@@ -437,11 +455,11 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
         !result.at("protocol").is_string() || result.at("protocol") != "arc.live-play" ||
         !result.at("protocolVersion").is_number_integer() || result.at("protocolVersion") != protocol_version ||
         !field(result, "sender", sender) || sender != "editor" || !field(result, "type", type) ||
-        type != "hello.accepted" || !safe_number(result, "sequence", sequence) || sequence != 1 ||
-        !result.at("messageId").is_string() || !token(result.at("messageId").get<std::string>()) ||
-        result.at("projectGuid") != project_guid_ || result.at("buildId") != build_id_ ||
-        result.at("targetProfile") != target_profile_ || result.at("sessionId") != session_id_ ||
-        result.at("instanceId") != instance_id_)
+        type != "hello.accepted" || !safe_number(result, "sequence", sequence) ||
+        (resume ? sequence <= inbound_sequence_ : sequence != 1) || !result.at("messageId").is_string() ||
+        !token(result.at("messageId").get<std::string>()) || result.at("projectGuid") != project_guid_ ||
+        result.at("buildId") != build_id_ || result.at("targetProfile") != target_profile_ ||
+        result.at("sessionId") != session_id_ || result.at("instanceId") != instance_id_)
     {
         error = "Live Play editor handshake identity or protocol mismatch";
         close();
@@ -450,7 +468,7 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
     const auto& payload = result.at("payload");
     std::uint64_t acknowledged = 0;
     if (!exact_keys(payload, {"capabilities", "lastReceivedSequence"}) ||
-        !safe_number(payload, "lastReceivedSequence", acknowledged) || acknowledged != 1 ||
+        !safe_number(payload, "lastReceivedSequence", acknowledged) || acknowledged != outbound_sequence_ ||
         !parse_capabilities(payload.at("capabilities"), negotiated_capabilities_))
     {
         error = "Invalid Live Play handshake capability response";
@@ -466,6 +484,7 @@ bool client::connect(const launch_handoff& handoff, std::string& error)
             return false;
         }
     inbound_sequence_ = sequence;
+    resume_inbound_sequence_ = sequence;
     return true;
 }
 
@@ -501,13 +520,15 @@ bool client::send_message(std::string_view type, const std::string& payload_json
                          {"type", std::string(type)},
                          {"payload", std::move(payload)}};
     const auto serialized = object.dump();
+    // A send may reach the editor even when the socket reports failure.
+    // Reserve the sequence before IO so reconnect can never replay it.
+    outbound_sequence_ = sequence;
     if (!send_frame(native_socket(socket_), serialized.data(), serialized.size()))
     {
         error = "Cannot send Live Play runtime frame";
         close();
         return false;
     }
-    outbound_sequence_ = sequence;
     return true;
 }
 
@@ -856,6 +877,20 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         if (!allowed || !inspection)
         {
             error = "Invalid or unauthorized Live Play inspection request";
+            close();
+            return std::nullopt;
+        }
+    }
+    else if (type == "session.resync.request")
+    {
+        std::string reason;
+        const bool allowed = std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(),
+                                       "entity.inspect") != negotiated_capabilities_.end();
+        if (!allowed || !exact_keys(payload, {"lastReceivedSequence", "reason"}) ||
+            !safe_number(payload, "lastReceivedSequence", seen) || seen > outbound_sequence_ ||
+            !field(payload, "reason", reason) || (reason != "reconnected" && reason != "gap" && reason != "overflow"))
+        {
+            error = "Invalid or unauthorized Live Play resynchronization request";
             close();
             return std::nullopt;
         }

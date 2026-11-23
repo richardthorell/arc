@@ -260,6 +260,76 @@ public:
         close_socket(peer);
     }
 
+    /** Two authenticated sockets belonging to the same still-running game. */
+    void serve_resumable()
+    {
+        const auto handshake = [&](native_socket peer, std::uint64_t native_seq, std::uint64_t previous_editor_seq,
+                                   std::uint64_t editor_seq)
+        {
+            const auto credential = read_packet(peer);
+            check(credential.size() == secret_bytes && static_cast<unsigned char>(credential[0]) == 0x11,
+                  "Reconnect did not reauthenticate with inherited credential");
+            const auto hello = json::parse(read_packet(peer));
+            check(hello.at("type") == "hello" && hello.at("sequence") == native_seq &&
+                      hello.at("payload").at("lastReceivedSequence") == previous_editor_seq,
+                  "Reconnect replayed native sequence or lost editor acknowledgement");
+            check(hello.at("payload").at("capabilities") ==
+                      json::array({"session.observe", "content.observe", "entity.inspect"}),
+                  "Reconnect negotiated an unexpected privilege set");
+            json welcome = hello;
+            welcome["sender"] = "editor";
+            welcome["sequence"] = editor_seq;
+            welcome["messageId"] = "resume-" + std::to_string(editor_seq);
+            welcome["type"] = "hello.accepted";
+            welcome["payload"] = {{"lastReceivedSequence", native_seq},
+                                  {"capabilities", {"session.observe", "content.observe", "entity.inspect"}}};
+            send_packet(peer, welcome.dump());
+            return welcome;
+        };
+        const auto first = ::accept(listener_, nullptr, nullptr);
+        check(first != invalid_socket, "Initial reconnect fixture accept failed");
+        try
+        {
+            const auto welcome = handshake(first, 1, 0, 1);
+            const auto state = json::parse(read_packet(first));
+            check(state.at("type") == "session.state" && state.at("sequence") == 2,
+                  "Initial runtime state missing before reattach");
+            json repair = welcome;
+            repair["sequence"] = 2;
+            repair["messageId"] = "repair-2";
+            repair["type"] = "session.resync.request";
+            repair["payload"] = {{"lastReceivedSequence", 2}, {"reason", "gap"}};
+            send_packet(first, repair.dump());
+            const auto heartbeat = json::parse(read_packet(first));
+            check(heartbeat.at("type") == "heartbeat" && heartbeat.at("sequence") == 3,
+                  "Initial session sequence did not advance");
+            close_socket(first);
+            const auto second = ::accept(listener_, nullptr, nullptr);
+            check(second != invalid_socket, "Resumed session did not reconnect");
+            try
+            {
+                const auto resumed = handshake(second, 4, 2, 3);
+                json resync = resumed;
+                resync["sequence"] = 4;
+                resync["messageId"] = "repair-4";
+                resync["type"] = "session.resync.request";
+                resync["payload"] = {{"lastReceivedSequence", 4}, {"reason", "reconnected"}};
+                send_packet(second, resync.dump());
+            }
+            catch (...)
+            {
+                close_socket(second);
+                throw;
+            }
+            close_socket(second);
+        }
+        catch (...)
+        {
+            // On the normal success path the first peer was already closed.
+            throw;
+        }
+    }
+
 private:
     native_socket listener_{invalid_socket};
     std::uint16_t port_{};
@@ -305,6 +375,44 @@ void test_successful_connection()
           "Native cooked baseline rejection ACK was not transmitted");
     const bool duplicate_ack = native.send_baseline_status("rejected", "unavailable", error);
     check(!duplicate_ack, "Native bridge sent duplicate baseline ACK");
+    native.close();
+    server.join();
+    if (server_error) std::rethrow_exception(server_error);
+}
+
+void test_authenticated_session_resume()
+{
+    fixture_server fixture;
+    auto handoff = inherited_handoff(fixture.port());
+    handoff.capabilities.push_back("entity.inspect");
+    std::exception_ptr server_error;
+    std::jthread server(
+        [&]
+        {
+            try
+            {
+                fixture.serve_resumable();
+            }
+            catch (...)
+            {
+                server_error = std::current_exception();
+            }
+        });
+    std::string error;
+    client native;
+    check(native.connect(handoff, error), "Native reconnect fixture initial handshake failed");
+    check(native.send_state("running", 7, 1, error), "Native fixture could not send initial game state");
+    const auto repair = native.poll(2000, error);
+    check(repair && repair->type == "session.resync.request" && repair->sequence == 2,
+          "Native bridge failed to accept valid authenticated gap recovery request");
+    check(native.send_heartbeat(error), "Native fixture failed to send initial heartbeat");
+    static_cast<void>(native.poll(2000, error));
+    check(!native.connected(), "Native socket loss did not close the dead connection");
+    check(native.reconnect(handoff, error), "Native client failed to resume protected in-memory session");
+    const auto resumed = native.poll(2000, error);
+    check(resumed && resumed->type == "session.resync.request" && resumed->sequence == 4,
+          "Resumed editor full-state request was not received");
+    check(native.last_received_sequence() == 4, "Native reconnect did not preserve editor sequence authority");
     native.close();
     server.join();
     if (server_error) std::rethrow_exception(server_error);
@@ -513,6 +621,7 @@ int main()
     try
     {
         test_successful_connection();
+        test_authenticated_session_resume();
         test_invalid_editor_identity();
         test_property_edit_decoding_and_mailbox();
         test_inspection_protocol_and_bounded_mailbox();

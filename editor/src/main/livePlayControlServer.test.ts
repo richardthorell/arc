@@ -149,6 +149,45 @@ async function handshake(server: LivePlayControlServer, sequence = 1): Promise<T
 }
 
 describe('Live Play L1.2a editor control endpoint', () => {
+  it('authenticates and rate-limits full hierarchy repairs on frame gaps and reconnect', async () => {
+    const messages: LivePlayMessage[] = [];
+    const server = await start({ onMessage: (message) => messages.push(message) });
+    const peer = await handshake(server);
+    expect(server.sendResyncRequest('gap')).toBe(true);
+    const firstRequest = JSON.parse((await peer.next()).toString('utf8')) as LivePlayMessage;
+    expect(firstRequest).toMatchObject({
+      type: 'session.resync.request',
+      payload: { reason: 'gap', lastReceivedSequence: 1 },
+    });
+    expect(server.sendResyncRequest('overflow')).toBe(false);
+
+    // The native peer skipped sequence 2 during the transport outage.
+    peer.write(frame('hierarchy.snapshot', { worldRevision: 3, entities: [], complete: true }, 3));
+    await expect.poll(() => server.status().lastReceivedSequence).toBe(3);
+    expect(messages).toHaveLength(1);
+    peer.socket.end();
+    await peer.closed;
+    expect(server.status().state).toBe('disconnected');
+
+    const resumed = await handshake(server, 4);
+    const automaticRepair = JSON.parse((await resumed.next()).toString('utf8')) as LivePlayMessage;
+    expect(automaticRepair).toMatchObject({
+      type: 'session.resync.request',
+      payload: { reason: 'reconnected', lastReceivedSequence: 4 },
+    });
+    expect(server.status().state).toBe('connected');
+  });
+
+  it('does not allow inspection resync without native inspection negotiation', async () => {
+    const server = await start({ grantedCapabilities: ['session.observe'] });
+    const peer = await connect(server.launchHandoff().port);
+    peer.write(server.launchHandoff().secret);
+    peer.write(frame('hello', { schemaHash, capabilities: ['session.observe'], lastReceivedSequence: 0 }));
+    expect(JSON.parse((await peer.next()).toString('utf8'))).toMatchObject({ type: 'hello.accepted' });
+    expect(server.sendResyncRequest('gap')).toBe(false);
+    peer.socket.destroy();
+  });
+
   it('reports only negotiated capabilities and authenticated runtime heartbeats', async () => {
     const server = await start();
     const peer = await handshake(server);
