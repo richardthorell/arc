@@ -443,6 +443,43 @@ void test_inspection_protocol_and_bounded_mailbox()
     check(mailbox.take_results().empty(), "Stop retained stale inspection results");
 }
 
+void test_revisioned_hierarchy_diffs()
+{
+    using namespace arc::network::live_play_dev;
+    hierarchy_snapshot initial;
+    initial.world_revision = 8;
+    initial.entities = {
+        {.entity = {.authored = true, .id = "11111111-1111-1111-1111-111111111111"}, .name = "Cube"},
+        {.entity = {.authored = false, .id = "w1-x1-e2-g1"},
+         .parent = inspection_entity{.authored = true, .id = "11111111-1111-1111-1111-111111111111"},
+         .name = "Spawned"},
+    };
+    auto latest = initial;
+    latest.world_revision = 10; // a coalesced update skips unsent revision 9
+    latest.entities.erase(latest.entities.begin());
+    latest.entities.front().parent.reset();
+    latest.entities.front().name = "Renamed";
+    latest.entities.push_back({.entity = {.authored = false, .id = "w1-x1-e3-g1"}, .name = "New"});
+    const auto delta = diff_hierarchy(initial, latest);
+    check(delta && delta->base_revision == 8 && delta->world_revision == 10 && delta->changes.size() == 3,
+          "Native diff lost a coalesced spawn/remove/reparent operation");
+    check(delta->changes[0].kind == hierarchy_change_kind::upsert && delta->changes[0].item.name == "Renamed" &&
+              !delta->changes[0].item.parent,
+          "Native diff did not include the changed hierarchy parent/name");
+    check(delta->changes[1].kind == hierarchy_change_kind::upsert &&
+              delta->changes[2].kind == hierarchy_change_kind::removed && delta->changes[2].item.entity.authored,
+          "Native diff mixed entity identity namespaces or lost a removal");
+
+    hierarchy_snapshot overflow = initial;
+    overflow.world_revision = 11;
+    for (int i = 0; i < 70; ++i)
+        overflow.entities.push_back({.entity = {.authored = false, .id = "w2-x1-e" + std::to_string(i) + "-g1"}});
+    check(!diff_hierarchy(initial, overflow), "Oversized hierarchy delta was not forced to full snapshot");
+    overflow.complete = false;
+    check(!diff_hierarchy(overflow, latest), "Partial hierarchies must never be used as delta bases");
+    check(!diff_hierarchy(latest, initial), "A reversed hierarchy revision was accepted");
+}
+
 void test_invalid_editor_identity()
 {
     fixture_server fixture;
@@ -479,6 +516,7 @@ int main()
         test_invalid_editor_identity();
         test_property_edit_decoding_and_mailbox();
         test_inspection_protocol_and_bounded_mailbox();
+        test_revisioned_hierarchy_diffs();
     }
     catch (const std::exception& error)
     {

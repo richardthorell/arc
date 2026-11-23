@@ -44,8 +44,8 @@ public:
         return {false, runtime_id(world, entity)};
     }
 
-    /** Returns only changed hierarchy snapshots; an incomplete 128-entry
-     * truncation is explicitly labeled, never silently treated as complete.
+    /** Returns changed hierarchy snapshots capped at 4096 runtime entities.
+     * Oversized scenes are explicitly marked incomplete, never silently accepted.
      */
     [[nodiscard]] std::optional<hierarchy_snapshot> sample(const framework::runtime& runtime)
     {
@@ -61,7 +61,7 @@ public:
             const auto& entities = static_cast<const ecs::world&>(world->entities());
             for (const auto entity : entities.entities())
             {
-                if (snapshot.entities.size() == 128)
+                if (snapshot.entities.size() == 4096)
                 {
                     snapshot.complete = false;
                     break;

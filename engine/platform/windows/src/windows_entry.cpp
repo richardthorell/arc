@@ -414,6 +414,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
          &live_inspections](std::stop_token stop) mutable
         {
             std::string error;
+            std::optional<live::hierarchy_snapshot> last_sent_hierarchy;
             int last_phase = 0;
             auto last_heartbeat = std::chrono::steady_clock::now();
             while (!stop.stop_requested() && client->connected())
@@ -446,7 +447,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                 // Snapshot/result serialization stays on the socket owner,
                 // never on the world simulation thread.
                 if (auto snapshot = live_inspections.take_snapshot())
-                    if (!client->send_hierarchy_snapshot(*snapshot, error)) break;
+                {
+                    // Coalescing occurs before this point. Diff against the LAST
+                    // successfully transmitted state, never the last sampled state.
+                    const auto delta =
+                        last_sent_hierarchy ? live::diff_hierarchy(*last_sent_hierarchy, *snapshot) : std::nullopt;
+                    const bool sent = delta ? client->send_hierarchy_changed(*delta, error)
+                                            : client->send_hierarchy_snapshot(*snapshot, error);
+                    if (!sent) break;
+                    last_sent_hierarchy = std::move(*snapshot);
+                }
                 for (const auto& outcome : live_inspections.take_results())
                 {
                     const bool sent = outcome.result

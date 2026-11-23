@@ -90,6 +90,7 @@ public:
     [[nodiscard]] bool send_rejected_ack(std::string_view request_id, std::string_view code, std::string& error);
     [[nodiscard]] bool send_content_generation(std::uint64_t generation, std::string_view status, std::string& error);
     [[nodiscard]] bool send_hierarchy_snapshot(const hierarchy_snapshot& snapshot, std::string& error);
+    [[nodiscard]] bool send_hierarchy_changed(const hierarchy_delta& delta, std::string& error);
     [[nodiscard]] bool send_inspection_result(const component_inspection& result, std::string& error);
 
     /**

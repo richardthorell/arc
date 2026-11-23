@@ -572,7 +572,8 @@ bool client::send_hierarchy_snapshot(const hierarchy_snapshot& snapshot, std::st
         error = "Runtime inspection is not negotiated";
         return false;
     }
-    if (snapshot.entities.size() > 128 || snapshot.world_revision > maximum_js_safe_integer)
+    // 64 pages x 64 entities, with each JSON frame comfortably below 64 KiB.
+    if (snapshot.entities.size() > 4096 || snapshot.world_revision > maximum_js_safe_integer)
     {
         error = "Runtime hierarchy snapshot exceeds protocol bounds";
         return false;
@@ -582,21 +583,86 @@ bool client::send_hierarchy_snapshot(const hierarchy_snapshot& snapshot, std::st
         return entity.authored ? json{{"kind", "authored"}, {"entityGuid", entity.id}}
                                : json{{"kind", "runtime"}, {"runtimeEntityId", entity.id}};
     };
-    json entities = json::array();
+    const auto valid = [](const inspection_entity& entity)
+    { return entity.authored ? guid(entity.id) : token(entity.id); };
     for (const auto& item : snapshot.entities)
     {
-        if (item.name.size() > 256 || (!token(item.entity.id) && !guid(item.entity.id)))
+        if (item.name.size() > 256 || !valid(item.entity) || (item.parent && !valid(*item.parent)))
         {
             error = "Invalid runtime hierarchy entity";
             return false;
         }
-        entities.push_back({{"entity", encode_entity(item.entity)},
-                            {"parent", item.parent ? encode_entity(*item.parent) : json(nullptr)},
-                            {"name", item.name}});
     }
-    const json payload = {
-        {"worldRevision", snapshot.world_revision}, {"entities", std::move(entities)}, {"complete", snapshot.complete}};
-    return send_message("hierarchy.snapshot", payload.dump(-1, ' ', false, json::error_handler_t::replace), error);
+
+    constexpr std::size_t page_size = 64;
+    const auto pages = std::max<std::size_t>(1, (snapshot.entities.size() + page_size - 1) / page_size);
+    for (std::size_t page = 0; page < pages; ++page)
+    {
+        json entities = json::array();
+        const auto end = std::min(snapshot.entities.size(), (page + 1) * page_size);
+        for (auto i = page * page_size; i < end; ++i)
+        {
+            const auto& item = snapshot.entities[i];
+            entities.push_back({{"entity", encode_entity(item.entity)},
+                                {"parent", item.parent ? encode_entity(*item.parent) : json(nullptr)},
+                                {"name", item.name}});
+        }
+        const json payload = {{"worldRevision", snapshot.world_revision},
+                              {"entities", std::move(entities)},
+                              {"complete", snapshot.complete},
+                              {"pageIndex", page},
+                              {"pageCount", pages}};
+        if (!send_message("hierarchy.snapshot", payload.dump(-1, ' ', false, json::error_handler_t::replace), error))
+            return false;
+    }
+    return true;
+}
+
+bool client::send_hierarchy_changed(const hierarchy_delta& delta, std::string& error)
+{
+    if (std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(), "entity.inspect") ==
+            negotiated_capabilities_.end() ||
+        delta.changes.size() > 64 || delta.world_revision <= delta.base_revision ||
+        delta.world_revision > maximum_js_safe_integer)
+    {
+        error = "Invalid or unauthorized runtime hierarchy delta";
+        return false;
+    }
+    const auto encode_entity = [](const inspection_entity& entity) -> json
+    {
+        return entity.authored ? json{{"kind", "authored"}, {"entityGuid", entity.id}}
+                               : json{{"kind", "runtime"}, {"runtimeEntityId", entity.id}};
+    };
+    const auto valid = [](const inspection_entity& entity)
+    { return entity.authored ? guid(entity.id) : token(entity.id); };
+    json changes = json::array();
+    for (const auto& change : delta.changes)
+    {
+        if (!valid(change.item.entity))
+        {
+            error = "Invalid runtime hierarchy delta entity";
+            return false;
+        }
+        if (change.kind == hierarchy_change_kind::removed)
+            changes.push_back({{"kind", "removed"}, {"entity", encode_entity(change.item.entity)}});
+        else
+        {
+            if (change.item.name.size() > 256 || (change.item.parent && !valid(*change.item.parent)))
+            {
+                error = "Invalid runtime hierarchy upsert";
+                return false;
+            }
+            changes.push_back({{"kind", "upsert"},
+                               {"value",
+                                {{"entity", encode_entity(change.item.entity)},
+                                 {"parent", change.item.parent ? encode_entity(*change.item.parent) : json(nullptr)},
+                                 {"name", change.item.name}}}});
+        }
+    }
+    const json payload = {{"baseRevision", delta.base_revision},
+                          {"worldRevision", delta.world_revision},
+                          {"changes", std::move(changes)}};
+    return send_message("hierarchy.changed", payload.dump(-1, ' ', false, json::error_handler_t::replace), error);
 }
 
 bool client::send_inspection_result(const component_inspection& result, std::string& error)

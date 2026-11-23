@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cctype>
 #include <utility>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace arc::network::live_play_dev
 {
@@ -34,6 +36,39 @@ bool valid_guid(std::string_view text)
     return true;
 }
 } // namespace
+
+std::optional<hierarchy_delta> diff_hierarchy(const hierarchy_snapshot& baseline, const hierarchy_snapshot& current)
+{
+    constexpr std::size_t maximum_changes = 64;
+    if (!baseline.complete || !current.complete || current.world_revision <= baseline.world_revision ||
+        baseline.entities.size() > 4096 || current.entities.size() > 4096)
+        return std::nullopt;
+    const auto key = [](const inspection_entity& entity)
+    { return std::string(entity.authored ? "a:" : "r:") + entity.id; };
+    std::unordered_map<std::string, const hierarchy_item*> before;
+    before.reserve(baseline.entities.size());
+    for (const auto& item : baseline.entities)
+        if (!before.emplace(key(item.entity), &item).second) return std::nullopt;
+    std::unordered_set<std::string> seen;
+    seen.reserve(current.entities.size());
+    hierarchy_delta delta{.base_revision = baseline.world_revision, .world_revision = current.world_revision};
+    for (const auto& item : current.entities)
+    {
+        const auto identity = key(item.entity);
+        if (!seen.insert(identity).second) return std::nullopt;
+        const auto found = before.find(identity);
+        if (found == before.end() || *found->second != item)
+            delta.changes.push_back({.kind = hierarchy_change_kind::upsert, .item = item});
+        if (delta.changes.size() > maximum_changes) return std::nullopt;
+    }
+    for (const auto& item : baseline.entities)
+    {
+        if (seen.contains(key(item.entity))) continue;
+        delta.changes.push_back({.kind = hierarchy_change_kind::removed, .item = item});
+        if (delta.changes.size() > maximum_changes) return std::nullopt;
+    }
+    return delta.changes.empty() ? std::nullopt : std::optional{std::move(delta)};
+}
 
 std::optional<inspection_request> decode_inspection_request(std::string_view request_id, std::string_view payload_json)
 {
