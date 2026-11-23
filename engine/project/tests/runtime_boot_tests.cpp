@@ -385,3 +385,64 @@ TEST_CASE("D1.2 fails closed on missing or modified Android package inputs")
     full.integrity = project::runtime_boot_integrity::full;
     REQUIRE(project::discover_runtime_boot(std::move(full)));
 }
+
+TEST_CASE("C9.3 Windows Development boot preserves selected remote endpoint and target identity")
+{
+    temporary_directory temp;
+    const auto root = temp.root / "development";
+    auto m = manifest();
+    m.target.configuration = "Debug";
+    stage_native(root, m);
+    auto request = native_request(root);
+    request.expected.configuration = "Debug";
+    request.content.trusted_launch.server = "http://127.0.0.1:8123";
+    request.content.trusted_launch.mode = project::runtime_content_mode::remote;
+    const auto boot = project::discover_runtime_boot(std::move(request));
+    REQUIRE(boot);
+    CHECK(boot.value().content.mode == project::runtime_content_mode::remote);
+    CHECK(boot.value().content.origin == project::runtime_content_origin::trusted_launch);
+    CHECK(boot.value().content.server_origin == "http://127.0.0.1:8123");
+    CHECK(boot.value().content.project_guid == m.project_guid);
+    CHECK(boot.value().content.target_id == m.target.id);
+    CHECK(boot.value().content.cook_profile == m.target.cook_profile);
+    CHECK(boot.value().content.cache_root == root / "UserData" / "RemoteContent");
+}
+
+TEST_CASE("C9.3 Shipping and mismatch cannot bypass manifest authority")
+{
+    temporary_directory temp;
+    const auto root = temp.root / "shipping";
+    stage_native(root, manifest());
+    auto request = native_request(root);
+    request.content.trusted_launch.server = "https://example.org";
+    expect_failure(request, project::project_error_code::invalid_descriptor, "content");
+
+    request = native_request(root);
+    request.content.trusted_launch.mode = project::runtime_content_mode::packaged;
+    expect_failure(request, project::project_error_code::invalid_descriptor, "content");
+
+    // Configuration mismatch is evaluated before endpoint selection; the
+    // host cannot claim Development against a Shipping distribution.
+    request = native_request(root);
+    request.expected.configuration = "Debug";
+    request.content.trusted_launch.server = "http://127.0.0.1:8123";
+    expect_failure(request, project::project_error_code::incompatible_engine, "target.configuration");
+}
+
+TEST_CASE("C9.3 Android mounted Development host uses the same source policy")
+{
+    mounted_fixture fixture;
+    auto m = manifest(false, true);
+    m.target.configuration = "Debug";
+    fixture.stage(m);
+    auto request = fixture.request();
+    request.expected.configuration = "Debug";
+    request.content.trusted_launch.server = "http://127.0.0.1:8123";
+    request.content.trusted_launch.mode = project::runtime_content_mode::hybrid;
+    const auto boot = project::discover_runtime_boot(std::move(request));
+    REQUIRE(boot);
+    CHECK(boot.value().content.mode == project::runtime_content_mode::hybrid);
+    CHECK(boot.value().content.server_origin == "http://127.0.0.1:8123");
+    CHECK(boot.value().content.project_guid == m.project_guid);
+    CHECK(boot.value().native_distribution_root.empty());
+}

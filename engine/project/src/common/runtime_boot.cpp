@@ -395,6 +395,12 @@ runtime_boot_result discover_runtime_boot(runtime_boot_request request)
     checked = check_expectations(prepared.value().manifest, request.expected);
     if (!checked) return runtime_boot_result::failure(std::move(checked).error());
 
+    // Only the validated D0/compiled host identity is allowed to scope C9.
+    // The override is host-owned Development metadata, not a D0 manifest field.
+    auto content =
+        select_runtime_content(prepared.value().manifest, request.content, prepared.value().host.writable_storage_root);
+    if (!content) return runtime_boot_result::failure(std::move(content).error());
+
     if (prepared.value().host.distribution.kind == runtime_distribution_location_kind::mounted_vfs)
         checked =
             verify_virtual_inventory(prepared.value().manifest, prepared.value().host.distribution, request.integrity);
@@ -402,8 +408,9 @@ runtime_boot_result discover_runtime_boot(runtime_boot_request request)
         checked = verify_native_inventory(prepared.value().manifest, native_root, request.integrity);
     if (!checked) return runtime_boot_result::failure(std::move(checked).error());
 
-    return runtime_boot_result::success(
-        {.launch = std::move(prepared).value(), .native_distribution_root = std::move(native_root)});
+    return runtime_boot_result::success({.launch = std::move(prepared).value(),
+                                         .native_distribution_root = std::move(native_root),
+                                         .content = std::move(content).value()});
 }
 
 } // namespace arc::project

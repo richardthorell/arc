@@ -10,13 +10,82 @@
 #include <arc/http/android_http.h>
 #include <android/native_window.h>
 #include <android_native_app_glue.h>
+#include <jni.h>
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace
 {
 using arc::platform::android::lifecycle_event;
 using arc::platform::android::lifecycle_state;
+
+/** Only non-secret development settings are read from Activity Intent extras.
+ * Untrusted/invalid overrides fail closed in the shared C9.3 validator and
+ * Shipping packages reject all such overrides. No URLs are logged here.
+ */
+struct content_intent
+{
+    bool valid{true};
+    std::optional<std::string> server;
+    std::optional<std::string> mode;
+};
+
+bool read_string_extra(JNIEnv* env, jobject intent, jmethodID getter, const char* key,
+                       std::optional<std::string>& target)
+{
+    const auto name = env->NewStringUTF(key);
+    if (!name) return false;
+    const auto value = static_cast<jstring>(env->CallObjectMethod(intent, getter, name));
+    env->DeleteLocalRef(name);
+    if (env->ExceptionCheck()) return false;
+    if (!value) return true; // Absent extra, not an empty supplied value.
+    const char* chars = env->GetStringUTFChars(value, nullptr);
+    if (!chars)
+    {
+        env->DeleteLocalRef(value);
+        return false;
+    }
+    target = chars;
+    env->ReleaseStringUTFChars(value, chars);
+    env->DeleteLocalRef(value);
+    return true;
+}
+
+content_intent read_content_intent(ANativeActivity* activity)
+{
+    content_intent result;
+    if (!activity || !activity->vm || !activity->clazz) return result;
+
+    JNIEnv* env = nullptr;
+    bool attached = false;
+    const auto status = activity->vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (status == JNI_EDETACHED)
+    {
+        if (activity->vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return {.valid = false};
+        attached = true;
+    }
+    else if (status != JNI_OK)
+        return {.valid = false};
+
+    const auto cls = env->GetObjectClass(activity->clazz);
+    const auto get_intent = cls ? env->GetMethodID(cls, "getIntent", "()Landroid/content/Intent;") : nullptr;
+    const auto intent = get_intent ? env->CallObjectMethod(activity->clazz, get_intent) : nullptr;
+    const auto intent_cls = intent ? env->GetObjectClass(intent) : nullptr;
+    const auto get_extra =
+        intent_cls ? env->GetMethodID(intent_cls, "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;") : nullptr;
+    result.valid =
+        get_extra && read_string_extra(env, intent, get_extra, "org.arcengine.CONTENT_SERVER", result.server) &&
+        read_string_extra(env, intent, get_extra, "org.arcengine.CONTENT_MODE", result.mode) && !env->ExceptionCheck();
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (intent_cls) env->DeleteLocalRef(intent_cls);
+    if (intent) env->DeleteLocalRef(intent);
+    if (cls) env->DeleteLocalRef(cls);
+    if (attached) activity->vm->DetachCurrentThread();
+    return result;
+}
 
 struct android_host_context
 {
@@ -152,7 +221,13 @@ extern "C" void android_main(android_app* app)
     // unloaded when Android destroys and recreates a native window.
     arc::platform::android::android_runtime_bridge runtime(package_assets,
                                                            app->activity ? app->activity->internalDataPath : nullptr);
-    const bool booted = module_ready && runtime.boot(project_module.project_guid()) && project_module.start();
+    const auto extras = read_content_intent(app->activity);
+    const auto view = [](const std::optional<std::string>& value) -> std::optional<std::string_view>
+    { return value ? std::optional<std::string_view>(*value) : std::nullopt; };
+    const auto selected = arc::project::parse_android_content_metadata(view(extras.server), view(extras.mode));
+    if (!extras.valid || !selected) arc::diagnostics::error("Android", "Invalid Development content Intent metadata");
+    const bool booted = module_ready && extras.valid && selected &&
+                        runtime.boot(project_module.project_guid(), selected.value()) && project_module.start();
     if (!booted) arc::diagnostics::warn("Android", "Host remains alive; packaged startup did not complete");
 
     arc::diagnostics::info("Android", "Native host started (A3 shared boot)");

@@ -47,7 +47,8 @@ public:
     android_runtime_bridge(const android_runtime_bridge&) = delete;
     android_runtime_bridge& operator=(const android_runtime_bridge&) = delete;
 
-    [[nodiscard]] bool boot(std::string_view project_guid = {});
+    [[nodiscard]] bool boot(std::string_view project_guid = {},
+                            arc::project::runtime_content_options trusted_content = {});
     [[nodiscard]] arc::ecs::world* startup_scene() noexcept
     {
         return scene_.get();
