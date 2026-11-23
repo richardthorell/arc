@@ -6,9 +6,9 @@ import './livePlayDiagnostics.css';
 function sameSession(diagnostics: LivePlayDiagnosticsSnapshot, session: WindowsLivePlaySnapshot): boolean {
   return Boolean(
     session.sessionId &&
-      session.instanceId &&
-      diagnostics.sessionId === session.sessionId &&
-      diagnostics.instanceId === session.instanceId,
+    session.instanceId &&
+    diagnostics.sessionId === session.sessionId &&
+    diagnostics.instanceId === session.instanceId,
   );
 }
 
@@ -51,7 +51,9 @@ const metric = (value: number | null, suffix = ''): string =>
 export function LivePlayDiagnosticsPanel({ snapshot }: { snapshot: LivePlayDiagnosticsSnapshot | null }) {
   const [warningsOnly, setWarningsOnly] = useState(false);
   const entries = snapshot?.events ?? [];
-  const visible = warningsOnly ? entries.filter((entry) => entry.level === 'warning' || entry.level === 'error') : entries;
+  const visible = warningsOnly
+    ? entries.filter((entry) => entry.level === 'warning' || entry.level === 'error')
+    : entries;
   return (
     <section className="live-play-diagnostics" aria-label="Live Play session diagnostics">
       <header className="live-play-diagnostics-header">
