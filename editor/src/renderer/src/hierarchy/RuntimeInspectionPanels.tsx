@@ -77,14 +77,16 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
         const sent = pending.current.get(message.payload.requestId);
         if (!sent) return;
         pending.current.delete(message.payload.requestId);
-        if (message.payload.status === 'rejected' && message.payload.error.code !== 'unsupported_operation')
+        if (message.payload.status === 'rejected' && message.payload.error.code !== 'unsupported_operation') {
+          const errorMessage = message.payload.error.message;
           setView((previous) =>
-            previous.scope === scope ? { ...previous, notice: message.payload.error.message } : previous,
+            previous.scope === scope ? { ...previous, notice: errorMessage } : previous,
           );
+        }
         return;
       }
       setView((previous) => {
-        if (previous.scope !== scope) return previous;
+        if (previous.scope !== scope) previous = emptyView(scope);
         if (message.type === 'hierarchy.snapshot') {
           if (previous.hierarchy && message.payload.worldRevision < previous.hierarchy.payload.worldRevision)
             return previous;
