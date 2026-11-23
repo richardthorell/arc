@@ -32,7 +32,7 @@ import type { AndroidTargetReference } from '../common/androidDeviceTypes';
 import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windowsLivePlaySession';
-import { livePlayInspectPayloadSchema, type LivePlayMessage } from '../common/livePlayProtocol';
+import { livePlayInspectPayloadSchema } from '../common/livePlayProtocol';
 import { applyLivePlayHierarchy, emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
 import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
 import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
