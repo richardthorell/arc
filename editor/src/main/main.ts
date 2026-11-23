@@ -1188,7 +1188,9 @@ void app.whenReady().then(async () => {
     (payload) => livePlaySession?.sendAuthoringProperty(payload) ?? null,
   );
   hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
-  hierarchyRecovery = new LivePlayHierarchyRecovery((reason) => livePlaySession?.requestHierarchyResync(reason) ?? false);
+  hierarchyRecovery = new LivePlayHierarchyRecovery(
+    (reason) => livePlaySession?.requestHierarchyResync(reason) ?? false,
+  );
   const hierarchyRepairTick = setInterval(() => {
     hierarchyRecovery?.tick();
     latestLivePlayHierarchy = hierarchyRecovery?.snapshot() ?? emptyLivePlayHierarchy();
