@@ -112,7 +112,9 @@ and current/last-good generations.
 
 C9.1a/1b defined release bytes, immutable object addressing and a reconnect
 decision. C9.1c completes the shared **wire response contract**, including
-native C++ and Python validators and common fixtures. A change feed is optional
+native C++ and Python validators and common fixtures. These fixtures are
+transport-independent, and cannot replace future authenticated server or
+real-device acceptance. A change feed is optional
 and **development-only**; static CDN releases do not need to implement this
 endpoint.
 
