@@ -358,8 +358,8 @@ TEST_CASE("C9.2h rejects truncated HTTP objects without retry, then clean restar
     arc::assets::remote_object_download_coordinator downloads(f.jobs, f.cache, policy);
     std::atomic<int> calls{};
     arc::assets::remote_generation_fetch_executor executor =
-        [&calls, payload](arc::jobs::job_system& jobs, arc::http::content_http_request,
-                          arc::http::content_http_limits, arc::jobs::cancellation_token)
+        [&calls, payload](arc::jobs::job_system& jobs, arc::http::content_http_request, arc::http::content_http_limits,
+                          arc::jobs::cancellation_token)
     {
         return jobs.submit_future(
             {.name = "assets.download.truncated_restart", .affinity = arc::jobs::job_affinity::io_thread},
@@ -407,15 +407,13 @@ TEST_CASE("C9.2h forced diagnostic refresh does not discard last verified CAS wh
         [&requests, payload](arc::jobs::job_system& jobs, arc::http::content_http_request,
                              arc::http::content_http_limits, arc::jobs::cancellation_token)
     {
-        return jobs.submit_future(
-            {.name = "assets.download.refresh", .affinity = arc::jobs::job_affinity::io_thread},
-            [&requests, payload]() -> arc::http::content_http_fetch_result
-            {
-                const auto index = ++requests;
-                if (index > 1)
-                    return http_failure(arc::http::content_http_error_code::not_found);
-                return full_response(payload);
-            });
+        return jobs.submit_future({.name = "assets.download.refresh", .affinity = arc::jobs::job_affinity::io_thread},
+                                  [&requests, payload]() -> arc::http::content_http_fetch_result
+                                  {
+                                      const auto index = ++requests;
+                                      if (index > 1) return http_failure(arc::http::content_http_error_code::not_found);
+                                      return full_response(payload);
+                                  });
     };
 
     REQUIRE(downloads.ensure(object, std::string(origin), {}, {}, fetch).succeeded());
@@ -473,12 +471,12 @@ TEST_CASE("C9.2h cancelling a distinct queued object keeps the running fetch and
             });
     };
 
-    auto leader = std::async(std::launch::async, [&]
-                             { return downloads.ensure(first, std::string(origin), {}, {}, fetch); });
+    auto leader =
+        std::async(std::launch::async, [&] { return downloads.ensure(first, std::string(origin), {}, {}, fetch); });
     entered.wait();
     arc::jobs::cancellation_source cancel;
-    auto queued = std::async(std::launch::async, [&]
-                             { return downloads.ensure(second, std::string(origin), {}, cancel.token(), fetch); });
+    auto queued = std::async(std::launch::async,
+                             [&] { return downloads.ensure(second, std::string(origin), {}, cancel.token(), fetch); });
     // Allow the queued thread to enter its budget wait without relying on a
     // fragile scheduler ordering; the first request remains held explicitly.
     bool observed_queue = false;

@@ -221,9 +221,8 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
     const auto started = std::chrono::steady_clock::now();
     const auto finish = [&](remote_download_result outcome)
     {
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                 std::chrono::steady_clock::now() - started)
-                                 .count();
+        const auto elapsed =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
         std::lock_guard lock(implementation_->mutex);
         auto& stats = implementation_->metrics;
         ++stats.calls;
@@ -237,8 +236,7 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
         if (!outcome.succeeded())
         {
             ++stats.failed_calls;
-            if (outcome.transport_error == http::content_http_error_code::cancelled)
-                ++stats.cancelled_calls;
+            if (outcome.transport_error == http::content_http_error_code::cancelled) ++stats.cancelled_calls;
             if (outcome.cache_error == remote_object_cache_error::hash_mismatch ||
                 outcome.cache_error == remote_object_cache_error::incompatible_response)
                 ++stats.integrity_failures;
@@ -286,8 +284,8 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
             if (cancellation.stop_requested())
             {
                 lock.unlock();
-                auto cancelled = failed("Remote immutable object transfer wait cancelled",
-                                        http::content_http_error_code::cancelled);
+                auto cancelled =
+                    failed("Remote immutable object transfer wait cancelled", http::content_http_error_code::cancelled);
                 cancelled.coalesced = true;
                 return finish(std::move(cancelled));
             }
