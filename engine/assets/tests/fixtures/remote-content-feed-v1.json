@@ -1,0 +1,54 @@
+{
+  "format": "arc.remote-content-feed",
+  "formatVersion": 1,
+  "projectGuid": "11111111-2222-4333-8444-555555555555",
+  "engineVersion": "0.1.0",
+  "baseBuildId": "build-abc",
+  "target": {
+    "platform": "windows",
+    "architecture": "x86_64",
+    "renderer": "vulkan",
+    "cookProfile": "windows-x64-vulkan",
+    "textureFamily": "bc"
+  },
+  "oldestSequence": 4,
+  "newestSequence": 6,
+  "currentGeneration": 10,
+  "currentRelease": {
+    "path": "objects/sha256/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "size": 702
+  },
+  "afterSequence": 4,
+  "mode": "replay",
+  "events": [
+    {
+      "sequence": 5,
+      "generation": 9,
+      "release": {
+        "path": "objects/sha256/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size": 700
+      },
+      "changed": [
+        "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+      ],
+      "removed": []
+    },
+    {
+      "sequence": 6,
+      "generation": 10,
+      "release": {
+        "path": "objects/sha256/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "size": 702
+      },
+      "changed": [
+        "44444444-5555-4666-8777-888888888888"
+      ],
+      "removed": [
+        "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+      ]
+    }
+  ]
+}
