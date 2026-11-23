@@ -111,6 +111,43 @@ remote_content_parse_result failure(std::string message)
     return {.release = std::nullopt, .error = std::move(message)};
 }
 
+constexpr std::size_t max_feed_events = 256;
+
+remote_content_feed_parse_result feed_failure(std::string message)
+{
+    return {.feed = std::nullopt, .error = std::move(message)};
+}
+
+std::optional<std::vector<std::string>> parse_guids(const json& object, std::string_view field)
+{
+    if (!object.is_object()) return std::nullopt;
+    const auto it = object.find(std::string(field));
+    if (it == object.end() || !it->is_array() || it->size() > 4096) return std::nullopt;
+    std::set<std::string> seen;
+    std::vector<std::string> result;
+    result.reserve(it->size());
+    for (const auto& item : *it)
+    {
+        if (!item.is_string()) return std::nullopt;
+        const auto value = item.get<std::string>();
+        if (!guid(value) || !seen.insert(value).second) return std::nullopt;
+        result.push_back(value);
+    }
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+std::string_view feed_mode(remote_content_feed_action action) noexcept
+{
+    switch (action)
+    {
+    case remote_content_feed_action::replay: return "replay";
+    case remote_content_feed_action::full_snapshot: return "full-snapshot";
+    case remote_content_feed_action::up_to_date: return "up-to-date";
+    default: return {};
+    }
+}
+
 } // namespace
 
 remote_content_parse_result parse_remote_content_release(std::string_view bytes,
@@ -194,14 +231,110 @@ remote_content_parse_result parse_remote_content_release(std::string_view bytes,
 }
 
 remote_content_feed_action remote_content_reconnect(std::uint64_t last_acknowledged, std::uint64_t oldest_available,
-                                                    std::uint64_t newest_available) noexcept
+                                                    std::uint64_t newest_available,
+                                                    std::uint64_t maximum_replay_events) noexcept
 {
-    if (newest_available < oldest_available) return remote_content_feed_action::invalid;
+    if (newest_available < oldest_available || maximum_replay_events == 0)
+        return remote_content_feed_action::invalid;
     if (last_acknowledged > newest_available) return remote_content_feed_action::reject_regression;
     if (last_acknowledged == newest_available) return remote_content_feed_action::up_to_date;
-    if (oldest_available != 0 && last_acknowledged < oldest_available - 1)
+    if ((oldest_available != 0 && last_acknowledged < oldest_available - 1) ||
+        newest_available - last_acknowledged > maximum_replay_events)
         return remote_content_feed_action::full_snapshot;
     return remote_content_feed_action::replay;
+}
+
+remote_content_feed_parse_result parse_remote_content_feed(std::string_view bytes,
+                                                           const remote_content_expectations& expected,
+                                                           std::uint64_t last_acknowledged)
+{
+    if (bytes.empty() || bytes.size() > max_descriptor_bytes)
+        return feed_failure("change feed exceeds metadata limits");
+    const auto document = json::parse(bytes.begin(), bytes.end(), nullptr, false);
+    if (!document.is_object()) return feed_failure("change feed must be a JSON object");
+    const auto format = string_field(document, "format");
+    const auto version = unsigned_field(document, "formatVersion");
+    if (!format || *format != "arc.remote-content-feed" || !version || *version != 1)
+        return feed_failure("unsupported change-feed format/version");
+
+    const auto project = string_field(document, "projectGuid");
+    const auto engine = string_field(document, "engineVersion");
+    const auto base = string_field(document, "baseBuildId");
+    const auto target = document.find("target");
+    if (!project || !guid(*project) || *project != expected.project_guid || !engine ||
+        *engine != expected.engine_version || !base || *base != expected.base_build_id ||
+        target == document.end() || !matches_target(*target, expected.target))
+        return feed_failure("change-feed project, build or target is incompatible");
+
+    const auto cursor = unsigned_field(document, "afterSequence");
+    const auto oldest = unsigned_field(document, "oldestSequence");
+    const auto newest = unsigned_field(document, "newestSequence");
+    const auto current_generation = unsigned_field(document, "currentGeneration");
+    if (!cursor || *cursor != last_acknowledged || !oldest || *oldest == 0 || !newest ||
+        *newest < *oldest || !current_generation || *current_generation == 0)
+        return feed_failure("invalid change-feed cursor, bounds or current generation");
+    const auto current_field = document.find("currentRelease");
+    const auto current_release =
+        current_field == document.end() ? std::nullopt : parse_object(*current_field);
+    if (!current_release || current_release->size > max_descriptor_bytes)
+        return feed_failure("invalid immutable current release descriptor reference");
+
+    const auto expected_action = remote_content_reconnect(last_acknowledged, *oldest, *newest);
+    if (expected_action == remote_content_feed_action::invalid ||
+        expected_action == remote_content_feed_action::reject_regression)
+        return feed_failure("change-feed cursor or replay history regressed");
+    const auto mode = string_field(document, "mode");
+    if (!mode || *mode != feed_mode(expected_action))
+        return feed_failure("change-feed response mode contradicts journal bounds");
+
+    const auto items = document.find("events");
+    if (items == document.end() || !items->is_array() || items->size() > max_feed_events)
+        return feed_failure("change feed events are missing or exceed replay cap");
+    remote_content_feed feed{.action = expected_action,
+                             .oldest_available = *oldest,
+                             .newest_available = *newest,
+                             .current_generation = *current_generation,
+                             .current_release = *current_release};
+    if (expected_action != remote_content_feed_action::replay)
+    {
+        if (!items->empty()) return feed_failure("snapshot or up-to-date responses cannot contain replay events");
+        return {.feed = std::move(feed), .error = {}};
+    }
+
+    if (items->size() != *newest - last_acknowledged)
+        return feed_failure("replay event sequence range is incomplete");
+    feed.events.reserve(items->size());
+    std::uint64_t prior_generation{};
+    for (const auto& item : *items)
+    {
+        const auto sequence = unsigned_field(item, "sequence");
+        const auto generation = unsigned_field(item, "generation");
+        const auto release_field = item.is_object() ? item.find("release") : item.end();
+        const auto release = release_field == item.end() ? std::nullopt : parse_object(*release_field);
+        const auto changed = parse_guids(item, "changed");
+        const auto removed = parse_guids(item, "removed");
+        if (!sequence || *sequence != last_acknowledged + feed.events.size() + 1 ||
+            !generation || *generation == 0 || *generation <= prior_generation ||
+            *generation > *current_generation || !release || release->size > max_descriptor_bytes ||
+            !changed || !removed)
+            return feed_failure("invalid replay event sequence, generation or descriptor");
+
+        std::set<std::string> unique(changed->begin(), changed->end());
+        for (const auto& guid_value : *removed)
+            if (!unique.insert(guid_value).second)
+                return feed_failure("same GUID cannot be changed and removed in one event");
+        prior_generation = *generation;
+        feed.events.push_back({.sequence = *sequence,
+                               .generation = *generation,
+                               .release = *release,
+                               .changed_guids = *changed,
+                               .removed_guids = *removed});
+    }
+    const auto& last = feed.events.back();
+    if (last.sequence != *newest || last.generation != *current_generation ||
+        last.release.sha256 != current_release->sha256 || last.release.size != current_release->size)
+        return feed_failure("replay tail does not match atomic current generation");
+    return {.feed = std::move(feed), .error = {}};
 }
 
 } // namespace arc::assets
