@@ -45,16 +45,6 @@ def main() -> int:
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
         return 1
-    # TEMPORARY L1.5e formatter diagnostics; remove before merge.
-    diagnostic = [
-        "engine/network/src/dev/live_play_dev_client.cpp",
-        "engine/platform/windows/src/windows_live_play_inspection.h",
-        "engine/platform/windows/src/windows_entry.cpp",
-        "engine/network/test_support/live_play_dev_tests.cpp",
-        "engine/platform/windows/tests/windows_live_play_edits_tests.cpp",
-    ]
-    subprocess.check_call([args.clang_format, "-i", *diagnostic], cwd=root)
-    subprocess.check_call(["git", "diff", "--", *diagnostic], cwd=root)
     if args.fix:
         command = [args.clang_format, "-i", *map(str, sources)]
     else:
