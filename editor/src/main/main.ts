@@ -1455,6 +1455,10 @@ void app.whenReady().then(async () => {
         instanceId: authority.instanceId,
       });
       await contentServer.start();
+      if (projectService?.active() !== project) {
+        await contentServer.stop();
+        throw new Error('Project changed while starting the C9 content listener');
+      }
       livePlayContentServer = contentServer;
       livePlayAuthoringEdits?.begin(baseline);
       return await livePlaySession.start({
