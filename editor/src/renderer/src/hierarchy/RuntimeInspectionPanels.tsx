@@ -65,10 +65,18 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
     let subscribed = true;
     const pendingRequests = pending.current;
     pendingRequests.clear();
-    let sawLiveHierarchy = false;
+    let hydrating = true;
+    const earlyHierarchy: LivePlayMessage[] = [];
     const onMessage = (message: LivePlayMessage) => {
       if (!sameSession(message, snapshot)) return;
-      if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed') sawLiveHierarchy = true;
+      if (hydrating && (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed')) {
+        // Always apply the cached base BEFORE messages received during IPC
+        // hydration. Without this, an early delta can falsely mark a live
+        // session stale even though main has the verified base revision.
+        if (earlyHierarchy.length >= 128) earlyHierarchy.shift();
+        earlyHierarchy.push(message);
+        return;
+      }
       if (message.type === 'component.inspect.result' && message.payload.requestId) {
         const sent = pendingRequests.get(message.payload.requestId);
         if (sent) {
@@ -133,28 +141,38 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
       });
     };
     const unsubscribe = window.arc.livePlay.onMessage(onMessage);
+    const finishHydration = () => {
+      hydrating = false;
+      for (const queued of earlyHierarchy.splice(0)) onMessage(queued);
+    };
     void window.arc.livePlay
       .latestHierarchyState()
       .then((state) => {
+        if (!subscribed) return;
         const hierarchy = state?.hierarchy;
-        if (!subscribed || sawLiveHierarchy || !hierarchy || !sameSession(hierarchy, snapshot)) return;
-        setView((previous) => {
-          const currentView = previous.scope === scope ? previous : emptyView(scope);
-          if (currentView.hierarchy && currentView.hierarchy.payload.worldRevision >= hierarchy.payload.worldRevision)
-            return previous;
-          return {
-            ...currentView,
-            hierarchy,
-            pending: null,
-            requiresSnapshot: state.requiresSnapshot,
-            properties: {},
-            notice: state.requiresSnapshot ? 'Waiting for a full hierarchy resynchronization.' : null,
-          };
-        });
+        if (hierarchy && sameSession(hierarchy, snapshot)) {
+          setView((previous) => {
+            const currentView = previous.scope === scope ? previous : emptyView(scope);
+            if (currentView.hierarchy && currentView.hierarchy.payload.worldRevision >= hierarchy.payload.worldRevision)
+              return previous;
+            return {
+              ...currentView,
+              hierarchy,
+              pending: null,
+              requiresSnapshot: state.requiresSnapshot,
+              properties: {},
+              notice: state.requiresSnapshot ? 'Waiting for a full hierarchy resynchronization.' : null,
+            };
+          });
+        }
+        finishHydration();
       })
-      .catch(() => {});
+      .catch(() => {
+        if (subscribed) finishHydration();
+      });
     return () => {
       subscribed = false;
+      earlyHierarchy.length = 0;
       pendingRequests.clear();
       unsubscribe();
     };
