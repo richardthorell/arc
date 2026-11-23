@@ -660,9 +660,9 @@ TEST_CASE("D1.6 failing host stop callback preserves diagnostic and shuts the se
     packaged_world_fixture fixture;
     fixture.stage(true);
     const auto result = project::run_packaged_headless_server(
-        {.runtime = request_for(fixture, true),
-         .sleep_to_clock = false,
-         .stop_requested = []() -> bool { throw std::runtime_error("host stop signal failed"); }});
+        {.runtime = request_for(fixture, true), .sleep_to_clock = false, .stop_requested = []() -> bool {
+             throw std::runtime_error("host stop signal failed");
+         }});
     REQUIRE_FALSE(result);
     CHECK(result.error().field == "serverLoop");
     CHECK(result.error().message.find("host stop signal failed") != std::string::npos);

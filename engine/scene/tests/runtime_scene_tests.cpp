@@ -250,8 +250,7 @@ TEST_CASE("Cooked default environment expands authored sky policy and light comp
     arc::persistence::archive_component_record environment;
     environment.type = arc::ecs::component_metadata<arc::scene::world_environment_component>().id;
     environment.name = "WorldEnvironment";
-    environment.schema_version =
-        arc::ecs::component_metadata<arc::scene::world_environment_component>().schema_version;
+    environment.schema_version = arc::ecs::component_metadata<arc::scene::world_environment_component>().schema_version;
     arc::persistence::archive_value sky_visible;
     sky_visible.kind = arc::persistence::archive_value_kind::boolean;
     sky_visible.boolean = false;
