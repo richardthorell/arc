@@ -157,6 +157,43 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
     [scope],
   );
 
+  // A disconnected Development game can still have a useful cached tree,
+  // but never retain component values or a half-received snapshot as live.
+  useEffect(() => {
+    if (!scope || snapshot.state === 'connected') return;
+    pending.current.clear();
+    setView((previous) =>
+      previous.scope === scope
+        ? {
+            ...previous,
+            pending: null,
+            properties: {},
+            requiresSnapshot: previous.requiresSnapshot || previous.hierarchy !== null,
+          }
+        : previous,
+    );
+  }, [scope, snapshot.state]);
+
+  // Bound renderer-side page assembly too; main owns the actual authenticated
+  // resync request and its retry budget.
+  useEffect(() => {
+    if (!scope || !current.pending || snapshot.state !== 'connected') return;
+    const revision = current.pending.revision;
+    const timeout = window.setTimeout(() => {
+      setView((previous) =>
+        previous.scope === scope && previous.pending?.revision === revision
+          ? {
+              ...previous,
+              pending: null,
+              requiresSnapshot: true,
+              notice: 'Runtime hierarchy page timeout; requesting a full snapshot.',
+            }
+          : previous,
+      );
+    }, 2000);
+    return () => window.clearTimeout(timeout);
+  }, [scope, current.pending, snapshot.state]);
+
   const selected = current.selected;
   const requestSelected = useCallback(() => {
     if (!selected || !scope || snapshot.state !== 'connected') return;
