@@ -1054,8 +1054,20 @@ archive_result read_reflected_json(std::string_view text, const component_persis
             component.schema_version = source_component.value("version", 0u);
             const auto type_text = source_component.value("typeId", "");
             const auto explicit_type = ecs::parse_component_type_id(type_text);
-            const auto* registered = explicit_type ? components.find(*explicit_type) : components.find(component_name);
-            if (explicit_type)
+            const auto* registered_by_type = explicit_type ? components.find(*explicit_type) : nullptr;
+            const auto* registered_by_name = components.find(component_name);
+            const auto* registered = registered_by_type ? registered_by_type : registered_by_name;
+            if (explicit_type && registered_by_name && registered_by_name != registered_by_type)
+            {
+                // Early authored scenes carried provisional component IDs. A
+                // registered canonical/legacy name is sufficient to migrate
+                // those records without allowing unknown names to impersonate
+                // a known component.
+                registered = registered_by_name;
+                component.type = registered->component->id;
+                result.migrated = true;
+            }
+            else if (explicit_type)
                 component.type = *explicit_type;
             else if (registered)
                 component.type = registered->component->id;

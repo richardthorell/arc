@@ -35,6 +35,8 @@ private:
     scene::cooked_mesh_residencies mesh_residency_;
     scene::cooked_material_residencies material_residency_;
     scene::cooked_texture_residencies texture_residency_;
+    render::texture_handle primitive_texture_{};
+    render::material_handle primitive_material_{};
     std::uint64_t frame_index_{};
 };
 } // namespace arc::platform::windows

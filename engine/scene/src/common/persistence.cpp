@@ -133,6 +133,16 @@ bool read_camera_color(const persistence::archive_value& source, math::vector4f&
     return true;
 }
 
+bool read_color3(const persistence::archive_value& source, math::vector3f& destination)
+{
+    if (source.kind != persistence::archive_value_kind::array || source.array.size() != 3) return false;
+    math::vector3f color;
+    for (std::size_t index = 0; index < 3; ++index)
+        if (!read_mesh_float(source.array[index], color[index])) return false;
+    destination = color;
+    return true;
+}
+
 persistence::archive_value camera_exposure(const render::exposure_settings& settings)
 {
     persistence::archive_value result;
@@ -420,6 +430,83 @@ persistence::persistence_status decode_mesh_renderer(void* component,
     return persistence::persistence_status::success();
 }
 
+persistence::persistence_status decode_directional_light(void* component,
+                                                         const persistence::archive_component_record& record)
+{
+    auto next = *static_cast<directional_light_component*>(component);
+    for (const auto& field : record.fields)
+    {
+        bool valid = true;
+        if (field.name == "color")
+            valid = read_color3(field.value, next.color);
+        else if (field.name == "intensity")
+            valid = read_mesh_float(field.value, next.intensity);
+        else if (field.name == "castsShadows" || field.name == "casts_shadows")
+            valid = read_mesh_bool(field.value, next.casts_shadows);
+        else if (field.name == "enabled")
+            valid = read_mesh_bool(field.value, next.enabled);
+        else if (field.name == "useColorTemperature" || field.name == "use_color_temperature")
+            valid = read_mesh_bool(field.value, next.use_color_temperature);
+        else if (field.name == "temperatureKelvin" || field.name == "temperature_kelvin")
+            valid = read_mesh_float(field.value, next.temperature_kelvin);
+        else if (field.name == "intensityUnit" || field.name == "intensity_unit")
+            valid = read_mesh_enum(field.value, next.intensity_unit);
+        if (!valid)
+            return persistence::persistence_status::failure(
+                {.code = persistence::persistence_error_code::decode_failed,
+                 .component = record.type,
+                 .field = field.id,
+                 .message = "Invalid cooked DirectionalLight field: " + field.name});
+    }
+    *static_cast<directional_light_component*>(component) = next;
+    return persistence::persistence_status::success();
+}
+
+persistence::persistence_status decode_world_environment(void* component,
+                                                         const persistence::archive_component_record& record)
+{
+    auto next = *static_cast<world_environment_component*>(component);
+    for (const auto& field : record.fields)
+    {
+        bool valid = true;
+        if (field.name == "enabled")
+            valid = read_mesh_bool(field.value, next.enabled);
+        else if (field.name == "skyVisible" || field.name == "sky_visible")
+            valid = read_mesh_bool(field.value, next.sky_visible);
+        else if (field.name == "affectLighting" || field.name == "affect_lighting")
+            valid = read_mesh_bool(field.value, next.affect_lighting);
+        else if (field.name == "solidColor" || field.name == "solid_color")
+            valid = read_color3(field.value, next.solid_color);
+        else if (field.name == "hdriRotationDegrees" || field.name == "hdri_rotation_degrees")
+            valid = read_mesh_float(field.value, next.hdri_rotation_degrees);
+        else if (field.name == "radianceIntensity" || field.name == "radiance_intensity")
+            valid = read_mesh_float(field.value, next.radiance_intensity);
+        else if (field.name == "skySource" || field.name == "source")
+        {
+            valid = field.value.kind == persistence::archive_value_kind::string;
+            if (valid)
+            {
+                if (field.value.string == "physicalAtmosphere")
+                    next.source = sky_source::physical_atmosphere;
+                else if (field.value.string == "hdri")
+                    next.source = sky_source::hdri;
+                else if (field.value.string == "solidColor")
+                    next.source = sky_source::solid_color;
+                else
+                    valid = false;
+            }
+        }
+        if (!valid)
+            return persistence::persistence_status::failure(
+                {.code = persistence::persistence_error_code::decode_failed,
+                 .component = record.type,
+                 .field = field.id,
+                 .message = "Invalid cooked WorldEnvironment field: " + field.name});
+    }
+    *static_cast<world_environment_component*>(component) = next;
+    return persistence::persistence_status::success();
+}
+
 } // namespace
 
 bool register_persistence_components(persistence::component_persistence_registry& registry)
@@ -449,7 +536,11 @@ bool register_persistence_components(persistence::component_persistence_registry
     result &= register_component<instance_group_component>(registry, {"InstanceGroup"});
     result &= register_component<render_layer_component>(registry, {"RenderLayer"});
     result &= register_component<mobility_component>(registry, {"Mobility"});
-    result &= register_component<directional_light_component>(registry, {"DirectionalLight"});
+    persistence::component_persistence_descriptor directional_light_codec;
+    directional_light_codec.component = &ecs::component_metadata<directional_light_component>();
+    directional_light_codec.legacy_names = {"DirectionalLight"};
+    directional_light_codec.decode = decode_directional_light;
+    result &= registry.register_component(std::move(directional_light_codec));
     result &= register_component<point_light_component>(registry, {"PointLight"});
     result &= register_component<spot_light_component>(registry, {"SpotLight"});
     result &= register_component<area_light_component>(registry, {"AreaLight"});
@@ -458,7 +549,11 @@ bool register_persistence_components(persistence::component_persistence_registry
     result &= register_component<irradiance_probe_volume_component>(registry, {"IrradianceProbeVolume"});
     result &= register_component<baked_lighting_component>(registry, {"BakedLighting"});
     result &= register_component<indirect_lighting_component>(registry, {"IndirectLighting"});
-    result &= register_component<world_environment_component>(registry, {"WorldEnvironment"});
+    persistence::component_persistence_descriptor world_environment_codec;
+    world_environment_codec.component = &ecs::component_metadata<world_environment_component>();
+    world_environment_codec.legacy_names = {"WorldEnvironment"};
+    world_environment_codec.decode = decode_world_environment;
+    result &= registry.register_component(std::move(world_environment_codec));
     result &= register_component<sky_atmosphere_component>(registry, {"SkyAtmosphere"});
     result &= register_component<celestial_sky_component>(registry, {"CelestialSky"});
     result &= register_component<cloud_layers_component>(registry, {"CloudLayers"});
@@ -521,6 +616,9 @@ persistence::persistence_status register_persistence_migrations(persistence::sch
             {"lodBias", "lod_bias"},
         };
         const auto fields = ecs::component_metadata<mesh_renderer_component>().fields;
+        component.fields.erase(std::remove_if(component.fields.begin(), component.fields.end(), [](const auto& field)
+                                              { return !field.known && field.name == "baseColorTint"; }),
+                               component.fields.end());
         for (auto& field : component.fields)
         {
             if (field.known) continue;

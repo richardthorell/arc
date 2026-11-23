@@ -65,6 +65,17 @@ bool populate_component(ecs::world& destination, ecs::entity entity,
                 return false;
             }
         }
+    if (record.type == ecs::component_metadata<world_environment_component>().id)
+    {
+        if (!decode_component<world_environment_component>(destination, entity, record, registry, error)) return false;
+        if (!destination.has<sky_atmosphere_component>(entity)) destination.emplace<sky_atmosphere_component>(entity);
+        if (!destination.has<celestial_sky_component>(entity)) destination.emplace<celestial_sky_component>(entity);
+        if (!destination.has<cloud_layers_component>(entity)) destination.emplace<cloud_layers_component>(entity);
+        if (!destination.has<environment_lighting_component>(entity))
+            destination.emplace<environment_lighting_component>(entity);
+        if (!destination.has<height_fog_component>(entity)) destination.emplace<height_fog_component>(entity);
+        return true;
+    }
 #define ARC_DECODE_SCENE_COMPONENT(Type)                                                                               \
     if (record.type == ecs::component_metadata<Type>().id)                                                             \
     return decode_component<Type>(destination, entity, record, registry, error)
@@ -108,16 +119,23 @@ bool populate_component(ecs::world& destination, ecs::entity entity,
     return false;
 }
 
-std::string authored_mesh_subresource(const persistence::archive_entity_record& record)
+std::pair<std::string, bool> authored_mesh_source(const persistence::archive_entity_record& record)
 {
     if (record.extensions.kind != persistence::archive_value_kind::object) return {};
     for (const auto& extension : record.extensions.object)
     {
         if (extension.name != "assetBinding" || extension.value.kind != persistence::archive_value_kind::object)
             continue;
+        std::string subresource;
+        bool procedural_primitive = false;
         for (const auto& field : extension.value.object)
+        {
             if (field.name == "subresource" && field.value.kind == persistence::archive_value_kind::string)
-                return field.value.string;
+                subresource = field.value.string;
+            else if (field.name == "kind" && field.value.kind == persistence::archive_value_kind::string)
+                procedural_primitive = field.value.string == "primitive";
+        }
+        return {std::move(subresource), procedural_primitive};
     }
     return {};
 }
@@ -237,12 +255,26 @@ std::string materialize_cooked_scene(ecs::world& destination, std::span<const st
             slot = dependency.reference;
         }
 
-        // Preserve the authored model subresource/part from the entity extension.
+        // Preserve authored model subresources and renderer-owned primitives.
         for (const auto& record : archive.document.entities)
         {
-            const auto found = binding_indices.find(record.id);
-            if (found != binding_indices.end())
-                staged_bindings[found->second].subresource = authored_mesh_subresource(record);
+            auto found = binding_indices.find(record.id);
+            auto [subresource, procedural_primitive] = authored_mesh_source(record);
+            if (procedural_primitive)
+            {
+                const auto owner = handles.find(record.id);
+                if (owner == handles.end() || !destination.has<mesh_renderer_component>(owner->second))
+                    return rollback("Cooked primitive binding has no owning MeshRenderer entity");
+                if (found == binding_indices.end())
+                {
+                    const auto [inserted, binding_created] =
+                        binding_indices.try_emplace(record.id, staged_bindings.size());
+                    if (binding_created) staged_bindings.push_back({.entity = record.id});
+                    found = inserted;
+                }
+                staged_bindings[found->second].procedural_primitive = true;
+            }
+            if (found != binding_indices.end()) staged_bindings[found->second].subresource = std::move(subresource);
         }
     }
     catch (const std::exception& error)

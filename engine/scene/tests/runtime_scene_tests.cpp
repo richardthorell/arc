@@ -224,6 +224,62 @@ TEST_CASE("V3.4b legacy scenes without mesh dependencies remain loadable")
     CHECK(bindings.empty());
 }
 
+TEST_CASE("Cooked scene retains renderer-owned primitive bindings")
+{
+    auto document = authored_mesh_scene();
+    document.dependencies.clear();
+    auto& asset_binding = document.entities.front().extensions.object.front().value.object;
+    asset_binding.front().value.string = "Plane";
+    arc::persistence::archive_value kind;
+    kind.kind = arc::persistence::archive_value_kind::string;
+    kind.string = "primitive";
+    asset_binding.emplace_back("kind", std::move(kind));
+
+    arc::ecs::world world;
+    arc::scene::cooked_scene_mesh_bindings bindings;
+    CHECK(arc::scene::materialize_cooked_scene(world, cooked_bytes(document), &bindings).empty());
+    REQUIRE(bindings.size() == 1);
+    CHECK(bindings.front().procedural_primitive);
+    CHECK(bindings.front().subresource == "Plane");
+    CHECK_FALSE(bindings.front().source.resolved());
+}
+
+TEST_CASE("Cooked default environment expands authored sky policy and light components")
+{
+    auto document = authored_scene(false);
+    arc::persistence::archive_component_record environment;
+    environment.type = arc::ecs::component_metadata<arc::scene::world_environment_component>().id;
+    environment.name = "WorldEnvironment";
+    environment.schema_version =
+        arc::ecs::component_metadata<arc::scene::world_environment_component>().schema_version;
+    arc::persistence::archive_value sky_visible;
+    sky_visible.kind = arc::persistence::archive_value_kind::boolean;
+    sky_visible.boolean = false;
+    environment.fields.push_back({0, "skyVisible", std::move(sky_visible), false});
+    document.entities.front().components.push_back(std::move(environment));
+
+    arc::persistence::archive_component_record light;
+    light.type = arc::ecs::component_metadata<arc::scene::directional_light_component>().id;
+    light.name = "DirectionalLight";
+    light.schema_version = arc::ecs::component_metadata<arc::scene::directional_light_component>().schema_version;
+    arc::persistence::archive_value intensity;
+    intensity.kind = arc::persistence::archive_value_kind::floating_point;
+    intensity.floating_point = 85000.0;
+    light.fields.push_back({0, "intensity", std::move(intensity), false});
+    document.entities.front().components.push_back(std::move(light));
+
+    arc::ecs::world world;
+    REQUIRE(arc::scene::materialize_cooked_scene(world, cooked_bytes(document)).empty());
+    const auto entity = world.entities().front();
+    CHECK_FALSE(world.get<arc::scene::world_environment_component>(entity).sky_visible);
+    CHECK(world.has<arc::scene::sky_atmosphere_component>(entity));
+    CHECK(world.has<arc::scene::celestial_sky_component>(entity));
+    CHECK(world.has<arc::scene::cloud_layers_component>(entity));
+    CHECK(world.has<arc::scene::environment_lighting_component>(entity));
+    CHECK(world.has<arc::scene::height_fog_component>(entity));
+    CHECK(world.get<arc::scene::directional_light_component>(entity).intensity == 85000.0f);
+}
+
 TEST_CASE("V3.4b editor v4 MeshRenderer field names migrate to the runtime schema")
 {
     auto document = authored_mesh_scene();
@@ -244,6 +300,32 @@ TEST_CASE("V3.4b editor v4 MeshRenderer field names migrate to the runtime schem
     CHECK(field->name == "casts_shadows");
     CHECK(field->id == 5u);
     CHECK(field->known);
+}
+
+TEST_CASE("Authored component names repair provisional stable type IDs before migration")
+{
+    auto document = authored_mesh_scene();
+    document.dependencies.clear();
+    auto& component = document.entities.front().components.back();
+    component.type = *arc::ecs::parse_component_type_id("a7c0000000000001000000000000000b");
+    component.name = "MeshRenderer";
+    component.schema_version = 4;
+
+    const auto json = arc::persistence::write_reflected_json(document, false);
+    REQUIRE(json);
+    arc::persistence::component_persistence_registry components;
+    arc::persistence::schema_migration_registry migrations;
+    REQUIRE(arc::scene::register_persistence_components(components));
+    REQUIRE(arc::scene::register_persistence_migrations(migrations));
+    const auto restored = arc::persistence::read_reflected_json(json.value(), components, &migrations);
+    REQUIRE(restored.succeeded());
+    REQUIRE(restored.document.entities.front().components.size() == 2);
+    const auto repaired = std::find_if(restored.document.entities.front().components.begin(),
+                                       restored.document.entities.front().components.end(),
+                                       [](const auto& value) { return value.name == "MeshRenderer"; });
+    REQUIRE(repaired != restored.document.entities.front().components.end());
+    CHECK(repaired->type == arc::ecs::component_metadata<arc::scene::mesh_renderer_component>().id);
+    CHECK(repaired->schema_version == 5);
 }
 
 TEST_CASE("Active value fields migrate to the canonical runtime schema")

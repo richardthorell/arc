@@ -2,11 +2,27 @@
 
 #include <arc/render/cooked_texture.h>
 #include <arc/render/mesh_artifact.h>
+#include <arc/render/primitives.h>
 
+#include <optional>
 #include <set>
 
 namespace arc::project
 {
+namespace
+{
+std::optional<render::mesh_data> decode_procedural_primitive(std::string_view name)
+{
+    if (name == "Plane" || name == "plane") return render::make_plane_mesh(10.0f);
+    if (name == "Cube" || name == "cube") return render::make_cube_mesh(1.0f);
+    if (name == "Sphere" || name == "sphere") return render::make_uv_sphere_mesh(0.5f, 32, 16);
+    if (name == "Cylinder" || name == "cylinder") return render::make_cylinder_mesh(0.5f, 1.0f, 32);
+    if (name == "Cone" || name == "cone") return render::make_cone_mesh(0.5f, 1.0f, 32);
+    if (name == "Capsule" || name == "capsule") return render::make_capsule_mesh(0.5f, 1.0f, 32, 8);
+    return std::nullopt;
+}
+} // namespace
+
 decoded_scene_render_result decode_scene_render_resources(runtime_catalog_session& catalog,
                                                           const scene::cooked_scene_mesh_bindings& bindings)
 {
@@ -15,19 +31,29 @@ decoded_scene_render_result decode_scene_render_resources(runtime_catalog_sessio
     for (const auto& binding : bindings)
     {
         const auto owner = assets::to_string(binding.source.guid);
-        if (!binding.source.resolved())
-            return decoded_scene_render_result::failure("Scene mesh binding has no authored source GUID");
-
-        auto mesh_bytes = catalog.read_active_artifact(binding.source.guid, binding.source.expected_type,
-                                                       assets::artifact_schemas::mesh);
-        if (!mesh_bytes)
-            return decoded_scene_render_result::failure("Mesh " + owner + ": " + mesh_bytes.error().message);
-        auto mesh = render::decode_conventional_mesh_artifact(mesh_bytes.value(), binding.subresource);
-        if (!mesh) return decoded_scene_render_result::failure("Mesh " + owner + ": " + mesh.error());
-
         decoded_scene_render_resource resource;
         resource.entity = binding.entity;
-        resource.mesh = std::move(mesh).value().mesh;
+        resource.procedural_primitive = binding.procedural_primitive;
+        if (binding.procedural_primitive)
+        {
+            auto primitive = decode_procedural_primitive(binding.subresource);
+            if (!primitive)
+                return decoded_scene_render_result::failure("Unsupported authored primitive '" + binding.subresource +
+                                                            "'");
+            resource.mesh = std::move(*primitive);
+        }
+        else if (!binding.source.resolved())
+            return decoded_scene_render_result::failure("Scene mesh binding has no authored source GUID");
+        else
+        {
+            auto mesh_bytes = catalog.read_active_artifact(binding.source.guid, binding.source.expected_type,
+                                                           assets::artifact_schemas::mesh);
+            if (!mesh_bytes)
+                return decoded_scene_render_result::failure("Mesh " + owner + ": " + mesh_bytes.error().message);
+            auto mesh = render::decode_conventional_mesh_artifact(mesh_bytes.value(), binding.subresource);
+            if (!mesh) return decoded_scene_render_result::failure("Mesh " + owner + ": " + mesh.error());
+            resource.mesh = std::move(mesh).value().mesh;
+        }
         if (binding.material.resolved())
         {
             const auto material_guid = binding.material.guid;

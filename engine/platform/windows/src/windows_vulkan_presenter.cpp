@@ -18,6 +18,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string_view>
@@ -143,7 +144,51 @@ std::string windows_vulkan_presenter::hydrate_scene()
             scene::hydrate_cooked_scene_materials(world_->entities(), *renderer_, materials, material_residency_);
         !error.empty())
         return error;
-    return scene::hydrate_cooked_scene_meshes(world_->entities(), *renderer_, meshes, mesh_residency_);
+    if (auto error = scene::hydrate_cooked_scene_meshes(world_->entities(), *renderer_, meshes, mesh_residency_);
+        !error.empty())
+        return error;
+
+    if (std::any_of(decoded.value().begin(), decoded.value().end(),
+                    [](const auto& resource) { return resource.procedural_primitive && !resource.material; }))
+    {
+        render::texture_data checker;
+        checker.name = "Default Runtime Checker";
+        checker.width = 8;
+        checker.height = 8;
+        checker.pixels.resize(checker.width * checker.height * 4u);
+        for (std::uint32_t y = 0; y < checker.height; ++y)
+            for (std::uint32_t x = 0; x < checker.width; ++x)
+            {
+                const auto value = static_cast<std::byte>(((x + y) & 1u) != 0u ? 176u : 74u);
+                const auto offset = (y * checker.width + x) * 4u;
+                checker.pixels[offset] = value;
+                checker.pixels[offset + 1u] = value;
+                checker.pixels[offset + 2u] = value;
+                checker.pixels[offset + 3u] = std::byte{255};
+            }
+        primitive_texture_ = renderer_->create_texture(std::move(checker));
+        if (!primitive_texture_.valid()) return "Cannot create the runtime primitive checker texture";
+        render::material_descriptor material;
+        material.name = "Default Runtime Primitive Material";
+        material.base_color = math::vector4f::one;
+        material.base_color_texture = primitive_texture_;
+        material.roughness = 0.62f;
+        primitive_material_ = renderer_->create_material(std::move(material));
+        if (!primitive_material_.valid()) return "Cannot create the runtime primitive material";
+        for (const auto& resource : decoded.value())
+        {
+            if (!resource.procedural_primitive || resource.material) continue;
+            for (const auto entity : world_->entities().entities())
+            {
+                const auto* id = world_->entities().try_get<ecs::persistent_id_component>(entity);
+                if (!id || id->value != resource.entity) continue;
+                auto* mesh = world_->entities().try_get<scene::mesh_renderer_component>(entity);
+                if (mesh) mesh->material = primitive_material_;
+                break;
+            }
+        }
+    }
+    return {};
 }
 
 std::string windows_vulkan_presenter::present(std::uint32_t width, std::uint32_t height, float delta_seconds)
@@ -195,6 +240,8 @@ void windows_vulkan_presenter::shutdown() noexcept
     material_residency_.clear();
     mesh_residency_.clear();
     texture_residency_.clear();
+    primitive_texture_ = {};
+    primitive_material_ = {};
     world_ = nullptr;
     session_ = nullptr;
 }

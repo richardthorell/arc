@@ -22,6 +22,7 @@ struct decoded_scene_render_resource
 {
     ecs::entity_guid entity{};
     render::mesh_data mesh;
+    bool procedural_primitive{};
     assets::asset_guid material_guid{};
     assets::asset_guid shader_material_guid{};
     std::optional<render::cooked_material_instance_values> instance;
