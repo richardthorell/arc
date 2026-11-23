@@ -184,7 +184,8 @@ android_runtime_bridge::~android_runtime_bridge()
     jobs_.shutdown(arc::jobs::job_shutdown_mode::drain);
 }
 
-bool android_runtime_bridge::boot(std::string_view project_guid)
+bool android_runtime_bridge::boot(std::string_view project_guid,
+                                  arc::project::runtime_content_options trusted_content)
 {
     if (catalog_) return true;
     if (!assets_.available() || writable_storage_.empty() || !writable_storage_.is_absolute())
@@ -215,6 +216,7 @@ bool android_runtime_bridge::boot(std::string_view project_guid)
 
     arc::project::runtime_boot_request request;
     request.role = arc::project::runtime_launch_role::client;
+    request.content.trusted_launch = std::move(trusted_content);
     request.host.distribution = {.kind = arc::project::runtime_distribution_location_kind::mounted_vfs,
                                  .files = &vfs_,
                                  .virtual_root = root.value()};
@@ -245,6 +247,18 @@ bool android_runtime_bridge::boot(std::string_view project_guid)
     }
     boot_ = std::make_unique<arc::project::runtime_boot_context>(std::move(discovered).value());
     arc::diagnostics::info("Android", "ARC packaged distribution manifest verified");
+    // C9.3 validates selection only. Never claim remote-only content is
+    // available by silently materializing a different APK scene.
+    if (boot_->content.mode == arc::project::runtime_content_mode::remote)
+    {
+        arc::diagnostics::error("Android", "Remote-only content startup awaits verified C9.4/6 activation");
+        boot_.reset();
+        return false;
+    }
+    arc::diagnostics::info(
+        "Android", "ARC content selection: " +
+            std::string(arc::project::runtime_content_mode_name(boot_->content.mode)) +
+            " (currently packaged content)");
     auto mounted_catalog = arc::project::bootstrap_runtime_catalog({.boot = *boot_, .files = vfs_});
     if (!mounted_catalog)
     {
