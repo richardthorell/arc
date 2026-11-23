@@ -80,6 +80,8 @@ public:
     client& operator=(client&&) = delete;
 
     [[nodiscard]] bool connect(const launch_handoff& handoff, std::string& error);
+    /** Reauthenticate the same native instance using only the inherited in-memory handoff. */
+    [[nodiscard]] bool reconnect(const launch_handoff& handoff, std::string& error);
     [[nodiscard]] bool connected() const noexcept;
     void close() noexcept;
 
@@ -105,12 +107,16 @@ public:
     [[nodiscard]] std::uint64_t last_received_sequence() const noexcept;
 
 private:
+    [[nodiscard]] bool connect_impl(const launch_handoff& handoff, std::string& error, bool resume);
     [[nodiscard]] bool send_message(std::string_view type, const std::string& payload_json, std::string& error);
     [[nodiscard]] bool receive_frame(std::string& json, std::uint32_t timeout_ms, std::string& error);
 
     std::intptr_t socket_{-1};
     std::uint64_t outbound_sequence_{};
     std::uint64_t inbound_sequence_{};
+    // Monotonic across transient socket failures; reset only by a fresh launch.
+    std::uint64_t resume_outbound_sequence_{};
+    std::uint64_t resume_inbound_sequence_{};
     std::string project_guid_;
     std::string build_id_;
     std::string target_profile_;
