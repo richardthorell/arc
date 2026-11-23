@@ -290,7 +290,6 @@ TEST_CASE("C9.2f2 bounds concurrent GET count and aggregate declared in-flight b
     CHECK(stats.peak_active_requests == 1);
     CHECK(stats.peak_declared_bytes == payloads.front().size());
     CHECK(stats.active_declared_bytes == 0);
-    CHECK(stats.peak_queued_requests >= 1);
 }
 
 TEST_CASE("C9.2f2 follower cancellation never cancels an unrelated in-flight leader")

@@ -317,3 +317,57 @@ The session does not change normal Editor Viewport Play, issue a build, or
 silently start a content server. External Play orchestration remains owned by
 #1140 and can activate this verified provider only after the cook/publish path
 and runtime identity checks have completed.
+
+## C9.2h — Transfer diagnostics, integrity and failure acceptance
+
+The C9.2 shared `remote_object_download_coordinator` now exposes
+`metrics()`, a **thread-safe cumulative snapshot**. All counters are scoped
+to the coordinator instance and intentionally contain no origin URLs, paths,
+hashes, authorization tokens or other sensitive content. A runtime or editor
+can keep a shared coordinator in its session owner and poll metrics for
+structured diagnostics; callers who use the default temporary coordinator can
+still access per-operation errors and eager acquisition's existing byte/object
+counts. Collection does not require a logger or introduce a second transport.
+
+The snapshot includes:
+
+| Field | Meaning |
+|---|---|
+| `calls`, `cache_hits`, `coalesced_calls` | Logical demand, verified CAS reuse and followers sharing an in-flight immutable object |
+| `network_attempts`, `retry_attempts` | Actual leader attempts and retries, not duplicated follower requests |
+| `completed_downloads`, `downloaded_bytes` | Whole SHA-verified immutable transfers committed to the CAS |
+| `failed_calls`, `cancelled_calls`, `integrity_failures` | Structured failure totals; no raw HTTP response contents or secrets |
+| `elapsed_milliseconds` | Sum of completed logical call durations, including cache, waits and retries |
+| `active_requests`, `peak_active_requests`, `queued_requests`, `peak_queued_requests` | Current/peak network concurrency and waiting pressure |
+| `active_declared_bytes`, `peak_declared_bytes` | Network in-flight object-size budget use; these are declared limits, not OS resident-memory measurements |
+
+The coordinator updates request counts at the real IO dispatch boundary;
+corrupt framing, SHA mismatch, untrusted status, invalid URL, authorization
+failure or a cancelled wait cannot masquerade as a successful transfer. Cache
+integrity remains verified before every read. A forced refresh does **not**
+delete a previously verified CAS entry when a remote object becomes 404.
+Failed/partial body reads are discarded without writing a partial blob, so the
+next request starts a **clean whole-object download**. Partial HTTP byte
+ranges remain a transport capability, but demand-loaded `.arcpak` chunks
+are ingested only after the entire object passes SHA-256. Arbitrary partial
+byte ranges are never published as verified CAS entries.
+
+### Acceptance and ownership
+
+Existing C9.2a/e1/e2 native HTTP tests cover 206 Content-Range boundaries,
+ETag/If-Match, redirect rejection, local real-server Linux HTTP, oversize
+and 404/cancellation behavior; C9.2c/d/f/g tests cover CAS persistence,
+whole-generation VFS mounts, cache-first/offline/refresh, concurrency,
+transient retry, corruption, active/last-good protection and rollback.
+C9.2h adds diagnostics assertions and regression gates for no retry of
+truncated bodies, clean recovery, stale verified cache retention on 404,
+cancelled queue admission and in-flight limits.
+
+This closes the **transport/cache contract and implementation** for C9.2
+issue #1135. C9.3 selects the per-platform Development endpoint and writable
+cache root; C9.4 hosts the authenticated editor service; C9.5 publishes
+ordered changes; C9.6 subscribes/ingests verified update batches and updates
+GPU/scene state; C9.9 performs real external-runtime Windows/Android E2E
+security/performance acceptance. C9.2 itself cannot claim that those higher
+level sessions, physical GPU device tests, or Shipping CDN release channels
+are finished.
