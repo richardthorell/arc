@@ -58,7 +58,7 @@ struct hierarchy_delta
  * transmit a complete paged snapshot instead. No ECS access or sockets here.
  */
 [[nodiscard]] std::optional<hierarchy_delta> diff_hierarchy(const hierarchy_snapshot& baseline,
-                                                             const hierarchy_snapshot& current);
+                                                            const hierarchy_snapshot& current);
 
 struct inspection_request
 {
