@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  LIVE_PLAY_PROTOCOL,
-  LIVE_PLAY_VERSION,
-  type LivePlayMessage,
-} from './livePlayProtocol';
+import { LIVE_PLAY_PROTOCOL, LIVE_PLAY_VERSION } from './livePlayProtocol';
 import {
   applyLivePlayHierarchy,
   emptyLivePlayHierarchy,
@@ -89,7 +85,9 @@ describe('L1.5d revisioned external runtime hierarchy', () => {
     );
     expect(state.hierarchy?.payload.entities).toHaveLength(2);
     expect(state.hierarchy?.payload.entities[0]).toEqual({
-      entity: spawned, name: 'Renamed', parent: null,
+      entity: spawned,
+      name: 'Renamed',
+      parent: null,
     });
     expect(state.hierarchy?.payload.entities[1].name).toBe('Entity 3');
     expect(state.hierarchy?.payload.worldRevision).toBe(4);
@@ -140,7 +138,14 @@ describe('L1.5d revisioned external runtime hierarchy', () => {
     const { livePlayMessageSchema } = await import('./livePlayProtocol');
     expect(livePlayMessageSchema.safeParse(snapshot(1, [item(1)], { pageIndex: 0, pageCount: 2 })).success).toBe(true);
     expect(livePlayMessageSchema.safeParse(changed(1, 2, [{ kind: 'removed', entity: spawned }])).success).toBe(true);
-    expect(livePlayMessageSchema.safeParse(snapshot(1, [item(1)], { pageIndex: 70, pageCount: 80 })).success).toBe(false);
-    expect(livePlayMessageSchema.safeParse(changed(1, 2, [{ kind: 'removed', entity: spawned, unsafe: true }] as LivePlayMessage['payload'] extends never ? never : HierarchyChangeMessage['payload']['changes'])).success).toBe(false);
+    expect(livePlayMessageSchema.safeParse(snapshot(1, [item(1)], { pageIndex: 70, pageCount: 80 })).success).toBe(
+      false,
+    );
+    const validDelta = changed(1, 2, [{ kind: 'removed', entity: spawned }]);
+    const malformed = {
+      ...validDelta,
+      payload: { ...validDelta.payload, changes: [{ kind: 'removed', entity: spawned, unsafe: true }] },
+    };
+    expect(livePlayMessageSchema.safeParse(malformed).success).toBe(false);
   });
 });
