@@ -1,7 +1,8 @@
 # C9.1 — Remote cooked-content release contract (v1)
 
 **Scope:** metadata and transport-independent validation only. This contract is
-consumed by the upcoming C9.2 HTTP client and C9.4 editor-owned server. It does
+consumed by the implemented C9.2 HTTP client and the planned C9.4
+editor-owned server. It does
 **not** create a second GUID catalog, asset cooker, distribution manifest,
 runtime update receiver or editor control channel.
 
@@ -76,7 +77,8 @@ cook profile, and `textureFamily=astc`. A build/target/profile mismatch must
 fail closed. A headless server may declare no chunk entries, with a valid empty
 cook manifest. Canonical publisher encoding is sorted-key UTF-8 JSON with no
 insignificant whitespace, a final newline and finite numbers only. See
-`tools/remote_content_contract.py` for the initial metadata validator.
+`tools/remote_content_contract.py` for the canonical publisher validator
+and `engine/assets/src/common/remote_content.cpp` for the native validator.
 
 ## Snapshots, change feeds and rollback
 
@@ -105,6 +107,143 @@ and safe handle generations. A failed publication/download or content update
 must leave the last verified generation available. Cache policy may pin Boot
 and current/last-good generations.
 
+
+## C9.1c — Versioned development change-feed *response* (v1)
+
+C9.1a/1b defined release bytes, immutable object addressing and a reconnect
+decision. C9.1c completes the shared **wire response contract**, including
+native C++ and Python validators and common fixtures. These fixtures are
+transport-independent, and cannot replace future authenticated server or
+real-device acceptance. A change feed is optional
+and **development-only**; static CDN releases do not need to implement this
+endpoint.
+
+The editor's authenticated read-only endpoint is:
+
+`GET sessions/<session-id>/changes?after=<last-acknowledged-sequence>`
+
+The client must send its last **successfully activated** event sequence,
+not the last event merely received or downloaded. `sequence` orders feed
+notifications; `generation` identifies complete cooked release snapshots.
+Each event refers to the **immutable, SHA-addressed canonical release
+descriptor**; it never directs a client to race a mutable `current.json`
+pointer. This also means events are replayable when a later generation has
+already advanced the current pointer.
+
+For example, a Windows/Vulkan/BC development client after ACK 4 receives:
+
+```json
+{
+  "format": "arc.remote-content-feed",
+  "formatVersion": 1,
+  "projectGuid": "11111111-2222-4333-8444-555555555555",
+  "engineVersion": "0.1.0",
+  "baseBuildId": "build-abc",
+  "target": {
+    "platform": "windows",
+    "architecture": "x86_64",
+    "renderer": "vulkan",
+    "cookProfile": "windows-x64-vulkan",
+    "textureFamily": "bc"
+  },
+  "afterSequence": 4,
+  "oldestSequence": 4,
+  "newestSequence": 6,
+  "currentGeneration": 10,
+  "currentRelease": {
+    "path": "objects/sha256/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "size": 702
+  },
+  "mode": "replay",
+  "events": [
+    {
+      "sequence": 5,
+      "generation": 9,
+      "release": {
+        "path": "objects/sha256/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "size": 700
+      },
+      "changed": ["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"],
+      "removed": []
+    },
+    {
+      "sequence": 6,
+      "generation": 10,
+      "release": {
+        "path": "objects/sha256/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "size": 702
+      },
+      "changed": ["44444444-5555-4666-8777-888888888888"],
+      "removed": ["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"]
+    }
+  ]
+}
+```
+
+The hashes here are illustrative. The runnable contract fixture is
+`engine/assets/tests/fixtures/remote-content-feed-v1.json`. Android uses
+**the same envelope and GUIDs** with `platform=android`,
+`architecture=arm64`, `renderer=vulkan`,
+`cookProfile=android-arm64-vulkan`, `textureFamily=astc`. Each
+target/profile has its **own compatible cooked descriptor and objects**;
+a Windows client must reject an Android target's response, and vice versa.
+
+### Cursor, atomic publication and reset rules
+
+- `afterSequence` must **exactly match** the requested last ACK. The
+  authenticated project, engine/base-build and all five target fields must
+  match the session runtime.
+- Journal `oldestSequence >= 1`, `newestSequence >= oldestSequence`
+  and `currentGeneration >= 1` describe the published head. A server with
+  **no first complete snapshot** must answer not-ready, not invent generation 0.
+- For `mode=replay`, every sequence from `afterSequence+1` to
+  `newestSequence` must be present exactly once and in order. Generations
+  strictly increase; the final event's generation and descriptor SHA/length
+  must equal `currentGeneration/currentRelease`. Changed/removed GUID lists
+  are bounded, duplicate-free and disjoint. The event is an advisory change
+  summary: clients still validate the full immutable descriptor and its
+  cooked dependency graph before activation.
+- At most **256 events** and **8 MiB** of feed metadata may be replayed.
+  If the next sequence has been trimmed or more than 256 events are needed,
+  respond `mode=full-snapshot` with `events=[]` and a verified
+  `currentRelease` reference. Clients fetch/verify this immutable descriptor,
+  perform a full reconciliation, and ACK `newestSequence` **only after**
+  successful activation. A failed activation keeps the previous ACK.
+- If the client is already at `newestSequence`, respond
+  `mode=up-to-date` with an empty event list. If its cursor is **ahead**,
+  reject/regenerate the session rather than pretending no changes occurred.
+- Snapshot/reset/up-to-date responses may **not** contain partial replay
+  events. Never expose an incomplete cook manifest, a partially staged object,
+  or a notification before its SHA-addressed descriptor and all referenced
+  immutable cooked objects have been published.
+
+C9.4 implements the actual authenticated server, journal retention, and
+optional long-poll/SSE delivery. C9.5 publishes atomically and emits notifications
+**after** all chunks and the descriptor exist. C9.6 consumes these validated
+responses off the main/render thread and applies updates via the existing
+runtime update receiver at a safe activation boundary. These later milestones
+implement transport and application; the C9.1 wire contract is complete now.
+
+### Static CDN and offline compatibility
+
+A published release on S3/CDN or a static file server needs only the mutable
+`releases/<project-guid>/<target-profile>/current.json` pointer and immutable
+`objects/sha256/<digest>` files. It has **no feed** and no session endpoint;
+clients poll/discover current release per C9.2 and apply the same target,
+generation and SHA validation. Existing packaged Boot and verified persistent
+CAS can be used offline. Remote/hotfix overlays retain their existing
+priority, with tombstones and last-good rollback handled by the ordinary
+catalog/VFS/receiver, not by feed-provided raw asset paths.
+
+The feed may name **only** C9 GUID changes and immutable descriptor hashes;
+tokens, signed URLs, authoring filesystem paths and executable commands
+are forbidden. Authentication and rate limits are enforced by C9.4, not
+by this transport-neutral parser. LAN listening requires deliberate,
+authenticated pairing; development loopback and USB ADB reverse are preferred.
+
 ## Range requests and trust boundaries
 
 Immutable objects support `GET`, `HEAD` and optional `Range: bytes=start-end`;
@@ -116,15 +255,22 @@ trusted authenticated origin to an allowlisted HTTPS host with bounded expiry;
 no access token is persisted in the descriptor or logged. C9.2 owns these
 network checks; this first PR validates *metadata*, not HTTP responses.
 
-## Follow-up implementation sequence
+## Completion / downstream implementation owners
 
-1. **C9.1b** — native C++ descriptor parser/validator and cross-language
-   fixtures that the runtime client uses (if needed by C9.2).
-2. **C9.2** (#1135) — network transport, cache, VFS integration and strict HTTP
-   trust behavior.
-3. **C9.4** (#1137) — editor-hosted read-only publication service; optional
-   authenticated feed.
-4. **C9.5/C9.6** (#1138/#1139) — incremental publish and runtime activation.
+- **C9.1a — PR #1206:** canonical immutable release descriptor and optional
+  change-feed recovery decision.
+- **C9.1b — PR #1208:** fail-closed native descriptor parsing, C++/Python
+  fixture parity, target and generation validation.
+- **C9.1c — this PR:** bounded change-feed response schema, SHA-addressed
+  immutable release events, replay/reset validation, Windows/Android examples
+  and cross-language negative tests. **Completes the C9.1 contract scope.**
+- **C9.2** (#1135): existing HTTP transport/cache and VFS acquisition; any
+  outstanding transport diagnostics belong to C9.2h/C9.9.
+- **C9.3–C9.4** (#1136/#1137): runtime source overrides and authenticated
+  editor-owned service implementation.
+- **C9.5–C9.6** (#1138/#1139): incremental publisher and safe in-game
+  application of subscribed cooked updates.
+- **C9.9** (#1142): external Windows/Android and fault-injection acceptance.
 
 The authenticated Live Play control/inspection plane (#1194) remains separate
 from this cooked-data delivery protocol.
