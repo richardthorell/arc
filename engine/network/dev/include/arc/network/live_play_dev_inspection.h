@@ -35,6 +35,31 @@ struct hierarchy_snapshot
     bool complete{true};
 };
 
+enum class hierarchy_change_kind : std::uint8_t
+{
+    upsert,
+    removed
+};
+
+struct hierarchy_change
+{
+    hierarchy_change_kind kind{hierarchy_change_kind::upsert};
+    hierarchy_item item;
+};
+
+struct hierarchy_delta
+{
+    std::uint64_t base_revision{};
+    std::uint64_t world_revision{};
+    std::vector<hierarchy_change> changes;
+};
+
+/** Returns null when a bounded, coherent delta is unavailable; sender must
+ * transmit a complete paged snapshot instead. No ECS access or sockets here.
+ */
+[[nodiscard]] std::optional<hierarchy_delta> diff_hierarchy(const hierarchy_snapshot& baseline,
+                                                             const hierarchy_snapshot& current);
+
 struct inspection_request
 {
     std::string request_id;
