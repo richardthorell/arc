@@ -71,7 +71,7 @@ asset_status remote_runtime_generation_session::activate_verified(const remote_c
     if (!retained.succeeded()) return fail(asset_error_code::io_failed, retained.error);
 
     std::string new_provider_id;
-    const auto mounted = catalog_->mount_remote_provider(std::move(prepared).value(), next_priority_, &new_provider_id);
+    auto mounted = catalog_->mount_remote_provider(std::move(prepared).value(), next_priority_, &new_provider_id);
     if (!mounted)
     {
         // Restoring old pins may fail due to disk error, but over-retention is
@@ -121,7 +121,7 @@ asset_status remote_runtime_generation_session::rollback()
     const auto retained = retain_remote_content_generations(*cache_, *last_good_);
     if (!retained.succeeded()) return reject(asset_error_code::io_failed, retained.error);
 
-    const auto removed = catalog_->unmount_provider(active_provider_id_);
+    auto removed = catalog_->unmount_provider(active_provider_id_);
     if (!removed)
     {
         // The current provider is still live: retain both generations.
@@ -148,9 +148,9 @@ asset_status remote_runtime_generation_session::attach_overlay(std::filesystem::
                       "Runtime live overlay requires an explicit private cache root");
 
     auto overlay = std::make_shared<cas_overlay_provider>(*files_, root);
-    const auto restored = overlay->load(expected_.target.cook_profile, expected_.base_build_id);
+    auto restored = overlay->load(expected_.target.cook_profile, expected_.base_build_id);
     if (!restored) return restored;
-    const auto mounted = catalog_->mount_overlay(overlay, overlay_priority);
+    auto mounted = catalog_->mount_overlay(overlay, overlay_priority);
     if (!mounted) return mounted;
 
     receiver_ = std::make_unique<runtime_update_receiver>(
