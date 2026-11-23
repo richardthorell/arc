@@ -33,6 +33,19 @@ export const livePlayEntitySchema = z.discriminatedUnion('kind', [
 ]);
 export type LivePlayEntity = z.infer<typeof livePlayEntitySchema>;
 
+/** Renderer-to-main inspection requests are strictly read-only and whitelist known native schemas. */
+export const livePlayInspectPayloadSchema = z
+  .object({
+    entity: livePlayEntitySchema,
+    component: z
+      .object({
+        typeId: z.enum(['arc.transform', 'arc.scene.name', 'arc.scene.tag', 'arc.scene.active']),
+        schemaVersion: z.literal(1),
+      })
+      .strict(),
+  })
+  .strict();
+
 const component = z.object({ typeId: id, schemaVersion: z.number().int().positive().max(65535) }).strict();
 const propertyPath = z
   .string()
