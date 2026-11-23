@@ -142,9 +142,8 @@ struct [[nodiscard]] remote_content_feed_parse_result
  * The caller independently authenticates the transport/session. This parser
  * never performs I/O or modifies the active cooked catalog.
  */
-[[nodiscard]] remote_content_feed_parse_result
-parse_remote_content_feed(std::string_view json_bytes, const remote_content_expectations& expected,
-                          std::uint64_t last_acknowledged);
-
+[[nodiscard]] remote_content_feed_parse_result parse_remote_content_feed(std::string_view json_bytes,
+                                                                         const remote_content_expectations& expected,
+                                                                         std::uint64_t last_acknowledged);
 
 } // namespace arc::assets

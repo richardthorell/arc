@@ -141,10 +141,14 @@ std::string_view feed_mode(remote_content_feed_action action) noexcept
 {
     switch (action)
     {
-    case remote_content_feed_action::replay: return "replay";
-    case remote_content_feed_action::full_snapshot: return "full-snapshot";
-    case remote_content_feed_action::up_to_date: return "up-to-date";
-    default: return {};
+        case remote_content_feed_action::replay:
+            return "replay";
+        case remote_content_feed_action::full_snapshot:
+            return "full-snapshot";
+        case remote_content_feed_action::up_to_date:
+            return "up-to-date";
+        default:
+            return {};
     }
 }
 
@@ -234,8 +238,7 @@ remote_content_feed_action remote_content_reconnect(std::uint64_t last_acknowled
                                                     std::uint64_t newest_available,
                                                     std::uint64_t maximum_replay_events) noexcept
 {
-    if (newest_available < oldest_available || maximum_replay_events == 0)
-        return remote_content_feed_action::invalid;
+    if (newest_available < oldest_available || maximum_replay_events == 0) return remote_content_feed_action::invalid;
     if (last_acknowledged > newest_available) return remote_content_feed_action::reject_regression;
     if (last_acknowledged == newest_available) return remote_content_feed_action::up_to_date;
     if ((oldest_available != 0 && last_acknowledged < oldest_available - 1) ||
@@ -262,20 +265,19 @@ remote_content_feed_parse_result parse_remote_content_feed(std::string_view byte
     const auto base = string_field(document, "baseBuildId");
     const auto target = document.find("target");
     if (!project || !guid(*project) || *project != expected.project_guid || !engine ||
-        *engine != expected.engine_version || !base || *base != expected.base_build_id ||
-        target == document.end() || !matches_target(*target, expected.target))
+        *engine != expected.engine_version || !base || *base != expected.base_build_id || target == document.end() ||
+        !matches_target(*target, expected.target))
         return feed_failure("change-feed project, build or target is incompatible");
 
     const auto cursor = unsigned_field(document, "afterSequence");
     const auto oldest = unsigned_field(document, "oldestSequence");
     const auto newest = unsigned_field(document, "newestSequence");
     const auto current_generation = unsigned_field(document, "currentGeneration");
-    if (!cursor || *cursor != last_acknowledged || !oldest || *oldest == 0 || !newest ||
-        *newest < *oldest || !current_generation || *current_generation == 0)
+    if (!cursor || *cursor != last_acknowledged || !oldest || *oldest == 0 || !newest || *newest < *oldest ||
+        !current_generation || *current_generation == 0)
         return feed_failure("invalid change-feed cursor, bounds or current generation");
     const auto current_field = document.find("currentRelease");
-    const auto current_release =
-        current_field == document.end() ? std::nullopt : parse_object(*current_field);
+    const auto current_release = current_field == document.end() ? std::nullopt : parse_object(*current_field);
     if (!current_release || current_release->size > max_descriptor_bytes)
         return feed_failure("invalid immutable current release descriptor reference");
 
@@ -301,8 +303,7 @@ remote_content_feed_parse_result parse_remote_content_feed(std::string_view byte
         return {.feed = std::move(feed), .error = {}};
     }
 
-    if (items->size() != *newest - last_acknowledged)
-        return feed_failure("replay event sequence range is incomplete");
+    if (items->size() != *newest - last_acknowledged) return feed_failure("replay event sequence range is incomplete");
     feed.events.reserve(items->size());
     std::uint64_t prior_generation{};
     for (const auto& item : *items)
@@ -313,10 +314,9 @@ remote_content_feed_parse_result parse_remote_content_feed(std::string_view byte
         const auto release = release_field == item.end() ? std::nullopt : parse_object(*release_field);
         const auto changed = parse_guids(item, "changed");
         const auto removed = parse_guids(item, "removed");
-        if (!sequence || *sequence != last_acknowledged + feed.events.size() + 1 ||
-            !generation || *generation == 0 || *generation <= prior_generation ||
-            *generation > *current_generation || !release || release->size > max_descriptor_bytes ||
-            !changed || !removed)
+        if (!sequence || *sequence != last_acknowledged + feed.events.size() + 1 || !generation || *generation == 0 ||
+            *generation <= prior_generation || *generation > *current_generation || !release ||
+            release->size > max_descriptor_bytes || !changed || !removed)
             return feed_failure("invalid replay event sequence, generation or descriptor");
 
         std::set<std::string> unique(changed->begin(), changed->end());

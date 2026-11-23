@@ -219,12 +219,12 @@ TEST_CASE("C9.1c native feed rejects cross-generation confusion and duplicate GU
 {
     auto invalid = feed_fixture();
     replace_once(invalid, "\"sha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"",
-                         "\"sha256\": \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"");
+                 "\"sha256\": \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\"");
     CHECK_FALSE(arc::assets::parse_remote_content_feed(invalid, expectations(), 4).succeeded());
 
     invalid = feed_fixture();
     replace_once(invalid, "\"removed\": [\n        \"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\"",
-                          "\"removed\": [\n        \"44444444-5555-4666-8777-888888888888\"");
+                 "\"removed\": [\n        \"44444444-5555-4666-8777-888888888888\"");
     CHECK_FALSE(arc::assets::parse_remote_content_feed(invalid, expectations(), 4).succeeded());
 
     invalid = feed_fixture();
@@ -249,8 +249,7 @@ TEST_CASE("C9.1c Android variant reuses the exact feed format and strict target 
     auto android = feed_fixture();
     replace_once(android, "\"platform\": \"windows\"", "\"platform\": \"android\"");
     replace_once(android, "\"architecture\": \"x86_64\"", "\"architecture\": \"arm64\"");
-    replace_once(android, "\"cookProfile\": \"windows-x64-vulkan\"",
-                          "\"cookProfile\": \"android-arm64-vulkan\"");
+    replace_once(android, "\"cookProfile\": \"windows-x64-vulkan\"", "\"cookProfile\": \"android-arm64-vulkan\"");
     replace_once(android, "\"textureFamily\": \"bc\"", "\"textureFamily\": \"astc\"");
     auto expected = expectations();
     expected.target = {.platform = "android",
