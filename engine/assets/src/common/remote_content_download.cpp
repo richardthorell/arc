@@ -121,6 +121,11 @@ struct remote_object_download_coordinator::implementation
             http::content_http_error_code failure_code = http::content_http_error_code::none;
             std::string failure_message;
             ++result.attempts;
+            {
+                std::lock_guard lock(mutex);
+                ++metrics.network_attempts;
+                if (attempt != 0) ++metrics.retry_attempts;
+            }
             try
             {
                 auto future = executor ? executor(*jobs, request, http_limits, cancellation)
@@ -224,11 +229,6 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
         ++stats.calls;
         if (outcome.reused && !outcome.coalesced) ++stats.cache_hits;
         if (outcome.coalesced) ++stats.coalesced_calls;
-        if (!outcome.coalesced)
-        {
-            stats.network_attempts += outcome.attempts;
-            if (outcome.attempts > 1) stats.retry_attempts += outcome.attempts - 1;
-        }
         if (outcome.downloaded)
         {
             ++stats.completed_downloads;
@@ -284,8 +284,13 @@ remote_object_download_coordinator::ensure(const remote_content_object& object, 
         while (!flight->done)
         {
             if (cancellation.stop_requested())
-                return finish(failed("Remote immutable object transfer wait cancelled",
-                                     http::content_http_error_code::cancelled));
+            {
+                lock.unlock();
+                auto cancelled = failed("Remote immutable object transfer wait cancelled",
+                                        http::content_http_error_code::cancelled);
+                cancelled.coalesced = true;
+                return finish(std::move(cancelled));
+            }
             implementation_->changed.wait_for(lock, std::chrono::milliseconds(25));
         }
         auto outcome = flight->outcome;
