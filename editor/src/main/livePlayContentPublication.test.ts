@@ -167,7 +167,9 @@ function fixture(families: readonly string[] = ['bc']) {
     chunkName,
     packaged,
     getCurrent: () => current,
-    changeProject: () => { current = false; },
+    changeProject: () => {
+      current = false;
+    },
   };
 }
 
@@ -246,7 +248,9 @@ describe('C9.4b editor live-play publication orchestration', () => {
     const f = fixture();
     await f.server.start();
     let started!: () => void;
-    const didStart = new Promise<void>((resolve) => { started = resolve; });
+    const didStart = new Promise<void>((resolve) => {
+      started = resolve;
+    });
     const runner = vi.fn((request: WorkflowProcessRequest): Promise<string> => {
       started();
       return new Promise<string>((_resolve, reject) => {
