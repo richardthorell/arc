@@ -145,7 +145,6 @@ TEST_CASE("C9.3 Development endpoint rejects credentials, arbitrary paths and pl
     {
         config.trusted_launch.server = std::string(origin);
         auto result = select(config);
-        INFO("Unsafe endpoint must be rejected");
         REQUIRE_FALSE(result);
         CHECK(result.error().field == "content.server");
         CHECK(result.error().message.find(std::string(origin)) == std::string::npos);
