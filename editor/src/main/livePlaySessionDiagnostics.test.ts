@@ -122,7 +122,10 @@ describe('L1.5c authenticated session diagnostics', () => {
 
   it('bounds session logs, drops stdout floods and redacts recognizable credentials', () => {
     let now = 1000;
-    const diagnostics = new LivePlaySessionDiagnostics(() => {}, () => now);
+    const diagnostics = new LivePlaySessionDiagnostics(
+      () => {},
+      () => now,
+    );
     diagnostics.begin(authority.sessionId, authority.instanceId);
     diagnostics.observeStatus(connected, transport);
     diagnostics.observeMessage(
