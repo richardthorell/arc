@@ -5,6 +5,8 @@ export type HierarchyChangeMessage = Extract<LivePlayMessage, { type: 'hierarchy
 export type HierarchyItem = HierarchySnapshotMessage['payload']['entities'][number];
 
 type PendingSnapshot = {
+  sessionId: string;
+  instanceId: string;
   revision: number;
   pageCount: number;
   complete: boolean;
@@ -107,10 +109,12 @@ export function applyLivePlayHierarchy(
   if (current && worldRevision === current.payload.worldRevision) return previous;
   const original = previous.pending;
   const pending: PendingSnapshot =
-    original && original.revision === worldRevision && original.pageCount === pageCount &&
-    original.complete === complete
+    original && original.sessionId === message.sessionId && original.instanceId === message.instanceId &&
+    original.revision === worldRevision && original.pageCount === pageCount && original.complete === complete
       ? { ...original, pages: [...original.pages] }
       : {
+          sessionId: message.sessionId,
+          instanceId: message.instanceId,
           revision: worldRevision,
           pageCount,
           complete,
@@ -119,7 +123,7 @@ export function applyLivePlayHierarchy(
   if (pending.pages[pageIndex] !== null) return previous;
   pending.pages[pageIndex] = entities;
   if (pending.pages.some((page) => page === null))
-    return { ...previous, pending, requiresSnapshot: false };
+    return { ...previous, pending, requiresSnapshot: previous.requiresSnapshot };
 
   const assembled = pending.pages.flatMap((page) => page ?? []);
   if (assembled.length > maxHierarchyEntities || !validEntitySet(assembled))
