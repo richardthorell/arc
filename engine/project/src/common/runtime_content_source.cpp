@@ -104,10 +104,10 @@ runtime_content_options_result parse_runtime_content_arguments(std::span<const s
             if (server) return bad_option("content.server", "Duplicate content server argument");
             server = *value;
         }
-        else if (auto value = read("--content-mode"))
+        else if (auto mode_value = read("--content-mode"))
         {
             if (mode) return bad_option("content.mode", "Duplicate content mode argument");
-            mode = *value;
+            mode = *mode_value;
         }
         else if (option.starts_with("--content-"))
             return bad_option("content", "Unknown content launch argument");
