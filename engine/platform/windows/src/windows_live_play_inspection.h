@@ -76,7 +76,8 @@ public:
             }
             if (!snapshot.complete) break;
         }
-        if (!force && initialized_ && previous_ == snapshot.entities && complete_ == snapshot.complete) return std::nullopt;
+        if (!force && initialized_ && previous_ == snapshot.entities && complete_ == snapshot.complete)
+            return std::nullopt;
         initialized_ = true;
         previous_ = snapshot.entities;
         complete_ = snapshot.complete;
