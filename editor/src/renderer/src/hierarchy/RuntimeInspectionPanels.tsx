@@ -98,9 +98,10 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
           );
           const selected = previous.selected;
           const present =
-            selected &&
-            synced.hierarchy?.payload.entities.some((item) => matchesRuntimeEntity(selected, item.entity));
-          const keepSelection = Boolean(present || synced.pending || (synced.hierarchy && !synced.hierarchy.payload.complete));
+            selected && synced.hierarchy?.payload.entities.some((item) => matchesRuntimeEntity(selected, item.entity));
+          const keepSelection = Boolean(
+            present || synced.pending || (synced.hierarchy && !synced.hierarchy.payload.complete),
+          );
           return {
             ...previous,
             hierarchy: synced.hierarchy,
