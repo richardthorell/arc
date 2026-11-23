@@ -160,7 +160,11 @@ export class LivePlaySessionDiagnostics {
       case 'content.generation':
         this.data.contentGeneration = message.payload.generation;
         this.data.contentStatus = message.payload.status;
-        this.add('content', 'info', `Cooked content ${message.payload.status} (generation ${message.payload.generation})`);
+        this.add(
+          'content',
+          'info',
+          `Cooked content ${message.payload.status} (generation ${message.payload.generation})`,
+        );
         return;
       case 'scene.baseline.status':
         this.add(
