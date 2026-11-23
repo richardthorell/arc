@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { LivePlayEntity, LivePlayMessage } from '../../../common/livePlayProtocol';
 import type { WindowsLivePlaySnapshot } from '../../../common/livePlaySessionTypes';
 import type { LivePlayDiagnosticsSnapshot } from '../../../common/livePlayDiagnosticsTypes';
+import { applyLivePlayHierarchy, type LivePlayHierarchyState } from '../../../common/livePlayHierarchyState';
 import { LivePlayDiagnosticsPanel } from './LivePlayDiagnosticsPanel';
 import {
   chooseRuntimeInspection,
@@ -23,6 +24,7 @@ const inspectableComponents = [
 type InspectionView = {
   scope: string;
   hierarchy: RuntimeHierarchyMessage | null;
+  pending: LivePlayHierarchyState['pending'];
   selected: LivePlayEntity | null;
   properties: Record<string, RuntimeInspectionResult>;
   notice: string | null;
@@ -32,6 +34,7 @@ type InspectionView = {
 const emptyView = (scope: string): InspectionView => ({
   scope,
   hierarchy: null,
+  pending: null,
   selected: null,
   properties: {},
   notice: null,
@@ -88,26 +91,26 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
       }
       setView((previous) => {
         if (previous.scope !== scope) previous = emptyView(scope);
-        if (message.type === 'hierarchy.snapshot') {
-          if (previous.hierarchy && message.payload.worldRevision < previous.hierarchy.payload.worldRevision)
-            return previous;
+        if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed') {
+          const synced = applyLivePlayHierarchy(
+            { hierarchy: previous.hierarchy, pending: previous.pending, requiresSnapshot: previous.requiresSnapshot },
+            message,
+          );
           const selected = previous.selected;
           const present =
-            selected && message.payload.entities.some((item) => matchesRuntimeEntity(selected, item.entity));
-          const keepSelection = present || !message.payload.complete;
+            selected &&
+            synced.hierarchy?.payload.entities.some((item) => matchesRuntimeEntity(selected, item.entity));
+          const keepSelection = Boolean(present || synced.pending || (synced.hierarchy && !synced.hierarchy.payload.complete));
           return {
             ...previous,
-            hierarchy: message,
-            requiresSnapshot: false,
+            hierarchy: synced.hierarchy,
+            pending: synced.pending,
+            requiresSnapshot: synced.requiresSnapshot,
             selected: keepSelection ? selected : null,
             properties: keepSelection ? previous.properties : {},
-            notice: null,
+            notice: synced.requiresSnapshot ? 'Runtime hierarchy revision gap; full snapshot required.' : null,
           };
         }
-        // Deltas require a complete, gap-free base; L1.5c adds a resync API.
-        // Never display a potentially incorrect tree after seeing a delta.
-        if (message.type === 'hierarchy.changed')
-          return { ...previous, requiresSnapshot: true, notice: 'Runtime hierarchy changed; full resync required.' };
         if (
           message.type === 'component.inspect.result' &&
           matchesRuntimeEntity(previous.selected, message.payload.entity)
@@ -182,6 +185,7 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
 
   return {
     hierarchy: current.hierarchy,
+    pendingPages: current.pending ? current.pending.pageCount - current.pending.pages.filter(Boolean).length : 0,
     selected,
     properties: current.properties,
     notice: current.notice,
@@ -213,12 +217,17 @@ export function RuntimeHierarchyPanel({ inspection }: { inspection: LivePlayRunt
       )}
       {inspection.requiresSnapshot && (
         <p className="live-runtime-warning" role="status">
-          Full hierarchy resync required; changes are not displayed until a new snapshot arrives.
+          Hierarchy is stale. A full snapshot is required before applying more changes.
+        </p>
+      )}
+      {inspection.pendingPages > 0 && (
+        <p className="live-runtime-warning" role="status">
+          Receiving hierarchy snapshot · {inspection.pendingPages} page(s) remaining. Previous tree is retained.
         </p>
       )}
       {hierarchy && !hierarchy.complete && (
         <p className="live-runtime-warning" role="status">
-          Partial hierarchy — the native protocol currently limits snapshots to 128 entities.
+          Partial hierarchy — native inspection currently caps snapshots at 4,096 entities.
         </p>
       )}
       <div className="live-runtime-entity-list" role="tree" aria-label="Running game entities">
