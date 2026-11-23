@@ -48,6 +48,32 @@ struct [[nodiscard]] remote_download_result
     }
 };
 
+/** Cumulative, lock-consistent transfer diagnostics without origins, paths,
+ * tokens, object hashes or session credentials. All counts are coordinator-
+ * local. Calls include direct cache hits, followers and rejected requests;
+ * network_attempts counts only real backend invocations by leaders.
+ */
+struct remote_download_metrics
+{
+    std::uint64_t calls{};
+    std::uint64_t cache_hits{};
+    std::uint64_t coalesced_calls{};
+    std::uint64_t network_attempts{};
+    std::uint64_t retry_attempts{};
+    std::uint64_t completed_downloads{};
+    std::uint64_t downloaded_bytes{};
+    std::uint64_t failed_calls{};
+    std::uint64_t cancelled_calls{};
+    std::uint64_t integrity_failures{};
+    std::uint64_t elapsed_milliseconds{};
+    std::size_t active_requests{};
+    std::size_t peak_active_requests{};
+    std::size_t queued_requests{};
+    std::size_t peak_queued_requests{};
+    std::uint64_t active_declared_bytes{};
+    std::uint64_t peak_declared_bytes{};
+};
+
 /** Coalesces identical SHA-256 object fetches while serializing their CAS
  * publication. A follower never reads a partially published object. It can
  * independently cancel its wait without cancelling the leader.
@@ -77,6 +103,11 @@ public:
                                                 jobs::cancellation_token cancellation = {},
                                                 remote_generation_fetch_executor executor = {},
                                                 bool force_refresh = false);
+
+    /** Snapshot consistent under concurrent downloads, usable by diagnostics
+     * and tests without exposing sensitive remote endpoint data.
+     */
+    [[nodiscard]] remote_download_metrics metrics() const;
 
 private:
     struct implementation;
