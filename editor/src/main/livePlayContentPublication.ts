@@ -1,12 +1,6 @@
 import type { LivePlaySceneBaseline } from './livePlaySceneBaseline';
-import {
-  prepareLivePlayCookedStaging,
-  type LivePlayCookInput,
-} from './livePlayEphemeralCook';
-import {
-  prepareLivePlayRemoteRelease,
-  type LivePlayRemoteRelease,
-} from './livePlayRemoteRelease';
+import { prepareLivePlayCookedStaging, type LivePlayCookInput } from './livePlayEphemeralCook';
+import { prepareLivePlayRemoteRelease, type LivePlayRemoteRelease } from './livePlayRemoteRelease';
 import type { WorkflowProcessRequest } from './workflowProcess';
 import { EditorCookedContentServer } from './editorCookedContentServer';
 
@@ -115,7 +109,8 @@ export class LivePlayContentPublication {
       !input.engineVersion ||
       !input.cooker ||
       !input.textureFamilies.length
-    ) throw new Error('C9 publication requires complete, matching trusted session and target identities');
+    )
+      throw new Error('C9 publication requires complete, matching trusted session and target identities');
 
     const cooked = await prepareLivePlayCookedStaging(
       {
@@ -137,7 +132,8 @@ export class LivePlayContentPublication {
       cooked.runtimeBuildId !== input.baseline.buildId ||
       cooked.sessionId !== input.baseline.sessionId ||
       cooked.instanceId !== input.baseline.instanceId
-    ) throw new Error('The cooked C9 generation does not belong to this Live Play session');
+    )
+      throw new Error('The cooked C9 generation does not belong to this Live Play session');
 
     const release = await prepareLivePlayRemoteRelease({
       staged: cooked,
