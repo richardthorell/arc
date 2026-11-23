@@ -136,14 +136,15 @@ export function useLivePlayRuntimeInspection(snapshot: WindowsLivePlaySnapshot) 
     void window.arc.livePlay
       .latestHierarchyState()
       .then((state) => {
-        if (!subscribed || sawLiveHierarchy || !state?.hierarchy || !sameSession(state.hierarchy, snapshot)) return;
+        const hierarchy = state?.hierarchy;
+        if (!subscribed || sawLiveHierarchy || !hierarchy || !sameSession(hierarchy, snapshot)) return;
         setView((previous) => {
           const currentView = previous.scope === scope ? previous : emptyView(scope);
-          if (currentView.hierarchy && currentView.hierarchy.payload.worldRevision >= state.hierarchy!.payload.worldRevision)
+          if (currentView.hierarchy && currentView.hierarchy.payload.worldRevision >= hierarchy.payload.worldRevision)
             return previous;
           return {
             ...currentView,
-            hierarchy: state.hierarchy,
+            hierarchy,
             pending: null,
             requiresSnapshot: state.requiresSnapshot,
             properties: {},
