@@ -33,7 +33,8 @@ import { SourceControlService } from './sourceControlService';
 import { BuildService } from './buildService';
 import { WindowsLivePlaySession, resolvePublishedWindowsLivePlay } from './windowsLivePlaySession';
 import { livePlayInspectPayloadSchema } from '../common/livePlayProtocol';
-import { applyLivePlayHierarchy, emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
+import { emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
+import { LivePlayHierarchyRecovery } from './livePlayHierarchyRecovery';
 import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
 import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
 import { BuildMonitorService } from './buildMonitorService';
@@ -79,6 +80,7 @@ let extensionService: ExtensionService | null = null;
 let buildService: BuildService | null = null;
 let livePlaySession: WindowsLivePlaySession | null = null;
 let latestLivePlayHierarchy = emptyLivePlayHierarchy();
+let hierarchyRecovery: LivePlayHierarchyRecovery | null = null;
 let livePlayBaselines: LivePlaySceneBaselineStore | null = null;
 let livePlayAuthoringEdits: LivePlayAuthoringEdits | null = null;
 let projectSettingsService: ProjectSettingsService | null = null;
@@ -1186,20 +1188,28 @@ void app.whenReady().then(async () => {
     (payload) => livePlaySession?.sendAuthoringProperty(payload) ?? null,
   );
   hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
+  hierarchyRecovery = new LivePlayHierarchyRecovery((reason) => livePlaySession?.requestHierarchyResync(reason) ?? false);
+  const hierarchyRepairTick = setInterval(() => {
+    hierarchyRecovery?.tick();
+    latestLivePlayHierarchy = hierarchyRecovery?.snapshot() ?? emptyLivePlayHierarchy();
+  }, 400);
+  hierarchyRepairTick.unref();
   livePlaySession = new WindowsLivePlaySession(
     (snapshot) => {
       if (snapshot.state === 'failed' && snapshot.pid === null)
         livePlayBaselines?.clear(snapshot.sessionId ?? undefined);
       if (snapshot.state === 'disconnected') livePlayAuthoringEdits?.disconnect();
       if (snapshot.state === 'failed' || snapshot.state === 'stopped') livePlayAuthoringEdits?.end();
-      if (snapshot.state === 'starting' || snapshot.state === 'stopped' || snapshot.state === 'failed')
-        latestLivePlayHierarchy = emptyLivePlayHierarchy();
+      hierarchyRecovery?.connectionState(snapshot.state);
+      latestLivePlayHierarchy = hierarchyRecovery?.snapshot() ?? emptyLivePlayHierarchy();
       sendToActiveRenderer('livePlay:state', snapshot);
     },
     (message) => {
       livePlayAuthoringEdits?.onRuntimeMessage(message);
-      if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed')
-        latestLivePlayHierarchy = applyLivePlayHierarchy(latestLivePlayHierarchy, message);
+      if (message.type === 'hierarchy.snapshot' || message.type === 'hierarchy.changed') {
+        hierarchyRecovery?.observe(message);
+        latestLivePlayHierarchy = hierarchyRecovery?.snapshot() ?? emptyLivePlayHierarchy();
+      }
       if (
         message.type === 'hierarchy.snapshot' ||
         message.type === 'hierarchy.changed' ||
