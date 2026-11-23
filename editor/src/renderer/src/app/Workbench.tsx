@@ -1575,18 +1575,10 @@ export function Workbench({ onProjectClosed }: { onProjectClosed?: () => void } 
       return (
         <div className="live-runtime-workspace">
           <nav className="live-runtime-mode-switch" aria-label="Hierarchy world view">
-            <button
-              type="button"
-              aria-pressed={!externalRuntimeVisible}
-              onClick={() => setExternalRuntimeMode(false)}
-            >
+            <button type="button" aria-pressed={!externalRuntimeVisible} onClick={() => setExternalRuntimeMode(false)}>
               Authoring
             </button>
-            <button
-              type="button"
-              aria-pressed={externalRuntimeVisible}
-              onClick={() => setExternalRuntimeMode(true)}
-            >
+            <button type="button" aria-pressed={externalRuntimeVisible} onClick={() => setExternalRuntimeMode(true)}>
               Runtime
             </button>
           </nav>
