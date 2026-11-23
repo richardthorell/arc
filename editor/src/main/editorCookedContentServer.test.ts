@@ -75,9 +75,7 @@ function releaseFixture(
     complete: true,
     cookManifestName: 'startup.arccookmanifest',
     cookManifest: { path: objects[0].path, sha256: objects[0].sha256, size: objects[0].size },
-    chunks: [
-      { name: 'scene.arcpak', path: objects[1].path, sha256: objects[1].sha256, size: objects[1].size },
-    ],
+    chunks: [{ name: 'scene.arcpak', path: objects[1].path, sha256: objects[1].sha256, size: objects[1].size }],
   };
   const descriptor = Buffer.from(JSON.stringify(payload) + '\n');
   const descriptorPath = path.join(descriptorFolder, 'current.json');
@@ -92,13 +90,15 @@ function releaseFixture(
     sceneAssetGuid: '33333333-3333-3333-3333-333333333333',
     authoringSha256: 'a'.repeat(64),
     generation,
-    variants: [{
-      family,
-      descriptorPath,
-      descriptorSha256: digest(descriptor),
-      cookedBuildId: payload.cookBuildId,
-      chunkCount: 1,
-    }],
+    variants: [
+      {
+        family,
+        descriptorPath,
+        descriptorSha256: digest(descriptor),
+        cookedBuildId: payload.cookBuildId,
+        chunkCount: 1,
+      },
+    ],
   };
   return { release, target, family, payload, descriptor, objects, objectRoot };
 }
@@ -117,21 +117,33 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     await f.server.start();
     const token = f.server.issueClientToken();
     expect(f.server.snapshot()).toMatchObject({
-      state: 'listening', projectGuid, sessionId, profiles: [],
+      state: 'listening',
+      projectGuid,
+      sessionId,
+      profiles: [],
     });
     expect(f.server.snapshot().origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/u);
-    expect((await request(f.server, '/releases/' + projectGuid + '/windows-x64-vulkan/current.json', token)).status)
-      .toBe(404);
+    expect(
+      (await request(f.server, '/releases/' + projectGuid + '/windows-x64-vulkan/current.json', token)).status,
+    ).toBe(404);
     const published = releaseFixture(f.sessionRoot);
     await f.server.publish(published.release, published.target);
-    const response = await request(f.server, '/releases/' + projectGuid + '/' + published.target + '/current.json', token);
+    const response = await request(
+      f.server,
+      '/releases/' + projectGuid + '/' + published.target + '/current.json',
+      token,
+    );
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toContain('no-store');
     expect(response.headers.get('etag')).toBe('"' + digest(published.descriptor) + '"');
     expect(await response.text()).toBe(published.descriptor.toString('utf8'));
-    expect(f.server.snapshot().profiles).toEqual([{
-      profile: published.target, family: published.family, generation: 1,
-    }]);
+    expect(f.server.snapshot().profiles).toEqual([
+      {
+        profile: published.target,
+        family: published.family,
+        generation: 1,
+      },
+    ]);
     expect(f.server.snapshot().bytesSent).toBeGreaterThan(0);
   });
 
@@ -146,13 +158,21 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     const token = f.server.issueClientToken();
     expect((await request(f.server, releaseUrl, 'b'.repeat(64))).status).toBe(401);
     expect((await request(f.server, releaseUrl, token)).status).toBe(200);
-    expect((await request(f.server, '/releases/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/' +
-      published.target + '/current.json', token)).status).toBe(404);
+    expect(
+      (
+        await request(
+          f.server,
+          '/releases/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/' + published.target + '/current.json',
+          token,
+        )
+      ).status,
+    ).toBe(404);
     expect((await request(f.server, '/Content/main.arcscene', token)).status).toBe(404);
     expect((await request(f.server, '/objects/sha256/000000', token)).status).toBe(404);
     expect((await request(f.server, '/objects%2fsha256%2f' + published.objects[0].sha256, token)).status).toBe(400);
-    expect((await request(f.server, '/objects/sha256/' + published.objects[0].sha256 + '?path=../', token)).status)
-      .toBe(400);
+    expect(
+      (await request(f.server, '/objects/sha256/' + published.objects[0].sha256 + '?path=../', token)).status,
+    ).toBe(400);
     expect((await request(f.server, releaseUrl, token, { method: 'POST' })).status).toBe(405);
     expect(f.server.snapshot().rejectedRequests).toBeGreaterThan(3);
   });
@@ -196,8 +216,7 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     fs.writeFileSync(path.join(newer.objectRoot, newer.objects[1].sha256), 'bad bytes');
     await expect(f.server.publish(newer.release, newer.target)).rejects.toThrow(/size\/hash/);
     expect((await request(f.server, address, token)).status).toBe(200);
-    expect((await request(f.server, address, token)).headers.get('etag'))
-      .toBe('"' + digest(good.descriptor) + '"');
+    expect((await request(f.server, address, token)).headers.get('etag')).toBe('"' + digest(good.descriptor) + '"');
     await expect(f.server.publish(good.release, good.target)).rejects.toThrow(/monotonically/);
   });
 
@@ -227,16 +246,18 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     const token = f.server.issueClientToken();
     const windows = releaseFixture(f.sessionRoot, { name: 'windows', profile: 'windows-x64-vulkan' });
     const android = releaseFixture(f.sessionRoot, {
-      name: 'android', profile: 'android-arm64-vulkan', family: 'astc',
+      name: 'android',
+      profile: 'android-arm64-vulkan',
+      family: 'astc',
     });
     await f.server.publish(windows.release, windows.target);
     await f.server.publish(android.release, android.target);
-    const paths = [windows, android].map((item) =>
-      '/releases/' + projectGuid + '/' + item.target + '/current.json');
+    const paths = [windows, android].map((item) => '/releases/' + projectGuid + '/' + item.target + '/current.json');
     const results = await Promise.all(paths.map((url) => request(f.server, url, token)));
     expect(results.map((item) => item.status)).toEqual([200, 200]);
-    expect((await Promise.all(results.map((item) => item.json()))) as Array<{ target: { cookProfile: string } }>)
-      .toMatchObject([{ target: { cookProfile: windows.target } }, { target: { cookProfile: android.target } }]);
+    expect(
+      (await Promise.all(results.map((item) => item.json()))) as Array<{ target: { cookProfile: string } }>,
+    ).toMatchObject([{ target: { cookProfile: windows.target } }, { target: { cookProfile: android.target } }]);
     const origin = f.server.snapshot().origin!;
     const port = Number(new URL(origin).port);
     await f.server.stop();
