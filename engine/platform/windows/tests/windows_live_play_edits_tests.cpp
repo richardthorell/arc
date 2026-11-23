@@ -166,8 +166,8 @@ void run()
     for (int i = 0; i < 260; ++i)
     {
         const auto extra = world->entities().create();
-        world->entities().emplace<arc::scene::name_component>(
-            extra, arc::scene::name_component{"Extra " + std::to_string(i)});
+        world->entities().emplace<arc::scene::name_component>(extra,
+                                                              arc::scene::name_component{"Extra " + std::to_string(i)});
     }
     const auto large = inspector.sample(runtime);
     check(large && large->complete && large->entities.size() == 262 && large->world_revision == 4,
