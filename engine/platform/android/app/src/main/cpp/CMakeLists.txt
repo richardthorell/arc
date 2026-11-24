@@ -52,7 +52,7 @@ endforeach()
 add_subdirectory("${ARC_REPO_ROOT}/engine/render-vulkan" "${CMAKE_CURRENT_BINARY_DIR}/arc-render-vulkan")
 
 add_library(arc_android_host SHARED
-    android_host.cpp android_lifecycle.cpp android_log_sink.cpp
+    android_host.cpp android_live_play_pairing.cpp android_lifecycle.cpp android_log_sink.cpp
     android_package_assets.cpp android_package_assets_ndk.cpp
     android_apk_provider.cpp android_runtime_bridge.cpp
     android_vulkan_surface.cpp android_vulkan_presenter.cpp
@@ -60,7 +60,8 @@ add_library(arc_android_host SHARED
 target_compile_features(arc_android_host PRIVATE cxx_std_20)
 target_compile_definitions(arc_android_host PRIVATE VK_USE_PLATFORM_ANDROID_KHR=1)
 target_link_libraries(arc_android_host PRIVATE
-    arc_native_app_glue arc-project arc-io arc-http arc-jobs arc-diagnostics arc-render-vulkan arc-scene android log dl)
+    arc_native_app_glue arc-project arc-assets arc-io arc-http arc-jobs arc-diagnostics arc-render-vulkan arc-scene
+    arc-third-party-json android log dl)
 target_compile_definitions(arc_android_host PRIVATE
     ARC_ANDROID_ENGINE_VERSION="0.1.0"
     ARC_ANDROID_SDK_VERSION="0.1.0"
