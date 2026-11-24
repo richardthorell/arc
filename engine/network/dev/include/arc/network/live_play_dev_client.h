@@ -88,7 +88,7 @@ struct incoming_message
     std::string json;                  ///< Strictly bounded, validated wire envelope. Never blindly execute it.
     std::optional<property_edit> edit; ///< Parsed typed edit, never raw ECS mutation.
     std::optional<inspection_request> inspection; ///< Read-only ECS request.
-    std::optional<offered_baseline> baseline;       ///< Validated offer identity, no raw JSON required in host.
+    std::optional<offered_baseline> baseline;     ///< Validated offer identity, no raw JSON required in host.
 };
 
 /**
