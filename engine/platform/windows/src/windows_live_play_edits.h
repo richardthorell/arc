@@ -263,7 +263,10 @@ public:
         }
     }
 
-    [[nodiscard]] std::size_t held_entity_count() const noexcept { return held_transforms_.size(); }
+    [[nodiscard]] std::size_t held_entity_count() const noexcept
+    {
+        return held_transforms_.size();
+    }
 
     void clear() noexcept
     {
