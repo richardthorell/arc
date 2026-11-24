@@ -3,15 +3,20 @@ import { livePlayMessageSchema, type LivePlayMessage } from '../common/livePlayP
 import type { LivePlaySceneBaseline } from './livePlaySceneBaseline';
 
 type EditPayload = Extract<LivePlayMessage, { type: 'entity.property.set' }>['payload'];
-type Property = 'position' | 'rotation' | 'scale';
-type Transform = Record<Property, readonly number[]>;
-type SceneEntity = { guid?: unknown; transform?: unknown };
+type TransformProperty = 'position' | 'rotation' | 'scale';
+type LightProperty = 'intensity' | 'color';
+type Property = TransformProperty | LightProperty;
+type Transform = Record<TransformProperty, readonly number[]>;
+type LightComponent = 'arc.light.directional' | 'arc.light.point' | 'arc.light.spot' | 'arc.light.area';
+type Light = { component: LightComponent; intensity: readonly number[]; color: readonly number[] };
+type SceneEntity = { guid?: unknown; id?: unknown; transform?: unknown; light?: unknown; components?: Record<string, unknown> };
 type SceneSnapshot = { sceneGuid?: unknown; entities?: unknown };
 type HostQuery = { query(type: string): Promise<{ succeeded: boolean; payload?: unknown }> };
 type HostEvent = { type: string; message?: string };
 type SendEdit = (payload: EditPayload) => string | null;
 type Pending = {
   guid: string;
+  component: string;
   property: Property;
   value: number[];
   revision: number;
@@ -24,8 +29,9 @@ type Pending = {
 type Outstanding = { key: string; revision: number; phase: 'update' | 'commit'; sentAt: number };
 
 const guidPattern = /^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu;
-const properties: readonly Property[] = ['position', 'rotation', 'scale'];
-const lengths: Record<Property, number> = { position: 3, rotation: 4, scale: 3 };
+const properties: readonly TransformProperty[] = ['position', 'rotation', 'scale'];
+const lightProperties: readonly LightProperty[] = ['intensity', 'color'];
+const lengths: Record<TransformProperty, number> = { position: 3, rotation: 4, scale: 3 };
 const updateIntervalMs = 33;
 const commitQuietMs = 120;
 const commitRetryMs = 240;
@@ -38,7 +44,7 @@ const maxOutstanding = 512;
 function transform(value: unknown): Transform | null {
   if (!value || typeof value !== 'object') return null;
   const source = value as Record<string, unknown>;
-  const result = {} as Record<Property, readonly number[]>;
+  const result = {} as Record<TransformProperty, readonly number[]>;
   for (const property of properties) {
     const candidate = source[property];
     if (
@@ -70,6 +76,61 @@ function extractScene(document: unknown, nested: boolean): Map<string, Transform
   return found;
 }
 
+const lightKinds: Record<string, LightComponent> = {
+  DirectionalLight: 'arc.light.directional',
+  PointLight: 'arc.light.point',
+  SpotLight: 'arc.light.spot',
+  AreaLight: 'arc.light.area',
+  directional: 'arc.light.directional',
+  point: 'arc.light.point',
+  spot: 'arc.light.spot',
+  disk: 'arc.light.area',
+  rectangle: 'arc.light.area',
+};
+
+function parseLight(value: unknown, component: LightComponent): Light | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const valid = (number: unknown) => typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= 1e6;
+  if (!valid(record.intensity) || !Array.isArray(record.color) || record.color.length !== 3 ||
+      !record.color.every(valid)) return null;
+  return { component, intensity: [record.intensity as number], color: [...record.color] };
+}
+
+/** Read only the native host's allowlisted light values, keyed by stable authored GUID. */
+function extractLights(document: unknown, nested: boolean): Map<string, Light> {
+  if (!document || typeof document !== 'object') throw new Error('Invalid light scene snapshot');
+  const entities = (document as SceneSnapshot).entities;
+  if (!Array.isArray(entities) || entities.length > maxEntities) throw new Error('Unbounded light scene snapshot');
+  const result = new Map<string, Light>();
+  for (const entity of entities as SceneEntity[]) {
+    if (!entity || typeof entity !== 'object') continue;
+    const guid = nested ? entity.id : entity.guid;
+    if (typeof guid !== 'string' || !guidPattern.test(guid)) continue;
+    let kind: LightComponent | undefined;
+    let source: unknown;
+    if (nested) {
+      for (const [name, component] of Object.entries(entity.components ?? {})) {
+        if (!lightKinds[name] || !name.endsWith('Light')) continue;
+        if (kind) throw new Error('Ambiguous authored light component');
+        kind = lightKinds[name];
+        source = component;
+      }
+    } else if (entity.light && typeof entity.light === 'object') {
+      const raw = entity.light as { kind?: unknown };
+      if (typeof raw.kind !== 'string' || !lightKinds[raw.kind])
+        throw new Error('Unknown native light component');
+      kind = lightKinds[raw.kind];
+      source = entity.light;
+    }
+    if (!kind) continue;
+    const found = parseLight(source, kind);
+    if (!found || result.has(guid.toLowerCase())) throw new Error('Invalid or ambiguous native light properties');
+    result.set(guid.toLowerCase(), found);
+  }
+  return result;
+}
+
 function differs(left: readonly number[], right: readonly number[]): boolean {
   return left.some((value, index) => value !== right[index]);
 }
@@ -86,6 +147,7 @@ function differs(left: readonly number[], right: readonly number[]): boolean {
 export class LivePlayAuthoringEdits {
   private baseline: LivePlaySceneBaseline | null = null;
   private observed = new Map<string, Transform>();
+  private observedLights = new Map<string, Light>();
   private readonly pending = new Map<string, Pending>();
   private readonly outstanding = new Map<string, Outstanding>();
   private revision = 0;
@@ -143,8 +205,10 @@ export class LivePlayAuthoringEdits {
     )
       throw new Error('Live Play authoring edits need a matching captured scene');
     const entities = extractScene(document, true);
+    const lights = extractLights(document, true);
     this.baseline = baseline;
     this.observed = entities;
+    this.observedLights = lights;
     this.generation++;
   }
 
@@ -159,6 +223,7 @@ export class LivePlayAuthoringEdits {
     this.refreshing = false;
     this.again = false;
     this.observed.clear();
+    this.observedLights.clear();
     this.pending.clear();
     this.outstanding.clear();
     this.revision = 0;
@@ -227,10 +292,12 @@ export class LivePlayAuthoringEdits {
       return;
     }
     let next: Map<string, Transform>;
+    let nextLights: Map<string, Light>;
     try {
       next = extractScene(snapshot, false);
+      nextLights = extractLights(snapshot, false);
     } catch {
-      this.lastError = 'Authoring transform snapshot exceeds safe limits';
+      this.lastError = 'Authoring scene property snapshot exceeds safe limits';
       this.active = false;
       this.pending.clear();
       return;
@@ -250,30 +317,7 @@ export class LivePlayAuthoringEdits {
       }
       for (const property of properties) {
         if (!differs(before[property], after[property])) continue;
-        const key = `${guid}:${property}`;
-        if (this.revision >= Number.MAX_SAFE_INTEGER || (!this.pending.has(key) && this.pending.size >= maxPending)) {
-          this.lastError = 'Live Play transform queue exceeded safe limits';
-          this.active = false;
-          this.pending.clear();
-          return;
-        }
-        // Obsolete in-flight drag updates never prevent the latest committed
-        // value from being sent. Late ACKs for them cannot clear new state.
-        for (const [id, entry] of this.outstanding) {
-          if (entry.key === key) this.outstanding.delete(id);
-        }
-        const previous = this.pending.get(key);
-        this.pending.set(key, {
-          guid,
-          property,
-          value: [...after[property]],
-          revision: ++this.revision,
-          changedAt: now,
-          lastUpdate: previous?.lastUpdate ?? Number.NEGATIVE_INFINITY,
-          commitAttempts: 0,
-          lastCommitAttempt: Number.NEGATIVE_INFINITY,
-          commitInFlight: false,
-        });
+        if (!this.queueEdit(guid, 'arc.transform', property, after[property], now)) return;
       }
     }
     for (const guid of next.keys()) {
@@ -285,10 +329,55 @@ export class LivePlayAuthoringEdits {
         return;
       }
     }
+    for (const [guid, before] of this.observedLights) {
+      const after = nextLights.get(guid);
+      if (!after || after.component !== before.component) {
+        this.lastError = 'Authored light component changed; reload the Live Play baseline';
+        this.active = false;
+        this.pending.clear();
+        this.outstanding.clear();
+        return;
+      }
+      for (const property of lightProperties) {
+        if (differs(before[property], after[property]) &&
+            !this.queueEdit(guid, before.component, property, after[property], now)) return;
+      }
+    }
+    for (const guid of nextLights.keys()) {
+      if (!this.observedLights.has(guid)) {
+        this.lastError = 'New authored light component requires a new Live Play baseline';
+        this.active = false;
+        this.pending.clear();
+        this.outstanding.clear();
+        return;
+      }
+    }
     this.observed = next;
+    this.observedLights = nextLights;
     if (!this.active || this.pending.size === 0) return;
     this.flushUpdates(now);
     this.scheduleCommit();
+  }
+
+  private queueEdit(guid: string, component: string, property: Property, value: readonly number[], now: number): boolean {
+    const key = `${guid}:${component}:${property}`;
+    if (this.revision >= Number.MAX_SAFE_INTEGER || (!this.pending.has(key) && this.pending.size >= maxPending)) {
+      this.lastError = 'Live Play property queue exceeded safe limits';
+      this.active = false;
+      this.pending.clear();
+      this.outstanding.clear();
+      return false;
+    }
+    for (const [id, entry] of this.outstanding) {
+      if (entry.key === key) this.outstanding.delete(id);
+    }
+    const previous = this.pending.get(key);
+    this.pending.set(key, {
+      guid, component, property, value: [...value], revision: ++this.revision, changedAt: now,
+      lastUpdate: previous?.lastUpdate ?? Number.NEGATIVE_INFINITY,
+      commitAttempts: 0, lastCommitAttempt: Number.NEGATIVE_INFINITY, commitInFlight: false,
+    });
+    return true;
   }
 
   /** Called only after the native runtime explicitly confirms a verified baseline. */
@@ -355,7 +444,7 @@ export class LivePlayAuthoringEdits {
     if (!this.active || this.outstanding.size >= maxOutstanding) return false;
     const payload: EditPayload = {
       entity: { kind: 'authored', entityGuid: item.guid },
-      component: { typeId: 'arc.transform', schemaVersion: 1 },
+      component: { typeId: item.component, schemaVersion: 1 },
       property: item.property,
       value: item.value,
       authoringRevision: item.revision,
@@ -378,7 +467,7 @@ export class LivePlayAuthoringEdits {
         payload,
       }).success
     ) {
-      this.lastError = 'Invalid authoring transform command';
+      this.lastError = 'Invalid authoring property command';
       this.active = false;
       return false;
     }
@@ -390,7 +479,7 @@ export class LivePlayAuthoringEdits {
     }
     if (!id) return false;
     this.outstanding.set(id, {
-      key: `${item.guid}:${item.property}`,
+      key: `${item.guid}:${item.component}:${item.property}`
       revision: item.revision,
       phase,
       sentAt: Date.now(),
