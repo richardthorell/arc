@@ -20,6 +20,9 @@ namespace arc::assets
 struct [[nodiscard]] remote_release_discovery_result
 {
     std::optional<remote_content_release> release;
+    /** SHA-256 of the exact HTTP descriptor bytes; caller may pin its trusted
+     * L1.3 cooked-release offer to this value before touching the catalog. */
+    std::string descriptor_sha256;
     http::content_http_error_code transport_error{http::content_http_error_code::none};
     std::string error;
 
