@@ -45,6 +45,18 @@ def main() -> int:
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
         return 1
+    # TEMPORARY L1.4d native formatting diagnosis; remove before merge.
+    diagnostics = [
+        "editor/native/inc/arc/editor/host_protocol_base.h",
+        "editor/native/src/host_protocol_base.inc",
+        "editor/native/src/arc_host_base_core.inc",
+        "editor/native/tests/arc_host_scene_tests.cpp",
+        "engine/platform/windows/src/windows_live_play_edits.h",
+        "engine/platform/windows/src/windows_entry.cpp",
+        "engine/platform/windows/tests/windows_live_play_edits_tests.cpp",
+    ]
+    subprocess.check_call([args.clang_format, "-i", *diagnostics], cwd=root)
+    subprocess.check_call(["git", "diff", "--", *diagnostics], cwd=root)
     if args.fix:
         command = [args.clang_format, "-i", *map(str, sources)]
     else:
