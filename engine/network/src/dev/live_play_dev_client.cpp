@@ -277,10 +277,10 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
     erase_bytes(payload.data(), payload.size());
     const bool has_content = parsed.is_object() && parsed.contains("content");
     if (parsed.is_discarded() ||
-        !(has_content ? exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile",
-                                            "sessionId", "instanceId", "schemaHash", "capabilities", "content"})
-                      : exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile",
-                                            "sessionId", "instanceId", "schemaHash", "capabilities"})))
+        !(has_content ? exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile", "sessionId",
+                                            "instanceId", "schemaHash", "capabilities", "content"})
+                      : exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile", "sessionId",
+                                            "instanceId", "schemaHash", "capabilities"})))
     {
         error = "Invalid Live Play launch handoff schema";
         return false;
@@ -325,25 +325,21 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
         const auto& raw = parsed.at("content");
         content_handoff content;
         std::uint64_t generation{}, authoring_revision{};
-        if (!exact_keys(raw, {"origin", "token", "sceneGuid", "sceneAssetGuid", "authoringSha256",
-                              "authoringRevision", "descriptorSha256", "generation", "textureFamily"}) ||
+        if (!exact_keys(raw, {"origin", "token", "sceneGuid", "sceneAssetGuid", "authoringSha256", "authoringRevision",
+                              "descriptorSha256", "generation", "textureFamily"}) ||
             !field(raw, "origin", content.origin) || !field(raw, "token", content.token) ||
-            !field(raw, "sceneGuid", content.scene_guid) ||
-            !field(raw, "sceneAssetGuid", content.scene_asset_guid) ||
+            !field(raw, "sceneGuid", content.scene_guid) || !field(raw, "sceneAssetGuid", content.scene_asset_guid) ||
             !field(raw, "authoringSha256", content.authoring_sha256) ||
             !field(raw, "descriptorSha256", content.descriptor_sha256) ||
-            !field(raw, "textureFamily", content.texture_family) ||
-            !safe_number(raw, "generation", generation) || generation == 0 ||
-            !safe_number(raw, "authoringRevision", authoring_revision) ||
-            !guid(content.scene_guid) || !guid(content.scene_asset_guid) ||
-            !hash(content.authoring_sha256) || !hash(content.descriptor_sha256) ||
-            content.token.size() != 64 ||
+            !field(raw, "textureFamily", content.texture_family) || !safe_number(raw, "generation", generation) ||
+            generation == 0 || !safe_number(raw, "authoringRevision", authoring_revision) ||
+            !guid(content.scene_guid) || !guid(content.scene_asset_guid) || !hash(content.authoring_sha256) ||
+            !hash(content.descriptor_sha256) || content.token.size() != 64 ||
             !std::all_of(content.token.begin(), content.token.end(),
                          [](unsigned char ch) { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'); }) ||
             content.texture_family.empty() || content.texture_family.size() > 32 ||
-            !std::all_of(content.texture_family.begin(), content.texture_family.end(),
-                         [](unsigned char ch) { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') ||
-                                                       ch == '_' || ch == '-'; }))
+            !std::all_of(content.texture_family.begin(), content.texture_family.end(), [](unsigned char ch)
+                         { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '-'; }))
         {
             error = "Invalid private Live Play content pairing";
             return false;
@@ -967,7 +963,7 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         return std::nullopt;
     }
     inbound_sequence_ = sequence;
-    return incoming_message{std::move(type), std::move(message_id), sequence, std::move(text),
+    return incoming_message{std::move(type), std::move(message_id), sequence,           std::move(text),
                             std::move(edit), std::move(inspection), std::move(baseline)};
 }
 
