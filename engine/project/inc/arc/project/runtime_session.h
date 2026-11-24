@@ -19,6 +19,7 @@ namespace arc::project
  */
 struct packaged_remote_content_pairing
 {
+    std::string base_build_id; // Trusted published package build from editor-main.
     std::string token;
     std::string scene_asset_guid;
     std::string descriptor_sha256;
