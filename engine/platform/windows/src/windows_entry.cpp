@@ -414,9 +414,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         live::read_launch_handoff(reinterpret_cast<std::uintptr_t>(handoff_pipe), handoff, connection_error);
     CloseHandle(handoff_pipe);
     if (!received) return boot_failure(connection_error);
+    // C9 first-scene acquisition may take longer than the editor control
+    // socket's idle timeout. Connect only AFTER verified package startup,
+    // so the first authenticated heartbeat never stalls behind asset IO.
     auto live_client = std::make_unique<live::client>();
-    if (!live_client->connect(handoff, connection_error)) return boot_failure(connection_error);
-    if (!live_client->send_state("starting", 0, 0, connection_error)) return boot_failure(connection_error);
 #endif
     auto definition = arc::platform::windows::configure_packaged_client();
     const fs::path executable = executable_path();
@@ -475,6 +476,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    if (!live_client->connect(handoff, connection_error)) return boot_failure(connection_error);
+    if (!live_client->send_state("starting", 0, 0, connection_error)) return boot_failure(connection_error);
     const bool live_remote_scene_ready =
         handoff.content && session->active_remote_generation() == handoff.content->generation;
     // The network worker owns the client; socket timeouts cannot stall rendering,
