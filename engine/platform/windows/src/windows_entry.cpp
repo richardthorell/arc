@@ -461,13 +461,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     if (handoff.content)
     {
         request.content_jobs = &jobs;
-        request.content_pairing = project::packaged_remote_content_pairing{
-            .base_build_id = handoff.build_id,
-            .token = handoff.content->token,
-            .scene_asset_guid = handoff.content->scene_asset_guid,
-            .descriptor_sha256 = handoff.content->descriptor_sha256,
-            .texture_family = handoff.content->texture_family,
-            .generation = handoff.content->generation};
+        request.content_pairing =
+            project::packaged_remote_content_pairing{.base_build_id = handoff.build_id,
+                                                     .token = handoff.content->token,
+                                                     .scene_asset_guid = handoff.content->scene_asset_guid,
+                                                     .descriptor_sha256 = handoff.content->descriptor_sha256,
+                                                     .texture_family = handoff.content->texture_family,
+                                                     .generation = handoff.content->generation};
     }
 #endif
     static_cast<void>(write_ci_smoke_diagnostic("starting packaged runtime bootstrap"));
@@ -620,14 +620,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                     // validated the v1 message. This gate binds its exact
                     // metadata to the protected launch pairing AND to the
                     // successfully materialized C9 startup scene.
-                    const bool matched = live_remote_scene_ready && handoff.content && incoming->baseline &&
-                                         incoming->baseline->scene_guid == handoff.content->scene_guid &&
-                                         incoming->baseline->authoring_sha256 == handoff.content->authoring_sha256 &&
-                                         incoming->baseline->authoring_revision ==
-                                             handoff.content->authoring_revision &&
-                                         incoming->baseline->cooked_generation == handoff.content->generation &&
-                                         incoming->baseline->cooked_release_sha256 ==
-                                             handoff.content->descriptor_sha256;
+                    const bool matched =
+                        live_remote_scene_ready && handoff.content && incoming->baseline &&
+                        incoming->baseline->scene_guid == handoff.content->scene_guid &&
+                        incoming->baseline->authoring_sha256 == handoff.content->authoring_sha256 &&
+                        incoming->baseline->authoring_revision == handoff.content->authoring_revision &&
+                        incoming->baseline->cooked_generation == handoff.content->generation &&
+                        incoming->baseline->cooked_release_sha256 == handoff.content->descriptor_sha256;
                     live_baseline_active.store(false);
                     if (!client->send_baseline_status(
                             matched ? "active" : "rejected",
