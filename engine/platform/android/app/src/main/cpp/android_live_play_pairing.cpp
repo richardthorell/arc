@@ -87,7 +87,9 @@ std::optional<std::uint64_t> positive_integer(const json& value)
 std::optional<android_live_play_pairing> parse_pairing(std::string_view bytes)
 {
     auto record = json::parse(bytes.begin(), bytes.end(), nullptr, false);
-    if (!record.is_object() || record.size() != 13 || record.value("format", "") != "arc.android-live-play-pairing" ||
+    if (!record.is_object() || record.size() != 13 || !record.contains("format") ||
+        !record["format"].is_string() ||
+        record["format"].get<std::string>() != "arc.android-live-play-pairing" ||
         !record.contains("version") || positive_integer(record["version"]) != 1)
         return std::nullopt;
 
