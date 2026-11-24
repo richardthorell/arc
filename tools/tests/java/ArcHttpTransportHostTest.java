@@ -40,9 +40,12 @@ public final class ArcHttpTransportHostTest {
         AtomicReference<String> range = new AtomicReference<>();
         AtomicReference<String> ifMatch = new AtomicReference<>();
         AtomicReference<String> noCache = new AtomicReference<>();
+        AtomicReference<String> authorization = new AtomicReference<>();
+        AtomicReference<String> objectAuthorization = new AtomicReference<>();
         server.createContext("/objects", request -> {
             range.set(request.getRequestHeaders().getFirst("Range"));
             ifMatch.set(request.getRequestHeaders().getFirst("If-Match"));
+            objectAuthorization.set(request.getRequestHeaders().getFirst("Authorization"));
             request.getResponseHeaders().set("ETag", "\"sha-immutable\"");
             if (range.get() == null) {
                 reply(request, 200, "abcdefgh");
@@ -53,6 +56,7 @@ public final class ArcHttpTransportHostTest {
         });
         server.createContext("/releases", request -> {
             noCache.set(request.getRequestHeaders().getFirst("Cache-Control"));
+            authorization.set(request.getRequestHeaders().getFirst("Authorization"));
             reply(request, 200, "{\"generation\":6}");
         });
         server.createContext("/redirect", request -> {
@@ -97,6 +101,47 @@ public final class ArcHttpTransportHostTest {
             } finally {
                 release.close();
             }
+
+            // An anonymous request must not synthesize pairing authority.
+            check(authorization.get() == null, "anonymous request unexpectedly authenticated");
+            check(objectAuthorization.get() == null, "anonymous object unexpectedly authenticated");
+            String pairedToken = "b".repeat(64);
+            ArcHttpTransport.Response pairedRange = ArcHttpTransport.open(
+                    origin + "/objects", "bytes=2-4", "\"sha-immutable\"", pairedToken, false, 5000);
+            try {
+                check(pairedRange.status == 206, "paired range status");
+                check("cde".equals(text(pairedRange)), "paired range body");
+                check(("Bearer " + pairedToken).equals(objectAuthorization.get()),
+                        "paired immutable object Authorization header");
+            } finally {
+                pairedRange.close();
+            }
+            ArcHttpTransport.Response paired = ArcHttpTransport.open(
+                    origin + "/releases", "", "", pairedToken, true, 5000);
+            try {
+                check(paired.status == 200, "paired release status");
+                check(("Bearer " + pairedToken).equals(authorization.get()), "paired Authorization header");
+                check("{\"generation\":6}".equals(text(paired)), "paired release body");
+            } finally {
+                paired.close();
+            }
+            boolean invalidBearerRejected = false;
+            try {
+                ArcHttpTransport.open(origin + "/releases", "", "",
+                        "invalid\r\nInjected-Header", true, 5000);
+            } catch (IOException expected) {
+                invalidBearerRejected = true;
+            }
+            check(invalidBearerRejected, "unsafe bearer token must fail before network request");
+
+            boolean offHostBearerRejected = false;
+            try {
+                ArcHttpTransport.open("https://example.org/releases", "", "",
+                        pairedToken, true, 5000);
+            } catch (IOException expected) {
+                offHostBearerRejected = true;
+            }
+            check(offHostBearerRejected, "paired credential must not leave the trusted loopback host");
 
             ArcHttpTransport.Response redirect = ArcHttpTransport.open(
                     origin + "/redirect", "", "", false, 5000);
