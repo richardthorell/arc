@@ -98,9 +98,9 @@ std::string read_packet(native_socket s)
     return payload;
 }
 
-std::string launch_record(std::uint16_t port)
+std::string launch_record(std::uint16_t port, bool paired = false)
 {
-    return json{{"port", port},
+    json record = {{"port", port},
                 {"secret", std::string(64, '1')},
                 {"projectGuid", "11111111-1111-1111-1111-111111111111"},
                 {"buildId", "dev-build-42"},
@@ -108,13 +108,23 @@ std::string launch_record(std::uint16_t port)
                 {"sessionId", "session-1"},
                 {"instanceId", "runtime-1"},
                 {"schemaHash", std::string(64, 'a')},
-                {"capabilities", {"session.observe", "content.observe"}}}
-        .dump();
+                {"capabilities", {"session.observe", "content.observe"}}};
+    if (paired)
+        record["content"] = {{"origin", "http://127.0.0.1:23456"},
+                             {"token", std::string(64, 'f')},
+                             {"sceneGuid", "22222222-2222-2222-2222-222222222222"},
+                             {"sceneAssetGuid", "33333333-3333-3333-3333-333333333333"},
+                             {"authoringSha256", std::string(64, 'a')},
+                             {"authoringRevision", 8},
+                             {"descriptorSha256", std::string(64, 'b')},
+                             {"generation", 1},
+                             {"textureFamily", "bc"}};
+    return record.dump();
 }
 
-launch_handoff inherited_handoff(std::uint16_t port)
+launch_handoff inherited_handoff(std::uint16_t port, bool paired = false)
 {
-    const auto record = launch_record(port);
+    const auto record = launch_record(port, paired);
     const std::size_t count = record.size();
     const std::array<unsigned char, 4> prefix{
         static_cast<unsigned char>((count >> 24) & 255), static_cast<unsigned char>((count >> 16) & 255),
@@ -334,6 +344,20 @@ private:
     native_socket listener_{invalid_socket};
     std::uint16_t port_{};
 };
+
+void test_protected_content_pairing()
+{
+    auto context = inherited_handoff(12345, true);
+    check(context.content.has_value(), "Native Development client dropped private C9 pairing");
+    check(context.content->origin == "http://127.0.0.1:23456" &&
+              context.content->scene_guid == "22222222-2222-2222-2222-222222222222" &&
+              context.content->scene_asset_guid == "33333333-3333-3333-3333-333333333333" &&
+              context.content->authoring_sha256 == std::string(64, 'a') &&
+              context.content->descriptor_sha256 == std::string(64, 'b') &&
+              context.content->token == std::string(64, 'f') && context.content->generation == 1 &&
+              context.content->authoring_revision == 8 && context.content->texture_family == "bc",
+          "Protected native C9 handoff lost the exact cooked release or session token");
+}
 
 void test_successful_connection()
 {
@@ -620,6 +644,7 @@ int main()
 {
     try
     {
+        test_protected_content_pairing();
         test_successful_connection();
         test_authenticated_session_resume();
         test_invalid_editor_identity();
