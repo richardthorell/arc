@@ -350,6 +350,17 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
                 return packaged_runtime_result::failure(failure(
                     project_error_code::invalid_scene, "content.catalog",
                     "Verified remote cooked generation could not be mounted"));
+            // A valid release that does not supply the actual startup scene
+            // must not silently fall back to the saved packaged scene.
+            const auto scene_guid = assets::parse_asset_guid(pairing.scene_asset_guid);
+            const auto active_scene = scene_guid
+                                          ? session->catalog_->catalog().database().query(
+                                                *scene_guid, assets::asset_types::scene)
+                                          : nullptr;
+            if (!active_scene || active_scene->active_provider.find(":remote:") == std::string::npos)
+                return packaged_runtime_result::failure(failure(
+                    project_error_code::invalid_scene, "content.startupScene",
+                    "Verified remote generation does not own the active cooked startup scene"));
             verified_generation = descriptor.release->generation;
         }
 
