@@ -138,7 +138,13 @@ void run()
     result = applier.apply(runtime, edit, true);
     check(result.applied && result.applied_revision == 2, "Final drag commit was lost");
     result = applier.apply(runtime, edit, true);
-    check(!result.applied && result.code == "stale_revision", "Duplicate commit was applied twice");
+    check(result.applied && result.applied_revision == 2,
+          "Identical final commit replay did not return its original idempotent ACK");
+    edit.values[0] = 99.0f;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "stale_revision",
+          "Conflicting duplicate commit was incorrectly acknowledged");
+    edit.values[0] = 2.0f;
     edit.authoring_revision = 0;
     result = applier.apply(runtime, edit, true);
     check(!result.applied && result.code == "stale_revision", "Stale edit was accepted");

@@ -17,14 +17,20 @@ type Pending = {
   revision: number;
   changedAt: number;
   lastUpdate: number;
+  commitAttempts: number;
+  lastCommitAttempt: number;
+  commitInFlight: boolean;
 };
-type Outstanding = { key: string; revision: number; phase: 'update' | 'commit' };
+type Outstanding = { key: string; revision: number; phase: 'update' | 'commit'; sentAt: number };
 
 const guidPattern = /^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu;
 const properties: readonly Property[] = ['position', 'rotation', 'scale'];
 const lengths: Record<Property, number> = { position: 3, rotation: 4, scale: 3 };
 const updateIntervalMs = 33;
 const commitQuietMs = 120;
+const commitRetryMs = 240;
+const commitAckTimeoutMs = 650;
+const maxCommitAttempts = 6;
 const maxEntities = 4096;
 const maxPending = 256;
 const maxOutstanding = 512;
@@ -84,6 +90,10 @@ export class LivePlayAuthoringEdits {
   private readonly outstanding = new Map<string, Outstanding>();
   private revision = 0;
   private runtimeRevision = 0;
+  private lastAckLatencyMs: number | null = null;
+  private lastAppliedRevision = 0;
+  private applied = 0;
+  private rejected = 0;
   private active = false;
   private generation = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -97,13 +107,27 @@ export class LivePlayAuthoringEdits {
     private readonly send: SendEdit,
   ) {}
 
-  snapshot(): { sessionId: string | null; active: boolean; pending: number; revision: number; error: string | null } {
+  snapshot(): {
+    sessionId: string | null;
+    active: boolean;
+    pending: number;
+    revision: number;
+    error: string | null;
+    lastAppliedRevision: number;
+    lastAckLatencyMs: number | null;
+    applied: number;
+    rejected: number;
+  } {
     return {
       sessionId: this.baseline?.sessionId ?? null,
       active: this.active,
       pending: this.pending.size,
       revision: this.revision,
       error: this.lastError,
+      lastAppliedRevision: this.lastAppliedRevision,
+      lastAckLatencyMs: this.lastAckLatencyMs,
+      applied: this.applied,
+      rejected: this.rejected,
     };
   }
 
@@ -139,6 +163,10 @@ export class LivePlayAuthoringEdits {
     this.outstanding.clear();
     this.revision = 0;
     this.runtimeRevision = 0;
+    this.lastAppliedRevision = 0;
+    this.lastAckLatencyMs = null;
+    this.applied = 0;
+    this.rejected = 0;
     this.lastError = null;
   }
 
@@ -211,8 +239,14 @@ export class LivePlayAuthoringEdits {
     for (const [guid, before] of this.observed) {
       const after = next.get(guid);
       if (!after) {
-        for (const property of properties) this.pending.delete(`${guid}:${property}`);
-        continue; // No create/delete transport until L1.4c.
+        // There is no safe native delete/replace transaction in L1.4 yet.
+        // Sending further commands for an ambiguous removed GUID would risk
+        // editing a stale world; require a new cooked baseline instead.
+        this.lastError = 'Authored entity removed; reload the Live Play baseline to apply structural edits';
+        this.active = false;
+        this.pending.clear();
+        this.outstanding.clear();
+        return;
       }
       for (const property of properties) {
         if (!differs(before[property], after[property])) continue;
@@ -223,6 +257,11 @@ export class LivePlayAuthoringEdits {
           this.pending.clear();
           return;
         }
+        // Obsolete in-flight drag updates never prevent the latest committed
+        // value from being sent. Late ACKs for them cannot clear new state.
+        for (const [id, entry] of this.outstanding) {
+          if (entry.key === key) this.outstanding.delete(id);
+        }
         const previous = this.pending.get(key);
         this.pending.set(key, {
           guid,
@@ -231,7 +270,19 @@ export class LivePlayAuthoringEdits {
           revision: ++this.revision,
           changedAt: now,
           lastUpdate: previous?.lastUpdate ?? Number.NEGATIVE_INFINITY,
+          commitAttempts: 0,
+          lastCommitAttempt: Number.NEGATIVE_INFINITY,
+          commitInFlight: false,
         });
+      }
+    }
+    for (const guid of next.keys()) {
+      if (!this.observed.has(guid)) {
+        this.lastError = 'New authored entity requires a new Live Play baseline';
+        this.active = false;
+        this.pending.clear();
+        this.outstanding.clear();
+        return;
       }
     }
     this.observed = next;
@@ -246,18 +297,29 @@ export class LivePlayAuthoringEdits {
     this.active = true;
     // Changes made while cooking are sent as final values, not replayed drags.
     this.flushCommits(true);
+    if (this.active && this.pending.size) this.scheduleCommit();
   }
 
   disconnect(): void {
     this.active = false;
     if (this.commitTimer) clearTimeout(this.commitTimer);
     this.commitTimer = null;
-    // Never replay a command from the old native game instance on reconnect.
+    // Do not replay old edits after reconnect or run a commit against a
+    // native instance whose baseline/authority has been invalidated.
     this.outstanding.clear();
+    this.pending.clear();
   }
 
   onRuntimeMessage(message: LivePlayMessage): void {
-    if (!this.baseline || message.sessionId !== this.baseline.sessionId) return;
+    if (
+      !this.baseline ||
+      message.projectGuid.toLowerCase() !== this.baseline.projectGuid.toLowerCase() ||
+      message.buildId !== this.baseline.buildId ||
+      message.targetProfile !== this.baseline.targetProfile ||
+      message.sessionId !== this.baseline.sessionId ||
+      message.instanceId !== this.baseline.instanceId
+    )
+      return;
     if (message.type === 'scene.baseline.status') {
       if (message.payload.status === 'active') this.activate(message.sessionId);
       else this.disconnect();
@@ -265,13 +327,23 @@ export class LivePlayAuthoringEdits {
       const request = this.outstanding.get(message.payload.requestId);
       if (!request) return;
       this.outstanding.delete(message.payload.requestId);
+      this.lastAckLatencyMs = Math.max(0, Date.now() - request.sentAt);
       if (message.payload.status === 'applied') {
+        this.applied++;
+        this.lastAppliedRevision = Math.max(this.lastAppliedRevision, message.payload.appliedRevision);
         this.runtimeRevision = Math.max(this.runtimeRevision, message.payload.appliedRevision);
         if (request.phase === 'commit' && this.pending.get(request.key)?.revision === request.revision)
           this.pending.delete(request.key);
+        if (!this.pending.has(request.key)) {
+          for (const [id, entry] of this.outstanding) {
+            if (entry.key === request.key && entry.revision <= request.revision) this.outstanding.delete(id);
+          }
+        }
       } else {
-        // L1.4b will implement resynchronization after explicit rejection.
-        // Never silently retry stale or incompatible commands.
+        // Rejections are explicit failures. A stale revision may mean that a
+        // previous ACK was lost; do not report success without confirmation.
+        if (this.pending.get(request.key)?.revision !== request.revision) return;
+        this.rejected++;
         this.lastError = `Runtime rejected authoring edit: ${message.payload.error.code}`;
         this.active = false;
         this.pending.clear();
@@ -317,7 +389,12 @@ export class LivePlayAuthoringEdits {
       return false; // Retain the latest final value for explicit retry.
     }
     if (!id) return false;
-    this.outstanding.set(id, { key: `${item.guid}:${item.property}`, revision: item.revision, phase });
+    this.outstanding.set(id, {
+      key: `${item.guid}:${item.property}`,
+      revision: item.revision,
+      phase,
+      sentAt: Date.now(),
+    });
     return true;
   }
 
@@ -333,6 +410,7 @@ export class LivePlayAuthoringEdits {
     this.commitTimer = setTimeout(() => {
       this.commitTimer = null;
       this.flushCommits(false);
+      if (this.active && this.pending.size) this.scheduleCommit();
     }, commitQuietMs);
   }
 
@@ -342,7 +420,18 @@ export class LivePlayAuthoringEdits {
     const now = Date.now();
     for (const item of this.pending.values()) {
       if (!force && now - item.changedAt < commitQuietMs) continue;
-      if (!this.sendPending(item, 'commit')) continue; // Keep the final value.
+      const threshold = item.commitInFlight ? commitAckTimeoutMs : commitRetryMs;
+      if (!force && now - item.lastCommitAttempt < threshold) continue;
+      if (item.commitAttempts >= maxCommitAttempts) {
+        this.lastError = 'Final Live Play edit was not acknowledged; reload the baseline before more edits';
+        this.active = false;
+        this.pending.clear();
+        this.outstanding.clear();
+        return;
+      }
+      item.commitAttempts++;
+      item.lastCommitAttempt = now;
+      item.commitInFlight = this.sendPending(item, 'commit');
     }
   }
 }

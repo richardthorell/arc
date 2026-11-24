@@ -186,6 +186,137 @@ describe('Live Play L1.4a authoring transform producer', () => {
     expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({ phase: 'commit', value: [5, 0, 0] });
   });
 
+  it('retries the final drag commit automatically after a transient transport refusal', async () => {
+    const t = fixture();
+    t.send.mockReturnValueOnce('preview-update');
+    t.send.mockReturnValueOnce(null);
+    t.tracker.activate(t.baseline.sessionId);
+    t.tracker.observeSnapshot(snapshot([11, 0, 0]));
+    await vi.advanceTimersByTimeAsync(120);
+    expect(t.send.mock.calls.map((call) => call[0].phase)).toEqual(['update', 'commit']);
+    expect(t.tracker.snapshot()).toMatchObject({ pending: 1, active: true });
+    await vi.advanceTimersByTimeAsync(240);
+    expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({
+      phase: 'commit',
+      value: [11, 0, 0],
+      authoringRevision: 1,
+    });
+    expect(t.tracker.snapshot().pending).toBe(1);
+  });
+
+  it('retries a lost final ACK, ignores wrong-instance ACKs and reconciles only the latest revision', async () => {
+    const t = fixture();
+    t.tracker.activate(t.baseline.sessionId);
+    t.tracker.observeSnapshot(snapshot([2, 0, 0]));
+    await vi.advanceTimersByTimeAsync(120);
+    const firstCommitId = t.send.mock.results.at(-1)?.value as string;
+    expect(t.send.mock.calls.at(-1)?.[0].phase).toBe('commit');
+    t.tracker.onRuntimeMessage({
+      ...runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: firstCommitId,
+        appliedRevision: 1,
+      }),
+      instanceId: 'wrong-runtime',
+    });
+    expect(t.tracker.snapshot().pending).toBe(1);
+    await vi.advanceTimersByTimeAsync(720);
+    const retryId = t.send.mock.results.at(-1)?.value as string;
+    expect(retryId).not.toBe(firstCommitId);
+    expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({
+      phase: 'commit',
+      value: [2, 0, 0],
+      authoringRevision: 1,
+    });
+
+    // The original ACK may arrive after retry has been sent. Both IDs refer
+    // to the same immutable revision; either valid ACK settles the final value.
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: firstCommitId,
+        appliedRevision: 1,
+      }),
+    );
+    expect(t.tracker.snapshot()).toMatchObject({
+      pending: 0,
+      lastAppliedRevision: 1,
+      applied: 1,
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.tracker.snapshot().pending).toBe(0);
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: retryId,
+        appliedRevision: 1,
+      }),
+    );
+    expect(t.tracker.snapshot().applied).toBe(1);
+  });
+
+  it('fails closed after bounded unacknowledged commits instead of retrying indefinitely', async () => {
+    const t = fixture();
+    t.tracker.activate(t.baseline.sessionId);
+    t.tracker.observeSnapshot(snapshot([14, 0, 0]));
+    await vi.advanceTimersByTimeAsync(4800);
+    expect(t.tracker.snapshot()).toMatchObject({
+      active: false,
+      pending: 0,
+      error: expect.stringContaining('not acknowledged'),
+    });
+    const sent = t.send.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(t.send.mock.calls).toHaveLength(sent);
+  });
+
+  it('does not let stale ACKs clear newer drag changes, and clears all authority on disconnect', async () => {
+    const t = fixture();
+    t.tracker.activate(t.baseline.sessionId);
+    t.tracker.observeSnapshot(snapshot([1, 0, 0]));
+    await vi.advanceTimersByTimeAsync(120);
+    const oldCommit = t.send.mock.results.at(-1)?.value as string;
+    t.tracker.observeSnapshot(snapshot([8, 0, 0]));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        status: 'applied',
+        requestId: oldCommit,
+        appliedRevision: 2,
+      }),
+    );
+    expect(t.tracker.snapshot().pending).toBe(1);
+    t.tracker.disconnect();
+    expect(t.tracker.snapshot()).toMatchObject({ active: false, pending: 0 });
+    t.tracker.activate(t.baseline.sessionId);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(t.tracker.snapshot().pending).toBe(0);
+  });
+
+  it('fails closed if an authored entity is structurally removed or created', () => {
+    const removed = fixture();
+    removed.tracker.activate(removed.baseline.sessionId);
+    removed.tracker.observeSnapshot({ sceneGuid, entities: [] });
+    expect(removed.tracker.snapshot()).toMatchObject({
+      active: false,
+      error: expect.stringContaining('removed'),
+    });
+    const added = fixture();
+    added.tracker.activate(added.baseline.sessionId);
+    added.tracker.observeSnapshot({
+      ...snapshot(),
+      entities: [
+        ...snapshot().entities,
+        { guid: '44444444-4444-4444-4444-444444444444', transform: nativeTransform([2, 0, 0]) },
+      ],
+    });
+    expect(added.tracker.snapshot()).toMatchObject({
+      active: false,
+      error: expect.stringContaining('requires a new Live Play baseline'),
+    });
+    expect(removed.send).not.toHaveBeenCalled();
+    expect(added.send).not.toHaveBeenCalled();
+  });
+
   it('rejects another scene, non-finite values and unknown runtime-only entities', () => {
     const t = fixture();
     t.tracker.activate(t.baseline.sessionId);
