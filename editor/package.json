@@ -22,7 +22,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
-    "format:check": "prettier --write src/main/main.ts src/main/windowsLivePlaySession.ts src/main/livePlayNativeHandoff.ts src/main/livePlayNativeHandoff.test.ts && git diff -- src/main/main.ts src/main/windowsLivePlaySession.ts src/main/livePlayNativeHandoff.ts src/main/livePlayNativeHandoff.test.ts && prettier --check ."
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
