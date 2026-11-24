@@ -37,6 +37,8 @@ import { emptyLivePlayHierarchy } from '../common/livePlayHierarchyState';
 import { LivePlayHierarchyRecovery } from './livePlayHierarchyRecovery';
 import { LivePlaySceneBaselineStore } from './livePlaySceneBaseline';
 import { EditorCookedContentServer } from './editorCookedContentServer';
+import { LivePlayContentPublication } from './livePlayContentPublication';
+import { resolveWorkflowCooker } from './cookWorkflowService';
 import { LivePlayAuthoringEdits } from './livePlayAuthoringEdits';
 import { BuildMonitorService } from './buildMonitorService';
 import { resolveBuildArtifactPath } from './buildArtifactAccess';
@@ -84,6 +86,7 @@ let latestLivePlayHierarchy = emptyLivePlayHierarchy();
 let hierarchyRecovery: LivePlayHierarchyRecovery | null = null;
 let livePlayBaselines: LivePlaySceneBaselineStore | null = null;
 let livePlayContentServer: EditorCookedContentServer | null = null;
+let livePlayContentPublication: LivePlayContentPublication | null = null;
 let livePlayAuthoringEdits: LivePlayAuthoringEdits | null = null;
 let projectSettingsService: ProjectSettingsService | null = null;
 let allowWindowClose = false;
@@ -94,8 +97,13 @@ let shutdownComplete = false;
 let fatalHostExitPending = false;
 
 async function stopLivePlayContentServer(): Promise<void> {
+  const publication = livePlayContentPublication;
+  livePlayContentPublication = null;
   const server = livePlayContentServer;
   livePlayContentServer = null;
+  // Stop cooker work and wait for any in-flight private file access before
+  // closing the listener and deleting the L1.3 baseline directory.
+  await publication?.cancel();
   await server?.stop();
 }
 
@@ -1469,9 +1477,9 @@ void app.whenReady().then(async () => {
       // the runtime or reused across sessions.
       const baseline = await livePlayBaselines.prepare({ ...authority, projectRoot: project.projectRoot });
       if (projectService?.active() !== project) throw new Error('Project changed during Live Play scene capture');
-      // C9.4a owns a loopback-only data-plane listener for external Play.
-      // It remains empty until the verified L1.3 release is explicitly
-      // published in C9.4b; never expose raw .arcscene project files.
+      // C9.4b cooks the private L1.3 baseline and freezes a complete C9.1
+      // generation before offering any descriptor to the HTTP data plane.
+      // No authored scene bytes, credentials or local paths are exposed.
       const contentServer = new EditorCookedContentServer({
         projectRoot: project.projectRoot,
         sessionRoot: baseline.directory,
@@ -1486,6 +1494,33 @@ void app.whenReady().then(async () => {
         throw new Error('Project changed while starting the C9 content listener');
       }
       livePlayContentServer = contentServer;
+      const cooker = resolveWorkflowCooker(projectService?.projectTool() ?? '');
+      if (!cooker) throw new Error('ARC asset cooker is unavailable in the selected SDK');
+      const publication = new LivePlayContentPublication({
+        baseline,
+        projectGuid: authority.projectGuid,
+        projectRoot: project.projectRoot,
+        descriptorPath: project.descriptorPath,
+        assetRoots: project.descriptor.assetRoots,
+        cooker,
+        profile: profile.id,
+        target: {
+          platform: profile.platform,
+          architecture: profile.architecture,
+          renderer: profile.renderer,
+        },
+        textureFamilies: profile.textures.outputs,
+        engineVersion: plan.engineVersion,
+        server: contentServer,
+        isCurrent: () =>
+          projectService?.active() === project &&
+          livePlayBaselines?.current() === baseline &&
+          livePlayContentServer === contentServer,
+      });
+      livePlayContentPublication = publication;
+      await publication.start();
+      if (projectService?.active() !== project || livePlayBaselines.current() !== baseline)
+        throw new Error('Project changed after the verified C9 release was published');
       livePlayAuthoringEdits?.begin(baseline);
       return await livePlaySession.start({
         executable: published.executable,
