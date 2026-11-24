@@ -479,7 +479,7 @@ export class LivePlayAuthoringEdits {
     }
     if (!id) return false;
     this.outstanding.set(id, {
-      key: `${item.guid}:${item.component}:${item.property}`
+      key: `${item.guid}:${item.component}:${item.property}`,
       revision: item.revision,
       phase,
       sentAt: Date.now(),
