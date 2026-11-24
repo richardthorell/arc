@@ -42,7 +42,7 @@ void run()
     live_edit_test_application app;
     arc::framework::runtime runtime(app);
     runtime.start();
-    arc::platform::windows::live_play_transform_applier applier;
+    arc::platform::windows::live_play_property_applier applier;
 
     live::property_edit edit;
     edit.request_id = "edit-1";
