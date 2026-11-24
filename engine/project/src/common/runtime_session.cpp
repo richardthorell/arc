@@ -300,8 +300,8 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
             // world and would not satisfy L1.3 unsaved-scene fidelity.
             const auto& pairing = *request.content_pairing;
             const auto& manifest = session->boot_.launch.manifest;
-            if (pairing.base_build_id.empty() || pairing.descriptor_sha256.size() != 64 ||
-                pairing.generation == 0 || !assets::parse_asset_guid(pairing.scene_asset_guid))
+            if (pairing.base_build_id.empty() || pairing.descriptor_sha256.size() != 64 || pairing.generation == 0 ||
+                !assets::parse_asset_guid(pairing.scene_asset_guid))
                 return packaged_runtime_result::failure(failure(
                     project_error_code::invalid_scene, "startupScenes",
                     "Development remote startup requires one registered cooked scene and trusted release identity"));
