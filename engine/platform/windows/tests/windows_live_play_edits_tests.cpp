@@ -292,6 +292,8 @@ void run()
     check(applier.held_entity_count() == 0, "Baseline loss did not revoke runtime authority");
     runtime.set_before_presentation_hook({});
 
+    // A fresh transport/baseline has a fresh runtime revision authority.
+    edit.expected_runtime_revision = 0;
     // A new ECS entity with the same authored GUID must not inherit stale
     // authority or revision state from an earlier generation.
     result = applier.apply(runtime, edit, true);
