@@ -19,7 +19,9 @@ startup. There is no duplicate asset store or raw-scene network format.
    inherited stdin pipe. No renderer or CLI learns the credential.
 3. The native Development host validates the private pairing. Remote-only
    startup is accepted **only** if it has this pairing, native IO workers,
-   a verified non-Shipping distribution and a single matching startup scene.
+   a verified non-Shipping distribution and a registered scene asset GUID.
+   The selected current authoring scene may differ from the D0 packaged
+   startup scene, which remains immutable.
    Ordinary packaged/Shipping starts remain unchanged.
 4. Native C9 discovers the exact release from
    `/releases/<project-guid>/<cook-profile>/current.json`, with Bearer
@@ -31,7 +33,9 @@ startup. There is no duplicate asset store or raw-scene network format.
    CAS/transport pipeline; it does **not** mount partial results. The existing
    cooked catalog mounts the verified release with higher priority *before*
    `prepare_packaged_application` reads the startup scene, and only if
-   the remote provider actually owns the required scene asset GUID.
+   the remote provider actually owns the selected authoring scene asset GUID.
+   A Development-only startup selection replaces the default world without
+   rewriting the packaged D0 scene list.
 6. The normal D1 application materializer reads the newly active scene
    artifact and creates the Play World. Its successful start is the
    authoritative native activation. No remote scene bytes are injected into
