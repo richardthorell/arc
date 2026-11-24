@@ -344,13 +344,13 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
             error = "Invalid private Live Play content pairing";
             return false;
         }
-        const std::string_view prefix = "http://127.0.0.1:";
-        if (!std::string_view(content.origin).starts_with(prefix))
+        constexpr std::string_view loopback_origin_prefix = "http://127.0.0.1:";
+        if (!std::string_view(content.origin).starts_with(loopback_origin_prefix))
         {
             error = "Live Play C9 pairing requires a local Development content listener";
             return false;
         }
-        const auto port_text = std::string_view(content.origin).substr(prefix.size());
+        const auto port_text = std::string_view(content.origin).substr(loopback_origin_prefix.size());
         std::uint32_t content_port{};
         auto [end, ec] = std::from_chars(port_text.data(), port_text.data() + port_text.size(), content_port);
         if (ec != std::errc{} || end != port_text.data() + port_text.size() || content_port == 0 ||
