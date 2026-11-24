@@ -155,6 +155,11 @@ frame_time runtime::tick()
     return advance(delta_seconds);
 }
 
+void runtime::set_before_presentation_hook(std::function<void()> hook)
+{
+    before_presentation_hook_ = std::move(hook);
+}
+
 frame_time runtime::advance(double wall_delta_seconds)
 {
     if (!started_) start();
@@ -227,6 +232,9 @@ frame_time runtime::advance(double wall_delta_seconds)
     current_time_.discarded_ticks = discarded_ticks_;
     current_time_.interpolation_alpha =
         fixed_delta > 0.0 ? std::clamp(accumulator_seconds_ / fixed_delta, 0.0, 1.0) : 0.0;
+    // The platform host may perform an explicit, safe-frame authority
+    // reconciliation here; this always precedes presentation extraction.
+    if (before_presentation_hook_) before_presentation_hook_();
     if (config_.simulation.presentation_enabled)
     {
         (void)worlds_.run_presentation(jobs_, current_tick_, static_cast<float>(clamped_delta),
@@ -322,6 +330,7 @@ void runtime::shutdown()
     };
 
     running_ = false;
+    before_presentation_hook_ = {};
     capture_failure([this] { app_->on_shutdown(); });
     capture_failure([this] { worlds_.stop_all(); });
     capture_failure([this] { modules_.shutdown(module_context_); });
