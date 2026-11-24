@@ -73,6 +73,34 @@ describe('Native Development runtime protected inherited-pipe handoff', () => {
     writer.destroy();
   });
 
+  it('binds the exact cooked release and short-lived pairing token only to the protected pipe', async () => {
+    const server = await start();
+    const content = {
+      origin: 'http://127.0.0.1:31415',
+      token: 'f'.repeat(64),
+      sceneGuid: '22222222-2222-2222-2222-222222222222',
+      sceneAssetGuid: '33333333-3333-3333-3333-333333333333',
+      authoringSha256: 'd'.repeat(64),
+      authoringRevision: 12,
+      descriptorSha256: 'e'.repeat(64),
+      generation: 1,
+      textureFamily: 'bc',
+    };
+    const frame = encodeLivePlayNativeHandoff(server, { ...context, content });
+    const data = JSON.parse(frame.subarray(4).toString('utf8')) as Record<string, unknown>;
+    expect(data.content).toEqual(content);
+    expect(frame.length).toBeLessThanOrEqual(4100);
+    frame.fill(0);
+    const bad = (override: Partial<typeof content>) =>
+      encodeLivePlayNativeHandoff(server, { ...context, content: { ...content, ...override } });
+    expect(() => bad({ origin: 'https://example.com' })).toThrow(/C9 content pairing/);
+    expect(() => bad({ origin: 'http://127.0.0.1:31415/path' })).toThrow(/C9 content pairing/);
+    expect(() => bad({ token: 'missing' })).toThrow(/C9 content pairing/);
+    expect(() => bad({ sceneAssetGuid: '../../invalid' })).toThrow(/C9 content pairing/);
+    expect(() => bad({ generation: 0 })).toThrow(/C9 content pairing/);
+    expect(() => bad({ descriptorSha256: 'x'.repeat(64) })).toThrow(/C9 content pairing/);
+  });
+
   it('rejects invalid launch identity before writing any credential bytes', async () => {
     const server = await start();
     const bad = {
