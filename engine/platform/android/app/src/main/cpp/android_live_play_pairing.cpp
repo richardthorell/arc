@@ -24,15 +24,17 @@ using json = nlohmann::json;
 bool ascii_token(std::string_view value, std::size_t min, std::size_t max) noexcept
 {
     return value.size() >= min && value.size() <= max &&
-           std::all_of(value.begin(), value.end(), [](unsigned char c)
-                       { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                                (c >= '0' && c <= '9') || c == '_' || c == '-'; });
+           std::all_of(value.begin(), value.end(),
+                       [](unsigned char c) {
+                           return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                                  c == '_' || c == '-';
+                       });
 }
 
 bool hex_lower(std::string_view value) noexcept
 {
     return value.size() == 64 && std::all_of(value.begin(), value.end(), [](unsigned char c)
-                                            { return (c >= 'a' && c <= 'f') || (c >= '0' && c <= '9'); });
+                                             { return (c >= 'a' && c <= 'f') || (c >= '0' && c <= '9'); });
 }
 
 bool guid(std::string_view value) noexcept
@@ -56,9 +58,9 @@ bool profile(std::string_view value) noexcept
     if (!(value[0] >= 'A' && value[0] <= 'Z') && !(value[0] >= 'a' && value[0] <= 'z') &&
         !(value[0] >= '0' && value[0] <= '9'))
         return false;
-    return std::all_of(value.begin(), value.end(), [](unsigned char c)
-                       { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                                (c >= '0' && c <= '9') || c == '_' || c == '-'; });
+    return std::all_of(
+        value.begin(), value.end(), [](unsigned char c)
+        { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'; });
 }
 
 bool loopback_origin(std::string_view origin) noexcept
@@ -79,33 +81,31 @@ bool loopback_origin(std::string_view origin) noexcept
 std::optional<std::uint64_t> positive_integer(const json& value)
 {
     if (!value.is_number_unsigned() && !value.is_number_integer()) return std::nullopt;
-    if (value.is_number_integer() && !value.is_number_unsigned() && value.get<std::int64_t>() < 0)
-        return std::nullopt;
+    if (value.is_number_integer() && !value.is_number_unsigned() && value.get<std::int64_t>() < 0) return std::nullopt;
     return value.get<std::uint64_t>();
 }
 
 std::optional<android_live_play_pairing> parse_pairing(std::string_view bytes)
 {
     auto record = json::parse(bytes.begin(), bytes.end(), nullptr, false);
-    if (!record.is_object() || record.size() != 13 || !record.contains("format") ||
-        !record["format"].is_string() ||
-        record["format"].get<std::string>() != "arc.android-live-play-pairing" ||
-        !record.contains("version") || positive_integer(record["version"]) != 1)
+    if (!record.is_object() || record.size() != 13 || !record.contains("format") || !record["format"].is_string() ||
+        record["format"].get<std::string>() != "arc.android-live-play-pairing" || !record.contains("version") ||
+        positive_integer(record["version"]) != 1)
         return std::nullopt;
 
-    constexpr std::string_view strings[] = {"projectGuid", "buildId", "targetProfile", "textureFamily",
-                                            "sessionId",   "instanceId", "descriptorSha256", "origin", "token"};
+    constexpr std::string_view strings[] = {"projectGuid",      "buildId",   "targetProfile",
+                                            "textureFamily",    "sessionId", "instanceId",
+                                            "descriptorSha256", "origin",    "token"};
     for (const auto name : strings)
     {
-        if (!record.contains(std::string(name)) || !record[std::string(name)].is_string())
-            return std::nullopt;
+        if (!record.contains(std::string(name)) || !record[std::string(name)].is_string()) return std::nullopt;
     }
     if (!record.contains("generation") || !record.contains("expiresAtEpochMs")) return std::nullopt;
     const auto generation = positive_integer(record["generation"]);
     const auto expiry = positive_integer(record["expiresAtEpochMs"]);
-    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
+    const auto now =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count();
     if (!generation || !*generation || !expiry || *expiry <= static_cast<std::uint64_t>(now) ||
         *expiry > static_cast<std::uint64_t>(now) + 300000)
         return std::nullopt;
@@ -121,10 +121,10 @@ std::optional<android_live_play_pairing> parse_pairing(std::string_view bytes)
     pairing.generation = *generation;
     pairing.origin = record["origin"].get<std::string>();
     pairing.token = record["token"].get<std::string>();
-    if (!guid(pairing.project_guid) || !ascii_token(pairing.build_id, 1, 128) ||
-        !profile(pairing.target_profile) || !ascii_token(pairing.texture_family, 1, 32) ||
-        !ascii_token(pairing.session_id, 1, 128) || !ascii_token(pairing.instance_id, 1, 128) ||
-        !hex_lower(pairing.descriptor_sha256) || !hex_lower(pairing.token) || !loopback_origin(pairing.origin))
+    if (!guid(pairing.project_guid) || !ascii_token(pairing.build_id, 1, 128) || !profile(pairing.target_profile) ||
+        !ascii_token(pairing.texture_family, 1, 32) || !ascii_token(pairing.session_id, 1, 128) ||
+        !ascii_token(pairing.instance_id, 1, 128) || !hex_lower(pairing.descriptor_sha256) ||
+        !hex_lower(pairing.token) || !loopback_origin(pairing.origin))
         return std::nullopt;
     // The Android host has no source-controlled path or untrusted Intent secret.
     // Only the private app process receives this exact, short-lived identity.
@@ -144,10 +144,11 @@ android_live_play_pairing_result consume_android_live_play_pairing(const char* i
     const int descriptor = ::open(file.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
     if (descriptor == -1) return {.present = errno != ENOENT, .pairing = std::nullopt};
 
-    struct stat info{};
-    const bool accepted = ::fstat(descriptor, &info) == 0 && S_ISREG(info.st_mode) &&
-                          (info.st_mode & 0777) == 0600 && info.st_uid == ::geteuid() &&
-                          info.st_nlink == 1 && info.st_size > 0 &&
+    struct stat info
+    {
+    };
+    const bool accepted = ::fstat(descriptor, &info) == 0 && S_ISREG(info.st_mode) && (info.st_mode & 0777) == 0600 &&
+                          info.st_uid == ::geteuid() && info.st_nlink == 1 && info.st_size > 0 &&
                           static_cast<std::uint64_t>(info.st_size) <= maximum_pairing_bytes;
     std::string bytes;
     bool read_ok = accepted;

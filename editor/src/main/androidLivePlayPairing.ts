@@ -104,16 +104,24 @@ export class AndroidLivePlayPairingSession {
     const match = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/u.exec(input.origin);
     const port = Number(match?.[1]);
     if (
-      !match || !Number.isInteger(port) || port > 65535 ||
-      !applicationIdPattern.test(input.applicationId) || input.applicationId.length > 200 ||
+      !match ||
+      !Number.isInteger(port) ||
+      port > 65535 ||
+      !applicationIdPattern.test(input.applicationId) ||
+      input.applicationId.length > 200 ||
       !guidPattern.test(input.projectGuid) ||
-      !sessionPattern.test(input.buildId) || !sessionPattern.test(input.sessionId) ||
-      !sessionPattern.test(input.instanceId) || !profilePattern.test(input.targetProfile) ||
-      !familyPattern.test(input.textureFamily) || !tokenPattern.test(input.token) ||
+      !sessionPattern.test(input.buildId) ||
+      !sessionPattern.test(input.sessionId) ||
+      !sessionPattern.test(input.instanceId) ||
+      !profilePattern.test(input.targetProfile) ||
+      !familyPattern.test(input.textureFamily) ||
+      !tokenPattern.test(input.token) ||
       !tokenPattern.test(input.descriptorSha256) ||
-      !Number.isSafeInteger(input.generation) || input.generation < 1 ||
+      !Number.isSafeInteger(input.generation) ||
+      input.generation < 1 ||
       !input.isCurrent()
-    ) throw new Error('Untrusted Android Live Play pairing authority');
+    )
+      throw new Error('Untrusted Android Live Play pairing authority');
     this.checkCurrent(input);
 
     const selected = await this.targets.resolveTarget(input.target);
@@ -121,8 +129,11 @@ export class AndroidLivePlayPairingSession {
     const adbPath = path.join(selected.sdkRoot, 'platform-tools', process.platform === 'win32' ? 'adb.exe' : 'adb');
     if (
       selected.sdkRoot !== input.target.sdkRoot ||
-      !selected.serial || selected.serial.length > 512 || /\s/u.test(selected.serial)
-    ) throw new Error('Android Live Play requires one fresh selected ADB target');
+      !selected.serial ||
+      selected.serial.length > 512 ||
+      /\s/u.test(selected.serial)
+    )
+      throw new Error('Android Live Play requires one fresh selected ADB target');
     const adb = new AdbClient(adbPath, this.execute);
     const peer = { adb, serial: selected.serial, port, applicationId: input.applicationId };
     const address = 'tcp:' + port;
@@ -164,8 +175,12 @@ export class AndroidLivePlayPairingSession {
       // transports secret bytes over stdin into the debuggable app's private
       // files directory; no Intent extras, logcat, URL or shell argv secrets.
       const script =
-        'umask 077; mkdir -p files && cat > files/' + pairingFile +
-        '.tmp && mv -f files/' + pairingFile + '.tmp files/' + pairingFile;
+        'umask 077; mkdir -p files && cat > files/' +
+        pairingFile +
+        '.tmp && mv -f files/' +
+        pairingFile +
+        '.tmp files/' +
+        pairingFile;
       try {
         await this.write(
           adbPath,
@@ -202,11 +217,22 @@ export class AndroidLivePlayPairingSession {
     await peer.adb
       .executeForDevice(
         peer.serial,
-        ['shell', '-T', 'run-as', peer.applicationId, 'rm', '-f', 'files/' + pairingFile, 'files/' + pairingFile + '.tmp'],
+        [
+          'shell',
+          '-T',
+          'run-as',
+          peer.applicationId,
+          'rm',
+          '-f',
+          'files/' + pairingFile,
+          'files/' + pairingFile + '.tmp',
+        ],
         5000,
       )
       .catch(() => undefined);
-    await peer.adb.executeForDevice(peer.serial, ['reverse', '--remove', 'tcp:' + peer.port], 5000).catch(() => undefined);
+    await peer.adb
+      .executeForDevice(peer.serial, ['reverse', '--remove', 'tcp:' + peer.port], 5000)
+      .catch(() => undefined);
   }
 
   async stop(): Promise<void> {

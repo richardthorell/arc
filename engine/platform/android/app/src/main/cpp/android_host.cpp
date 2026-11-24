@@ -244,8 +244,7 @@ extern "C" void android_main(android_app* app)
         // This gate is compiled for both Debug and Shipping, but a Shipping
         // distribution must NEVER accept a Development pairing.
         const bool development = std::string_view(ARC_ANDROID_BUILD_CONFIGURATION) == "Debug";
-        const bool compatible = paired.valid() && module_ready && development &&
-                                !extras.server && !extras.mode &&
+        const bool compatible = paired.valid() && module_ready && development && !extras.server && !extras.mode &&
                                 paired.pairing->project_guid == project_module.project_guid();
         if (!compatible)
             arc::diagnostics::error("Android", "Rejected private Development content pairing");
@@ -256,25 +255,23 @@ extern "C" void android_main(android_app* app)
             limits.allow_loopback_http = true;
             limits.timeout = std::chrono::milliseconds(3000);
             limits.development_bearer_token = identity.token;
-            arc::http::content_http_release_request request{
-                .origin = identity.origin,
-                .project_guid = identity.project_guid,
-                .target_profile = identity.target_profile};
+            arc::http::content_http_release_request request{.origin = identity.origin,
+                                                            .project_guid = identity.project_guid,
+                                                            .target_profile = identity.target_profile};
             arc::jobs::job_system network_jobs{
                 {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false}};
             auto fetched = arc::http::fetch_content_http_release(network_jobs, std::move(request), limits).get();
             if (fetched.succeeded())
             {
-                arc::assets::remote_content_expectations expected{
-                    .project_guid = identity.project_guid,
-                    .engine_version = ARC_ANDROID_ENGINE_VERSION,
-                    .base_build_id = identity.build_id,
-                    .target = {.platform = "android",
-                               .architecture = "arm64",
-                               .renderer = "vulkan",
-                               .cook_profile = identity.target_profile,
-                               .texture_family = identity.texture_family},
-                    .minimum_generation = 0};
+                arc::assets::remote_content_expectations expected{.project_guid = identity.project_guid,
+                                                                  .engine_version = ARC_ANDROID_ENGINE_VERSION,
+                                                                  .base_build_id = identity.build_id,
+                                                                  .target = {.platform = "android",
+                                                                             .architecture = "arm64",
+                                                                             .renderer = "vulkan",
+                                                                             .cook_profile = identity.target_profile,
+                                                                             .texture_family = identity.texture_family},
+                                                                  .minimum_generation = 0};
                 const auto& body = fetched.response->body;
                 const std::string_view bytes(reinterpret_cast<const char*>(body.data()), body.size());
                 const auto parsed = arc::assets::parse_remote_content_release(bytes, expected);
@@ -283,9 +280,8 @@ extern "C" void android_main(android_app* app)
                     arc::assets::to_string(arc::assets::hash_bytes(body)) == identity.descriptor_sha256;
             }
             network_jobs.shutdown(arc::jobs::job_shutdown_mode::drain);
-            arc::diagnostics::info("Android",
-                                   paired_release_verified ? "Private cooked-content pairing verified"
-                                                           : "Private cooked-content pairing rejected");
+            arc::diagnostics::info("Android", paired_release_verified ? "Private cooked-content pairing verified"
+                                                                      : "Private cooked-content pairing rejected");
         }
     }
     // C9.4c2 is discovery/transport, NOT Android remote scene activation.
@@ -295,10 +291,9 @@ extern "C" void android_main(android_app* app)
     const bool booted = !paired.present && module_ready && extras.valid && selected &&
                         runtime.boot(project_module.project_guid(), selected.value()) && project_module.start();
     if (paired.present)
-        arc::diagnostics::info(
-            "Android", paired_release_verified
-                           ? "Remote generation is verified; Android scene activation awaits C9.6"
-                           : "Remote authoring scene was not activated");
+        arc::diagnostics::info("Android", paired_release_verified
+                                              ? "Remote generation is verified; Android scene activation awaits C9.6"
+                                              : "Remote authoring scene was not activated");
     if (!booted && !paired.present)
         arc::diagnostics::warn("Android", "Host remains alive; packaged startup did not complete");
 

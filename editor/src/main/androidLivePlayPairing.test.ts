@@ -59,9 +59,7 @@ describe('C9.4c2 Android debug-device pairing transport', () => {
       expiresAtEpochMs: 1_750_000_090_000,
     });
     expect(f.resolveTarget).toHaveBeenCalledTimes(3);
-    expect(f.commands[0]).toEqual([
-      '-s', 'phone', 'reverse', '--no-rebind', 'tcp:43210', 'tcp:43210',
-    ]);
+    expect(f.commands[0]).toEqual(['-s', 'phone', 'reverse', '--no-rebind', 'tcp:43210', 'tcp:43210']);
     const staged = JSON.parse(f.payloads[0]) as Record<string, unknown>;
     expect(staged).toMatchObject({
       format: 'arc.android-live-play-pairing',
@@ -82,9 +80,7 @@ describe('C9.4c2 Android debug-device pairing transport', () => {
     expect(args.join(' ')).not.toContain(input.origin);
     expect((buffer as Buffer).every((byte: number) => byte === 0)).toBe(true);
     await f.session.stop();
-    expect(f.commands).toContainEqual([
-      '-s', 'phone', 'reverse', '--remove', 'tcp:43210',
-    ]);
+    expect(f.commands).toContainEqual(['-s', 'phone', 'reverse', '--remove', 'tcp:43210']);
     expect(f.commands).not.toContainEqual(['reverse', '--remove-all']);
     expect(f.commands.find((args) => args.includes('rm'))).toContain('files/.arc-live-play-pairing.json');
     await f.session.stop();
@@ -173,7 +169,9 @@ describe('C9.4c2 Android debug-device pairing transport', () => {
   it('rejects repeated starts; Stop while a writer is in flight waits for cleanup', async () => {
     const f = fixture();
     let finish!: () => void;
-    const gate = new Promise<void>((resolve) => { finish = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     f.write.mockImplementation(async () => gate);
     const pending = f.session.start(input);
     expect(() => f.session.start(input)).toThrow('already started');
