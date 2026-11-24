@@ -5,11 +5,27 @@
  */
 
 #include <arc/project/runtime_application.h>
+#include <arc/assets/cook.h>
+#include <arc/jobs/jobs.h>
 
 #include <memory>
+#include <optional>
 
 namespace arc::project
 {
+
+/** Main/native-host-only Development pairing, not part of the D0 manifest.
+ * The cooked release must match the validated packaged base and scene GUID.
+ */
+struct packaged_remote_content_pairing
+{
+    std::string base_build_id; // Trusted published package build from editor-main.
+    std::string token;
+    std::string scene_asset_guid;
+    std::string descriptor_sha256;
+    std::string texture_family;
+    std::uint64_t generation{};
+};
 
 /** The host owns the VFS, async file service, native process and surface. */
 struct packaged_runtime_request
@@ -21,6 +37,9 @@ struct packaged_runtime_request
     io::virtual_path artifact_mount;
     packaged_game_registrations registrations;
     framework::application_config config;
+    /** Optional C9 Development startup. Both must be supplied for remote-only. */
+    jobs::job_system* content_jobs{};
+    std::optional<packaged_remote_content_pairing> content_pairing;
 };
 
 /** Lifecycle state of a successfully launched session; failures never produce sessions. */
@@ -66,6 +85,10 @@ public:
 
     /** Borrowed mounted catalog, valid only while the session is not stopped. */
     [[nodiscard]] runtime_catalog_session* catalog() noexcept;
+    /** Nonzero only when a validated remote release was mounted and the
+     * cooked startup scene was successfully materialized into the Play World.
+     */
+    [[nodiscard]] std::uint64_t active_remote_generation() const noexcept;
 
     /** Advance an explicit host-measured delta. No work is run while suspended. */
     [[nodiscard]] packaged_frame_result advance(double delta_seconds);
@@ -94,10 +117,12 @@ private:
     void update_pause_state();
 
     runtime_boot_context boot_;
+    std::unique_ptr<assets::derived_data_cache> remote_cache_;
     std::unique_ptr<runtime_catalog_session> catalog_;
     std::unique_ptr<packaged_runtime_application> application_;
     std::unique_ptr<framework::runtime> runtime_;
     framework::frame_time last_frame_{};
+    std::uint64_t active_remote_generation_{};
     bool host_paused_{};
     bool surface_unavailable_{};
     bool stopped_{};

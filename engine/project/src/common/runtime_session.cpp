@@ -1,4 +1,5 @@
 #include <arc/project/runtime_session.h>
+#include <arc/assets/remote_content_discovery.h>
 
 #include <exception>
 #include <string>
@@ -62,6 +63,11 @@ const framework::runtime* packaged_runtime_session::runtime() const noexcept
 runtime_catalog_session* packaged_runtime_session::catalog() noexcept
 {
     return catalog_.get();
+}
+
+std::uint64_t packaged_runtime_session::active_remote_generation() const noexcept
+{
+    return active_remote_generation_;
 }
 
 project_status packaged_runtime_session::check_active() const
@@ -252,6 +258,8 @@ project_status packaged_runtime_session::shutdown() noexcept
     runtime_.reset();
     application_.reset();
     catalog_.reset();
+    remote_cache_.reset();
+    active_remote_generation_ = 0;
     return outcome;
 }
 
@@ -260,14 +268,16 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
     auto boot = discover_runtime_boot(std::move(request.boot));
     if (!boot) return packaged_runtime_result::failure(std::move(boot).error());
 
-    // Until C9.4/6 wires verified remote acquisition before world creation,
-    // remote-only must not silently fall back to the packaged startup scene.
-    // Hybrid explicitly allows packaged fallback; the selection remains
-    // inspectable from session.boot().content for future C9 integration.
-    if (boot.value().content.mode == runtime_content_mode::remote)
+    // Remote-only startup is permitted ONLY with a trusted host-owned pairing.
+    // The ordinary packaged and hybrid paths remain unchanged; no remote
+    // endpoint may silently replace a Shipping startup world.
+    const bool remote = boot.value().content.mode == runtime_content_mode::remote;
+    if (remote != request.content_pairing.has_value() ||
+        (remote && (!request.content_jobs || !request.native_files ||
+                    boot.value().launch.manifest.target.configuration == "Shipping")))
         return packaged_runtime_result::failure(
             failure(project_error_code::invalid_descriptor, "content.mode",
-                    "Remote-only content selected but verified HTTP startup activation is not yet integrated"));
+                    "Remote-only startup requires authenticated Development content pairing and IO workers"));
 
     auto session = std::unique_ptr<packaged_runtime_session>(new packaged_runtime_session(std::move(boot).value()));
     try
@@ -280,16 +290,92 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
         if (!catalog) return packaged_runtime_result::failure(std::move(catalog).error());
         session->catalog_ = std::move(catalog).value();
 
+        std::uint64_t verified_generation{};
+        std::optional<assets::asset_guid> verified_scene_guid;
+        if (remote)
+        {
+            // This happens BEFORE prepare_packaged_application reads the
+            // startup scene and BEFORE framework::runtime::start creates ECS
+            // worlds. Mounting after startup would display the stale packaged
+            // world and would not satisfy L1.3 unsaved-scene fidelity.
+            const auto& pairing = *request.content_pairing;
+            const auto& manifest = session->boot_.launch.manifest;
+            if (pairing.base_build_id.empty() || pairing.descriptor_sha256.size() != 64 || pairing.generation == 0 ||
+                !assets::parse_asset_guid(pairing.scene_asset_guid))
+                return packaged_runtime_result::failure(failure(
+                    project_error_code::invalid_scene, "startupScenes",
+                    "Development remote startup requires one registered cooked scene and trusted release identity"));
+
+            http::content_http_limits limits;
+            limits.allow_loopback_http = true;
+            limits.maximum_object_bytes = 2ull * 1024ull * 1024ull * 1024ull;
+            limits.development_bearer_token = pairing.token;
+            assets::remote_content_expectations expected;
+            expected.project_guid = manifest.project_guid;
+            expected.engine_version = manifest.engine_version;
+            expected.base_build_id = pairing.base_build_id;
+            expected.target = {.platform = manifest.target.platform,
+                               .architecture = manifest.target.architecture,
+                               .renderer = manifest.target.renderer,
+                               .cook_profile = manifest.target.cook_profile,
+                               .texture_family = pairing.texture_family};
+            const auto origin = session->boot_.content.server_origin;
+            auto discovered = assets::discover_remote_release(*request.content_jobs, origin, expected, limits);
+            if (!discovered.handle().wait_result().succeeded())
+                return packaged_runtime_result::failure(failure(project_error_code::io_failed, "content.release",
+                                                                "Remote release discovery did not finish"));
+            auto descriptor = discovered.get();
+            if (!descriptor.succeeded() || descriptor.descriptor_sha256 != pairing.descriptor_sha256 ||
+                descriptor.release->generation != pairing.generation)
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::invalid_descriptor, "content.release",
+                            "Remote cooked scene descriptor is unavailable or differs from the trusted publication"));
+
+            // The catalog's provider borrows this CAS. Keep it alive until
+            // shutdown releases all runtime worlds, application and mounts.
+            session->remote_cache_ = std::make_unique<assets::derived_data_cache>(
+                assets::derived_data_cache_config{.root = session->boot_.content.cache_root});
+            auto transfer =
+                assets::acquire_remote_generation(*request.content_jobs, *request.native_files, *session->remote_cache_,
+                                                  *descriptor.release, {.origin = origin, .http = limits});
+            if (!transfer.handle().wait_result().succeeded() || !transfer.get().succeeded())
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::io_failed, "content.objects",
+                            "The complete SHA-verified remote cooked generation could not be acquired"));
+            const auto mounted = session->catalog_->catalog().mount_remote_generation(
+                *descriptor.release, *session->remote_cache_, *request.native_files, 100);
+            if (!mounted)
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::invalid_scene, "content.catalog",
+                            "Verified remote cooked generation could not be mounted"));
+            // A valid release that does not supply the actual startup scene
+            // must not silently fall back to the saved packaged scene.
+            const auto scene_guid = assets::parse_asset_guid(pairing.scene_asset_guid);
+            std::optional<assets::asset_database_record> active_scene;
+            if (scene_guid)
+                active_scene = session->catalog_->catalog().database().query(*scene_guid, assets::asset_types::scene);
+            if (!active_scene || active_scene->active_provider.find(":remote:") == std::string::npos)
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::invalid_scene, "content.startupScene",
+                            "Verified remote generation does not own the selected authored scene"));
+            verified_scene_guid = scene_guid;
+            verified_generation = descriptor.release->generation;
+        }
+
         auto application = prepare_packaged_application({.boot = session->boot_,
                                                          .catalog = *session->catalog_,
                                                          .registrations = std::move(request.registrations),
-                                                         .config = std::move(request.config)});
+                                                         .config = std::move(request.config),
+                                                         .startup_scene_override = verified_scene_guid});
         if (!application) return packaged_runtime_result::failure(std::move(application).error());
         session->application_ = std::move(application).value();
 
         session->runtime_ = std::make_unique<framework::runtime>(*session->application_);
         session->runtime_->set_platform_capabilities(session->boot_.launch.host.capabilities);
         session->runtime_->start();
+        // Only a successful runtime start after the exact remote provider was
+        // mounted qualifies as L1.3 native scene activation.
+        session->active_remote_generation_ = verified_generation;
         return packaged_runtime_result::success(std::move(session));
     }
     catch (const packaged_runtime_startup_error& error)

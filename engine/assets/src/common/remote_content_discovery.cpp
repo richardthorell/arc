@@ -99,6 +99,7 @@ jobs::job_future<remote_release_discovery_result> discover_remote_release(jobs::
                 result.error = "Remote release descriptor rejected: " + parsed.error;
                 return result;
             }
+            result.descriptor_sha256 = to_string(hash_bytes(body));
             result.release = std::move(parsed.release);
             return result;
         });

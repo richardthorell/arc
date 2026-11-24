@@ -110,14 +110,23 @@ bool response_content_range(std::string_view text, std::uint64_t start, std::uin
            given_end - given_start == length - 1;
 }
 
+bool valid_pairing(std::string_view origin, const content_http_limits& limits)
+{
+    const auto& token = limits.development_bearer_token;
+    if (token.empty()) return true;
+    if (!limits.allow_loopback_http || !origin.starts_with("http://127.0.0.1:") || token.size() != 64) return false;
+    return std::all_of(token.begin(), token.end(),
+                       [](unsigned char ch) { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'); });
+}
+
 } // namespace
 
 content_http_validation validate_content_http_request(const content_http_request& request,
                                                       const content_http_limits& limits)
 {
-    if (!valid_origin(request.origin, limits.allow_loopback_http))
+    if (!valid_origin(request.origin, limits.allow_loopback_http) || !valid_pairing(request.origin, limits))
         return invalid(content_http_error_code::invalid_origin,
-                       "Remote content requires HTTPS or explicit loopback HTTP");
+                       "Remote content requires HTTPS or explicit loopback HTTP and valid Development pairing");
     if (!digest_path(request.object_path) || !strong_etag(request.if_match_etag) || limits.timeout.count() <= 0 ||
         limits.maximum_object_bytes == 0 || request.object_size == 0 ||
         request.object_size > limits.maximum_object_bytes)
@@ -201,8 +210,9 @@ bool valid_release_profile(std::string_view profile) noexcept
 content_http_validation validate_content_http_release_request(const content_http_release_request& request,
                                                               const content_http_limits& limits)
 {
-    if (!valid_origin(request.origin, limits.allow_loopback_http))
-        return invalid(content_http_error_code::invalid_origin, "Release lookup requires trusted HTTPS or loopback");
+    if (!valid_origin(request.origin, limits.allow_loopback_http) || !valid_pairing(request.origin, limits))
+        return invalid(content_http_error_code::invalid_origin,
+                       "Release lookup requires trusted HTTPS or authenticated Development loopback");
     if (!valid_release_guid(request.project_guid) || !valid_release_profile(request.target_profile) ||
         limits.timeout.count() <= 0 || limits.maximum_object_bytes == 0)
         return invalid(content_http_error_code::invalid_request, "Invalid release project/profile or transfer limits");

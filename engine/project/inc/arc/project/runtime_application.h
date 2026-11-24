@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -58,6 +59,9 @@ struct packaged_application_request
     runtime_catalog_session& catalog;
     packaged_game_registrations registrations;
     framework::application_config config;
+    /** Trusted Development-only active authoring scene. D0 startup scenes
+     * remain immutable; this only selects the verified C9 remote root. */
+    std::optional<assets::asset_guid> startup_scene_override;
 };
 
 class packaged_runtime_application final : public framework::application

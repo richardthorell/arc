@@ -1518,22 +1518,51 @@ void app.whenReady().then(async () => {
           livePlayContentServer === contentServer,
       });
       livePlayContentPublication = publication;
-      await publication.start();
+      const cooked = await publication.start();
       if (projectService?.active() !== project || livePlayBaselines.current() !== baseline)
         throw new Error('Project changed after the verified C9 release was published');
+      // Only editor-main has access to the ephemeral pairing token. No raw
+      // authoring scene or token is placed in native argv, env or renderer IPC.
+      const origin = contentServer.snapshot().origin;
+      if (!origin) throw new Error('Cooked content listener stopped before launch');
+      const token = contentServer.issueClientToken();
       livePlayAuthoringEdits?.begin(baseline);
-      return await livePlaySession.start({
+      await livePlaySession.start({
         executable: published.executable,
         cwd: published.cwd,
         context: {
           authority,
           schemaHash: createHash('sha256').update('arc.live-play/v1').digest('hex'),
-          // L1.4b: the native bridge validates and queues entity edits.
-          // WindowsLivePlaySession still blocks sending until the C9 scene
-          // baseline is verified and reported active by the runtime.
           capabilities: ['session.observe', 'content.observe', 'entity.edit', 'entity.inspect'],
+          content: {
+            origin,
+            token,
+            sceneGuid: baseline.sceneGuid,
+            sceneAssetGuid: cooked.sceneAssetGuid,
+            authoringSha256: baseline.sha256,
+            authoringRevision: baseline.sceneRevision,
+            descriptorSha256: cooked.descriptorSha256,
+            generation: cooked.generation,
+            textureFamily: cooked.textureFamily,
+          },
         },
       });
+      // Connection means only that the control socket is authenticated.
+      // Fail Play unless the native process actually loaded the verified
+      // target-cooked unsaved scene and correlated this exact release.
+      await livePlaySession.awaitBaselineStatus(
+        {
+          sceneGuid: baseline.sceneGuid,
+          authoringRevision: baseline.sceneRevision,
+          authoringSha256: baseline.sha256,
+          cookedGeneration: cooked.generation,
+          cookedReleaseSha256: cooked.descriptorSha256,
+        },
+        120_000,
+      );
+      if (projectService?.active() !== project || livePlayBaselines.current() !== baseline)
+        throw new Error('Project changed during Live Play scene activation');
+      return livePlaySession.snapshot();
     } catch (error) {
       await stopLivePlayContentServer();
       livePlayAuthoringEdits?.end();

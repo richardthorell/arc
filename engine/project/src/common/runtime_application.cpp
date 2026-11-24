@@ -194,7 +194,10 @@ packaged_application_result prepare_packaged_application(packaged_application_re
 {
     const auto& boot = request.boot;
     const auto& manifest = boot.launch.manifest;
-    const auto& scenes = request.catalog.startup_scenes();
+    const bool remote_scene = request.startup_scene_override.has_value();
+    const std::vector<assets::asset_guid> scenes =
+        remote_scene ? std::vector<assets::asset_guid>{*request.startup_scene_override}
+                     : request.catalog.startup_scenes();
 
     auto checked = validate_runtime_launch({.manifest = manifest,
                                             .role = boot.launch.role,
@@ -202,7 +205,12 @@ packaged_application_result prepare_packaged_application(packaged_application_re
                                             .startup_bundles = boot.launch.startup_bundles});
     if (!checked) return packaged_application_result::failure(std::move(checked).error());
 
-    if (manifest.startup_scenes.size() != scenes.size())
+    if (remote_scene &&
+        (boot.content.mode != runtime_content_mode::remote || manifest.target.configuration == "Shipping"))
+        return packaged_application_result::failure(
+            failure(project_error_code::invalid_scene, "startupScenes",
+                    "A remote authoring scene can replace startup only under verified Development content mode"));
+    if (!remote_scene && manifest.startup_scenes.size() != scenes.size())
         return packaged_application_result::failure(
             failure(project_error_code::invalid_scene, "startupScenes",
                     "Cooked catalog startup scene count does not match the distribution manifest"));
@@ -219,11 +227,14 @@ packaged_application_result prepare_packaged_application(packaged_application_re
     std::uint64_t total_bytes{};
     for (std::size_t index = 0; index < scenes.size(); ++index)
     {
-        const auto parsed = assets::parse_asset_guid(manifest.startup_scenes[index]);
-        if (!parsed || scenes[index] != *parsed)
-            return packaged_application_result::failure(
-                failure(project_error_code::invalid_scene, "startupScenes",
-                        "Cooked catalog scene ordering or GUID does not match D0 at index " + std::to_string(index)));
+        if (!remote_scene)
+        {
+            const auto parsed = assets::parse_asset_guid(manifest.startup_scenes[index]);
+            if (!parsed || scenes[index] != *parsed)
+                return packaged_application_result::failure(failure(
+                    project_error_code::invalid_scene, "startupScenes",
+                    "Cooked catalog scene ordering or GUID does not match D0 at index " + std::to_string(index)));
+        }
 
         auto payload = read_scene(request.catalog, scenes[index]);
         if (!payload) return packaged_application_result::failure(std::move(payload).error());

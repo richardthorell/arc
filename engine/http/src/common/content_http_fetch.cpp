@@ -181,6 +181,8 @@ content_http_fetch_result winhttp_fetch(const content_http_request& request, con
                    std::to_wstring(*request.range_start + *request.range_length - 1) + L"\r\n";
     }
     if (!request.if_match_etag.empty()) headers += L"If-Match: " + wide(request.if_match_etag) + L"\r\n";
+    if (!limits.development_bearer_token.empty())
+        headers += L"Authorization: Bearer " + wide(limits.development_bearer_token) + L"\r\n";
 
     if (cancelled(token)) return failure(content_http_error_code::cancelled, "HTTP fetch cancelled");
     if (!WinHttpSendRequest(handle.get(), headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
@@ -280,9 +282,11 @@ content_http_fetch_result winhttp_fetch_release(const content_http_release_reque
     DWORD disable = WINHTTP_DISABLE_REDIRECTS;
     if (!WinHttpSetOption(handle.get(), WINHTTP_OPTION_DISABLE_FEATURE, &disable, sizeof(disable)))
         return failure(content_http_error_code::network_failure, "Could not disable release redirects");
-    constexpr wchar_t headers[] = L"Cache-Control: no-cache, no-store\r\nPragma: no-cache\r\n";
+    std::wstring headers = L"Cache-Control: no-cache, no-store\r\nPragma: no-cache\r\n";
+    if (!limits.development_bearer_token.empty())
+        headers += L"Authorization: Bearer " + wide(limits.development_bearer_token) + L"\r\n";
     if (cancelled(token)) return failure(content_http_error_code::cancelled, "Release fetch cancelled");
-    if (!WinHttpSendRequest(handle.get(), headers, static_cast<DWORD>(std::size(headers) - 1), WINHTTP_NO_REQUEST_DATA,
+    if (!WinHttpSendRequest(handle.get(), headers.c_str(), static_cast<DWORD>(headers.size()), WINHTTP_NO_REQUEST_DATA,
                             0, 0, 0) ||
         !WinHttpReceiveResponse(handle.get(), nullptr))
     {

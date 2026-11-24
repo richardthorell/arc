@@ -310,6 +310,24 @@ project::packaged_runtime_request request_for(packaged_world_fixture& fixture, b
 
 } // namespace
 
+TEST_CASE("L1.3 private remote startup pairing cannot alter the Shipping packaged scene")
+{
+    packaged_world_fixture fixture;
+    fixture.stage();
+    auto request = request_for(fixture);
+    request.content_pairing =
+        project::packaged_remote_content_pairing{.base_build_id = "dev-build-42",
+                                                 .token = std::string(64, 'f'),
+                                                 .scene_asset_guid = "33333333-3333-3333-3333-333333333333",
+                                                 .descriptor_sha256 = std::string(64, 'a'),
+                                                 .texture_family = "bc",
+                                                 .generation = 1};
+    const auto result = project::start_packaged_runtime(std::move(request));
+    REQUIRE_FALSE(result);
+    CHECK(result.error().field == "content.mode");
+    CHECK(fixture.files.telemetry().mounted_providers == 0);
+}
+
 TEST_CASE("D1.5 client session forwards lifecycle events, suspends ticks, and shuts down in ownership order")
 {
     packaged_world_fixture fixture;

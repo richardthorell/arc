@@ -27,6 +27,22 @@ inline constexpr std::uint32_t maximum_frame_bytes = 64u * 1024u;
 inline constexpr std::size_t secret_bytes = 32;
 inline constexpr std::uint32_t maximum_handoff_bytes = 4096;
 
+/** Session-private C9 release pairing, never serialized to the public D0 or CLI. */
+struct content_handoff
+{
+    std::string origin;
+    std::string token; // 64 lowercase hex bytes, erased on destruction.
+    std::string scene_guid;
+    std::string scene_asset_guid;
+    std::string authoring_sha256;
+    std::string descriptor_sha256;
+    std::string texture_family;
+    std::uint64_t authoring_revision{};
+    std::uint64_t generation{};
+
+    ~content_handoff() noexcept;
+};
+
 struct launch_handoff
 {
     std::uint16_t port{};
@@ -38,6 +54,7 @@ struct launch_handoff
     std::string instance_id;
     std::string schema_hash;
     std::vector<std::string> capabilities;
+    std::optional<content_handoff> content;
 
     ~launch_handoff() noexcept;
 };
@@ -53,6 +70,16 @@ struct launch_handoff
  */
 [[nodiscard]] bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::string& error);
 
+/** Fully validated cooked-baseline offer from an authenticated editor. */
+struct offered_baseline
+{
+    std::string scene_guid;
+    std::string authoring_sha256;
+    std::string cooked_release_sha256;
+    std::uint64_t authoring_revision{};
+    std::uint64_t cooked_generation{};
+};
+
 struct incoming_message
 {
     std::string type;
@@ -61,6 +88,7 @@ struct incoming_message
     std::string json;                  ///< Strictly bounded, validated wire envelope. Never blindly execute it.
     std::optional<property_edit> edit; ///< Parsed typed edit, never raw ECS mutation.
     std::optional<inspection_request> inspection; ///< Read-only ECS request.
+    std::optional<offered_baseline> baseline;     ///< Validated offer identity, no raw JSON required in host.
 };
 
 /**

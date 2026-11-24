@@ -2,10 +2,26 @@ import type { Writable } from 'node:stream';
 import { livePlayMessageSchema, type LivePlayAuthority, type LivePlayCapability } from '../common/livePlayProtocol';
 import { LivePlayControlServer } from './livePlayControlServer';
 
+/** The editor-only C9 pairing capability travels through the same protected
+ * anonymous pipe as the Live Play control secret. No argv/env/renderer IPC.
+ */
+export type NativeLivePlayContent = Readonly<{
+  origin: string;
+  token: string;
+  sceneGuid: string;
+  sceneAssetGuid: string;
+  authoringSha256: string;
+  authoringRevision: number;
+  descriptorSha256: string;
+  generation: number;
+  textureFamily: string;
+}>;
+
 export type NativeLivePlayLaunchContext = {
   authority: LivePlayAuthority;
   schemaHash: string;
   capabilities: readonly LivePlayCapability[];
+  content?: NativeLivePlayContent;
 };
 
 /**
@@ -19,6 +35,22 @@ export function encodeLivePlayNativeHandoff(
 ): Buffer {
   const handoff = server.launchHandoff();
   try {
+    const content = context.content;
+    if (
+      content &&
+      (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/u.test(content.origin) ||
+        !/^[a-f0-9]{64}$/u.test(content.token) ||
+        !/^[a-f0-9]{64}$/u.test(content.descriptorSha256) ||
+        !/^[a-f0-9]{64}$/u.test(content.authoringSha256) ||
+        !/^(?:[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu.test(content.sceneGuid) ||
+        !/^(?:[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu.test(content.sceneAssetGuid) ||
+        !Number.isSafeInteger(content.generation) ||
+        content.generation < 1 ||
+        !Number.isSafeInteger(content.authoringRevision) ||
+        content.authoringRevision < 0 ||
+        !/^[a-z0-9_-]{1,32}$/u.test(content.textureFamily))
+    )
+      throw new Error('Invalid trusted C9 content pairing handoff');
     if (
       !livePlayMessageSchema.safeParse({
         protocol: 'arc.live-play',
@@ -48,6 +80,7 @@ export function encodeLivePlayNativeHandoff(
         instanceId: context.authority.instanceId,
         schemaHash: context.schemaHash,
         capabilities: context.capabilities,
+        ...(content ? { content } : {}),
       }),
       'utf8',
     );
