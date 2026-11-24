@@ -53,22 +53,26 @@ export const writePrivateAndroidPairing: AndroidAdbSecretWriter = (executable, a
       windowsHide: true,
       stdio: ['pipe', 'ignore', 'ignore'],
     });
-    let settled = false;
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (error) reject(new Error('ADB could not stage the private Android Live Play credential'));
-      else resolve();
-    };
+    let failed = false;
     const timer = setTimeout(() => {
+      failed = true;
       child.kill();
-      finish(new Error('timeout'));
     }, timeoutMs);
     timer.unref?.();
-    child.once('error', () => finish(new Error('spawn')));
-    child.once('close', (code) => finish(code === 0 ? undefined : new Error('nonzero')));
-    child.stdin.once('error', () => finish(new Error('stdin')));
+    child.once('error', () => {
+      failed = true;
+    });
+    // Always await actual child exit before the caller deletes private device
+    // files or reverses. A timed-out ADB command must not race the cleanup.
+    child.once('close', (code) => {
+      clearTimeout(timer);
+      if (failed || code !== 0) reject(new Error('ADB could not stage the private Android Live Play credential'));
+      else resolve();
+    });
+    child.stdin.once('error', () => {
+      failed = true;
+      child.kill();
+    });
     child.stdin.end(payload);
   });
 
