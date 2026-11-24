@@ -309,9 +309,10 @@ bool register_android_http_transport(JavaVM* vm, jobject activity) noexcept
     local_ref java_class(env, env->CallObjectMethod(loader.get(), load, name.get()));
     if (!java_class.get() || clear_exception(env)) return false;
     const auto clazz = static_cast<jclass>(java_class.get());
-    const auto open = env->GetStaticMethodID(clazz, "open",
-                                             "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)"
-                                             "Lorg/arcengine/host/http/ArcHttpTransport$Response;");
+    const auto open =
+        env->GetStaticMethodID(clazz, "open",
+                               "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)"
+                               "Lorg/arcengine/host/http/ArcHttpTransport$Response;");
     if (!open || clear_exception(env)) return false;
     auto* global = static_cast<jclass>(env->NewGlobalRef(clazz));
     if (!global || clear_exception(env)) return false;
