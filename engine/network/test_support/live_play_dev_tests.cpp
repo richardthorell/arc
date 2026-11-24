@@ -101,14 +101,14 @@ std::string read_packet(native_socket s)
 std::string launch_record(std::uint16_t port, bool paired = false)
 {
     json record = {{"port", port},
-                {"secret", std::string(64, '1')},
-                {"projectGuid", "11111111-1111-1111-1111-111111111111"},
-                {"buildId", "dev-build-42"},
-                {"targetProfile", "windows-x64-vulkan"},
-                {"sessionId", "session-1"},
-                {"instanceId", "runtime-1"},
-                {"schemaHash", std::string(64, 'a')},
-                {"capabilities", {"session.observe", "content.observe"}}};
+                   {"secret", std::string(64, '1')},
+                   {"projectGuid", "11111111-1111-1111-1111-111111111111"},
+                   {"buildId", "dev-build-42"},
+                   {"targetProfile", "windows-x64-vulkan"},
+                   {"sessionId", "session-1"},
+                   {"instanceId", "runtime-1"},
+                   {"schemaHash", std::string(64, 'a')},
+                   {"capabilities", {"session.observe", "content.observe"}}};
     if (paired)
         record["content"] = {{"origin", "http://127.0.0.1:23456"},
                              {"token", std::string(64, 'f')},
