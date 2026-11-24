@@ -45,14 +45,6 @@ def main() -> int:
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
         return 1
-    # Temporary exact formatter diff collection; remove before merge.
-    diagnostics = [
-        "engine/project/src/common/runtime_application.cpp",
-        "engine/project/src/common/runtime_session.cpp",
-        "engine/project/tests/runtime_session_tests.cpp",
-    ]
-    subprocess.check_call([args.clang_format, "-i", *diagnostics], cwd=root)
-    subprocess.check_call(["git", "diff", "--", *diagnostics], cwd=root)
     if args.fix:
         command = [args.clang_format, "-i", *map(str, sources)]
     else:
