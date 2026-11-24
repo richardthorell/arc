@@ -20,7 +20,6 @@
 #endif
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
 #include <arc/network/live_play_dev_client.h>
-#include <nlohmann/json.hpp>
 #include "windows_live_play_edits.h"
 #include "windows_live_play_inspection.h"
 #include <atomic>
@@ -621,24 +620,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                     // validated the v1 message. This gate binds its exact
                     // metadata to the protected launch pairing AND to the
                     // successfully materialized C9 startup scene.
-                    bool matched = false;
-                    if (live_remote_scene_ready && handoff.content)
-                    {
-                        const auto raw = nlohmann::json::parse(incoming->json, nullptr, false);
-                        if (raw.is_object() && raw.contains("payload") && raw["payload"].is_object())
-                        {
-                            const auto& offered = raw["payload"];
-                            matched = offered.value("sceneGuid", std::string{}) == handoff.content->scene_guid &&
-                                      offered.value("authoringSha256", std::string{}) ==
-                                          handoff.content->authoring_sha256 &&
-                                      offered.value("authoringRevision", std::uint64_t{}) ==
-                                          handoff.content->authoring_revision &&
-                                      offered.value("cookedGeneration", std::uint64_t{}) ==
-                                          handoff.content->generation &&
-                                      offered.value("cookedReleaseSha256", std::string{}) ==
-                                          handoff.content->descriptor_sha256;
-                        }
-                    }
+                    const bool matched = live_remote_scene_ready && handoff.content && incoming->baseline &&
+                                         incoming->baseline->scene_guid == handoff.content->scene_guid &&
+                                         incoming->baseline->authoring_sha256 == handoff.content->authoring_sha256 &&
+                                         incoming->baseline->authoring_revision ==
+                                             handoff.content->authoring_revision &&
+                                         incoming->baseline->cooked_generation == handoff.content->generation &&
+                                         incoming->baseline->cooked_release_sha256 ==
+                                             handoff.content->descriptor_sha256;
                     live_baseline_active.store(false);
                     if (!client->send_baseline_status(
                             matched ? "active" : "rejected",
