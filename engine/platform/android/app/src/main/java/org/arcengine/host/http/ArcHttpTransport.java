@@ -78,14 +78,29 @@ public final class ArcHttpTransport {
      * @param address fully validated absolute object or release URL
      * @param range "bytes=start-end" or empty
      * @param ifMatch strong ETag or empty
+     * @param bearerToken optional 64-character private Development pairing token (never logged)
      * @param noCache true for mutable current.json release descriptors
      * @param timeoutMs bounded connect/read timeout; >0
      */
     public static Response open(String address, String range, String ifMatch,
                                 boolean noCache, int timeoutMs) throws IOException {
+        return open(address, range, ifMatch, "", noCache, timeoutMs);
+    }
+
+    public static Response open(String address, String range, String ifMatch,
+                                String bearerToken, boolean noCache, int timeoutMs) throws IOException {
+        if (bearerToken == null || (!bearerToken.isEmpty() && !bearerToken.matches("[0-9a-f]{64}"))) {
+            throw new IOException("Invalid Development pairing credential");
+        }
         if (timeoutMs <= 0) throw new IOException("HTTP timeout must be positive");
         URL url = new URL(address);
         boolean local = loopback(url.getHost());
+        // The C++ policy binds paired credentials to this one trusted loopback
+        // endpoint. Enforce the same restriction at the Java boundary.
+        if (!bearerToken.isEmpty() &&
+                (!"http".equalsIgnoreCase(url.getProtocol()) || !"127.0.0.1".equals(url.getHost()))) {
+            throw new IOException("Paired content origin must be IPv4 loopback");
+        }
         if (!"https".equalsIgnoreCase(url.getProtocol()) &&
                 !("http".equalsIgnoreCase(url.getProtocol()) && local)) {
             throw new IOException("Android HTTP requires HTTPS or explicit loopback");
@@ -104,6 +119,7 @@ public final class ArcHttpTransport {
             connection.setRequestProperty("Accept-Encoding", "identity");
             if (!range.isEmpty()) connection.setRequestProperty("Range", range);
             if (!ifMatch.isEmpty()) connection.setRequestProperty("If-Match", ifMatch);
+            if (!bearerToken.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + bearerToken);
             if (noCache) {
                 connection.setRequestProperty("Cache-Control", "no-cache, no-store");
                 connection.setRequestProperty("Pragma", "no-cache");

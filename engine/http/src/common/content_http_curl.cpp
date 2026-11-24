@@ -204,7 +204,9 @@ content_http_fetch_result perform_get(std::string url, std::string_view origin, 
         (release && !append_header(headers, "Cache-Control: no-cache, no-store")) ||
         (release && !append_header(headers, "Pragma: no-cache")) ||
         (!etag.empty() && !append_header(headers, "If-Match: " + etag)) ||
-        (!range.empty() && !append_header(headers, "Range: bytes=" + range)))
+        (!range.empty() && !append_header(headers, "Range: bytes=" + range)) ||
+        (!limits.development_bearer_token.empty() &&
+         !append_header(headers, "Authorization: Bearer " + limits.development_bearer_token)))
     {
         curl_slist_free_all(headers);
         return failure(content_http_error_code::transport_unavailable, "libcurl request header allocation failed");

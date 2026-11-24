@@ -180,14 +180,15 @@ content_http_fetch_result fetch(std::string url, std::string range, std::string 
     local_ref java_url(env, env->NewStringUTF(url.c_str()));
     local_ref java_range(env, env->NewStringUTF(range.c_str()));
     local_ref java_etag(env, env->NewStringUTF(etag.c_str()));
-    if (clear_exception(env) || !java_url.get() || !java_range.get() || !java_etag.get())
+    local_ref java_token(env, env->NewStringUTF(limits.development_bearer_token.c_str()));
+    if (clear_exception(env) || !java_url.get() || !java_range.get() || !java_etag.get() || !java_token.get())
         return failure(content_http_error_code::network_failure, "Android HTTP request allocation failed");
 
     const auto timeout =
         static_cast<jint>(std::min<std::int64_t>(limits.timeout.count(), std::numeric_limits<jint>::max()));
     jobject response =
         env->CallStaticObjectMethod(static_cast<jclass>(bridge.get()), open, java_url.get(), java_range.get(),
-                                    java_etag.get(), release ? JNI_TRUE : JNI_FALSE, timeout);
+                                    java_etag.get(), java_token.get(), release ? JNI_TRUE : JNI_FALSE, timeout);
     if (env->ExceptionCheck())
     {
         const auto code = java_exception(env);
@@ -309,7 +310,7 @@ bool register_android_http_transport(JavaVM* vm, jobject activity) noexcept
     if (!java_class.get() || clear_exception(env)) return false;
     const auto clazz = static_cast<jclass>(java_class.get());
     const auto open = env->GetStaticMethodID(clazz, "open",
-                                             "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)"
+                                             "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)"
                                              "Lorg/arcengine/host/http/ArcHttpTransport$Response;");
     if (!open || clear_exception(env)) return false;
     auto* global = static_cast<jclass>(env->NewGlobalRef(clazz));
