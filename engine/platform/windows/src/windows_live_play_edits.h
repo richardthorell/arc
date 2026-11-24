@@ -137,8 +137,7 @@ public:
                 (hold->second.world != found_world || hold->second.entity != found_entity))
                 return reject("restart_required");
             const auto* flow = found_world->try_get<scene::flow_component>(found_entity);
-            if (flow && flow->enabled && !acquire && hold == held_transforms_.end())
-                return reject("permission_denied");
+            if (flow && flow->enabled && !acquire && hold == held_transforms_.end()) return reject("permission_denied");
             if (acquire && hold == held_transforms_.end() && held_transforms_.size() >= maximum_holds)
                 return reject("busy");
         }
