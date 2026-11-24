@@ -291,6 +291,7 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
         session->catalog_ = std::move(catalog).value();
 
         std::uint64_t verified_generation{};
+        std::optional<assets::asset_guid> verified_scene_guid;
         if (remote)
         {
             // This happens BEFORE prepare_packaged_application reads the
@@ -299,11 +300,11 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
             // world and would not satisfy L1.3 unsaved-scene fidelity.
             const auto& pairing = *request.content_pairing;
             const auto& manifest = session->boot_.launch.manifest;
-            if (manifest.startup_scenes.size() != 1 || manifest.startup_scenes.front() != pairing.scene_asset_guid ||
-                pairing.base_build_id.empty() || pairing.descriptor_sha256.size() != 64 || pairing.generation == 0)
+            if (pairing.base_build_id.empty() || pairing.descriptor_sha256.size() != 64 ||
+                pairing.generation == 0 || !assets::parse_asset_guid(pairing.scene_asset_guid))
                 return packaged_runtime_result::failure(failure(
                     project_error_code::invalid_scene, "startupScenes",
-                    "Development remote startup requires one matching registered cooked scene and release identity"));
+                    "Development remote startup requires one registered cooked scene and trusted release identity"));
 
             http::content_http_limits limits;
             limits.allow_loopback_http = true;
@@ -356,14 +357,16 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
             if (!active_scene || active_scene->active_provider.find(":remote:") == std::string::npos)
                 return packaged_runtime_result::failure(
                     failure(project_error_code::invalid_scene, "content.startupScene",
-                            "Verified remote generation does not own the active cooked startup scene"));
+                            "Verified remote generation does not own the selected authored scene"));
+            verified_scene_guid = scene_guid;
             verified_generation = descriptor.release->generation;
         }
 
         auto application = prepare_packaged_application({.boot = session->boot_,
                                                          .catalog = *session->catalog_,
                                                          .registrations = std::move(request.registrations),
-                                                         .config = std::move(request.config)});
+                                                         .config = std::move(request.config),
+                                                         .startup_scene_override = verified_scene_guid});
         if (!application) return packaged_runtime_result::failure(std::move(application).error());
         session->application_ = std::move(application).value();
 
