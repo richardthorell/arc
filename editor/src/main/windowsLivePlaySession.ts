@@ -207,7 +207,7 @@ export class WindowsLivePlaySession {
         session.rejectConnected = reject;
         session.connectedTimer = setTimeout(
           () => reject(new Error('Development game did not connect to the editor')),
-          connectionTimeoutMs,
+          context.content ? 120_000 : connectionTimeoutMs,
         );
       });
       // Attach the rejection handler before the one-shot pipe write: a child
