@@ -9,6 +9,7 @@
 #include <arc/scene/hierarchy.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -17,7 +18,7 @@
 namespace arc::platform::windows
 {
 
-class live_play_transform_applier final
+class live_play_property_applier final
 {
 public:
     [[nodiscard]] network::live_play_dev::edit_result
@@ -28,11 +29,29 @@ public:
         { return {.request_id = edit.request_id, .applied = false, .code = std::move(code)}; };
         if (!baseline_active) return reject("restart_required");
         if (runtime.worlds().executing()) return reject("busy");
-        if (edit.component != "arc.transform" || edit.schema_version != 1) return reject("schema_mismatch");
+        const bool is_transform = edit.component == "arc.transform";
+        const bool directional = edit.component == "arc.light.directional";
+        const bool point = edit.component == "arc.light.point";
+        const bool spot = edit.component == "arc.light.spot";
+        const bool area = edit.component == "arc.light.area";
+        const bool is_light = directional || point || spot || area;
+        if ((!is_transform && !is_light) || edit.schema_version != 1) return reject("schema_mismatch");
         if (edit.phase != "update" && edit.phase != "commit") return reject("unsupported_operation");
-        if ((edit.property != "position" && edit.property != "rotation" && edit.property != "scale") ||
-            edit.value_count != (edit.property == "rotation" ? 4 : 3))
-            return reject("unsupported_operation");
+        if (is_transform)
+        {
+            if ((edit.property != "position" && edit.property != "rotation" && edit.property != "scale") ||
+                edit.value_count != (edit.property == "rotation" ? 4 : 3))
+                return reject("unsupported_operation");
+        }
+        else
+        {
+            if ((edit.property != "intensity" && edit.property != "color") ||
+                edit.value_count != (edit.property == "intensity" ? 1 : 3))
+                return reject("unsupported_operation");
+            for (std::uint8_t i = 0; i < edit.value_count; ++i)
+                if (!std::isfinite(edit.values[i]) || edit.values[i] < 0.0f || edit.values[i] > 1000000.0f)
+                    return reject("invalid_request");
+        }
         if (edit.expected_runtime_revision > applied_revision_ || edit.authoring_revision == 0 ||
             edit.authoring_revision > 9007199254740991ULL)
             return reject("stale_revision");
@@ -59,11 +78,16 @@ public:
         }
         if (!found_world) return reject("unknown_entity");
         const auto* current = found_world->try_get<scene::transform_component>(found_entity);
-        if (!current) return reject("unsupported_operation");
+        if (is_transform && !current) return reject("unsupported_operation");
+        if ((directional && !found_world->has<scene::directional_light_component>(found_entity)) ||
+            (point && !found_world->has<scene::point_light_component>(found_entity)) ||
+            (spot && !found_world->has<scene::spot_light_component>(found_entity)) ||
+            (area && !found_world->has<scene::area_light_component>(found_entity)))
+            return reject("unsupported_operation");
         const auto* mobility = found_world->try_get<scene::mobility_component>(found_entity);
         if (mobility && mobility->value != render::render_mobility::movable) return reject("permission_denied");
 
-        const std::string key = ecs::to_string(*entity_guid) + ":" + edit.property;
+        const std::string key = ecs::to_string(*entity_guid) + ":" + edit.component + ":" + edit.property;
         const auto previous = applied_authoring_.find(key);
         if (previous != applied_authoring_.end())
         {
@@ -89,22 +113,48 @@ public:
 
         // ECS mutation occurs on the Windows game frame thread, outside system
         // iteration, after the network worker's bounded mailbox handoff.
-        auto updated = *current;
-        if (edit.property == "rotation")
+        if (is_transform)
         {
-            updated.set_rotation(math::quatf{edit.values[0], edit.values[1], edit.values[2], edit.values[3]});
+            auto updated = *current;
+            if (edit.property == "rotation")
+            {
+                updated.set_rotation(math::quatf{edit.values[0], edit.values[1], edit.values[2], edit.values[3]});
+            }
+            else
+            {
+                const math::vector3f value{edit.values[0], edit.values[1], edit.values[2]};
+                if (edit.property == "position")
+                    updated.set_position(value);
+                else
+                    updated.set_scale(value);
+            }
+            found_world->emplace<scene::transform_component>(found_entity, updated);
+            scene::mark_transform_subtree_dirty(*found_world, found_entity);
+            scene::update_world_transforms(*found_world);
         }
         else
         {
-            const math::vector3f value{edit.values[0], edit.values[1], edit.values[2]};
-            if (edit.property == "position")
-                updated.set_position(value);
-            else
-                updated.set_scale(value);
+            // Only these four known ECS components are mutable. Never write
+            // arbitrary Inspector property paths or rebuild GPU objects on
+            // the socket worker. Render extraction reads ECS on the next frame.
+            const auto set_light = [&]<typename Light>() -> bool
+            {
+                const auto* component = found_world->try_get<Light>(found_entity);
+                if (!component) return false;
+                auto updated = *component;
+                if (edit.property == "intensity")
+                    updated.intensity = edit.values[0];
+                else
+                    updated.color = math::vector3f{edit.values[0], edit.values[1], edit.values[2]};
+                found_world->emplace<Light>(found_entity, updated);
+                return true;
+            };
+            const bool applied = directional ? set_light.template operator()<scene::directional_light_component>()
+                                 : point     ? set_light.template operator()<scene::point_light_component>()
+                                 : spot      ? set_light.template operator()<scene::spot_light_component>()
+                                             : set_light.template operator()<scene::area_light_component>();
+            if (!applied) return reject("unsupported_operation");
         }
-        found_world->emplace<scene::transform_component>(found_entity, updated);
-        scene::mark_transform_subtree_dirty(*found_world, found_entity);
-        scene::update_world_transforms(*found_world);
         const auto applied_revision = ++applied_revision_;
         applied_authoring_[key] = {.revision = edit.authoring_revision,
                                    .phase = edit.phase,
