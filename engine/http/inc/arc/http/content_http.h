@@ -26,6 +26,11 @@ struct content_http_limits
     std::uint64_t maximum_object_bytes{256ull * 1024ull * 1024ull};
     std::chrono::milliseconds timeout{15000};
     bool allow_loopback_http{}; ///< Development only; never permit LAN plaintext.
+    /** Optional one-session native Development pairing credential. Only valid
+     * for 127.0.0.1 loopback HTTP and never included in URLs or diagnostics.
+     * Other HTTP origins and Shipping must leave this empty.
+     */
+    std::string development_bearer_token;
 };
 
 struct content_http_request
