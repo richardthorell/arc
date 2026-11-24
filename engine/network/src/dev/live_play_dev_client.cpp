@@ -239,6 +239,11 @@ bool valid_authority(const launch_handoff& handoff)
 }
 } // namespace
 
+content_handoff::~content_handoff() noexcept
+{
+    erase_bytes(token.data(), token.size());
+}
+
 launch_handoff::~launch_handoff() noexcept
 {
     erase_bytes(secret.data(), secret.size());
@@ -269,8 +274,12 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
     }
     const auto parsed = json::parse(payload, nullptr, false);
     erase_bytes(payload.data(), payload.size());
-    if (parsed.is_discarded() || !exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile",
-                                                      "sessionId", "instanceId", "schemaHash", "capabilities"}))
+    const bool has_content = parsed.is_object() && parsed.contains("content");
+    if (parsed.is_discarded() ||
+        !(has_content ? exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile",
+                                            "sessionId", "instanceId", "schemaHash", "capabilities", "content"})
+                      : exact_keys(parsed, {"port", "secret", "projectGuid", "buildId", "targetProfile",
+                                            "sessionId", "instanceId", "schemaHash", "capabilities"})))
     {
         error = "Invalid Live Play launch handoff schema";
         return false;
@@ -310,6 +319,53 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
         candidate.secret[i] = static_cast<std::uint8_t>((high << 4) | low);
     }
     erase_bytes(secret.data(), secret.size());
+    if (has_content)
+    {
+        const auto& raw = parsed.at("content");
+        content_handoff content;
+        std::uint64_t generation{}, authoring_revision{};
+        if (!exact_keys(raw, {"origin", "token", "sceneGuid", "sceneAssetGuid", "authoringSha256",
+                              "authoringRevision", "descriptorSha256", "generation", "textureFamily"}) ||
+            !field(raw, "origin", content.origin) || !field(raw, "token", content.token) ||
+            !field(raw, "sceneGuid", content.scene_guid) ||
+            !field(raw, "sceneAssetGuid", content.scene_asset_guid) ||
+            !field(raw, "authoringSha256", content.authoring_sha256) ||
+            !field(raw, "descriptorSha256", content.descriptor_sha256) ||
+            !field(raw, "textureFamily", content.texture_family) ||
+            !safe_number(raw, "generation", generation) || generation == 0 ||
+            !safe_number(raw, "authoringRevision", authoring_revision) ||
+            !guid(content.scene_guid) || !guid(content.scene_asset_guid) ||
+            !hash(content.authoring_sha256) || !hash(content.descriptor_sha256) ||
+            content.token.size() != 64 ||
+            !std::all_of(content.token.begin(), content.token.end(),
+                         [](unsigned char ch) { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'); }) ||
+            content.texture_family.empty() || content.texture_family.size() > 32 ||
+            !std::all_of(content.texture_family.begin(), content.texture_family.end(),
+                         [](unsigned char ch) { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') ||
+                                                       ch == '_' || ch == '-'; }))
+        {
+            error = "Invalid private Live Play content pairing";
+            return false;
+        }
+        const std::string_view prefix = "http://127.0.0.1:";
+        if (!std::string_view(content.origin).starts_with(prefix))
+        {
+            error = "Live Play C9 pairing requires a local Development content listener";
+            return false;
+        }
+        const auto port_text = std::string_view(content.origin).substr(prefix.size());
+        std::uint32_t content_port{};
+        auto [end, ec] = std::from_chars(port_text.data(), port_text.data() + port_text.size(), content_port);
+        if (ec != std::errc{} || end != port_text.data() + port_text.size() || content_port == 0 ||
+            content_port > 65535)
+        {
+            error = "Invalid Live Play C9 listener authority";
+            return false;
+        }
+        content.generation = generation;
+        content.authoring_revision = authoring_revision;
+        candidate.content = std::move(content);
+    }
     if (!valid_authority(candidate))
     {
         error = "Invalid Live Play session authority";
@@ -324,6 +380,7 @@ bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::str
     result.instance_id = std::move(candidate.instance_id);
     result.schema_hash = std::move(candidate.schema_hash);
     result.capabilities = std::move(candidate.capabilities);
+    result.content = std::move(candidate.content);
     return true;
 }
 
