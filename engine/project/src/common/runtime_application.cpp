@@ -205,8 +205,8 @@ packaged_application_result prepare_packaged_application(packaged_application_re
                                             .startup_bundles = boot.launch.startup_bundles});
     if (!checked) return packaged_application_result::failure(std::move(checked).error());
 
-    if (remote_scene && (boot.content.mode != runtime_content_mode::remote ||
-                         manifest.target.configuration == "Shipping"))
+    if (remote_scene &&
+        (boot.content.mode != runtime_content_mode::remote || manifest.target.configuration == "Shipping"))
         return packaged_application_result::failure(
             failure(project_error_code::invalid_scene, "startupScenes",
                     "A remote authoring scene can replace startup only under verified Development content mode"));
@@ -231,10 +231,9 @@ packaged_application_result prepare_packaged_application(packaged_application_re
         {
             const auto parsed = assets::parse_asset_guid(manifest.startup_scenes[index]);
             if (!parsed || scenes[index] != *parsed)
-                return packaged_application_result::failure(
-                    failure(project_error_code::invalid_scene, "startupScenes",
-                            "Cooked catalog scene ordering or GUID does not match D0 at index " +
-                                std::to_string(index)));
+                return packaged_application_result::failure(failure(
+                    project_error_code::invalid_scene, "startupScenes",
+                    "Cooked catalog scene ordering or GUID does not match D0 at index " + std::to_string(index)));
         }
 
         auto payload = read_scene(request.catalog, scenes[index]);
