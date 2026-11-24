@@ -9,6 +9,7 @@
 #include <arc/jobs/jobs.h>
 
 #include <chrono>
+#include <functional>
 #include <vector>
 
 namespace arc::framework
@@ -48,6 +49,12 @@ public:
      * This is the deterministic entry point used by headless hosts and tests.
      */
     frame_time advance(double wall_delta_seconds);
+
+    /** Optional host hook after fixed-tick simulation, before presentation extraction.
+     * Invoked on the runtime frame thread, with worlds no longer executing.
+     * Intended for controlled host integration; no hook runs by default.
+     */
+    void set_before_presentation_hook(std::function<void()> hook);
 
     /**
      * @brief Dispatch a platform-neutral event to the application.
@@ -170,6 +177,7 @@ private:
     clock::time_point start_time_{};
     clock::time_point last_frame_time_{};
     frame_time current_time_{};
+    std::function<void()> before_presentation_hook_{};
     std::vector<simulation_input_command> pending_input_;
     std::vector<simulation_input_command> sampled_input_;
     std::uint64_t input_revision_{};
