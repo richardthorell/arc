@@ -114,10 +114,9 @@ bool valid_pairing(std::string_view origin, const content_http_limits& limits)
 {
     const auto& token = limits.development_bearer_token;
     if (token.empty()) return true;
-    if (!limits.allow_loopback_http || !origin.starts_with("http://127.0.0.1:") || token.size() != 64)
-        return false;
-    return std::all_of(token.begin(), token.end(), [](unsigned char ch)
-                       { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'); });
+    if (!limits.allow_loopback_http || !origin.starts_with("http://127.0.0.1:") || token.size() != 64) return false;
+    return std::all_of(token.begin(), token.end(),
+                       [](unsigned char ch) { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'); });
 }
 
 } // namespace
