@@ -889,6 +889,7 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
     std::uint64_t seen = 0;
     std::optional<property_edit> edit;
     std::optional<inspection_request> inspection;
+    std::optional<offered_baseline> baseline;
     // L1.3b1 recognizes cooked baseline metadata but does not touch ECS or
     // content IO. The game host must ask the verified C9 loader to activate it.
     if (type == "scene.baseline.offer")
@@ -910,6 +911,11 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
             close();
             return std::nullopt;
         }
+        baseline = offered_baseline{.scene_guid = scene,
+                                    .authoring_sha256 = authored_hash,
+                                    .cooked_release_sha256 = release_hash,
+                                    .authoring_revision = authoring_revision,
+                                    .cooked_generation = generation};
         pending_baseline_request_ = message_id;
         pending_baseline_scene_ = std::move(scene);
         pending_baseline_release_ = std::move(release_hash);
@@ -961,8 +967,8 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         return std::nullopt;
     }
     inbound_sequence_ = sequence;
-    return incoming_message{std::move(type), std::move(message_id), sequence,
-                            std::move(text), std::move(edit),       std::move(inspection)};
+    return incoming_message{std::move(type), std::move(message_id), sequence, std::move(text),
+                            std::move(edit), std::move(inspection), std::move(baseline)};
 }
 
 std::uint64_t client::last_received_sequence() const noexcept
