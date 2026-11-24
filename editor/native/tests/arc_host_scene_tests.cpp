@@ -1266,10 +1266,9 @@ TEST_CASE("L1.4d native authoring hierarchy exposes typed light changes without 
     arc::editor::arc_host_manager manager;
     auto host = manager.acquire(std::move(renderer));
     arc::editor::editor_asset_state assets;
-    REQUIRE(host->open_project({.name = "Light Query", .root = std::filesystem::temp_directory_path()}, assets)
-                .succeeded);
-    REQUIRE(host->execute(arc::editor::host_create_entity_command{
-                              .kind = arc::editor::host_create_entity_kind::cube})
+    REQUIRE(
+        host->open_project({.name = "Light Query", .root = std::filesystem::temp_directory_path()}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube})
                 .succeeded);
     const auto id = host->selected_entity_snapshot().entity;
     REQUIRE(id.valid());
@@ -1300,8 +1299,8 @@ TEST_CASE("L1.4d native authoring hierarchy exposes typed light changes without 
     CHECK(entity->light->color.y == Catch::Approx(0.4f));
     const auto wire = nlohmann::json::parse(arc::editor::to_json(hierarchy));
     const auto& rows = wire.at("entities");
-    const auto observed = std::find_if(rows.begin(), rows.end(),
-                                       [&](const auto& row) { return row.at("guid") == guid; });
+    const auto observed =
+        std::find_if(rows.begin(), rows.end(), [&](const auto& row) { return row.at("guid") == guid; });
     REQUIRE(observed != rows.end());
     REQUIRE(observed->at("light").at("kind") == "point");
     CHECK(observed->at("light").at("intensity").get<float>() == Catch::Approx(1250.0f));
