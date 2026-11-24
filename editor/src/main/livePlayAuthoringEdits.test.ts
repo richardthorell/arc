@@ -36,13 +36,15 @@ function fixture(withPointLight = false) {
     JSON.stringify({
       format: 'arc.scene',
       scene: { id: sceneGuid },
-      entities: [{
-        id: authoredGuid,
-        components: {
-          Transform: nativeTransform(),
-          ...(withPointLight ? { PointLight: { intensity: 800, color: [1, 1, 1] } } : {}),
+      entities: [
+        {
+          id: authoredGuid,
+          components: {
+            Transform: nativeTransform(),
+            ...(withPointLight ? { PointLight: { intensity: 800, color: [1, 1, 1] } } : {}),
+          },
         },
-      }],
+      ],
     }),
   );
   const baseline: LivePlaySceneBaseline = {
