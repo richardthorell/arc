@@ -655,6 +655,8 @@ struct host_scene_entity_snapshot
     bool visible{true};
     bool pickable{true};
     std::optional<host_transform> transform;
+    /** Bounded read-only light fields for typed L1.4 authoring observation. */
+    std::optional<host_light_snapshot> light;
     std::size_t prefab_override_count{};
     bool selected{};
 };

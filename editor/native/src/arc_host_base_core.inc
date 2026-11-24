@@ -7751,6 +7751,18 @@ host_scene_snapshot arc_host::scene_snapshot() const
                      return to_host_transform(*transform);
                  return std::nullopt;
              }(),
+             .light = [&]() -> std::optional<host_light_snapshot>
+             {
+                 if (const auto* value = state_->scene.scene.try_get<scene::directional_light_component>(entity))
+                     return to_host_light(*value);
+                 if (const auto* value = state_->scene.scene.try_get<scene::point_light_component>(entity))
+                     return to_host_light(*value);
+                 if (const auto* value = state_->scene.scene.try_get<scene::spot_light_component>(entity))
+                     return to_host_light(*value);
+                 if (const auto* value = state_->scene.scene.try_get<scene::area_light_component>(entity))
+                     return to_host_light(*value);
+                 return std::nullopt;
+             }(),
              .prefab_override_count =
                  [&]
              {

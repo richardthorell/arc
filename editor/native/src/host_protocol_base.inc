@@ -2194,6 +2194,7 @@ std::string to_json(const host_scene_snapshot& snapshot)
                 ",\"locked\":" + bool_json(entity.locked) + ",\"visible\":" + bool_json(entity.visible) +
                 ",\"pickable\":" + bool_json(entity.pickable) +
                 ",\"transform\":" + (entity.transform ? to_json(*entity.transform) : std::string{"null"}) +
+                ",\"light\":" + (entity.light ? to_json(*entity.light) : std::string{"null"}) +
                 ",\"prefabOverrideCount\":" + std::to_string(entity.prefab_override_count) +
                 ",\"selected\":" + bool_json(entity.selected) + '}';
     }

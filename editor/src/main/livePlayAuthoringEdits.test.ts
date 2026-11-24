@@ -27,7 +27,7 @@ function snapshot(position = [0, 0, 0], id = sceneGuid, guid = authoredGuid) {
   };
 }
 
-function fixture() {
+function fixture(withPointLight = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-l14a-edits-'));
   roots.push(root);
   const scenePath = path.join(root, 'initial-scene.arcscene');
@@ -36,7 +36,15 @@ function fixture() {
     JSON.stringify({
       format: 'arc.scene',
       scene: { id: sceneGuid },
-      entities: [{ id: authoredGuid, components: { Transform: nativeTransform() } }],
+      entities: [
+        {
+          id: authoredGuid,
+          components: {
+            Transform: nativeTransform(),
+            ...(withPointLight ? { PointLight: { intensity: 800, color: [1, 1, 1] } } : {}),
+          },
+        },
+      ],
     }),
   );
   const baseline: LivePlaySceneBaseline = {
@@ -89,6 +97,97 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe('Live Play L1.4d allowlisted authored light properties', () => {
+  function lightScene(intensity: number, color = [1, 1, 1], kind = 'point') {
+    return {
+      sceneGuid,
+      entities: [{ guid: authoredGuid, transform: nativeTransform(), light: { kind, intensity, color } }],
+    };
+  }
+
+  it('tracks Inspector light edits by component schema and reliably commits intensity and color', async () => {
+    const t = fixture(true);
+    t.tracker.observeSnapshot(lightScene(900, [1, 0.4, 0.2]));
+    expect(t.tracker.snapshot()).toMatchObject({ active: false, pending: 2, revision: 2 });
+    expect(t.send).not.toHaveBeenCalled();
+    t.tracker.activate(t.baseline.sessionId);
+    expect(t.send).toHaveBeenCalledTimes(2);
+    expect(t.send.mock.calls.map((call) => call[0])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          component: { typeId: 'arc.light.point', schemaVersion: 1 },
+          property: 'intensity',
+          value: [900],
+          phase: 'commit',
+        }),
+        expect.objectContaining({
+          component: { typeId: 'arc.light.point', schemaVersion: 1 },
+          property: 'color',
+          value: [1, 0.4, 0.2],
+          phase: 'commit',
+        }),
+      ]),
+    );
+    const committed = t.send.mock.calls.map((call) => call[0]);
+    for (const [i] of committed.entries()) {
+      t.tracker.onRuntimeMessage(
+        runtimeMessage(t.baseline, 'command.ack', {
+          requestId: `edit-${i + 1}`,
+          status: 'applied',
+          appliedRevision: i + 1,
+        }),
+      );
+    }
+    expect(t.tracker.snapshot()).toMatchObject({ pending: 0, lastAppliedRevision: 2, applied: 2 });
+  });
+
+  it('uses native component.changed/Undo observation without trusting renderer values', async () => {
+    const t = fixture(true);
+    t.tracker.activate(t.baseline.sessionId);
+    t.host.query.mockResolvedValueOnce({ succeeded: true, payload: lightScene(1200) });
+    t.tracker.onHostEvent({ type: 'component.changed', message: 'Point Light intensity changed' });
+    await vi.advanceTimersByTimeAsync(20);
+    expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({
+      component: { typeId: 'arc.light.point', schemaVersion: 1 },
+      property: 'intensity',
+      value: [1200],
+      phase: 'update',
+    });
+    await vi.advanceTimersByTimeAsync(150);
+    expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({ property: 'intensity', value: [1200], phase: 'commit' });
+    t.tracker.observeSnapshot(lightScene(800));
+    expect(t.send.mock.calls.at(-1)?.[0]).toMatchObject({ property: 'intensity', value: [800], phase: 'update' });
+  });
+
+  it('rejects removed or changed light components instead of applying stale ECS edits', () => {
+    const removed = fixture(true);
+    removed.tracker.activate(removed.baseline.sessionId);
+    removed.tracker.observeSnapshot(snapshot());
+    expect(removed.tracker.snapshot()).toMatchObject({ active: false, pending: 0 });
+    expect(removed.tracker.snapshot().error).toMatch(/light component changed/);
+
+    const retyped = fixture(true);
+    retyped.tracker.activate(retyped.baseline.sessionId);
+    retyped.tracker.observeSnapshot(lightScene(500, [1, 1, 1], 'spot'));
+    expect(retyped.tracker.snapshot()).toMatchObject({ active: false, pending: 0 });
+    expect(retyped.tracker.snapshot().error).toMatch(/light component changed/);
+
+    const added = fixture();
+    added.tracker.activate(added.baseline.sessionId);
+    added.tracker.observeSnapshot(lightScene(500));
+    expect(added.tracker.snapshot()).toMatchObject({ active: false, pending: 0 });
+    expect(added.tracker.snapshot().error).toMatch(/New authored light component/);
+  });
+
+  it('does not transmit malformed native light data', () => {
+    const t = fixture(true);
+    t.tracker.activate(t.baseline.sessionId);
+    t.tracker.observeSnapshot(lightScene(Number.NaN));
+    expect(t.tracker.snapshot()).toMatchObject({ active: false, pending: 0 });
+    expect(t.send).not.toHaveBeenCalled();
+  });
 });
 
 describe('Live Play L1.4a authoring transform producer', () => {

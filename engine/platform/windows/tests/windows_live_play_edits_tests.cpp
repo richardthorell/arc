@@ -29,10 +29,12 @@ public:
         world.emplace<arc::scene::persistent_id_component>(
             entity, arc::scene::persistent_id_component{arc::ecs::entity_guid{3, 4}});
         world.emplace<arc::scene::transform_component>(entity);
+        world.emplace<arc::scene::point_light_component>(entity);
         const auto other = world.create();
         world.emplace<arc::scene::persistent_id_component>(
             other, arc::scene::persistent_id_component{arc::ecs::entity_guid{5, 6}});
         world.emplace<arc::scene::transform_component>(other);
+        world.emplace<arc::scene::point_light_component>(other);
     }
 };
 
@@ -42,7 +44,7 @@ void run()
     live_edit_test_application app;
     arc::framework::runtime runtime(app);
     runtime.start();
-    arc::platform::windows::live_play_transform_applier applier;
+    arc::platform::windows::live_play_property_applier applier;
 
     live::property_edit edit;
     edit.request_id = "edit-1";
@@ -166,6 +168,54 @@ void run()
     edit.values = {0.0f, 0.0f, 0.0f, 1.0f};
     result = applier.apply(runtime, edit, true);
     check(result.applied && result.applied_revision == 3, "Valid rotation update was rejected");
+
+    // L1.4d: a supported authored point light changes only the corresponding
+    // runtime ECS component, without rebuilding the scene or writing the
+    // author's project. Exactly repeated commits are idempotently ACKed.
+    edit.component = "arc.light.point";
+    edit.property = "intensity";
+    edit.phase = "commit";
+    edit.authoring_revision = 3;
+    edit.expected_runtime_revision = 3;
+    edit.value_count = 1;
+    edit.values = {450.0f, 0.0f, 0.0f, 0.0f};
+    result = applier.apply(runtime, edit, false);
+    check(!result.applied && result.code == "restart_required", "Unactivated baseline accepted a light edit");
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && result.applied_revision == 4, "Authored point light intensity update failed");
+    check(world->entities().get<arc::scene::point_light_component>(selected).intensity == 450.0f,
+          "Authored light intensity was not applied to the selected ECS entity");
+    check(world->entities().get<arc::scene::point_light_component>(unrelated).intensity == 800.0f,
+          "Light edit mutated an unrelated runtime entity");
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && result.applied_revision == 4, "Identical light edit retry was not idempotent");
+    edit.values[0] = 900.0f;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "stale_revision", "Conflicting duplicate light edit was applied");
+    edit.values[0] = 450.0f;
+    edit.property = "color";
+    edit.authoring_revision = 4;
+    edit.expected_runtime_revision = 4;
+    edit.value_count = 3;
+    edit.values = {0.2f, 0.3f, 0.4f, 0.0f};
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && result.applied_revision == 5, "Authored point light color update failed");
+    check(world->entities().get<arc::scene::point_light_component>(selected).color[1] == 0.3f,
+          "Authoring light color did not reach native ECS");
+    edit.authoring_revision = 5;
+    edit.expected_runtime_revision = 5;
+    edit.values[0] = -1.0f;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "invalid_request", "Negative light intensity/color was accepted");
+    edit.values[0] = 0.1f;
+    edit.component = "arc.light.spot";
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "unsupported_operation",
+          "A light edit was accepted with a mismatched component identity");
+    edit.component = "arc.light.point";
+    edit.property = "range";
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "unsupported_operation", "Unknown light property was applied");
 
     // A real ECS world larger than the former 128-entity ceiling must be
     // captured completely; the transport will paginate this immutable sample.

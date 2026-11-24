@@ -489,7 +489,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     std::atomic<bool> live_force_hierarchy{false};
     live::edit_mailbox live_edits;
     live::inspection_mailbox live_inspections;
-    arc::platform::windows::live_play_transform_applier live_edit_applier;
+    arc::platform::windows::live_play_property_applier live_edit_applier;
     arc::platform::windows::live_play_runtime_inspector live_inspector;
     std::jthread live_worker(
         [client = std::move(live_client), &handoff, live_remote_scene_ready, &live_ticks, &live_phase,

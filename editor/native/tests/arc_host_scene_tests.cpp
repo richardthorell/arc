@@ -1259,3 +1259,50 @@ TEST_CASE("selected camera snapshots and entity-specific edits round trip atomic
     REQUIRE(json.find("\"camera\":{") != std::string::npos);
     REQUIRE(json.find("\"renderLayerMask\":2") != std::string::npos);
 }
+
+TEST_CASE("L1.4d native authoring hierarchy exposes typed light changes without a renderer-controlled value")
+{
+    auto renderer = std::make_unique<arc::render::renderer>();
+    arc::editor::arc_host_manager manager;
+    auto host = manager.acquire(std::move(renderer));
+    arc::editor::editor_asset_state assets;
+    REQUIRE(
+        host->open_project({.name = "Light Query", .root = std::filesystem::temp_directory_path()}, assets).succeeded);
+    REQUIRE(host->execute(arc::editor::host_create_entity_command{.kind = arc::editor::host_create_entity_kind::cube})
+                .succeeded);
+    const auto id = host->selected_entity_snapshot().entity;
+    REQUIRE(id.valid());
+    REQUIRE(host->execute(arc::editor::host_component_operation_command{
+                              .operation = arc::editor::host_component_operation::add, .component = "pointLight"})
+                .succeeded);
+
+    auto hierarchy = host->scene_snapshot();
+    auto entity = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(),
+                               [id](const auto& row) { return row.entity == id; });
+    REQUIRE(entity != hierarchy.entities.end());
+    REQUIRE(entity->light.has_value());
+    REQUIRE(entity->light->kind == arc::editor::host_light_kind::point);
+    CHECK(entity->light->intensity == Catch::Approx(800.0f));
+    const auto guid = entity->guid;
+
+    auto light = *host->selected_entity_snapshot().light;
+    light.intensity = 1250.0f;
+    light.color = {0.3f, 0.4f, 0.5f};
+    REQUIRE(host->execute(arc::editor::host_set_light_command{.entity = id, .light = light}).succeeded);
+
+    hierarchy = host->scene_snapshot();
+    entity = std::find_if(hierarchy.entities.begin(), hierarchy.entities.end(),
+                          [id](const auto& row) { return row.entity == id; });
+    REQUIRE(entity != hierarchy.entities.end());
+    REQUIRE(entity->light.has_value());
+    CHECK(entity->light->intensity == Catch::Approx(1250.0f));
+    CHECK(entity->light->color.y == Catch::Approx(0.4f));
+    const auto wire = nlohmann::json::parse(arc::editor::to_json(hierarchy));
+    const auto& rows = wire.at("entities");
+    const auto observed =
+        std::find_if(rows.begin(), rows.end(), [&](const auto& row) { return row.at("guid") == guid; });
+    REQUIRE(observed != rows.end());
+    REQUIRE(observed->at("light").at("kind") == "point");
+    CHECK(observed->at("light").at("intensity").get<float>() == Catch::Approx(1250.0f));
+    CHECK(observed->at("light").at("color").at(1).get<float>() == Catch::Approx(0.4f));
+}
