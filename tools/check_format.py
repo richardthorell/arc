@@ -45,23 +45,6 @@ def main() -> int:
     if not sources:
         print("No first-party C/C++ sources found", file=sys.stderr)
         return 1
-    # TEMPORARY L1.3 CI formatter diagnostics; restore before merge.
-    diagnostics = [
-        "engine/network/dev/include/arc/network/live_play_dev_client.h",
-        "engine/network/src/dev/live_play_dev_client.cpp",
-        "engine/network/test_support/live_play_dev_tests.cpp",
-        "engine/platform/windows/src/windows_entry.cpp",
-        "engine/project/src/common/runtime_session.cpp",
-        "engine/project/inc/arc/project/runtime_session.h",
-        "engine/http/inc/arc/http/content_http.h",
-        "engine/http/src/common/content_http.cpp",
-        "engine/http/src/common/content_http_fetch.cpp",
-        "engine/http/tests/content_http_tests.cpp",
-        "engine/assets/inc/arc/assets/remote_content_discovery.h",
-        "engine/assets/src/common/remote_content_discovery.cpp",
-    ]
-    subprocess.check_call([args.clang_format, "-i", *diagnostics], cwd=root)
-    subprocess.check_call(["git", "diff", "--", *diagnostics], cwd=root)
     if args.fix:
         command = [args.clang_format, "-i", *map(str, sources)]
     else:
