@@ -353,10 +353,10 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
             // A valid release that does not supply the actual startup scene
             // must not silently fall back to the saved packaged scene.
             const auto scene_guid = assets::parse_asset_guid(pairing.scene_asset_guid);
-            const auto active_scene = scene_guid
-                                          ? session->catalog_->catalog().database().query(
-                                                *scene_guid, assets::asset_types::scene)
-                                          : nullptr;
+            std::optional<assets::asset_database_record> active_scene;
+            if (scene_guid)
+                active_scene = session->catalog_->catalog().database().query(
+                    *scene_guid, assets::asset_types::scene);
             if (!active_scene || active_scene->active_provider.find(":remote:") == std::string::npos)
                 return packaged_runtime_result::failure(failure(
                     project_error_code::invalid_scene, "content.startupScene",
