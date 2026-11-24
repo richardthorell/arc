@@ -70,6 +70,16 @@ struct launch_handoff
  */
 [[nodiscard]] bool read_launch_handoff(std::uintptr_t handle, launch_handoff& result, std::string& error);
 
+/** Fully validated cooked-baseline offer from an authenticated editor. */
+struct offered_baseline
+{
+    std::string scene_guid;
+    std::string authoring_sha256;
+    std::string cooked_release_sha256;
+    std::uint64_t authoring_revision{};
+    std::uint64_t cooked_generation{};
+};
+
 struct incoming_message
 {
     std::string type;
@@ -78,6 +88,7 @@ struct incoming_message
     std::string json;                  ///< Strictly bounded, validated wire envelope. Never blindly execute it.
     std::optional<property_edit> edit; ///< Parsed typed edit, never raw ECS mutation.
     std::optional<inspection_request> inspection; ///< Read-only ECS request.
+    std::optional<offered_baseline> baseline;       ///< Validated offer identity, no raw JSON required in host.
 };
 
 /**
