@@ -20,6 +20,7 @@
 #endif
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
 #include <arc/network/live_play_dev_client.h>
+#include <nlohmann/json.hpp>
 #include "windows_live_play_edits.h"
 #include "windows_live_play_inspection.h"
 #include <atomic>
@@ -436,6 +437,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
 
     project::runtime_boot_request boot;
     boot.content.trusted_launch = content_options.value();
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    if (handoff.content)
+    {
+        if (content_options.value().server || content_options.value().mode)
+            return boot_failure("Attached Development Play cannot override private C9 pairing through argv");
+        boot.content.trusted_launch.server = handoff.content->origin;
+        boot.content.trusted_launch.mode = project::runtime_content_mode::remote;
+    }
+#endif
     boot.role = project::runtime_launch_role::client;
     boot.host.distribution.kind = project::runtime_distribution_location_kind::executable;
     boot.host.distribution.native_path = executable;
@@ -447,18 +457,32 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                                               .native_files = &native_files,
                                               .registrations = std::move(definition.registrations),
                                               .config = std::move(definition.config)};
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    if (handoff.content)
+    {
+        request.content_jobs = &jobs;
+        request.content_pairing = project::packaged_remote_content_pairing{
+            .base_build_id = handoff.build_id,
+            .token = handoff.content->token,
+            .scene_asset_guid = handoff.content->scene_asset_guid,
+            .descriptor_sha256 = handoff.content->descriptor_sha256,
+            .texture_family = handoff.content->texture_family,
+            .generation = handoff.content->generation};
+    }
+#endif
     static_cast<void>(write_ci_smoke_diagnostic("starting packaged runtime bootstrap"));
     auto started = project::start_packaged_runtime(std::move(request));
     if (!started) return boot_failure(started.error().field + ": " + started.error().message);
     auto session = std::move(started).value();
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    const bool live_remote_scene_ready =
+        handoff.content && session->active_remote_generation() == handoff.content->generation;
     // The network worker owns the client; socket timeouts cannot stall rendering,
     // input dispatch, scene simulation or the editor's Authoring World.
     std::atomic<std::uint64_t> live_ticks{0};
     std::atomic<int> live_phase{1}; // running=1, paused=2
-    // The C9 loader must set this only AFTER verifying/mounting/activating
-    // the offered cooked generation. Today's unavailable baseline path never
-    // sets it, so edits cannot touch a stale packaged startup scene.
+    // Editor edits stay disabled until the exact cooked scene and offer
+    // identity have been verified; a connected socket is never enough.
     std::atomic<bool> live_baseline_active{false};
     std::atomic<bool> live_force_hierarchy{false};
     live::edit_mailbox live_edits;
@@ -466,8 +490,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     arc::platform::windows::live_play_transform_applier live_edit_applier;
     arc::platform::windows::live_play_runtime_inspector live_inspector;
     std::jthread live_worker(
-        [client = std::move(live_client), &handoff, &live_ticks, &live_phase, &live_baseline_active,
-         &live_force_hierarchy, &live_edits, &live_inspections](std::stop_token stop) mutable
+        [client = std::move(live_client), &handoff, live_remote_scene_ready, &live_ticks, &live_phase,
+         &live_baseline_active, &live_force_hierarchy, &live_edits, &live_inspections](std::stop_token stop) mutable
         {
             std::string error;
             std::optional<live::hierarchy_snapshot> last_sent_hierarchy;
@@ -590,15 +614,37 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
                 }
                 else if (incoming && incoming->type == "scene.baseline.offer")
                 {
-                    // C9 delivery and verified scene activation are tracked
-                    // in the other development track. Never claim a baseline
-                    // active merely because the socket received its offer.
+                    // The network client has already authenticated and fully
+                    // validated the v1 message. This gate binds its exact
+                    // metadata to the protected launch pairing AND to the
+                    // successfully materialized C9 startup scene.
+                    bool matched = false;
+                    if (live_remote_scene_ready && handoff.content)
+                    {
+                        const auto raw = nlohmann::json::parse(incoming->json, nullptr, false);
+                        if (raw.is_object() && raw.contains("payload") && raw["payload"].is_object())
+                        {
+                            const auto& offered = raw["payload"];
+                            matched = offered.value("sceneGuid", std::string{}) == handoff.content->scene_guid &&
+                                      offered.value("authoringSha256", std::string{}) ==
+                                          handoff.content->authoring_sha256 &&
+                                      offered.value("authoringRevision", std::uint64_t{}) ==
+                                          handoff.content->authoring_revision &&
+                                      offered.value("cookedGeneration", std::uint64_t{}) ==
+                                          handoff.content->generation &&
+                                      offered.value("cookedReleaseSha256", std::string{}) ==
+                                          handoff.content->descriptor_sha256;
+                        }
+                    }
                     live_baseline_active.store(false);
-                    if (!client->send_baseline_status("rejected", "unavailable", error))
+                    if (!client->send_baseline_status(
+                            matched ? "active" : "rejected",
+                            matched ? "none" : (live_remote_scene_ready ? "incompatible" : "unavailable"), error))
                     {
                         client->close();
                         continue;
                     }
+                    live_baseline_active.store(matched);
                 }
                 else if (incoming && incoming->inspection)
                 {
