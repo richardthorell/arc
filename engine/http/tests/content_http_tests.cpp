@@ -110,10 +110,9 @@ TEST_CASE("L1.3 Development Bearer pairing is restricted to explicit loopback co
     auto object = request();
     object.origin = "http://127.0.0.1:8123";
     CHECK(arc::http::validate_content_http_request(object, limits).succeeded());
-    const arc::http::content_http_release_request descriptor{
-        .origin = object.origin,
-        .project_guid = "11111111-1111-1111-1111-111111111111",
-        .target_profile = "windows-x64-vulkan"};
+    const arc::http::content_http_release_request descriptor{.origin = object.origin,
+                                                             .project_guid = "11111111-1111-1111-1111-111111111111",
+                                                             .target_profile = "windows-x64-vulkan"};
     CHECK(arc::http::validate_content_http_release_request(descriptor, limits).succeeded());
 
     object.origin = "https://content.example.org";
@@ -129,8 +128,6 @@ TEST_CASE("L1.3 Development Bearer pairing is restricted to explicit loopback co
     limits.development_bearer_token = "not-a-valid-token";
     CHECK_FALSE(arc::http::validate_content_http_request(object, limits).succeeded());
     const auto invalid_descriptor = arc::http::content_http_release_request{
-        .origin = object.origin,
-        .project_guid = descriptor.project_guid,
-        .target_profile = descriptor.target_profile};
+        .origin = object.origin, .project_guid = descriptor.project_guid, .target_profile = descriptor.target_profile};
     CHECK_FALSE(arc::http::validate_content_http_release_request(invalid_descriptor, limits).succeeded());
 }
