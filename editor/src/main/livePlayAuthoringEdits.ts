@@ -9,7 +9,13 @@ type Property = TransformProperty | LightProperty;
 type Transform = Record<TransformProperty, readonly number[]>;
 type LightComponent = 'arc.light.directional' | 'arc.light.point' | 'arc.light.spot' | 'arc.light.area';
 type Light = { component: LightComponent; intensity: readonly number[]; color: readonly number[] };
-type SceneEntity = { guid?: unknown; id?: unknown; transform?: unknown; light?: unknown; components?: Record<string, unknown> };
+type SceneEntity = {
+  guid?: unknown;
+  id?: unknown;
+  transform?: unknown;
+  light?: unknown;
+  components?: Record<string, unknown>;
+};
 type SceneSnapshot = { sceneGuid?: unknown; entities?: unknown };
 type HostQuery = { query(type: string): Promise<{ succeeded: boolean; payload?: unknown }> };
 type HostEvent = { type: string; message?: string };
@@ -91,9 +97,15 @@ const lightKinds: Record<string, LightComponent> = {
 function parseLight(value: unknown, component: LightComponent): Light | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
-  const valid = (number: unknown) => typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= 1e6;
-  if (!valid(record.intensity) || !Array.isArray(record.color) || record.color.length !== 3 ||
-      !record.color.every(valid)) return null;
+  const valid = (number: unknown) =>
+    typeof number === 'number' && Number.isFinite(number) && number >= 0 && number <= 1e6;
+  if (
+    !valid(record.intensity) ||
+    !Array.isArray(record.color) ||
+    record.color.length !== 3 ||
+    !record.color.every(valid)
+  )
+    return null;
   return { component, intensity: [record.intensity as number], color: [...record.color] };
 }
 
@@ -118,8 +130,7 @@ function extractLights(document: unknown, nested: boolean): Map<string, Light> {
       }
     } else if (entity.light && typeof entity.light === 'object') {
       const raw = entity.light as { kind?: unknown };
-      if (typeof raw.kind !== 'string' || !lightKinds[raw.kind])
-        throw new Error('Unknown native light component');
+      if (typeof raw.kind !== 'string' || !lightKinds[raw.kind]) throw new Error('Unknown native light component');
       kind = lightKinds[raw.kind];
       source = entity.light;
     }
@@ -339,8 +350,11 @@ export class LivePlayAuthoringEdits {
         return;
       }
       for (const property of lightProperties) {
-        if (differs(before[property], after[property]) &&
-            !this.queueEdit(guid, before.component, property, after[property], now)) return;
+        if (
+          differs(before[property], after[property]) &&
+          !this.queueEdit(guid, before.component, property, after[property], now)
+        )
+          return;
       }
     }
     for (const guid of nextLights.keys()) {
@@ -359,7 +373,13 @@ export class LivePlayAuthoringEdits {
     this.scheduleCommit();
   }
 
-  private queueEdit(guid: string, component: string, property: Property, value: readonly number[], now: number): boolean {
+  private queueEdit(
+    guid: string,
+    component: string,
+    property: Property,
+    value: readonly number[],
+    now: number,
+  ): boolean {
     const key = `${guid}:${component}:${property}`;
     if (this.revision >= Number.MAX_SAFE_INTEGER || (!this.pending.has(key) && this.pending.size >= maxPending)) {
       this.lastError = 'Live Play property queue exceeded safe limits';
@@ -373,9 +393,16 @@ export class LivePlayAuthoringEdits {
     }
     const previous = this.pending.get(key);
     this.pending.set(key, {
-      guid, component, property, value: [...value], revision: ++this.revision, changedAt: now,
+      guid,
+      component,
+      property,
+      value: [...value],
+      revision: ++this.revision,
+      changedAt: now,
       lastUpdate: previous?.lastUpdate ?? Number.NEGATIVE_INFINITY,
-      commitAttempts: 0, lastCommitAttempt: Number.NEGATIVE_INFINITY, commitInFlight: false,
+      commitAttempts: 0,
+      lastCommitAttempt: Number.NEGATIVE_INFINITY,
+      commitInFlight: false,
     });
     return true;
   }
