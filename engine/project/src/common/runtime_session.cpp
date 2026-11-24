@@ -299,10 +299,8 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
             // world and would not satisfy L1.3 unsaved-scene fidelity.
             const auto& pairing = *request.content_pairing;
             const auto& manifest = session->boot_.launch.manifest;
-            if (manifest.startup_scenes.size() != 1 ||
-                manifest.startup_scenes.front() != pairing.scene_asset_guid ||
-                pairing.base_build_id.empty() || pairing.descriptor_sha256.size() != 64 ||
-                pairing.generation == 0)
+            if (manifest.startup_scenes.size() != 1 || manifest.startup_scenes.front() != pairing.scene_asset_guid ||
+                pairing.base_build_id.empty() || pairing.descriptor_sha256.size() != 64 || pairing.generation == 0)
                 return packaged_runtime_result::failure(failure(
                     project_error_code::invalid_scene, "startupScenes",
                     "Development remote startup requires one matching registered cooked scene and release identity"));
@@ -323,44 +321,42 @@ packaged_runtime_result start_packaged_runtime(packaged_runtime_request request)
             const auto origin = session->boot_.content.server_origin;
             auto discovered = assets::discover_remote_release(*request.content_jobs, origin, expected, limits);
             if (!discovered.handle().wait_result().succeeded())
-                return packaged_runtime_result::failure(failure(
-                    project_error_code::io_failed, "content.release", "Remote release discovery did not finish"));
+                return packaged_runtime_result::failure(failure(project_error_code::io_failed, "content.release",
+                                                                "Remote release discovery did not finish"));
             auto descriptor = discovered.get();
             if (!descriptor.succeeded() || descriptor.descriptor_sha256 != pairing.descriptor_sha256 ||
                 descriptor.release->generation != pairing.generation)
-                return packaged_runtime_result::failure(failure(
-                    project_error_code::invalid_descriptor, "content.release",
-                    "Remote cooked scene descriptor is unavailable or differs from the trusted publication"));
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::invalid_descriptor, "content.release",
+                            "Remote cooked scene descriptor is unavailable or differs from the trusted publication"));
 
             // The catalog's provider borrows this CAS. Keep it alive until
             // shutdown releases all runtime worlds, application and mounts.
-            session->remote_cache_ =
-                std::make_unique<assets::derived_data_cache>(assets::derived_data_cache_config{
-                    .root = session->boot_.content.cache_root});
-            auto transfer = assets::acquire_remote_generation(
-                *request.content_jobs, *request.native_files, *session->remote_cache_, *descriptor.release,
-                {.origin = origin, .http = limits});
+            session->remote_cache_ = std::make_unique<assets::derived_data_cache>(
+                assets::derived_data_cache_config{.root = session->boot_.content.cache_root});
+            auto transfer =
+                assets::acquire_remote_generation(*request.content_jobs, *request.native_files, *session->remote_cache_,
+                                                  *descriptor.release, {.origin = origin, .http = limits});
             if (!transfer.handle().wait_result().succeeded() || !transfer.get().succeeded())
-                return packaged_runtime_result::failure(failure(
-                    project_error_code::io_failed, "content.objects",
-                    "The complete SHA-verified remote cooked generation could not be acquired"));
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::io_failed, "content.objects",
+                            "The complete SHA-verified remote cooked generation could not be acquired"));
             const auto mounted = session->catalog_->catalog().mount_remote_generation(
                 *descriptor.release, *session->remote_cache_, *request.native_files, 100);
             if (!mounted)
-                return packaged_runtime_result::failure(failure(
-                    project_error_code::invalid_scene, "content.catalog",
-                    "Verified remote cooked generation could not be mounted"));
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::invalid_scene, "content.catalog",
+                            "Verified remote cooked generation could not be mounted"));
             // A valid release that does not supply the actual startup scene
             // must not silently fall back to the saved packaged scene.
             const auto scene_guid = assets::parse_asset_guid(pairing.scene_asset_guid);
             std::optional<assets::asset_database_record> active_scene;
             if (scene_guid)
-                active_scene = session->catalog_->catalog().database().query(
-                    *scene_guid, assets::asset_types::scene);
+                active_scene = session->catalog_->catalog().database().query(*scene_guid, assets::asset_types::scene);
             if (!active_scene || active_scene->active_provider.find(":remote:") == std::string::npos)
-                return packaged_runtime_result::failure(failure(
-                    project_error_code::invalid_scene, "content.startupScene",
-                    "Verified remote generation does not own the active cooked startup scene"));
+                return packaged_runtime_result::failure(
+                    failure(project_error_code::invalid_scene, "content.startupScene",
+                            "Verified remote generation does not own the active cooked startup scene"));
             verified_generation = descriptor.release->generation;
         }
 
