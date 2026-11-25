@@ -354,10 +354,22 @@ export class EditorCookedContentServer {
       const descriptor = await fs.promises.readFile(descriptorFile);
       const hash = createHash('sha256').update(descriptor).digest('hex');
       if (hash !== variant.descriptorSha256) throw new Error('C9 descriptor SHA-256 changed');
-      const references = parseRelease(descriptor, release, cookProfile, variant.family);
+      const parsed = parseRelease(descriptor, release, cookProfile, variant.family);
+      const existingJournal = this.feedJournals.get(cookProfile);
+      if (
+        existingJournal &&
+        (existingJournal.engineVersion !== parsed.engineVersion ||
+          Object.entries(parsed.target).some(
+            ([key, value]) => existingJournal.target[key as keyof FeedTarget] !== value,
+          ))
+      )
+        throw new Error('C9 target or engine identity changed within a feed session');
+      const summary = guidChanges(changes, !existingJournal, release.sceneAssetGuid);
+      const sequence = (existingJournal?.newestSequence ?? 0) + 1;
+      if (!Number.isSafeInteger(sequence)) throw new Error('C9 feed sequence overflow');
 
       const nextObjects = new Map(this.objects);
-      for (const reference of references) {
+      for (const reference of parsed.objects) {
         const file = sealedFile(root, path.join(root, 'objects', 'sha256', reference.sha256));
         const stat = fs.statSync(file);
         if (stat.size !== reference.size || (await hashFile(file)) !== reference.sha256)
@@ -375,13 +387,52 @@ export class EditorCookedContentServer {
         });
       }
 
+      // The canonical descriptor itself must be accessible through immutable
+      // SHA-addressed storage before its event becomes visible. Returning a
+      // mutable current.json URL here would make replay after update unsafe.
+      const descriptorStat = fs.statSync(descriptorFile);
+      const existingObject = nextObjects.get(hash);
+      if (existingObject && existingObject.size !== descriptor.length)
+        throw new Error('C9 immutable release descriptor hash collision');
+      nextObjects.set(hash, {
+        file: descriptorFile,
+        size: descriptor.length,
+        sha256: hash,
+        dev: descriptorStat.dev,
+        ino: descriptorStat.ino,
+        mtimeMs: descriptorStat.mtimeMs,
+        ctimeMs: descriptorStat.ctimeMs,
+      });
+      const releaseRef: ImmutableReleaseRef = { path: 'objects/sha256/' + hash, sha256: hash, size: descriptor.length };
+      const event: FeedEvent = {
+        sequence,
+        generation: release.generation,
+        release: releaseRef,
+        changed: summary.changed,
+        removed: summary.removed,
+      };
+      const limit = this.options.journalLimit ?? maxJournalEvents;
+      const events = [...(existingJournal?.events ?? []), event].slice(-limit);
+      const feed: FeedJournal = {
+        engineVersion: parsed.engineVersion,
+        target: parsed.target,
+        oldestSequence: events[0].sequence,
+        newestSequence: sequence,
+        currentGeneration: release.generation,
+        currentRelease: releaseRef,
+        events,
+      };
       if (this.server !== originalServer) throw new Error('C9 listener changed during release verification');
       const nextPublications = new Map(this.publications);
       nextPublications.set(cookProfile, { descriptor, hash, generation: release.generation, family: variant.family });
+      // No await after this point: a request can observe either old complete
+      // generation and journal or new complete generation and journal, never a
+      // partially published descriptor or unverified cook object.
       this.objects.clear();
       for (const [name, entry] of nextObjects) this.objects.set(name, entry);
       this.publications.clear();
       for (const [name, entry] of nextPublications) this.publications.set(name, entry);
+      this.feedJournals.set(cookProfile, feed);
     } finally {
       this.publishing = false;
     }
@@ -439,16 +490,67 @@ export class EditorCookedContentServer {
     if (req.method !== 'GET') return this.reject(res, 405, 'Only read-only GET is supported');
     if (req.headers['content-length'] !== undefined) return this.reject(res, 431, 'Request body is not permitted');
     const requested = req.url ?? '';
-    if (
-      requested.length > 512 ||
-      requested.includes('%') ||
-      requested.includes('?') ||
-      requested.includes('#') ||
-      requested.includes('\\')
-    )
+    if (requested.length > 512 || requested.includes('%') || requested.includes('#') || requested.includes('\\'))
       return this.reject(res, 400, 'Unsafe content URL');
 
-    const release = releasePath.exec(requested);
+    // Exact C9.1c polling endpoint. Query strings are forbidden everywhere
+    // else; the sole permitted query is a strict ACK cursor plus an optional
+    // cook-profile selector for a multi-target editor session.
+    const queryStart = requested.indexOf('?');
+    const route = queryStart < 0 ? requested : requested.slice(0, queryStart);
+    const query = queryStart < 0 ? '' : requested.slice(queryStart + 1);
+    const feedRoute = feedPath.exec(route);
+    if (feedRoute) {
+      if (feedRoute[1] !== this.options.sessionId) return this.reject(res, 404, 'Unknown content session');
+      const matched = feedQuery.exec(query);
+      if (!matched) return this.reject(res, 400, 'Invalid change-feed cursor or target');
+      const afterSequence = Number(matched[1]);
+      if (!Number.isSafeInteger(afterSequence)) return this.reject(res, 400, 'Invalid change-feed cursor');
+      const profile = matched[2] ?? (this.feedJournals.size === 1 ? this.feedJournals.keys().next().value : undefined);
+      if (!profile) return this.reject(res, this.feedJournals.size ? 400 : 503, 'Select a published cook target');
+      const journal = this.feedJournals.get(profile);
+      if (!journal) return this.reject(res, 404, 'No verified feed for target');
+      if (afterSequence > journal.newestSequence) return this.reject(res, 409, 'Change-feed cursor regressed');
+      const mode =
+        afterSequence === journal.newestSequence
+          ? 'up-to-date'
+          : afterSequence < journal.oldestSequence - 1 ||
+              journal.newestSequence - afterSequence > maxJournalEvents
+            ? 'full-snapshot'
+            : 'replay';
+      const events = mode === 'replay' ? journal.events.filter((entry) => entry.sequence > afterSequence) : [];
+      const bytes = Buffer.from(
+        JSON.stringify({
+          format: 'arc.remote-content-feed',
+          formatVersion: 1,
+          projectGuid: this.options.projectGuid,
+          engineVersion: journal.engineVersion,
+          baseBuildId: this.options.runtimeBuildId,
+          target: journal.target,
+          afterSequence,
+          oldestSequence: journal.oldestSequence,
+          newestSequence: journal.newestSequence,
+          currentGeneration: journal.currentGeneration,
+          currentRelease: journal.currentRelease,
+          mode,
+          events,
+        }),
+        'utf8',
+      );
+      if (bytes.length > maxDescriptor) return this.reject(res, 503, 'C9 change-feed exceeds metadata bounds');
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Length': bytes.length,
+        'Cache-Control': noStore,
+        'X-Content-Type-Options': 'nosniff',
+      });
+      res.end(bytes);
+      this.bytesSent += bytes.length;
+      return;
+    }
+    if (queryStart >= 0) return this.reject(res, 400, 'Query strings are not permitted on cooked objects');
+
+    const release = releasePath.exec(route);
     if (release) {
       if (release[1] !== this.options.projectGuid) return this.reject(res, 404, 'Unknown project');
       const entry = this.publications.get(release[2]);
