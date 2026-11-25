@@ -32,6 +32,17 @@ type Pending = {
   lastCommitAttempt: number;
   commitInFlight: boolean;
 };
+type AuthorityTransition = {
+  guid: string;
+  phase: 'begin' | 'cancel';
+  revision: number;
+  value: number[];
+  attempts: number;
+  ids: Set<string>;
+  timer: ReturnType<typeof setTimeout> | null;
+};
+export type TransformAuthorityState = 'runtime' | 'acquiring' | 'held' | 'releasing' | 'unknown';
+
 type Outstanding = { key: string; revision: number; phase: 'update' | 'commit'; sentAt: number };
 
 const guidPattern = /^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu;
@@ -161,6 +172,9 @@ export class LivePlayAuthoringEdits {
   private observedLights = new Map<string, Light>();
   private readonly pending = new Map<string, Pending>();
   private readonly outstanding = new Map<string, Outstanding>();
+  private readonly held = new Set<string>();
+  private readonly uncertain = new Set<string>();
+  private readonly transitions = new Map<string, AuthorityTransition>();
   private revision = 0;
   private runtimeRevision = 0;
   private lastAckLatencyMs: number | null = null;
@@ -204,6 +218,98 @@ export class LivePlayAuthoringEdits {
     };
   }
 
+  authoritySnapshot(guid: string, sessionId: string, instanceId: string) {
+    const key = guid.toLowerCase();
+    const available =
+      this.active &&
+      this.baseline?.sessionId === sessionId &&
+      this.baseline.instanceId === instanceId &&
+      this.observed.has(key);
+    const transition = this.transitions.get(key);
+    const state: TransformAuthorityState = !available
+      ? 'unknown'
+      : transition
+        ? transition.phase === 'begin'
+          ? 'acquiring'
+          : 'releasing'
+        : this.uncertain.has(key)
+          ? 'unknown'
+          : this.held.has(key)
+            ? 'held'
+            : 'runtime';
+    return { available, state };
+  }
+
+  requestAuthority(guid: string, sessionId: string, instanceId: string, action: 'override' | 'release'): boolean {
+    const key = guid.toLowerCase();
+    const current = this.authoritySnapshot(key, sessionId, instanceId);
+    if (!current.available || this.transitions.has(key) || this.revision >= Number.MAX_SAFE_INTEGER) return false;
+    if (action === 'override' && (current.state !== 'runtime' || this.held.size + this.transitions.size >= 64))
+      return false;
+    if (action === 'release' && current.state !== 'held' && current.state !== 'unknown') return false;
+    // Never trust transform values from renderer IPC. Use the native authoring snapshot.
+    const value = this.observed.get(key)?.position;
+    if (!value || value.some((number) => !Number.isFinite(number) || Math.abs(number) > 1e6)) return false;
+    // Drain previously queued values before release; never allow a retry to overwrite the transition.
+    if ([...this.pending.values()].some((item) => item.guid === key && item.component === 'arc.transform'))
+      return false;
+    const transition: AuthorityTransition = {
+      guid: key,
+      phase: action === 'override' ? 'begin' : 'cancel',
+      revision: ++this.revision,
+      value: [...value],
+      attempts: 0,
+      ids: new Set(),
+      timer: null,
+    };
+    this.transitions.set(key, transition);
+    this.sendAuthority(transition);
+    return true;
+  }
+
+  private sendAuthority(transition: AuthorityTransition): void {
+    if (!this.active || this.transitions.get(transition.guid) !== transition) return;
+    if (transition.attempts >= maxCommitAttempts) {
+      this.finishAuthority(transition, false, true);
+      return;
+    }
+    transition.attempts++;
+    try {
+      const id = this.send({
+        entity: { kind: 'authored', entityGuid: transition.guid },
+        component: { typeId: 'arc.transform', schemaVersion: 1 },
+        property: 'position',
+        value: transition.value,
+        authoringRevision: transition.revision,
+        expectedRuntimeRevision: this.runtimeRevision,
+        phase: transition.phase,
+      });
+      if (id) transition.ids.add(id);
+    } catch {
+      // Retry the exact same revision and value, never a new acquisition.
+    }
+    transition.timer = setTimeout(() => this.sendAuthority(transition), commitAckTimeoutMs);
+  }
+
+  private finishAuthority(transition: AuthorityTransition, applied: boolean, unknown = false): void {
+    if (transition.timer) clearTimeout(transition.timer);
+    this.transitions.delete(transition.guid);
+    if (unknown) this.uncertain.add(transition.guid);
+    else this.uncertain.delete(transition.guid);
+    if (applied) {
+      if (transition.phase === 'begin') this.held.add(transition.guid);
+      else this.held.delete(transition.guid);
+    }
+    if (this.active && this.pending.size) this.scheduleCommit();
+  }
+
+  private clearAuthority(): void {
+    for (const transition of this.transitions.values()) if (transition.timer) clearTimeout(transition.timer);
+    this.transitions.clear();
+    this.held.clear();
+    this.uncertain.clear();
+  }
+
   begin(baseline: LivePlaySceneBaseline): void {
     this.end();
     const document = JSON.parse(fs.readFileSync(baseline.scenePath, 'utf8')) as {
@@ -225,6 +331,7 @@ export class LivePlayAuthoringEdits {
 
   end(): void {
     this.generation++;
+    this.clearAuthority();
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     if (this.commitTimer) clearTimeout(this.commitTimer);
     this.refreshTimer = null;
@@ -417,6 +524,8 @@ export class LivePlayAuthoringEdits {
   }
 
   disconnect(): void {
+    this.clearAuthority();
+    this.runtimeRevision = 0;
     this.active = false;
     if (this.commitTimer) clearTimeout(this.commitTimer);
     this.commitTimer = null;
@@ -440,6 +549,19 @@ export class LivePlayAuthoringEdits {
       if (message.payload.status === 'active') this.activate(message.sessionId);
       else this.disconnect();
     } else if (message.type === 'command.ack') {
+      const transition = [...this.transitions.values()].find((item) => item.ids.has(message.payload.requestId));
+      if (transition) {
+        if (message.payload.status === 'applied') {
+          this.runtimeRevision = Math.max(this.runtimeRevision, message.payload.appliedRevision);
+          this.lastAppliedRevision = Math.max(this.lastAppliedRevision, message.payload.appliedRevision);
+          this.applied++;
+          this.finishAuthority(transition, true);
+        } else {
+          this.rejected++;
+          this.finishAuthority(transition, false, transition.phase === 'cancel');
+        }
+        return;
+      }
       const request = this.outstanding.get(message.payload.requestId);
       if (!request) return;
       this.outstanding.delete(message.payload.requestId);
@@ -460,6 +582,11 @@ export class LivePlayAuthoringEdits {
         // previous ACK was lost; do not report success without confirmation.
         if (this.pending.get(request.key)?.revision !== request.revision) return;
         this.rejected++;
+        if (message.payload.error.code === 'permission_denied') {
+          // Gameplay ownership is a per-property rejection, not a dead session.
+          this.pending.delete(request.key);
+          return;
+        }
         this.lastError = `Runtime rejected authoring edit: ${message.payload.error.code}`;
         this.active = false;
         this.pending.clear();
@@ -468,7 +595,12 @@ export class LivePlayAuthoringEdits {
   }
 
   private sendPending(item: Pending, phase: 'update' | 'commit'): boolean {
-    if (!this.active || this.outstanding.size >= maxOutstanding) return false;
+    if (
+      !this.active ||
+      this.outstanding.size >= maxOutstanding ||
+      (item.component === 'arc.transform' && (this.transitions.has(item.guid) || this.uncertain.has(item.guid)))
+    )
+      return false;
     const payload: EditPayload = {
       entity: { kind: 'authored', entityGuid: item.guid },
       component: { typeId: item.component, schemaVersion: 1 },
@@ -535,6 +667,7 @@ export class LivePlayAuthoringEdits {
     if (!this.active) return;
     const now = Date.now();
     for (const item of this.pending.values()) {
+      if (item.component === 'arc.transform' && (this.transitions.has(item.guid) || this.uncertain.has(item.guid))) continue;
       if (!force && now - item.changedAt < commitQuietMs) continue;
       const threshold = item.commitInFlight ? commitAckTimeoutMs : commitRetryMs;
       if (!force && now - item.lastCommitAttempt < threshold) continue;
