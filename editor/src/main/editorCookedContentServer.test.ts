@@ -616,6 +616,24 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     expect(contender.snapshot().port).toBe(port);
   });
 
+  it('rejects oversized header inventories without exposing their contents in diagnostic state', async () => {
+    const f = fixture();
+    await f.server.start();
+    const token = f.server.issueClientToken();
+    const headers = new Headers();
+    for (let index = 0; index < 66; ++index) headers.set('X-Extra-' + index, 'private-data');
+    const response = await request(f.server, '/objects/sha256/' + 'a'.repeat(64), token, { headers });
+    expect(response.status).toBe(431);
+    expect(f.server.snapshot()).toMatchObject({
+      rejectedRequests: 1,
+      lastFailure: { code: 'invalid-request', status: 431 },
+    });
+    const diagnostics = JSON.stringify(f.server.snapshot());
+    expect(diagnostics).not.toContain(token);
+    expect(diagnostics).not.toContain('private-data');
+    expect(diagnostics).not.toContain('X-Extra-');
+  });
+
   it('enforces request-rate limits and produces bounded safe failure codes', async () => {
     const f = fixture();
     servers.pop();
