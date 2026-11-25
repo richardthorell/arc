@@ -23,6 +23,7 @@ import type { ArcBuildRequest, ArcBuildSnapshot } from '../common/buildTypes';
 import type { WindowsLivePlaySnapshot } from '../common/livePlaySessionTypes';
 import type { LivePlayHierarchyState } from '../common/livePlayHierarchyState';
 import type { LivePlayDiagnosticsSnapshot } from '../common/livePlayDiagnosticsTypes';
+import type { EditorContentServerSnapshot } from '../common/editorContentDiagnosticsTypes';
 import type { LivePlayMessage, LivePlayEntity } from '../common/livePlayProtocol';
 import type { BuildMonitorEvent, BuildMonitorSnapshot } from '../common/buildMonitorTypes';
 import type { BuildHistoryDetail, BuildHistoryPage } from '../common/buildHistoryTypes';
@@ -520,6 +521,8 @@ const arcApi = {
     snapshot: (): Promise<WindowsLivePlaySnapshot | null> => ipcRenderer.invoke('livePlay:snapshot'),
     diagnosticsSnapshot: (): Promise<LivePlayDiagnosticsSnapshot | null> =>
       ipcRenderer.invoke('livePlay:diagnosticsSnapshot'),
+    contentServerSnapshot: (): Promise<EditorContentServerSnapshot | null> =>
+      ipcRenderer.invoke('livePlay:contentServerSnapshot'),
     onDiagnostics: (callback: (snapshot: LivePlayDiagnosticsSnapshot) => void): (() => void) => {
       const listener = (_event: Electron.IpcRendererEvent, snapshot: LivePlayDiagnosticsSnapshot) => callback(snapshot);
       ipcRenderer.on('livePlay:diagnostics', listener);
