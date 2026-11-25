@@ -511,32 +511,42 @@ export class EditorCookedContentServer {
       const journal = this.feedJournals.get(profile);
       if (!journal) return this.reject(res, 404, 'No verified feed for target');
       if (afterSequence > journal.newestSequence) return this.reject(res, 409, 'Change-feed cursor regressed');
-      const mode =
+      let mode =
         afterSequence === journal.newestSequence
           ? 'up-to-date'
           : afterSequence < journal.oldestSequence - 1 ||
               journal.newestSequence - afterSequence > maxJournalEvents
             ? 'full-snapshot'
             : 'replay';
-      const events = mode === 'replay' ? journal.events.filter((entry) => entry.sequence > afterSequence) : [];
-      const bytes = Buffer.from(
-        JSON.stringify({
-          format: 'arc.remote-content-feed',
-          formatVersion: 1,
-          projectGuid: this.options.projectGuid,
-          engineVersion: journal.engineVersion,
-          baseBuildId: this.options.runtimeBuildId,
-          target: journal.target,
-          afterSequence,
-          oldestSequence: journal.oldestSequence,
-          newestSequence: journal.newestSequence,
-          currentGeneration: journal.currentGeneration,
-          currentRelease: journal.currentRelease,
-          mode,
-          events,
-        }),
-        'utf8',
-      );
+      let events = mode === 'replay' ? journal.events.filter((entry) => entry.sequence > afterSequence) : [];
+      const encode = () =>
+        Buffer.from(
+          JSON.stringify({
+            format: 'arc.remote-content-feed',
+            formatVersion: 1,
+            projectGuid: this.options.projectGuid,
+            engineVersion: journal.engineVersion,
+            baseBuildId: this.options.runtimeBuildId,
+            target: journal.target,
+            afterSequence,
+            oldestSequence: journal.oldestSequence,
+            newestSequence: journal.newestSequence,
+            currentGeneration: journal.currentGeneration,
+            currentRelease: journal.currentRelease,
+            mode,
+            events,
+          }),
+          'utf8',
+        );
+      let bytes = encode();
+      // Never truncate a replay event list: that would violate native C9.1c
+      // contiguous-sequence parsing. Send a full snapshot when bounded
+      // journal metadata is too large, even if all sequences are retained.
+      if (bytes.length > maxDescriptor && mode === 'replay') {
+        mode = 'full-snapshot';
+        events = [];
+        bytes = encode();
+      }
       if (bytes.length > maxDescriptor) return this.reject(res, 503, 'C9 change-feed exceeds metadata bounds');
       res.writeHead(200, {
         'Content-Type': 'application/json',
