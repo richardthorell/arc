@@ -366,6 +366,12 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
         removed: [first.release.sceneAssetGuid],
       }),
     ).rejects.toThrow(/duplicate or overlapping/);
+    await expect(
+      f.server.publish(second.release, second.target, second.family, {
+        changed: [first.release.sceneAssetGuid, first.release.sceneAssetGuid],
+        removed: [],
+      }),
+    ).rejects.toThrow(/duplicate or overlapping/);
     await f.server.publish(second.release, second.target, second.family, {
       changed: [first.release.sceneAssetGuid],
       removed: [removedGuid],
