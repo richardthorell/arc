@@ -539,8 +539,15 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     expect((await request(f.server, '/private/source.arcscene', firstToken)).status).toBe(404);
     expect((await request(f.server, '/objects/sha256/' + published.objects[1].sha256)).status).toBe(401);
     const newToken = f.server.issueClientToken();
-    expect((await request(f.server, '/releases/' + projectGuid + '/' + published.target + '/current.json', firstToken)).status).toBe(401);
-    const release = await request(f.server, '/releases/' + projectGuid + '/' + published.target + '/current.json', newToken);
+    expect(
+      (await request(f.server, '/releases/' + projectGuid + '/' + published.target + '/current.json', firstToken))
+        .status,
+    ).toBe(401);
+    const release = await request(
+      f.server,
+      '/releases/' + projectGuid + '/' + published.target + '/current.json',
+      newToken,
+    );
     expect(release.status).toBe(200);
     await release.arrayBuffer();
     const feed = await request(f.server, '/sessions/' + sessionId + '/changes?after=0', newToken);
@@ -629,7 +636,9 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
       rejectedRequests: 1,
       lastFailure: { code: 'rate-limited', status: 429 },
     });
-    expect(() => new EditorCookedContentServer({ ...f.options, requestsPerSecondLimit: 101 })).toThrow(/trusted session/);
+    expect(() => new EditorCookedContentServer({ ...f.options, requestsPerSecondLimit: 101 })).toThrow(
+      /trusted session/,
+    );
     expect(() => new EditorCookedContentServer({ ...f.options, requestsPerSecondLimit: 0 })).toThrow(/trusted session/);
   });
 
@@ -730,5 +739,4 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     });
     expect(JSON.stringify(server.snapshot())).not.toContain(broken.release.root);
   });
-
 });

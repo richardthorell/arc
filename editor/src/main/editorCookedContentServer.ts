@@ -25,7 +25,6 @@ export type EditorContentServerOptions = Readonly<{
   requestsPerSecondLimit?: number;
 }>;
 
-
 type ObjectRecord = Readonly<{
   file: string;
   size: number;
@@ -516,12 +515,20 @@ export class EditorCookedContentServer {
   private reject(res: ServerResponse, code: number, message: string, failure?: EditorContentFailureCode): void {
     this.rejectedRequests++;
     this.noteFailure(
-      failure ?? (code === 401 ? 'unauthorized' :
-      code === 403 ? 'forbidden' :
-      code === 429 ? 'rate-limited' :
-      code === 404 ? 'not-found' :
-      code === 416 || code === 412 ? 'range-rejected' :
-      code === 503 ? 'unavailable' : 'invalid-request'),
+      failure ??
+        (code === 401
+          ? 'unauthorized'
+          : code === 403
+            ? 'forbidden'
+            : code === 429
+              ? 'rate-limited'
+              : code === 404
+                ? 'not-found'
+                : code === 416 || code === 412
+                  ? 'range-rejected'
+                  : code === 503
+                    ? 'unavailable'
+                    : 'invalid-request'),
       code,
     );
     res.writeHead(code, {
