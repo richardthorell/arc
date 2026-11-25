@@ -218,6 +218,20 @@ export class LivePlayControlServer {
     return this.send(peer, command) ? command.messageId : null;
   }
 
+  sendStructuralEdit(
+    command: Pick<Extract<LivePlayMessage, { type: 'entity.create' | 'entity.delete' }>, 'type' | 'payload'>,
+  ): string | null {
+    const peer = this.activePeer;
+    if (
+      !peer?.ready ||
+      !peer.capabilities.includes('entity.edit') ||
+      !this.options.grantedCapabilities.includes('entity.edit')
+    )
+      return null;
+    const item = this.message(command.type, command.payload);
+    return this.send(peer, item) ? item.messageId : null;
+  }
+
   /** L1.5a: selected runtime entity/component only; UI routing in L1.5b. */
   sendInspectRequest(
     payload: Extract<LivePlayMessage, { type: 'component.inspect.request' }>['payload'],
@@ -253,6 +267,8 @@ export class LivePlayControlServer {
       | 'hello.accepted'
       | 'scene.baseline.offer'
       | 'entity.property.set'
+      | 'entity.create'
+      | 'entity.delete'
       | 'component.inspect.request'
       | 'session.resync.request',
     payload: unknown,

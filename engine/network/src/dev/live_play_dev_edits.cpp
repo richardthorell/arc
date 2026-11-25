@@ -102,6 +102,40 @@ std::optional<property_edit> decode_property_edit(std::string_view request_id, s
     return result;
 }
 
+std::optional<property_edit> decode_structural_edit(std::string_view type, std::string_view request_id,
+                                                    std::string_view payload_json)
+{
+    if (!id_token(request_id) || payload_json.size() > 64u * 1024u) return std::nullopt;
+    const auto payload = json::parse(payload_json.begin(), payload_json.end(), nullptr, false);
+    property_edit result;
+    result.request_id = request_id;
+    if (type == "entity.create")
+    {
+        if (!exact_keys(payload, {"entityGuid", "parent", "archetype", "authoringRevision"}) ||
+            !payload.at("entityGuid").is_string() || !guid(payload.at("entityGuid").get<std::string>()) ||
+            !payload.at("parent").is_null() || payload.at("archetype") != "empty" ||
+            !bounded_revision(payload, "authoringRevision", result.authoring_revision) ||
+            result.authoring_revision == 0)
+            return std::nullopt;
+        result.entity_guid = payload.at("entityGuid").get<std::string>();
+        result.operation = edit_operation::create;
+    }
+    else if (type == "entity.delete")
+    {
+        if (!exact_keys(payload, {"entity", "expectedRuntimeRevision"})) return std::nullopt;
+        const auto& entity = payload.at("entity");
+        if (!exact_keys(entity, {"kind", "entityGuid"}) || entity.at("kind") != "authored" ||
+            !entity.at("entityGuid").is_string() || !guid(entity.at("entityGuid").get<std::string>()) ||
+            !bounded_revision(payload, "expectedRuntimeRevision", result.expected_runtime_revision))
+            return std::nullopt;
+        result.entity_guid = entity.at("entityGuid").get<std::string>();
+        result.operation = edit_operation::erase;
+    }
+    else
+        return std::nullopt;
+    return result;
+}
+
 bool edit_mailbox::enqueue(property_edit edit)
 {
     std::scoped_lock lock{mutex_};

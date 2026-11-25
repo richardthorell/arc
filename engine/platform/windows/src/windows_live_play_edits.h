@@ -33,6 +33,7 @@ public:
         { return {.request_id = edit.request_id, .applied = false, .code = std::move(code)}; };
         if (!baseline_active) return reject("restart_required");
         if (runtime.worlds().executing()) return reject("busy");
+        if (edit.operation != edit_operation::property) return apply_structural(runtime, edit);
         const bool is_transform = edit.component == "arc.transform";
         const bool directional = edit.component == "arc.light.directional";
         const bool point = edit.component == "arc.light.point";
@@ -91,6 +92,10 @@ public:
         // A deleted/recreated entity may reuse an authored GUID; never let a
         // command from this baseline silently switch to the replacement ECS ID.
         const auto identity_key = ecs::to_string(*entity_guid);
+        const auto structural = structural_entities_.find(identity_key);
+        if (structural != structural_entities_.end() &&
+            (structural->second.deleted || edit.authoring_revision <= structural->second.create_revision))
+            return reject("stale_revision");
         const auto bound = identity_bindings_.find(identity_key);
         if (bound != identity_bindings_.end() &&
             (bound->second.world != found_world || bound->second.entity != found_entity))
@@ -299,10 +304,122 @@ public:
         held_transforms_.clear();
         identity_bindings_.clear();
         applied_authoring_.clear();
+        // Keep structural identity tombstones across a transport reconnect.
+        // Their ACK revisions belong to the old baseline and cannot be replayed.
+        ++structural_epoch_;
         applied_revision_ = 0;
     }
 
 private:
+    struct structural_entity
+    {
+        framework::runtime_world_id world_id{};
+        ecs::entity entity{};
+        std::uint64_t create_revision{};
+        std::uint64_t create_ack{};
+        std::uint64_t delete_expected{};
+        std::uint64_t delete_ack{};
+        bool deleted{};
+        std::uint64_t epoch{};
+    };
+
+    [[nodiscard]] network::live_play_dev::edit_result
+    apply_structural(framework::runtime& runtime, const network::live_play_dev::property_edit& edit)
+    {
+        using namespace network::live_play_dev;
+        const auto reject = [&](std::string code) -> edit_result
+        { return {.request_id = edit.request_id, .applied = false, .code = std::move(code)}; };
+        const auto ack = [&](std::uint64_t revision) -> edit_result
+        { return {.request_id = edit.request_id, .applied = true, .applied_revision = revision}; };
+        const auto guid = ecs::parse_entity_guid(edit.entity_guid);
+        if (!guid) return reject("invalid_request");
+        const auto key = ecs::to_string(*guid);
+        if (applied_revision_ >= 9007199254740991ULL) return reject("resync_required");
+        const auto existing = structural_entities_.find(key);
+        if (edit.operation == edit_operation::create)
+        {
+            if (edit.authoring_revision == 0 || edit.authoring_revision > 9007199254740991ULL)
+                return reject("stale_revision");
+            if (existing != structural_entities_.end())
+            {
+                const auto& record = existing->second;
+                auto* world = runtime.worlds().find(record.world_id);
+                if (record.epoch == structural_epoch_ && !record.deleted && record.create_revision == edit.authoring_revision &&
+                    world && world->entities().alive(record.entity))
+                    return ack(record.create_ack);
+                return reject("restart_required");
+            }
+            if (structural_entities_.size() >= maximum_structural_entities || identity_bindings_.contains(key))
+                return reject("restart_required");
+            framework::runtime_world* target = nullptr;
+            for (const auto id : runtime.worlds().ordered_worlds())
+            {
+                auto* world = runtime.worlds().find(id);
+                if (!world) continue;
+                for (const auto entity : world->entities().entities())
+                {
+                    const auto* identity = world->entities().try_get<scene::persistent_id_component>(entity);
+                    if (identity && identity->value == *guid) return reject("invalid_request");
+                }
+                if (world->role() != framework::runtime_world_role::client ||
+                    (world->state() != framework::runtime_world_state::running &&
+                     world->state() != framework::runtime_world_state::paused))
+                    continue;
+                if (target) return reject("unsupported_operation");
+                target = world;
+            }
+            if (!target) return reject("restart_required");
+            auto& world = target->entities();
+            const auto entity = world.create();
+            world.emplace<scene::persistent_id_component>(entity, scene::persistent_id_component{*guid});
+            world.emplace<scene::transform_component>(entity);
+            world.emplace<scene::name_component>(entity, scene::name_component{"Entity"});
+            scene::update_world_transforms(world);
+            const auto revision = ++applied_revision_;
+            structural_entities_.emplace(key, structural_entity{.world_id = target->id(),
+                                                                 .entity = entity,
+                                                                 .create_revision = edit.authoring_revision,
+                                                                 .create_ack = revision,
+                                                                 .epoch = structural_epoch_});
+            identity_bindings_.try_emplace(key, entity_binding{&world, entity});
+            return ack(revision);
+        }
+        if (edit.operation != edit_operation::erase) return reject("unsupported_operation");
+        if (existing == structural_entities_.end()) return reject("unsupported_operation");
+        auto& record = existing->second;
+        if (record.deleted)
+        {
+            if (record.epoch == structural_epoch_ && edit.expected_runtime_revision == record.delete_expected)
+                return ack(record.delete_ack);
+            return reject("restart_required");
+        }
+        if (edit.expected_runtime_revision != applied_revision_) return reject("stale_revision");
+        auto* target = runtime.worlds().find(record.world_id);
+        if (!target || (target->state() != framework::runtime_world_state::running &&
+                        target->state() != framework::runtime_world_state::paused))
+            return reject("restart_required");
+        auto& world = target->entities();
+        if (!world.alive(record.entity)) return reject("restart_required");
+        const auto* identity = world.try_get<scene::persistent_id_component>(record.entity);
+        if (!identity || identity->value != *guid) return reject("restart_required");
+        const auto* hierarchy = world.try_get<scene::hierarchy_component>(record.entity);
+        if ((hierarchy && world.alive(hierarchy->parent)) || !scene::children(world, record.entity).empty() ||
+            held_transforms_.contains(key))
+            return reject("unsupported_operation");
+        auto* physics = runtime.services().find<scene::physics_transform_authority_service>(
+            scene::physics_transform_authority_service::service_id);
+        if (physics && physics->owner(record.world_id, record.entity) != scene::physics_transform_owner::unbound)
+            return reject("permission_denied");
+        if (world.has<scene::flow_component>(record.entity)) return reject("permission_denied");
+        scene::detach(world, record.entity);
+        if (!world.destroy(record.entity)) return reject("restart_required");
+        record.deleted = true;
+        record.epoch = structural_epoch_;
+        record.delete_expected = edit.expected_runtime_revision;
+        record.delete_ack = ++applied_revision_;
+        return ack(record.delete_ack);
+    }
+
     struct applied_property
     {
         std::uint64_t revision{};
@@ -326,6 +443,9 @@ private:
     };
 
     static constexpr std::size_t maximum_holds = 64;
+    static constexpr std::size_t maximum_structural_entities = 256;
+    std::unordered_map<std::string, structural_entity> structural_entities_;
+    std::uint64_t structural_epoch_{};
     std::unordered_map<std::string, entity_binding> identity_bindings_;
     std::unordered_map<std::string, held_transform> held_transforms_;
     std::unordered_map<std::string, applied_property> applied_authoring_;
