@@ -343,6 +343,62 @@ function valueText(value: unknown): string {
   return 'Unavailable';
 }
 
+function TransformAuthorityControl({
+  guid,
+  sessionId,
+  instanceId,
+  connected,
+}: {
+  guid: string;
+  sessionId: string;
+  instanceId: string;
+  connected: boolean;
+}) {
+  const [authority, setAuthority] = useState<Awaited<ReturnType<typeof window.arc.livePlay.authoritySnapshot>>>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!connected || !window.arc?.livePlay?.authoritySnapshot) return;
+    let live = true;
+    const refresh = () => {
+      void window.arc.livePlay.authoritySnapshot(guid, sessionId, instanceId).then((value) => {
+        if (live) setAuthority(value);
+      }).catch(() => {
+        if (live) setAuthority(null);
+      });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 250);
+    return () => {
+      live = false;
+      window.clearInterval(interval);
+    };
+  }, [guid, sessionId, instanceId, connected]);
+  if (!connected || !authority?.available) return null;
+  const pending = authority.state === 'acquiring' || authority.state === 'releasing';
+  const action = authority.state === 'runtime' ? 'override' : 'release';
+  return (
+    <div className="live-runtime-inspector-actions">
+      <span role="status">Transform authority: {authority.state}</span>
+      <button
+        type="button"
+        disabled={busy || pending}
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          void window.arc.livePlay.requestAuthority(guid, sessionId, instanceId, action).then(async (accepted) => {
+            if (!accepted) setError('Authority request unavailable; finish pending edits or restart Play.');
+            setAuthority(await window.arc.livePlay.authoritySnapshot(guid, sessionId, instanceId));
+          }).catch(() => setError('Authority request failed.')).finally(() => setBusy(false));
+        }}
+      >
+        {action === 'override' ? 'Override transform' : 'Release transform'}
+      </button>
+      {error && <small role="alert">{error}</small>}
+    </div>
+  );
+}
+
 export function RuntimeInspectorPanel({
   inspection,
   diagnostics,
@@ -387,6 +443,15 @@ export function RuntimeInspectorPanel({
               Refresh
             </button>
           </div>
+          {selected.kind === 'authored' && inspection.hierarchy && !inspection.requiresSnapshot && !inspection.pendingPages && (
+            <TransformAuthorityControl
+              key={`${inspection.hierarchy.sessionId}:${inspection.hierarchy.instanceId}:${selected.entityGuid}`}
+              guid={selected.entityGuid}
+              sessionId={inspection.hierarchy.sessionId}
+              instanceId={inspection.hierarchy.instanceId}
+              connected={!disconnected}
+            />
+          )}
           {inspectableComponents.map(({ typeId, title }) => {
             const result = inspection.properties[typeId];
             if (!result) return null;
