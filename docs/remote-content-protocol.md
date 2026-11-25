@@ -220,12 +220,15 @@ a Windows client must reject an Android target's response, and vice versa.
   or a notification before its SHA-addressed descriptor and all referenced
   immutable cooked objects have been published.
 
-C9.4 implements the actual authenticated server, journal retention, and
-optional long-poll/SSE delivery. C9.5 publishes atomically and emits notifications
-**after** all chunks and the descriptor exist. C9.6 consumes these validated
-responses off the main/render thread and applies updates via the existing
-runtime update receiver at a safe activation boundary. These later milestones
-implement transport and application; the C9.1 wire contract is complete now.
+C9.4d now implements the actual authenticated **polling** server and
+bounded, per-target journal. The C9.1c base route accepts
+`?after=<cursor>`; when multiple target profiles share the same editor
+session, clients must also supply `&profile=<cook-profile>` to avoid a
+cross-target feed mix-up. A complete committed release descriptor is served
+by immutable SHA under `objects/sha256/` *before* any journal event is
+visible. C9.5 supplies explicit changed/removed GUID summaries only after a
+new successful cook/publish; C9.6 owns verified native update activation
+and ACK advancement. The transport-neutral C9.1 wire contract is unchanged.
 
 ### Static CDN and offline compatibility
 
