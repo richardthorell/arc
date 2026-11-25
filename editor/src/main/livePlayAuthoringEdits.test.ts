@@ -457,3 +457,64 @@ describe('Live Play L1.4a authoring transform producer', () => {
     expect(t.tracker.snapshot().revision).toBe(0);
   });
 });
+
+describe('L1.4e explicit editor transform authority', () => {
+  it('only reports a hold after the matching runtime ACK and releases explicitly', () => {
+    const t = fixture();
+    const { sessionId, instanceId } = t.baseline;
+    const state = () => t.tracker.authoritySnapshot(authoredGuid, sessionId, instanceId);
+    expect(t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override')).toBe(false);
+    t.tracker.activate(sessionId);
+    expect(state()).toEqual({ available: true, state: 'runtime' });
+    expect(t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override')).toBe(true);
+    expect(state().state).toBe('acquiring');
+    expect(t.send.mock.calls[0]?.[0]).toMatchObject({
+      phase: 'begin',
+      property: 'position',
+      value: [0, 0, 0],
+    });
+    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
+      requestId: 'edit-1', status: 'applied', appliedRevision: 1,
+    }));
+    expect(state().state).toBe('held');
+    expect(t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'release')).toBe(true);
+    expect(state().state).toBe('releasing');
+    expect(t.send.mock.calls[1]?.[0]).toMatchObject({ phase: 'cancel', expectedRuntimeRevision: 1 });
+    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
+      requestId: 'edit-2', status: 'applied', appliedRevision: 2,
+    }));
+    expect(state().state).toBe('runtime');
+  });
+
+  it('retries the same revision, ignores stale sessions and clears authority on disconnect', async () => {
+    const t = fixture();
+    const { sessionId, instanceId } = t.baseline;
+    t.tracker.activate(sessionId);
+    expect(t.tracker.requestAuthority(authoredGuid, 'other-session', instanceId, 'override')).toBe(false);
+    expect(t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override')).toBe(true);
+    await vi.advanceTimersByTimeAsync(650);
+    expect(t.send.mock.calls[1]?.[0]).toEqual(t.send.mock.calls[0]?.[0]);
+    t.tracker.onRuntimeMessage(runtimeMessage({ ...t.baseline, instanceId: 'old' }, 'command.ack', {
+      requestId: 'edit-1', status: 'applied', appliedRevision: 1,
+    }));
+    expect(t.tracker.authoritySnapshot(authoredGuid, sessionId, instanceId).state).toBe('acquiring');
+    t.tracker.disconnect();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.send).toHaveBeenCalledTimes(2);
+    expect(t.tracker.authoritySnapshot(authoredGuid, sessionId, instanceId).available).toBe(false);
+  });
+
+  it('does not claim authority after a rejected acquisition or missing ACK', async () => {
+    const t = fixture();
+    const { sessionId, instanceId } = t.baseline;
+    t.tracker.activate(sessionId);
+    t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override');
+    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
+      requestId: 'edit-1', status: 'rejected', error: { code: 'permission_denied', message: 'Denied' },
+    }));
+    expect(t.tracker.authoritySnapshot(authoredGuid, sessionId, instanceId).state).toBe('runtime');
+    t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override');
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(t.tracker.authoritySnapshot(authoredGuid, sessionId, instanceId).state).toBe('unknown');
+  });
+});
