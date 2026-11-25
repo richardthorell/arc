@@ -7,6 +7,7 @@
 #include <arc/network/live_play_dev_edits.h>
 #include <arc/scene/components.h>
 #include <arc/scene/hierarchy.h>
+#include <arc/scene/physics_transform_authority.h>
 
 #include <algorithm>
 #include <array>
@@ -14,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -65,6 +67,7 @@ public:
 
         const auto entity_guid = ecs::parse_entity_guid(edit.entity_guid);
         if (!entity_guid) return reject("invalid_request");
+        framework::runtime_world_id found_world_id{};
         ecs::world* found_world = nullptr;
         ecs::entity found_entity{};
         for (const auto id : runtime.worlds().ordered_worlds())
@@ -79,6 +82,7 @@ public:
                 const auto* identity = world->entities().try_get<scene::persistent_id_component>(entity);
                 if (!identity || identity->value != *entity_guid) continue;
                 if (found_world) return reject("invalid_request"); // ambiguous identity across worlds
+                found_world_id = id;
                 found_world = &world->entities();
                 found_entity = entity;
             }
@@ -124,11 +128,11 @@ public:
                 if (applied.phase != "update" || edit.phase != "commit") return reject("stale_revision");
             }
         }
-        // Authored Flow components are gameplay writers. Ordinary edit updates
-        // cannot wrest ownership from the simulation: the editor must explicitly
-        // begin a session-scoped transform hold first. The physics ECS bridge is
-        // not present yet, so other dynamic body owners must opt into this same
-        // authority policy when integrated.
+        // Gameplay and physics ownership use the same explicit hold policy.
+        auto* physics = runtime.services().find<scene::physics_transform_authority_service>(
+            scene::physics_transform_authority_service::service_id);
+        const auto owner = physics ? physics->owner(found_world_id, found_entity)
+                                   : scene::physics_transform_owner::unbound;
         const auto hold = held_transforms_.find(identity_key);
         if (is_transform)
         {
@@ -136,8 +140,20 @@ public:
             if (hold != held_transforms_.end() &&
                 (hold->second.world != found_world || hold->second.entity != found_entity))
                 return reject("restart_required");
+            if (hold != held_transforms_.end() && hold->second.physics && !hold->second.physics->valid())
+            {
+                held_transforms_.erase(hold);
+                return reject("restart_required");
+            }
+            if (!release && owner == scene::physics_transform_owner::static_body) return reject("permission_denied");
+            if (!release && owner != scene::physics_transform_owner::unbound && edit.property == "scale")
+                return reject("unsupported_operation");
             const auto* flow = found_world->try_get<scene::flow_component>(found_entity);
-            if (flow && flow->enabled && !acquire && hold == held_transforms_.end()) return reject("permission_denied");
+            const bool simulated = owner == scene::physics_transform_owner::simulated;
+            if ((simulated || (flow && flow->enabled)) && !acquire && hold == held_transforms_.end())
+                return reject("permission_denied");
+            if (!release && simulated && hold != held_transforms_.end() && !hold->second.physics)
+                return reject("restart_required");
             if (acquire && hold == held_transforms_.end() && held_transforms_.size() >= maximum_holds)
                 return reject("busy");
         }
@@ -147,7 +163,7 @@ public:
         // iteration, after the network worker's bounded mailbox handoff.
         if (is_transform && !release)
         {
-            auto updated = *current;
+            auto updated = hold == held_transforms_.end() ? *current : hold->second.transform;
             if (edit.property == "rotation")
             {
                 updated.set_rotation(math::quatf{edit.values[0], edit.values[1], edit.values[2], edit.values[3]});
@@ -160,13 +176,24 @@ public:
                 else
                     updated.set_scale(value);
             }
+            std::unique_ptr<scene::physics_transform_hold> physics_hold;
+            if (hold != held_transforms_.end() && hold->second.physics)
+            {
+                if (!hold->second.physics->set_pose(updated)) return reject("busy");
+            }
+            else if (acquire && owner == scene::physics_transform_owner::simulated)
+            {
+                physics_hold = physics->acquire(found_world_id, found_entity, updated);
+                if (!physics_hold || !physics_hold->valid()) return reject("busy");
+            }
             found_world->emplace<scene::transform_component>(found_entity, updated);
             scene::mark_transform_subtree_dirty(*found_world, found_entity);
             scene::update_world_transforms(*found_world);
-            if (acquire)
-                held_transforms_[identity_key] = {.world = found_world, .entity = found_entity, .transform = updated};
-            else if (hold != held_transforms_.end())
+            if (hold != held_transforms_.end())
                 hold->second.transform = updated;
+            else if (acquire)
+                held_transforms_.emplace(identity_key, held_transform{found_world, found_entity, updated,
+                                                                       std::move(physics_hold)});
         }
         else if (!release)
         {
@@ -232,7 +259,7 @@ public:
                     break;
                 }
             }
-            if (!world_alive || !held.world->alive(held.entity))
+            if (!world_alive || !held.world->alive(held.entity) || (held.physics && !held.physics->valid()))
             {
                 it = held_transforms_.erase(it);
                 continue;
@@ -295,6 +322,7 @@ private:
         ecs::world* world{};
         ecs::entity entity{};
         scene::transform_component transform{};
+        std::unique_ptr<scene::physics_transform_hold> physics;
     };
 
     static constexpr std::size_t maximum_holds = 64;
