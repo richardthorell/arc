@@ -109,7 +109,12 @@ function parseAuthorityRequest(raw: unknown) {
     (value.action !== undefined && value.action !== 'override' && value.action !== 'release')
   )
     return null;
-  return { guid: value.guid, sessionId: value.sessionId, instanceId: value.instanceId, action: value.action as 'override' | 'release' | undefined };
+  return {
+    guid: value.guid,
+    sessionId: value.sessionId,
+    instanceId: value.instanceId,
+    action: value.action as 'override' | 'release' | undefined,
+  };
 }
 
 async function stopLivePlayContentServer(): Promise<void> {
@@ -1446,7 +1451,10 @@ void app.whenReady().then(async () => {
   ipcMain.handle('livePlay:authorityRequest', (_event, raw: unknown) => {
     const request = parseAuthorityRequest(raw);
     if (!request || !request.action || livePlaySession?.snapshot().state !== 'connected') return false;
-    return livePlayAuthoringEdits?.requestAuthority(request.guid, request.sessionId, request.instanceId, request.action) ?? false;
+    return (
+      livePlayAuthoringEdits?.requestAuthority(request.guid, request.sessionId, request.instanceId, request.action) ??
+      false
+    );
   });
   ipcMain.handle('livePlay:inspect', (_event, raw: unknown) => {
     const parsed = livePlayInspectPayloadSchema.safeParse(raw);

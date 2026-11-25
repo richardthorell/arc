@@ -473,16 +473,24 @@ describe('L1.4e explicit editor transform authority', () => {
       property: 'position',
       value: [0, 0, 0],
     });
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      requestId: 'edit-1', status: 'applied', appliedRevision: 1,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        requestId: 'edit-1',
+        status: 'applied',
+        appliedRevision: 1,
+      }),
+    );
     expect(state().state).toBe('held');
     expect(t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'release')).toBe(true);
     expect(state().state).toBe('releasing');
     expect(t.send.mock.calls[1]?.[0]).toMatchObject({ phase: 'cancel', expectedRuntimeRevision: 1 });
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      requestId: 'edit-2', status: 'applied', appliedRevision: 2,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        requestId: 'edit-2',
+        status: 'applied',
+        appliedRevision: 2,
+      }),
+    );
     expect(state().state).toBe('runtime');
   });
 
@@ -494,9 +502,13 @@ describe('L1.4e explicit editor transform authority', () => {
     expect(t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override')).toBe(true);
     await vi.advanceTimersByTimeAsync(650);
     expect(t.send.mock.calls[1]?.[0]).toEqual(t.send.mock.calls[0]?.[0]);
-    t.tracker.onRuntimeMessage(runtimeMessage({ ...t.baseline, instanceId: 'old' }, 'command.ack', {
-      requestId: 'edit-1', status: 'applied', appliedRevision: 1,
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage({ ...t.baseline, instanceId: 'old' }, 'command.ack', {
+        requestId: 'edit-1',
+        status: 'applied',
+        appliedRevision: 1,
+      }),
+    );
     expect(t.tracker.authoritySnapshot(authoredGuid, sessionId, instanceId).state).toBe('acquiring');
     t.tracker.disconnect();
     await vi.advanceTimersByTimeAsync(5000);
@@ -509,9 +521,13 @@ describe('L1.4e explicit editor transform authority', () => {
     const { sessionId, instanceId } = t.baseline;
     t.tracker.activate(sessionId);
     t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override');
-    t.tracker.onRuntimeMessage(runtimeMessage(t.baseline, 'command.ack', {
-      requestId: 'edit-1', status: 'rejected', error: { code: 'permission_denied', message: 'Denied' },
-    }));
+    t.tracker.onRuntimeMessage(
+      runtimeMessage(t.baseline, 'command.ack', {
+        requestId: 'edit-1',
+        status: 'rejected',
+        error: { code: 'permission_denied', message: 'Denied' },
+      }),
+    );
     expect(t.tracker.authoritySnapshot(authoredGuid, sessionId, instanceId).state).toBe('runtime');
     t.tracker.requestAuthority(authoredGuid, sessionId, instanceId, 'override');
     await vi.advanceTimersByTimeAsync(4000);

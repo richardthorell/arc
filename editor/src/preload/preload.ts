@@ -533,7 +533,12 @@ const arcApi = {
       instanceId: string,
     ): Promise<{ available: boolean; state: 'runtime' | 'acquiring' | 'held' | 'releasing' | 'unknown' } | null> =>
       ipcRenderer.invoke('livePlay:authoritySnapshot', { guid, sessionId, instanceId }),
-    requestAuthority: (guid: string, sessionId: string, instanceId: string, action: 'override' | 'release'): Promise<boolean> =>
+    requestAuthority: (
+      guid: string,
+      sessionId: string,
+      instanceId: string,
+      action: 'override' | 'release',
+    ): Promise<boolean> =>
       ipcRenderer.invoke('livePlay:authorityRequest', { guid, sessionId, instanceId, action }),
     /** Read-only native inspection: never routes to the authoring host. */
     inspect: (entity: LivePlayEntity, typeId: string): Promise<string | null> =>

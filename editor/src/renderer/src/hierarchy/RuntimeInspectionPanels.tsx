@@ -361,11 +361,14 @@ function TransformAuthorityControl({
     if (!connected || !window.arc?.livePlay?.authoritySnapshot) return;
     let live = true;
     const refresh = () => {
-      void window.arc.livePlay.authoritySnapshot(guid, sessionId, instanceId).then((value) => {
-        if (live) setAuthority(value);
-      }).catch(() => {
-        if (live) setAuthority(null);
-      });
+      void window.arc.livePlay
+        .authoritySnapshot(guid, sessionId, instanceId)
+        .then((value) => {
+          if (live) setAuthority(value);
+        })
+        .catch(() => {
+          if (live) setAuthority(null);
+        });
     };
     refresh();
     const interval = window.setInterval(refresh, 250);
@@ -386,10 +389,14 @@ function TransformAuthorityControl({
         onClick={() => {
           setBusy(true);
           setError(null);
-          void window.arc.livePlay.requestAuthority(guid, sessionId, instanceId, action).then(async (accepted) => {
-            if (!accepted) setError('Authority request unavailable; finish pending edits or restart Play.');
-            setAuthority(await window.arc.livePlay.authoritySnapshot(guid, sessionId, instanceId));
-          }).catch(() => setError('Authority request failed.')).finally(() => setBusy(false));
+          void window.arc.livePlay
+            .requestAuthority(guid, sessionId, instanceId, action)
+            .then(async (accepted) => {
+              if (!accepted) setError('Authority request unavailable; finish pending edits or restart Play.');
+              setAuthority(await window.arc.livePlay.authoritySnapshot(guid, sessionId, instanceId));
+            })
+            .catch(() => setError('Authority request failed.'))
+            .finally(() => setBusy(false));
         }}
       >
         {action === 'override' ? 'Override transform' : 'Release transform'}
@@ -443,15 +450,18 @@ export function RuntimeInspectorPanel({
               Refresh
             </button>
           </div>
-          {selected.kind === 'authored' && inspection.hierarchy && !inspection.requiresSnapshot && !inspection.pendingPages && (
-            <TransformAuthorityControl
-              key={`${inspection.hierarchy.sessionId}:${inspection.hierarchy.instanceId}:${selected.entityGuid}`}
-              guid={selected.entityGuid}
-              sessionId={inspection.hierarchy.sessionId}
-              instanceId={inspection.hierarchy.instanceId}
-              connected={!disconnected}
-            />
-          )}
+          {selected.kind === 'authored' &&
+            inspection.hierarchy &&
+            !inspection.requiresSnapshot &&
+            !inspection.pendingPages && (
+              <TransformAuthorityControl
+                key={`${inspection.hierarchy.sessionId}:${inspection.hierarchy.instanceId}:${selected.entityGuid}`}
+                guid={selected.entityGuid}
+                sessionId={inspection.hierarchy.sessionId}
+                instanceId={inspection.hierarchy.instanceId}
+                connected={!disconnected}
+              />
+            )}
           {inspectableComponents.map(({ typeId, title }) => {
             const result = inspection.properties[typeId];
             if (!result) return null;

@@ -246,15 +246,13 @@ export class LivePlayAuthoringEdits {
     const key = guid.toLowerCase();
     const current = this.authoritySnapshot(key, sessionId, instanceId);
     if (!current.available || this.transitions.has(key) || this.revision >= Number.MAX_SAFE_INTEGER) return false;
-    if (action === 'override' && (current.state !== 'runtime' || this.held.size + this.transitions.size >= 64))
-      return false;
+    if (action === 'override' && (current.state !== 'runtime' || this.held.size + this.transitions.size >= 64)) return false;
     if (action === 'release' && current.state !== 'held' && current.state !== 'unknown') return false;
     // Never trust transform values from renderer IPC. Use the native authoring snapshot.
     const value = this.observed.get(key)?.position;
     if (!value || value.some((number) => !Number.isFinite(number) || Math.abs(number) > 1e6)) return false;
     // Drain previously queued values before release; never allow a retry to overwrite the transition.
-    if ([...this.pending.values()].some((item) => item.guid === key && item.component === 'arc.transform'))
-      return false;
+    if ([...this.pending.values()].some((item) => item.guid === key && item.component === 'arc.transform')) return false;
     const transition: AuthorityTransition = {
       guid: key,
       phase: action === 'override' ? 'begin' : 'cancel',
