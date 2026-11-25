@@ -109,7 +109,7 @@ function parseAuthorityRequest(raw: unknown) {
     (value.action !== undefined && value.action !== 'override' && value.action !== 'release')
   )
     return null;
-  return { guid: value.guid, sessionId: value.sessionId, instanceId: value.instanceId, action: value.action };
+  return { guid: value.guid, sessionId: value.sessionId, instanceId: value.instanceId, action: value.action as 'override' | 'release' | undefined };
 }
 
 async function stopLivePlayContentServer(): Promise<void> {
@@ -1218,6 +1218,9 @@ void app.whenReady().then(async () => {
   livePlayAuthoringEdits = new LivePlayAuthoringEdits(
     hostClient,
     (payload) => livePlaySession?.sendAuthoringProperty(payload) ?? null,
+    () => {
+      void livePlaySession?.stop().catch(() => {});
+    },
   );
   hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
   hierarchyRecovery = new LivePlayHierarchyRecovery(
