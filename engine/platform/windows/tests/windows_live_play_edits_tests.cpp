@@ -17,9 +17,87 @@ void check(bool condition, const char* description)
     if (!condition) throw std::runtime_error(description);
 }
 
+// In-memory adapter verifies the shared service contract at the Windows
+// command boundary without pretending that a production solver exists.
+struct body_state
+{
+    arc::ecs::entity entity{};
+    bool bound{};
+    bool held{};
+    bool alive{true};
+    bool refuse_pose{};
+    float linear_velocity{3.0f};
+    float angular_velocity{4.0f};
+    arc::scene::transform_component pose{};
+};
+
+class test_physics_hold final : public arc::scene::physics_transform_hold
+{
+public:
+    explicit test_physics_hold(body_state& state) noexcept : state_(state) {}
+
+    ~test_physics_hold() override
+    {
+        if (!state_.alive) return;
+        state_.held = false;
+        state_.linear_velocity = 0.0f;
+        state_.angular_velocity = 0.0f;
+    }
+
+    [[nodiscard]] bool valid() const noexcept override
+    {
+        return state_.alive && state_.held;
+    }
+
+    [[nodiscard]] bool set_pose(const arc::scene::transform_component& local) noexcept override
+    {
+        if (!valid() || state_.refuse_pose) return false;
+        state_.pose = local;
+        return true;
+    }
+
+private:
+    body_state& state_;
+};
+
+class test_physics_service final : public arc::scene::physics_transform_authority_service
+{
+public:
+    explicit test_physics_service(body_state& state) noexcept : state_(state) {}
+
+    [[nodiscard]] arc::scene::physics_transform_owner owner(arc::framework::runtime_world_id,
+                                                            arc::ecs::entity entity) const noexcept override
+    {
+        return state_.bound && state_.alive && entity == state_.entity ? arc::scene::physics_transform_owner::simulated
+                                                                       : arc::scene::physics_transform_owner::unbound;
+    }
+
+    [[nodiscard]] std::unique_ptr<arc::scene::physics_transform_hold>
+    acquire(arc::framework::runtime_world_id world, arc::ecs::entity entity,
+            const arc::scene::transform_component& local) noexcept override
+    {
+        if (owner(world, entity) != arc::scene::physics_transform_owner::simulated || state_.held || state_.refuse_pose)
+            return {};
+        auto lease = std::make_unique<test_physics_hold>(state_);
+        state_.held = true;
+        state_.pose = local;
+        return lease;
+    }
+
+private:
+    body_state& state_;
+};
+
 class live_edit_test_application final : public arc::framework::application
 {
 public:
+    body_state body;
+
+    void register_services(arc::framework::runtime_service_registry& services) override
+    {
+        services.emplace<test_physics_service>(body);
+    }
+
     void register_worlds(arc::framework::runtime_world_manager& manager) override
     {
         auto& runtime_world =
@@ -235,6 +313,67 @@ void run()
               forced->world_revision == large->world_revision + 1,
           "Native resync did not produce a fresh full hierarchy revision");
     check(!inspector.sample(runtime), "Forced resync incorrectly invalidated hierarchy change coalescing");
+
+    // L1.4e.3: a simulated body requires explicit authority, synchronizes
+    // before ACK, and releases with zero velocities at its final pose.
+    app.body.entity = selected;
+    app.body.bound = true;
+    edit.component = "arc.transform";
+    edit.property = "position";
+    edit.phase = "update";
+    edit.value_count = 3;
+    edit.values = {7.0f, 8.0f, 9.0f, 0.0f};
+    edit.authoring_revision = 6;
+    edit.expected_runtime_revision = 5;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "permission_denied", "Simulated body accepted an implicit edit");
+    edit.phase = "begin";
+    app.body.refuse_pose = true;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && !app.body.held &&
+              world->entities().get<arc::scene::transform_component>(selected).position[0] == 2.0f,
+          "Failed physics acquire changed the ECS pose");
+    app.body.refuse_pose = false;
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && app.body.held && app.body.pose.position[0] == 7.0f, "Physics hold did not synchronize");
+    edit.phase = "commit";
+    edit.authoring_revision = 7;
+    edit.expected_runtime_revision = 6;
+    edit.values[0] = 11.0f;
+    app.body.refuse_pose = true;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && app.body.pose.position[0] == 7.0f &&
+              world->entities().get<arc::scene::transform_component>(selected).position[0] == 7.0f,
+          "Failed physics synchronization changed the accepted pose");
+    app.body.refuse_pose = false;
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && app.body.pose.position[0] == 11.0f, "Held body did not receive committed pose");
+    edit.phase = "cancel";
+    edit.authoring_revision = 8;
+    edit.expected_runtime_revision = 7;
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && !app.body.held && app.body.pose.position[0] == 11.0f && app.body.linear_velocity == 0.0f &&
+              app.body.angular_velocity == 0.0f,
+          "Physics release did not preserve pose and zero velocities");
+    edit.phase = "begin";
+    edit.authoring_revision = 9;
+    edit.expected_runtime_revision = 8;
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && app.body.held, "Physics reacquisition failed");
+    applier.clear();
+    check(!app.body.held, "Disconnect leaked the physics authority lease");
+    app.body.bound = false;
+
+    // Reestablish the revision baseline for the independent Flow scenario.
+    edit.phase = "update";
+    edit.authoring_revision = 1;
+    edit.expected_runtime_revision = 0;
+    for (int i = 0; i < 5; ++i)
+    {
+        edit.authoring_revision = static_cast<std::uint64_t>(i + 1);
+        result = applier.apply(runtime, edit, true);
+        check(result.applied, "Could not establish Flow test revision");
+    }
 
     // L1.4e: gameplay-owned transforms are not implicitly editor-owned.
     // An authenticated begin acquires a bounded session-scoped hold, which
