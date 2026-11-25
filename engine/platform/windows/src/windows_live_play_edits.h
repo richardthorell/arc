@@ -344,8 +344,9 @@ private:
             {
                 const auto& record = existing->second;
                 auto* world = runtime.worlds().find(record.world_id);
-                if (record.epoch == structural_epoch_ && !record.deleted && record.create_revision == edit.authoring_revision &&
-                    world && world->entities().alive(record.entity))
+                if (record.epoch == structural_epoch_ && !record.deleted &&
+                    record.create_revision == edit.authoring_revision && world &&
+                    world->entities().alive(record.entity))
                     return ack(record.create_ack);
                 return reject("restart_required");
             }
@@ -377,10 +378,10 @@ private:
             scene::update_world_transforms(world);
             const auto revision = ++applied_revision_;
             structural_entities_.emplace(key, structural_entity{.world_id = target->id(),
-                                                                 .entity = entity,
-                                                                 .create_revision = edit.authoring_revision,
-                                                                 .create_ack = revision,
-                                                                 .epoch = structural_epoch_});
+                                                                .entity = entity,
+                                                                .create_revision = edit.authoring_revision,
+                                                                .create_ack = revision,
+                                                                .epoch = structural_epoch_});
             identity_bindings_.try_emplace(key, entity_binding{&world, entity});
             return ack(revision);
         }
