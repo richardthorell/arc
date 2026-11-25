@@ -1,4 +1,5 @@
 #include "android_lifecycle.h"
+#include "android_live_play_pairing.h"
 #include "android_log_sink.h"
 #include "android_package_assets.h"
 #include "android_project_runtime_module.h"
@@ -6,12 +7,17 @@
 #include "android_vulkan_window.h"
 #include "android_vulkan_presenter.h"
 
+#include <arc/assets/assets.h>
+#include <arc/assets/remote_content.h>
 #include <arc/diagnostics/log.h>
 #include <arc/http/android_http.h>
+#include <arc/http/content_http.h>
+#include <arc/jobs/jobs.h>
 #include <android/native_window.h>
 #include <android_native_app_glue.h>
 #include <jni.h>
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -226,9 +232,70 @@ extern "C" void android_main(android_app* app)
     { return value ? std::optional<std::string_view>(*value) : std::nullopt; };
     const auto selected = arc::project::parse_android_content_metadata(view(extras.server), view(extras.mode));
     if (!extras.valid || !selected) arc::diagnostics::error("Android", "Invalid Development content Intent metadata");
-    const bool booted = module_ready && extras.valid && selected &&
+
+    // C9.4c2: ADB (run-as) writes an expiring, mode-0600 record to this app's
+    // private files dir. Its bearer is never an Intent extra, argv or logcat.
+    // Consume/unlink exactly once so a crashed/stopped session cannot replay.
+    const auto paired = arc::platform::android::consume_android_live_play_pairing(
+        app->activity ? app->activity->internalDataPath : nullptr);
+    bool paired_release_verified = false;
+    if (paired.present)
+    {
+        // This gate is compiled for both Debug and Shipping, but a Shipping
+        // distribution must NEVER accept a Development pairing.
+        const bool development = std::string_view(ARC_ANDROID_BUILD_CONFIGURATION) == "Debug";
+        const bool compatible = paired.valid() && module_ready && development && !extras.server && !extras.mode &&
+                                paired.pairing->project_guid == project_module.project_guid();
+        if (!compatible)
+            arc::diagnostics::error("Android", "Rejected private Development content pairing");
+        else
+        {
+            const auto& identity = *paired.pairing;
+            arc::http::content_http_limits limits;
+            limits.allow_loopback_http = true;
+            limits.timeout = std::chrono::milliseconds(3000);
+            limits.development_bearer_token = identity.token;
+            arc::http::content_http_release_request request{.origin = identity.origin,
+                                                            .project_guid = identity.project_guid,
+                                                            .target_profile = identity.target_profile};
+            arc::jobs::job_system network_jobs{
+                {.worker_count = 1, .run_inline = false, .io_worker_count = 1, .enable_render_thread = false}};
+            auto fetched = arc::http::fetch_content_http_release(network_jobs, std::move(request), limits).get();
+            if (fetched.succeeded())
+            {
+                arc::assets::remote_content_expectations expected{.project_guid = identity.project_guid,
+                                                                  .engine_version = ARC_ANDROID_ENGINE_VERSION,
+                                                                  .base_build_id = identity.build_id,
+                                                                  .target = {.platform = "android",
+                                                                             .architecture = "arm64",
+                                                                             .renderer = "vulkan",
+                                                                             .cook_profile = identity.target_profile,
+                                                                             .texture_family = identity.texture_family},
+                                                                  .minimum_generation = 0};
+                const auto& body = fetched.response->body;
+                const std::string_view bytes(reinterpret_cast<const char*>(body.data()), body.size());
+                const auto parsed = arc::assets::parse_remote_content_release(bytes, expected);
+                paired_release_verified =
+                    parsed.succeeded() && parsed.release->generation == identity.generation &&
+                    arc::assets::to_string(arc::assets::hash_bytes(body)) == identity.descriptor_sha256;
+            }
+            network_jobs.shutdown(arc::jobs::job_shutdown_mode::drain);
+            arc::diagnostics::info("Android", paired_release_verified ? "Private cooked-content pairing verified"
+                                                                      : "Private cooked-content pairing rejected");
+        }
+    }
+    // C9.4c2 is discovery/transport, NOT Android remote scene activation.
+    // Never show an old packaged scene when a valid or invalid private pairing
+    // selected a remote authoring scene. C9.6/C9.7 own verified Android
+    // generation mounting and runtime launch orchestration.
+    const bool booted = !paired.present && module_ready && extras.valid && selected &&
                         runtime.boot(project_module.project_guid(), selected.value()) && project_module.start();
-    if (!booted) arc::diagnostics::warn("Android", "Host remains alive; packaged startup did not complete");
+    if (paired.present)
+        arc::diagnostics::info("Android", paired_release_verified
+                                              ? "Remote generation is verified; Android scene activation awaits C9.6"
+                                              : "Remote authoring scene was not activated");
+    if (!booted && !paired.present)
+        arc::diagnostics::warn("Android", "Host remains alive; packaged startup did not complete");
 
     arc::diagnostics::info("Android", "Native host started (A3 shared boot)");
 
