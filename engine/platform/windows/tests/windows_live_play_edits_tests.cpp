@@ -236,6 +236,84 @@ void run()
           "Native resync did not produce a fresh full hierarchy revision");
     check(!inspector.sample(runtime), "Forced resync incorrectly invalidated hierarchy change coalescing");
 
+    // L1.4e: gameplay-owned transforms are not implicitly editor-owned.
+    // An authenticated begin acquires a bounded session-scoped hold, which
+    // executes after simulation but before presentation. Cancel releases it.
+    world->entities().emplace<arc::scene::flow_component>(selected);
+    edit.component = "arc.transform";
+    edit.property = "position";
+    edit.phase = "update";
+    edit.value_count = 3;
+    edit.values = {7.0f, 8.0f, 9.0f, 0.0f};
+    edit.authoring_revision = 6;
+    edit.expected_runtime_revision = 5;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "permission_denied",
+          "Gameplay-owned transform incorrectly accepted an implicit editor edit");
+    edit.phase = "begin";
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && result.applied_revision == 6 && applier.held_entity_count() == 1,
+          "Explicit begin did not acquire runtime transform authority");
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && result.applied_revision == 6 && applier.held_entity_count() == 1,
+          "Duplicate begin changed an already-held transform");
+    runtime.set_before_presentation_hook([&] { applier.after_simulation(runtime, true); });
+    auto gameplay_pose = world->entities().get<arc::scene::transform_component>(selected);
+    gameplay_pose.set_position({60.0f, 70.0f, 80.0f});
+    world->entities().emplace<arc::scene::transform_component>(selected, gameplay_pose);
+    runtime.advance(1.0 / 60.0);
+    check(world->entities().get<arc::scene::transform_component>(selected).position[0] == 7.0f,
+          "Held pose was not reasserted at the pre-presentation boundary");
+    edit.phase = "commit";
+    edit.authoring_revision = 7;
+    edit.expected_runtime_revision = 6;
+    edit.values = {11.0f, 12.0f, 13.0f, 0.0f};
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && result.applied_revision == 7 && applier.held_entity_count() == 1,
+          "Final authored commit should preserve an explicitly held pose");
+    edit.phase = "cancel";
+    edit.authoring_revision = 8;
+    edit.expected_runtime_revision = 7;
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && result.applied_revision == 8 && applier.held_entity_count() == 0,
+          "Explicit cancel did not release gameplay authority");
+    gameplay_pose = world->entities().get<arc::scene::transform_component>(selected);
+    gameplay_pose.set_position({88.0f, 89.0f, 90.0f});
+    world->entities().emplace<arc::scene::transform_component>(selected, gameplay_pose);
+    runtime.advance(1.0 / 60.0);
+    check(world->entities().get<arc::scene::transform_component>(selected).position[0] == 88.0f,
+          "Runtime was still overridden after cancel");
+    edit.phase = "begin";
+    edit.authoring_revision = 9;
+    edit.expected_runtime_revision = 8;
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && applier.held_entity_count() == 1, "Second explicit hold failed");
+    applier.after_simulation(runtime, false);
+    check(applier.held_entity_count() == 0, "Baseline loss did not revoke runtime authority");
+    runtime.set_before_presentation_hook({});
+
+    // A fresh transport/baseline has a fresh runtime revision authority.
+    edit.expected_runtime_revision = 0;
+    // A new ECS entity with the same authored GUID must not inherit stale
+    // authority or revision state from an earlier generation.
+    result = applier.apply(runtime, edit, true);
+    check(result.applied && applier.held_entity_count() == 1, "Reacquisition after reconnect failed");
+    check(world->entities().destroy(selected), "Could not destroy prior authored entity");
+    const auto replacement = world->entities().create();
+    world->entities().emplace<arc::scene::persistent_id_component>(
+        replacement, arc::scene::persistent_id_component{arc::ecs::entity_guid{3, 4}});
+    world->entities().emplace<arc::scene::transform_component>(replacement);
+    applier.after_simulation(runtime, true);
+    check(applier.held_entity_count() == 0, "Destroyed entity left a stale transform hold");
+    edit.phase = "update";
+    edit.authoring_revision = 10;
+    edit.expected_runtime_revision = 1;
+    result = applier.apply(runtime, edit, true);
+    check(!result.applied && result.code == "restart_required",
+          "New ECS generation inherited stale authored-entity authority");
+    check(world->entities().get<arc::scene::transform_component>(replacement).position[0] == 0.0f,
+          "Stale hold mutated a replacement entity");
+
     applier.clear();
     runtime.shutdown();
 }

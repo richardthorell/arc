@@ -678,6 +678,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         return 0;
     }
     arc::framework::runtime& runtime = *session->runtime();
+#if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
+    // L1.4e holds execute after gameplay's fixed steps and before presentation.
+    // The host frame thread alone owns the applier and ECS writes.
+    runtime.set_before_presentation_hook([&runtime, &live_edit_applier, &live_baseline_active]()
+                                         { live_edit_applier.after_simulation(runtime, live_baseline_active.load()); });
+#endif
 #else
     std::unique_ptr<arc::framework::application> app = arc::framework::create_application();
     if (!app) return -1;
@@ -775,9 +781,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
         const double delta = std::chrono::duration<double>(now - last_frame).count();
         last_frame = now;
 #if defined(ARC_WINDOWS_LIVE_PLAY_DEV)
-        // The only ECS write path: drain on the owning host frame thread,
-        // before the next simulation advance. Reject if the C9-authored
-        // initial scene has not actually been activated.
+        // Socket loss and baseline rejection revoke any transform holds
+        // before the next frame, including when no new edits arrive.
+        if (!live_baseline_active.load()) live_edit_applier.clear();
+        // Apply edits on the owning host frame thread, before advancing.
+        // Active holds are reconciled again between fixed ticks and render.
         for (const auto& edit : live_edits.take_edits())
         {
             const auto outcome = live_edit_applier.apply(runtime, edit, live_baseline_active.load());
@@ -835,6 +843,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR command_line, int show_c
     live_baseline_active.store(false);
     live_worker.request_stop();
     live_worker.join();
+    runtime.set_before_presentation_hook({});
     live_edits.clear();
     live_edit_applier.clear();
     live_inspections.clear();
