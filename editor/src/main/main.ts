@@ -96,6 +96,27 @@ let shutdownPending = false;
 let shutdownComplete = false;
 let fatalHostExitPending = false;
 
+function parseAuthorityRequest(raw: unknown) {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  if (
+    typeof value.guid !== 'string' ||
+    !/^(?:[a-f\d]{32}|[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12})$/iu.test(value.guid) ||
+    typeof value.sessionId !== 'string' ||
+    typeof value.instanceId !== 'string' ||
+    value.sessionId.length > 128 ||
+    value.instanceId.length > 128 ||
+    (value.action !== undefined && value.action !== 'override' && value.action !== 'release')
+  )
+    return null;
+  return {
+    guid: value.guid,
+    sessionId: value.sessionId,
+    instanceId: value.instanceId,
+    action: value.action as 'override' | 'release' | undefined,
+  };
+}
+
 async function stopLivePlayContentServer(): Promise<void> {
   const publication = livePlayContentPublication;
   livePlayContentPublication = null;
@@ -1202,6 +1223,9 @@ void app.whenReady().then(async () => {
   livePlayAuthoringEdits = new LivePlayAuthoringEdits(
     hostClient,
     (payload) => livePlaySession?.sendAuthoringProperty(payload) ?? null,
+    () => {
+      void livePlaySession?.stop().catch(() => {});
+    },
   );
   hostClient.onEvent((event) => livePlayAuthoringEdits?.onHostEvent(event));
   hierarchyRecovery = new LivePlayHierarchyRecovery(
@@ -1418,6 +1442,19 @@ void app.whenReady().then(async () => {
     const snapshot = latestLivePlayHierarchy.hierarchy;
     if (active?.state !== 'connected' || latestLivePlayHierarchy.requiresSnapshot || !snapshot) return null;
     return snapshot.sessionId === active.sessionId && snapshot.instanceId === active.instanceId ? snapshot : null;
+  });
+  ipcMain.handle('livePlay:authoritySnapshot', (_event, raw: unknown) => {
+    const request = parseAuthorityRequest(raw);
+    if (!request) return null;
+    return livePlayAuthoringEdits?.authoritySnapshot(request.guid, request.sessionId, request.instanceId) ?? null;
+  });
+  ipcMain.handle('livePlay:authorityRequest', (_event, raw: unknown) => {
+    const request = parseAuthorityRequest(raw);
+    if (!request || !request.action || livePlaySession?.snapshot().state !== 'connected') return false;
+    return (
+      livePlayAuthoringEdits?.requestAuthority(request.guid, request.sessionId, request.instanceId, request.action) ??
+      false
+    );
   });
   ipcMain.handle('livePlay:inspect', (_event, raw: unknown) => {
     const parsed = livePlayInspectPayloadSchema.safeParse(raw);

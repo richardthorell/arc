@@ -527,6 +527,14 @@ const arcApi = {
     },
     start: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:start'),
     stop: (): Promise<WindowsLivePlaySnapshot> => ipcRenderer.invoke('livePlay:stop'),
+    authoritySnapshot: (guid: string, sessionId: string, instanceId: string): Promise<AuthoritySnapshot | null> =>
+      ipcRenderer.invoke('livePlay:authoritySnapshot', { guid, sessionId, instanceId }),
+    requestAuthority: (
+      guid: string,
+      sessionId: string,
+      instanceId: string,
+      action: AuthorityAction,
+    ): Promise<boolean> => ipcRenderer.invoke('livePlay:authorityRequest', { guid, sessionId, instanceId, action }),
     /** Read-only native inspection: never routes to the authoring host. */
     inspect: (entity: LivePlayEntity, typeId: string): Promise<string | null> =>
       ipcRenderer.invoke('livePlay:inspect', { entity, component: { typeId, schemaVersion: 1 } }),
@@ -629,5 +637,11 @@ const arcApi = {
 
 contextBridge.exposeInMainWorld('arc', arcApi);
 installExternalAssetDropHandling();
+
+type AuthorityAction = 'override' | 'release';
+type AuthoritySnapshot = {
+  available: boolean;
+  state: 'runtime' | 'acquiring' | 'held' | 'releasing' | 'unknown';
+};
 
 export type ArcApi = typeof arcApi;
