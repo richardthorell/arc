@@ -105,7 +105,12 @@ async function hashFile(file: string): Promise<string> {
   return digest.digest('hex');
 }
 
-function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile: string, family: string): {
+function parseRelease(
+  bytes: Buffer,
+  release: LivePlayRemoteRelease,
+  cookProfile: string,
+  family: string,
+): {
   objects: Array<{ sha256: string; size: number }>;
   engineVersion: string;
   target: FeedTarget;
@@ -123,7 +128,8 @@ function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile
     data.baseBuildId !== release.runtimeBuildId ||
     data.generation !== release.generation ||
     typeof data.engineVersion !== 'string' ||
-    data.engineVersion.length < 1 || data.engineVersion.length > 128 ||
+    data.engineVersion.length < 1 ||
+    data.engineVersion.length > 128 ||
     !/^[A-Za-z0-9._+-]+$/u.test(data.engineVersion) ||
     !target ||
     !['platform', 'architecture', 'renderer'].every(
@@ -218,7 +224,9 @@ export class EditorCookedContentServer {
       !options.instanceId ||
       (options.port !== undefined && (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535)) ||
       (options.journalLimit !== undefined &&
-        (!Number.isInteger(options.journalLimit) || options.journalLimit < 1 || options.journalLimit > maxJournalEvents)) ||
+        (!Number.isInteger(options.journalLimit) ||
+          options.journalLimit < 1 ||
+          options.journalLimit > maxJournalEvents)) ||
       !/^[A-Za-z0-9_-]{1,128}$/u.test(options.sessionId)
     )
       throw new Error('C9 editor content server requires a trusted session identity');
@@ -514,8 +522,7 @@ export class EditorCookedContentServer {
       let mode =
         afterSequence === journal.newestSequence
           ? 'up-to-date'
-          : afterSequence < journal.oldestSequence - 1 ||
-              journal.newestSequence - afterSequence > maxJournalEvents
+          : afterSequence < journal.oldestSequence - 1 || journal.newestSequence - afterSequence > maxJournalEvents
             ? 'full-snapshot'
             : 'replay';
       let events = mode === 'replay' ? journal.events.filter((entry) => entry.sequence > afterSequence) : [];

@@ -338,9 +338,7 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
       mode: 'up-to-date',
       events: [],
     });
-    expect(f.server.snapshot().changeFeeds).toEqual([
-      { profile: first.target, oldestSequence: 1, newestSequence: 1 },
-    ]);
+    expect(f.server.snapshot().changeFeeds).toEqual([{ profile: first.target, oldestSequence: 1, newestSequence: 1 }]);
   });
 
   it('increments the per-target journal only after verified generation commit and replays changed/removed GUIDs', async () => {
@@ -409,12 +407,10 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     const released = [];
     for (let generation = 1; generation <= 4; ++generation) {
       const next = releaseFixture(f.sessionRoot, { name: 'gen-' + generation, generation });
-      await server.publish(
-        next.release,
-        next.target,
-        next.family,
-        { changed: [next.release.sceneAssetGuid], removed: [] },
-      );
+      await server.publish(next.release, next.target, next.family, {
+        changed: [next.release.sceneAssetGuid],
+        removed: [],
+      });
       released.push(next);
     }
     const prefix = '/sessions/' + sessionId + '/changes?after=';
@@ -492,18 +488,11 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
       'after=0&profile=../windows',
       'after=0&profile=windows-x64-vulkan&profile=android-arm64-vulkan',
     ]) {
-      expect(
-        (await request(f.server, '/sessions/' + sessionId + '/changes?' + invalid, token)).status,
-      ).toBe(400);
+      expect((await request(f.server, '/sessions/' + sessionId + '/changes?' + invalid, token)).status).toBe(400);
     }
     expect(
-      (
-        await request(
-          f.server,
-          '/releases/' + projectGuid + '/' + first.target + '/current.json?after=0',
-          token,
-        )
-      ).status,
+      (await request(f.server, '/releases/' + projectGuid + '/' + first.target + '/current.json?after=0', token))
+        .status,
     ).toBe(400);
     const newer = releaseFixture(f.sessionRoot, { name: 'broken-feed', generation: 2 });
     fs.writeFileSync(path.join(newer.objectRoot, newer.objects[1].sha256), 'bad');
@@ -513,7 +502,9 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
         removed: [],
       }),
     ).rejects.toThrow(/size\/hash/);
-    const unchanged = (await (await request(f.server, '/sessions/' + sessionId + '/changes?after=1', token)).json()) as {
+    const unchanged = (await (
+      await request(f.server, '/sessions/' + sessionId + '/changes?after=1', token)
+    ).json()) as {
       newestSequence: number;
       currentGeneration: number;
       mode: string;
@@ -522,5 +513,4 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     await f.server.stop();
     expect(f.server.snapshot().changeFeeds).toEqual([]);
   });
-
 });
