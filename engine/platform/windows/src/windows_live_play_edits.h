@@ -131,8 +131,8 @@ public:
         // Gameplay and physics ownership use the same explicit hold policy.
         auto* physics = runtime.services().find<scene::physics_transform_authority_service>(
             scene::physics_transform_authority_service::service_id);
-        const auto owner = physics ? physics->owner(found_world_id, found_entity)
-                                   : scene::physics_transform_owner::unbound;
+        const auto owner =
+            physics ? physics->owner(found_world_id, found_entity) : scene::physics_transform_owner::unbound;
         const auto hold = held_transforms_.find(identity_key);
         if (is_transform)
         {
@@ -192,8 +192,8 @@ public:
             if (hold != held_transforms_.end())
                 hold->second.transform = updated;
             else if (acquire)
-                held_transforms_.emplace(identity_key, held_transform{found_world, found_entity, updated,
-                                                                       std::move(physics_hold)});
+                held_transforms_.emplace(identity_key,
+                                         held_transform{found_world, found_entity, updated, std::move(physics_hold)});
         }
         else if (!release)
         {

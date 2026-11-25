@@ -69,7 +69,7 @@ public:
                                                             arc::ecs::entity entity) const noexcept override
     {
         return state_.bound && state_.alive && entity == state_.entity ? arc::scene::physics_transform_owner::simulated
-                                                                      : arc::scene::physics_transform_owner::unbound;
+                                                                       : arc::scene::physics_transform_owner::unbound;
     }
 
     [[nodiscard]] std::unique_ptr<arc::scene::physics_transform_hold>
@@ -352,8 +352,8 @@ void run()
     edit.authoring_revision = 8;
     edit.expected_runtime_revision = 7;
     result = applier.apply(runtime, edit, true);
-    check(result.applied && !app.body.held && app.body.pose.position[0] == 11.0f &&
-              app.body.linear_velocity == 0.0f && app.body.angular_velocity == 0.0f,
+    check(result.applied && !app.body.held && app.body.pose.position[0] == 11.0f && app.body.linear_velocity == 0.0f &&
+              app.body.angular_velocity == 0.0f,
           "Physics release did not preserve pose and zero velocities");
     edit.phase = "begin";
     edit.authoring_revision = 9;
