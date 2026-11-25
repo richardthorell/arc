@@ -513,15 +513,15 @@ export class EditorCookedContentServer {
     return timingSafeEqual(createHash('sha256').update(match[1]).digest(), this.authorizationHash);
   }
 
-  private reject(res: ServerResponse, code: number, message: string): void {
+  private reject(res: ServerResponse, code: number, message: string, failure?: EditorContentFailureCode): void {
     this.rejectedRequests++;
     this.noteFailure(
-      code === 401 ? 'unauthorized' :
+      failure ?? (code === 401 ? 'unauthorized' :
       code === 403 ? 'forbidden' :
       code === 429 ? 'rate-limited' :
       code === 404 ? 'not-found' :
       code === 416 || code === 412 ? 'range-rejected' :
-      code === 503 ? 'unavailable' : 'invalid-request',
+      code === 503 ? 'unavailable' : 'invalid-request'),
       code,
     );
     res.writeHead(code, {
@@ -668,26 +668,48 @@ export class EditorCookedContentServer {
       return this.reject(res, 413, 'Large cooked objects require bounded ranges');
     }
 
+    let descriptor: number | null = null;
     try {
-      const stat = fs.lstatSync(entry.file);
+      // Open once, then fstat the actual descriptor we will stream. Reopening
+      // the pathname after lstat creates a symlink/file-replacement race.
+      // On platforms without O_NOFOLLOW the inode/realpath checks still
+      // reject substituted paths, and the pinned descriptor never follows
+      // a later rename while the transfer is in progress.
+      descriptor = fs.openSync(entry.file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+      const stat = fs.fstatSync(descriptor);
+      const linked = fs.lstatSync(entry.file);
       if (
         !stat.isFile() ||
-        stat.isSymbolicLink() ||
+        !linked.isFile() ||
+        linked.isSymbolicLink() ||
         stat.size !== entry.size ||
         stat.dev !== entry.dev ||
         stat.ino !== entry.ino ||
         stat.mtimeMs !== entry.mtimeMs ||
         stat.ctimeMs !== entry.ctimeMs ||
+        linked.dev !== stat.dev ||
+        linked.ino !== stat.ino ||
         fs.realpathSync(entry.file) !== entry.file
       )
-        return this.reject(res, 503, 'Published object changed after verification');
-      const stream = fs.createReadStream(entry.file, { start, end, highWaterMark: 64 * 1024 });
+        return this.reject(res, 503, 'Published object changed after verification', 'content-changed');
+      const stream = fs.createReadStream(entry.file, {
+        fd: descriptor,
+        autoClose: true,
+        start,
+        end,
+        highWaterMark: 64 * 1024,
+      });
+      // createReadStream now owns and closes the exact verified fd.
+      descriptor = null;
+      this.objectCacheHits++;
+      this.objectResponses++;
       this.activeTransfers++;
       res.once('close', () => {
         this.activeTransfers = Math.max(0, this.activeTransfers - 1);
         stream.destroy();
       });
       stream.once('error', () => {
+        this.noteFailure('unavailable', 503);
         if (!res.headersSent) this.reject(res, 503, 'Cooked object unavailable');
         else res.destroy();
       });
@@ -706,7 +728,10 @@ export class EditorCookedContentServer {
       res.writeHead(range !== undefined ? 206 : 200, headers);
       stream.pipe(res);
     } catch {
-      this.reject(res, 503, 'Cooked object unavailable');
+      if (!res.headersSent) this.reject(res, 503, 'Cooked object unavailable');
+      else res.destroy();
+    } finally {
+      if (descriptor !== null) fs.closeSync(descriptor);
     }
   }
 }
