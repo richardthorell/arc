@@ -454,6 +454,40 @@ void run()
           "Stale hold mutated a replacement entity");
 
     applier.clear();
+    live::property_edit structural;
+    structural.request_id = "create-1";
+    structural.entity_guid = arc::ecs::to_string(arc::ecs::entity_guid{101, 102});
+    structural.operation = live::edit_operation::create;
+    structural.authoring_revision = 1;
+    result = applier.apply(runtime, structural, false);
+    check(!result.applied, "Inactive baseline accepted entity creation");
+    const auto count = world->entities().entities().size();
+    result = applier.apply(runtime, structural, true);
+    check(result.applied && result.applied_revision == 1 && world->entities().entities().size() == count + 1,
+          "Empty authored entity creation failed");
+    result = applier.apply(runtime, structural, true);
+    check(result.applied && result.applied_revision == 1 && world->entities().entities().size() == count + 1,
+          "Duplicate create instantiated a second entity");
+    structural.operation = live::edit_operation::erase;
+    structural.expected_runtime_revision = 0;
+    result = applier.apply(runtime, structural, true);
+    check(!result.applied && result.code == "stale_revision", "Stale delete was accepted");
+    structural.expected_runtime_revision = 1;
+    result = applier.apply(runtime, structural, true);
+    check(result.applied && result.applied_revision == 2 && world->entities().entities().size() == count,
+          "Session-created entity deletion failed");
+    result = applier.apply(runtime, structural, true);
+    check(result.applied && result.applied_revision == 2, "Duplicate delete did not replay its ACK");
+    structural.operation = live::edit_operation::create;
+    structural.authoring_revision = 2;
+    result = applier.apply(runtime, structural, true);
+    check(!result.applied, "Deleted authored GUID was reused within the runtime");
+    structural.operation = live::edit_operation::erase;
+    structural.entity_guid = arc::ecs::to_string(arc::ecs::entity_guid{5, 6});
+    structural.expected_runtime_revision = 2;
+    result = applier.apply(runtime, structural, true);
+    check(!result.applied && world->entities().alive(unrelated), "Baseline entity was deleted");
+    applier.clear();
     runtime.shutdown();
 }
 } // namespace

@@ -917,11 +917,13 @@ std::optional<incoming_message> client::poll(std::uint32_t timeout_ms, std::stri
         pending_baseline_release_ = std::move(release_hash);
         pending_baseline_generation_ = generation;
     }
-    else if (type == "entity.property.set")
+    else if (type == "entity.property.set" || type == "entity.create" || type == "entity.delete")
     {
         const bool allowed = std::find(negotiated_capabilities_.begin(), negotiated_capabilities_.end(),
                                        "entity.edit") != negotiated_capabilities_.end();
-        if (allowed) edit = decode_property_edit(message_id, payload.dump());
+        if (allowed)
+            edit = type == "entity.property.set" ? decode_property_edit(message_id, payload.dump())
+                                                 : decode_structural_edit(type, message_id, payload.dump());
         if (!allowed || !edit)
         {
             error = "Invalid or unauthorized Live Play entity edit";

@@ -91,6 +91,17 @@ export class WindowsLivePlaySession {
     return requestId;
   }
 
+  sendStructuralEdit(
+    command: Pick<Extract<LivePlayMessage, { type: 'entity.create' | 'entity.delete' }>, 'type' | 'payload'>,
+  ): string | null {
+    const session = this.current;
+    if (!session || session.stopRequested || !session.baselineActive || this.snapshotValue.state !== 'connected')
+      return null;
+    const requestId = session.server.sendStructuralEdit(command);
+    this.diagnostics.requestSent(requestId, 'edit');
+    return requestId;
+  }
+
   /** Read-only repair request, strictly bound to the authenticated game peer. */
   requestHierarchyResync(reason: 'reconnected' | 'gap' | 'overflow'): boolean {
     const session = this.current;

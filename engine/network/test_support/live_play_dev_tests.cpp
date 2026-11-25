@@ -484,6 +484,23 @@ void test_property_edit_decoding_and_mailbox()
     mutated["phase"] = "publish";
     check(!decode_property_edit("edit-1", mutated.dump()), "Unknown edit phase was accepted");
 
+    using arc::network::live_play_dev::decode_structural_edit;
+    using arc::network::live_play_dev::edit_operation;
+    const auto create = json{{"entityGuid", "11111111-1111-1111-1111-111111111111"},
+                             {"parent", nullptr},
+                             {"archetype", "empty"},
+                             {"authoringRevision", 1}};
+    const auto created = decode_structural_edit("entity.create", "create-1", create.dump());
+    check(created && created->operation == edit_operation::create, "Valid empty entity creation rejected");
+    auto invalid_create = create;
+    invalid_create["archetype"] = "prefab";
+    check(!decode_structural_edit("entity.create", "create-1", invalid_create.dump()),
+          "Unsupported archetype accepted");
+    const auto erase = json{{"entity", {{"kind", "authored"}, {"entityGuid", create.at("entityGuid")}}},
+                            {"expectedRuntimeRevision", 1}};
+    const auto erased = decode_structural_edit("entity.delete", "delete-1", erase.dump());
+    check(erased && erased->operation == edit_operation::erase, "Valid entity deletion rejected");
+
     edit_mailbox mailbox;
     for (int i = 0; i < 256; ++i)
     {
