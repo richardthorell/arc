@@ -156,3 +156,54 @@ Coverage: `editor/src/main/editorCookedContentServer.test.ts` checks the
 authenticated initial event, immutable old descriptor fetch, per-profile
 journals, exact replay, up-to-date, truncated-history reset, cursor regression,
 malformed URL/cursor, failed publication retaining last-good, and shutdown.
+
+## C9.4e — Diagnostics, file-descriptor hardening, and acceptance
+
+The editor's Live Play preload bridge now provides a **read-only**
+`window.arc.livePlay.contentServerSnapshot()` call. The main process returns
+`null` without an active server/project match. Otherwise it returns
+`EditorContentServerSnapshot` with the loopback origin/port/bind mode,
+project/session identifiers, published profile/generation and per-target feed
+cursors, active clients/transfers, connection and request-rate limits, object
+index hits and responses, release/feed responses, full-snapshot resets, total
+requests/rejections/served bytes, failed publications, and the most recent
+**bounded failure code**. No bearer tokens, authorization header values,
+private paths, raw network errors or original request URLs are returned.
+Metrics are main-process-owned and reset for a fresh server instance.
+
+The C9.4e object serving path opens a **single pinned file descriptor** and
+validates the opened object's owner-independent file identity and saved
+size/inode/timestamps against the publication record, rejecting symlinks
+(including paths swapped after the earlier publication check). The same
+verified descriptor is handed to Node's read stream with `autoClose`. A
+rename/replacement after validation therefore cannot make that response
+stream a different file; transfer abort and normal completion close the
+descriptor. A later request against a modified path is rejected.
+Immutable object hashes remain verified during cook publication and by the
+native C9.2 receiver on download; this server's metadata check does **not**
+replace the recipient's SHA verification.
+
+The session token is SHA-256 stored and expires after 15 minutes; reissuing
+it clears and immediately revokes the previous hash. Bind remains **strictly
+127.0.0.1** with no LAN control: paired Android uses explicit-serial
+`adb reverse`. This is a deliberate default-deny posture; enabling LAN is
+**not** implemented here and would require a separate user-authorized
+security design. The server caps connections (16), headers (64), requests
+(100 per second), URL size, object transfers (256 MiB each), and feed
+replay (256 events / 8 MiB). A lower rate limit is injectable only to
+exercise deterministic acceptance tests.
+
+The C9.4e editor tests cover loopback bind/port collision/reuse, token
+rotation and unauthorized access, simultaneous independent project listeners,
+cross-session/cross-target isolation, rate-limit rejection, safe diagnostic
+counters and no-secret serialization, malformed/modified objects, an
+on-disk pathname swap during a pinned file transfer (non-Windows), and
+server stop/restart with no stale credentials. Existing C9.4a–d tests cover
+range/ETag, tampered publish, symlink escapes, verified catalog, replay
+and rollback.
+
+C9.4 is a **development-only cooked-content service**, not a remote
+editing API or shipping server. A successful C9.4e PR can close #1137.
+Later C9.5 authors additional post-edit generations, and C9.6/C9.7
+consume/activate remote changes; they are not silently considered complete
+by the server's acceptance tests.
