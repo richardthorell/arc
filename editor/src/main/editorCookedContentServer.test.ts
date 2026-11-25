@@ -214,7 +214,12 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     const changed = { ...newer.release, projectGuid: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' };
     await expect(f.server.publish(changed, newer.target)).rejects.toThrow(/different project/);
     fs.writeFileSync(path.join(newer.objectRoot, newer.objects[1].sha256), 'bad bytes');
-    await expect(f.server.publish(newer.release, newer.target)).rejects.toThrow(/size\/hash/);
+    await expect(
+      f.server.publish(newer.release, newer.target, newer.family, {
+        changed: [newer.release.sceneAssetGuid],
+        removed: [],
+      }),
+    ).rejects.toThrow(/size\/hash/);
     expect((await request(f.server, address, token)).status).toBe(200);
     expect((await request(f.server, address, token)).headers.get('etag')).toBe('"' + digest(good.descriptor) + '"');
     await expect(f.server.publish(good.release, good.target)).rejects.toThrow(/monotonically/);
@@ -236,7 +241,12 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
       fs.writeFileSync(outside, later.objects[1].bytes);
       fs.unlinkSync(path.join(later.objectRoot, later.objects[1].sha256));
       fs.symlinkSync(outside, path.join(later.objectRoot, later.objects[1].sha256));
-      await expect(f.server.publish(later.release, later.target)).rejects.toThrow(/symlink/);
+      await expect(
+        f.server.publish(later.release, later.target, later.family, {
+          changed: [later.release.sceneAssetGuid],
+          removed: [],
+        }),
+      ).rejects.toThrow(/symlink/);
     }
   });
 
