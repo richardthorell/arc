@@ -174,6 +174,7 @@ export class LivePlayAuthoringEdits {
   private readonly outstanding = new Map<string, Outstanding>();
   private readonly held = new Set<string>();
   private readonly uncertain = new Set<string>();
+  private readonly deferredAuthorityRefresh = new Set<string>();
   private readonly transitions = new Map<string, AuthorityTransition>();
   private revision = 0;
   private runtimeRevision = 0;
@@ -302,7 +303,7 @@ export class LivePlayAuthoringEdits {
       else this.held.delete(transition.guid);
     }
     if (this.active && this.pending.size) this.scheduleCommit();
-    if (this.active && !unknown) this.scheduleRefresh();
+    if (this.deferredAuthorityRefresh.delete(transition.guid) && this.active && !unknown) this.scheduleRefresh();
   }
 
   private invalidateHeldAuthority(): void {
@@ -319,6 +320,7 @@ export class LivePlayAuthoringEdits {
     this.transitions.clear();
     this.held.clear();
     this.uncertain.clear();
+    this.deferredAuthorityRefresh.clear();
   }
 
   begin(baseline: LivePlaySceneBaseline): void {
@@ -448,6 +450,7 @@ export class LivePlayAuthoringEdits {
         return;
       }
       if (this.transitions.has(guid) || this.uncertain.has(guid)) {
+        this.deferredAuthorityRefresh.add(guid);
         next.set(guid, before);
         continue;
       }
