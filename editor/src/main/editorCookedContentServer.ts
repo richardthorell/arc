@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import path from 'node:path';
+import type { EditorContentFailureCode, EditorContentServerSnapshot } from '../common/editorContentDiagnosticsTypes';
+
+export type { EditorContentServerSnapshot } from '../common/editorContentDiagnosticsTypes';
 import type { LivePlayRemoteRelease } from './livePlayRemoteRelease';
 
 /** C9.4a: main-process-owned read-only serving of already verified L1.3 output.
@@ -18,21 +21,10 @@ export type EditorContentServerOptions = Readonly<{
   port?: number;
   /** Test seam and upper bound for per-target replay history (1..256). */
   journalLimit?: number;
+  /** Testable global request rate bound, never higher than 100 requests/second. */
+  requestsPerSecondLimit?: number;
 }>;
 
-export type EditorContentServerSnapshot = Readonly<{
-  state: 'stopped' | 'listening';
-  origin: string | null;
-  projectGuid: string;
-  sessionId: string;
-  profiles: ReadonlyArray<{ profile: string; family: string; generation: number }>;
-  changeFeeds: ReadonlyArray<{ profile: string; oldestSequence: number; newestSequence: number }>;
-  activeClients: number;
-  activeTransfers: number;
-  requests: number;
-  bytesSent: number;
-  rejectedRequests: number;
-}>;
 
 type ObjectRecord = Readonly<{
   file: string;
@@ -85,6 +77,8 @@ const maxGuidsPerEvent = 4096;
 const maxDescriptor = 8 * 1024 * 1024;
 const maxTransfer = 256 * 1024 * 1024;
 const noStore = 'no-store, no-cache, must-revalidate';
+const maximumConnections = 16;
+const defaultRequestsPerSecondLimit = 100;
 
 function within(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
@@ -216,6 +210,19 @@ export class EditorCookedContentServer {
   private windowStart = 0;
   private windowRequests = 0;
   private publishing = false;
+  private objectCacheHits = 0;
+  private objectResponses = 0;
+  private releaseResponses = 0;
+  private feedResponses = 0;
+  private snapshotResets = 0;
+  private publicationFailures = 0;
+  private lastFailure: EditorContentServerSnapshot['lastFailure'] = null;
+
+  private noteFailure(code: EditorContentFailureCode, status: number | null = null): void {
+    // Intentionally never store a raw exception, request path, header,
+    // native process argv, token or authoring filesystem path.
+    this.lastFailure = { code, status, atMs: Date.now() };
+  }
 
   constructor(private readonly options: EditorContentServerOptions) {
     if (
@@ -228,7 +235,11 @@ export class EditorCookedContentServer {
         (!Number.isInteger(options.journalLimit) ||
           options.journalLimit < 1 ||
           options.journalLimit > maxJournalEvents)) ||
-      !/^[A-Za-z0-9_-]{1,128}$/u.test(options.sessionId)
+      !/^[A-Za-z0-9_-]{1,128}$/u.test(options.sessionId) ||
+      (options.requestsPerSecondLimit !== undefined &&
+        (!Number.isInteger(options.requestsPerSecondLimit) ||
+          options.requestsPerSecondLimit < 1 ||
+          options.requestsPerSecondLimit > defaultRequestsPerSecondLimit))
     )
       throw new Error('C9 editor content server requires a trusted session identity');
     this.projectRoot = fs.realpathSync(options.projectRoot);
@@ -247,6 +258,8 @@ export class EditorCookedContentServer {
     return {
       state: this.server ? 'listening' : 'stopped',
       origin: this.port === null ? null : 'http://127.0.0.1:' + this.port,
+      port: this.port,
+      bindMode: 'loopback',
       projectGuid: this.options.projectGuid,
       sessionId: this.options.sessionId,
       profiles: [...this.publications].map(([profile, p]) => ({
@@ -261,16 +274,25 @@ export class EditorCookedContentServer {
       })),
       activeClients: this.sockets.size,
       activeTransfers: this.activeTransfers,
+      maximumConnections,
+      requestsPerSecondLimit: this.options.requestsPerSecondLimit ?? defaultRequestsPerSecondLimit,
       requests: this.requests,
       bytesSent: this.bytesSent,
       rejectedRequests: this.rejectedRequests,
+      objectCacheHits: this.objectCacheHits,
+      objectResponses: this.objectResponses,
+      releaseResponses: this.releaseResponses,
+      feedResponses: this.feedResponses,
+      snapshotResets: this.snapshotResets,
+      publicationFailures: this.publicationFailures,
+      lastFailure: this.lastFailure,
     };
   }
 
   async start(): Promise<void> {
     if (this.server) throw new Error('C9 content listener is already active');
     const server = createServer((req, res) => this.handle(req, res));
-    server.maxConnections = 16;
+    server.maxConnections = maximumConnections;
     server.headersTimeout = 5000;
     server.requestTimeout = 8000;
     server.keepAliveTimeout = 2000;
@@ -291,12 +313,26 @@ export class EditorCookedContentServer {
       this.server = server;
       this.port = address.port;
       server.on('error', () => {
-        this.publications.clear();
-        this.feedJournals.clear();
-        this.objects.clear();
+        this.noteFailure('server-failed');
+        if (this.server === server) {
+          this.server = null;
+          this.port = null;
+          this.publications.clear();
+          this.feedJournals.clear();
+          this.objects.clear();
+          this.authorizationHash?.fill(0);
+          this.authorizationHash = null;
+          this.authorizationExpires = 0;
+        }
         for (const socket of this.sockets) socket.destroy();
+        try {
+          server.close();
+        } catch {
+          // The socket may have already closed.
+        }
       });
     } catch (error) {
+      this.noteFailure('bind-failed');
       try {
         server.close();
       } catch {
@@ -311,6 +347,7 @@ export class EditorCookedContentServer {
   issueClientToken(): string {
     if (!this.server) throw new Error('C9 listener is not active');
     const token = randomBytes(32).toString('hex');
+    this.authorizationHash?.fill(0);
     this.authorizationHash = createHash('sha256').update(token).digest();
     this.authorizationExpires = Date.now() + 15 * 60_000;
     return token;
@@ -442,6 +479,10 @@ export class EditorCookedContentServer {
       this.publications.clear();
       for (const [name, entry] of nextPublications) this.publications.set(name, entry);
       this.feedJournals.set(cookProfile, feed);
+    } catch (error) {
+      this.publicationFailures++;
+      this.noteFailure('publish-rejected');
+      throw error;
     } finally {
       this.publishing = false;
     }
@@ -474,6 +515,15 @@ export class EditorCookedContentServer {
 
   private reject(res: ServerResponse, code: number, message: string): void {
     this.rejectedRequests++;
+    this.noteFailure(
+      code === 401 ? 'unauthorized' :
+      code === 403 ? 'forbidden' :
+      code === 429 ? 'rate-limited' :
+      code === 404 ? 'not-found' :
+      code === 416 || code === 412 ? 'range-rejected' :
+      code === 503 ? 'unavailable' : 'invalid-request',
+      code,
+    );
     res.writeHead(code, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': noStore,
@@ -490,7 +540,8 @@ export class EditorCookedContentServer {
       this.windowStart = now;
       this.windowRequests = 0;
     }
-    if (++this.windowRequests > 100) return this.reject(res, 429, 'Request limit exceeded');
+    if (++this.windowRequests > (this.options.requestsPerSecondLimit ?? defaultRequestsPerSecondLimit))
+      return this.reject(res, 429, 'Request limit exceeded');
     if (!this.server || this.port === null) return this.reject(res, 503, 'Content server stopping');
     if (req.socket.remoteAddress !== '127.0.0.1') return this.reject(res, 403, 'Loopback only');
     if (req.headers.host !== '127.0.0.1:' + this.port) return this.reject(res, 400, 'Invalid content authority');
@@ -564,6 +615,8 @@ export class EditorCookedContentServer {
       });
       res.end(bytes);
       this.bytesSent += bytes.length;
+      this.feedResponses++;
+      if (mode === 'full-snapshot') this.snapshotResets++;
       return;
     }
     if (queryStart >= 0) return this.reject(res, 400, 'Query strings are not permitted on cooked objects');
@@ -582,6 +635,7 @@ export class EditorCookedContentServer {
       });
       res.end(entry.descriptor);
       this.bytesSent += entry.descriptor.length;
+      this.releaseResponses++;
       return;
     }
 
