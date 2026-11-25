@@ -735,7 +735,7 @@ export class EditorCookedContentServer {
       res.writeHead(range !== undefined ? 206 : 200, headers);
       stream.pipe(res);
     } catch {
-      if (!res.headersSent) this.reject(res, 503, 'Cooked object unavailable');
+      if (!res.headersSent) this.reject(res, 503, 'Cooked object unavailable', 'content-changed');
       else res.destroy();
     } finally {
       if (descriptor !== null) fs.closeSync(descriptor);
