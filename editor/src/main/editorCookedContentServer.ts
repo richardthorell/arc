@@ -193,9 +193,9 @@ function guidChanges(
   return { changed: [...changed].sort(), removed: [...removed].sort() };
 }
 
-/** Endpoint credentials are only available to trusted editor-main callers.
- * Future C9.4b passes them over the existing protected native handoff, never
- * through URL, CLI, project settings, log, or renderer IPC.
+/** Session credentials are editor-main-only and travel to native clients
+ * over the already established protected C9.4c pairing path, never through
+ * URL, CLI, project settings, logs or renderer IPC.
  */
 export class EditorCookedContentServer {
   private server: Server | null = null;
