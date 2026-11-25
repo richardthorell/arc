@@ -705,7 +705,7 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
       const original = fs.createReadStream.bind(fs);
       let swapped = false;
       const spy = vi.spyOn(fs, 'createReadStream').mockImplementation((filename, opts) => {
-        if (!swapped && filename === file && opts?.fd !== undefined) {
+        if (!swapped && filename === file && opts && typeof opts !== 'string' && opts.fd !== undefined) {
           swapped = true;
           fs.renameSync(file, relocated);
           fs.symlinkSync(unrelated, file);
