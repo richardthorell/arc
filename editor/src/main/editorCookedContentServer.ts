@@ -187,8 +187,9 @@ function guidChanges(
     throw new Error('C9 feed change list exceeds bounded GUID inventory');
   const seen = new Set<string>();
   for (const guid of [...changed, ...removed]) {
-    if (!guidPattern.test(guid) || !seen.add(guid))
+    if (!guidPattern.test(guid) || seen.has(guid))
       throw new Error('C9 feed contains an invalid, duplicate or overlapping asset GUID');
+    seen.add(guid);
   }
   return { changed: [...changed].sort(), removed: [...removed].sort() };
 }
