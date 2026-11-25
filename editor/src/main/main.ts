@@ -1423,6 +1423,15 @@ void app.whenReady().then(async () => {
   );
   ipcMain.handle('livePlay:snapshot', () => livePlaySession?.snapshot() ?? null);
   ipcMain.handle('livePlay:diagnosticsSnapshot', () => livePlaySession?.diagnosticsSnapshot() ?? null);
+  // Read-only operational diagnostics only. The snapshot never includes
+  // pairing credentials, cooked disk paths, HTTP headers or raw error text.
+  ipcMain.handle('livePlay:contentServerSnapshot', () => {
+    const server = livePlayContentServer;
+    const project = projectService?.active();
+    if (!server || !project) return null;
+    const snapshot = server.snapshot();
+    return snapshot.projectGuid === project.descriptor.guid ? snapshot : null;
+  });
   ipcMain.handle('livePlay:inspectionStateSnapshot', () => {
     const active = livePlaySession?.snapshot();
     const state = hierarchyRecovery?.snapshot();

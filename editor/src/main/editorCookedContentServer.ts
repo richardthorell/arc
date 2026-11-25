@@ -3,6 +3,9 @@ import fs from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Socket } from 'node:net';
 import path from 'node:path';
+import type { EditorContentFailureCode, EditorContentServerSnapshot } from '../common/editorContentDiagnosticsTypes';
+
+export type { EditorContentServerSnapshot } from '../common/editorContentDiagnosticsTypes';
 import type { LivePlayRemoteRelease } from './livePlayRemoteRelease';
 
 /** C9.4a: main-process-owned read-only serving of already verified L1.3 output.
@@ -18,20 +21,8 @@ export type EditorContentServerOptions = Readonly<{
   port?: number;
   /** Test seam and upper bound for per-target replay history (1..256). */
   journalLimit?: number;
-}>;
-
-export type EditorContentServerSnapshot = Readonly<{
-  state: 'stopped' | 'listening';
-  origin: string | null;
-  projectGuid: string;
-  sessionId: string;
-  profiles: ReadonlyArray<{ profile: string; family: string; generation: number }>;
-  changeFeeds: ReadonlyArray<{ profile: string; oldestSequence: number; newestSequence: number }>;
-  activeClients: number;
-  activeTransfers: number;
-  requests: number;
-  bytesSent: number;
-  rejectedRequests: number;
+  /** Testable global request rate bound, never higher than 100 requests/second. */
+  requestsPerSecondLimit?: number;
 }>;
 
 type ObjectRecord = Readonly<{
@@ -85,6 +76,8 @@ const maxGuidsPerEvent = 4096;
 const maxDescriptor = 8 * 1024 * 1024;
 const maxTransfer = 256 * 1024 * 1024;
 const noStore = 'no-store, no-cache, must-revalidate';
+const maximumConnections = 16;
+const defaultRequestsPerSecondLimit = 100;
 
 function within(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
@@ -216,6 +209,19 @@ export class EditorCookedContentServer {
   private windowStart = 0;
   private windowRequests = 0;
   private publishing = false;
+  private objectCacheHits = 0;
+  private objectResponses = 0;
+  private releaseResponses = 0;
+  private feedResponses = 0;
+  private snapshotResets = 0;
+  private publicationFailures = 0;
+  private lastFailure: EditorContentServerSnapshot['lastFailure'] = null;
+
+  private noteFailure(code: EditorContentFailureCode, status: number | null = null): void {
+    // Intentionally never store a raw exception, request path, header,
+    // native process argv, token or authoring filesystem path.
+    this.lastFailure = { code, status, atMs: Date.now() };
+  }
 
   constructor(private readonly options: EditorContentServerOptions) {
     if (
@@ -228,7 +234,11 @@ export class EditorCookedContentServer {
         (!Number.isInteger(options.journalLimit) ||
           options.journalLimit < 1 ||
           options.journalLimit > maxJournalEvents)) ||
-      !/^[A-Za-z0-9_-]{1,128}$/u.test(options.sessionId)
+      !/^[A-Za-z0-9_-]{1,128}$/u.test(options.sessionId) ||
+      (options.requestsPerSecondLimit !== undefined &&
+        (!Number.isInteger(options.requestsPerSecondLimit) ||
+          options.requestsPerSecondLimit < 1 ||
+          options.requestsPerSecondLimit > defaultRequestsPerSecondLimit))
     )
       throw new Error('C9 editor content server requires a trusted session identity');
     this.projectRoot = fs.realpathSync(options.projectRoot);
@@ -247,6 +257,8 @@ export class EditorCookedContentServer {
     return {
       state: this.server ? 'listening' : 'stopped',
       origin: this.port === null ? null : 'http://127.0.0.1:' + this.port,
+      port: this.port,
+      bindMode: 'loopback',
       projectGuid: this.options.projectGuid,
       sessionId: this.options.sessionId,
       profiles: [...this.publications].map(([profile, p]) => ({
@@ -261,16 +273,25 @@ export class EditorCookedContentServer {
       })),
       activeClients: this.sockets.size,
       activeTransfers: this.activeTransfers,
+      maximumConnections,
+      requestsPerSecondLimit: this.options.requestsPerSecondLimit ?? defaultRequestsPerSecondLimit,
       requests: this.requests,
       bytesSent: this.bytesSent,
       rejectedRequests: this.rejectedRequests,
+      objectCacheHits: this.objectCacheHits,
+      objectResponses: this.objectResponses,
+      releaseResponses: this.releaseResponses,
+      feedResponses: this.feedResponses,
+      snapshotResets: this.snapshotResets,
+      publicationFailures: this.publicationFailures,
+      lastFailure: this.lastFailure,
     };
   }
 
   async start(): Promise<void> {
     if (this.server) throw new Error('C9 content listener is already active');
     const server = createServer((req, res) => this.handle(req, res));
-    server.maxConnections = 16;
+    server.maxConnections = maximumConnections;
     server.headersTimeout = 5000;
     server.requestTimeout = 8000;
     server.keepAliveTimeout = 2000;
@@ -291,12 +312,26 @@ export class EditorCookedContentServer {
       this.server = server;
       this.port = address.port;
       server.on('error', () => {
-        this.publications.clear();
-        this.feedJournals.clear();
-        this.objects.clear();
+        this.noteFailure('server-failed');
+        if (this.server === server) {
+          this.server = null;
+          this.port = null;
+          this.publications.clear();
+          this.feedJournals.clear();
+          this.objects.clear();
+          this.authorizationHash?.fill(0);
+          this.authorizationHash = null;
+          this.authorizationExpires = 0;
+        }
         for (const socket of this.sockets) socket.destroy();
+        try {
+          server.close();
+        } catch {
+          // The socket may have already closed.
+        }
       });
     } catch (error) {
+      this.noteFailure('bind-failed');
       try {
         server.close();
       } catch {
@@ -311,6 +346,7 @@ export class EditorCookedContentServer {
   issueClientToken(): string {
     if (!this.server) throw new Error('C9 listener is not active');
     const token = randomBytes(32).toString('hex');
+    this.authorizationHash?.fill(0);
     this.authorizationHash = createHash('sha256').update(token).digest();
     this.authorizationExpires = Date.now() + 15 * 60_000;
     return token;
@@ -442,6 +478,10 @@ export class EditorCookedContentServer {
       this.publications.clear();
       for (const [name, entry] of nextPublications) this.publications.set(name, entry);
       this.feedJournals.set(cookProfile, feed);
+    } catch (error) {
+      this.publicationFailures++;
+      this.noteFailure('publish-rejected');
+      throw error;
     } finally {
       this.publishing = false;
     }
@@ -472,8 +512,25 @@ export class EditorCookedContentServer {
     return timingSafeEqual(createHash('sha256').update(match[1]).digest(), this.authorizationHash);
   }
 
-  private reject(res: ServerResponse, code: number, message: string): void {
+  private reject(res: ServerResponse, code: number, message: string, failure?: EditorContentFailureCode): void {
     this.rejectedRequests++;
+    this.noteFailure(
+      failure ??
+        (code === 401
+          ? 'unauthorized'
+          : code === 403
+            ? 'forbidden'
+            : code === 429
+              ? 'rate-limited'
+              : code === 404
+                ? 'not-found'
+                : code === 416 || code === 412
+                  ? 'range-rejected'
+                  : code === 503
+                    ? 'unavailable'
+                    : 'invalid-request'),
+      code,
+    );
     res.writeHead(code, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': noStore,
@@ -490,7 +547,8 @@ export class EditorCookedContentServer {
       this.windowStart = now;
       this.windowRequests = 0;
     }
-    if (++this.windowRequests > 100) return this.reject(res, 429, 'Request limit exceeded');
+    if (++this.windowRequests > (this.options.requestsPerSecondLimit ?? defaultRequestsPerSecondLimit))
+      return this.reject(res, 429, 'Request limit exceeded');
     if (!this.server || this.port === null) return this.reject(res, 503, 'Content server stopping');
     if (req.socket.remoteAddress !== '127.0.0.1') return this.reject(res, 403, 'Loopback only');
     if (req.headers.host !== '127.0.0.1:' + this.port) return this.reject(res, 400, 'Invalid content authority');
@@ -564,6 +622,8 @@ export class EditorCookedContentServer {
       });
       res.end(bytes);
       this.bytesSent += bytes.length;
+      this.feedResponses++;
+      if (mode === 'full-snapshot') this.snapshotResets++;
       return;
     }
     if (queryStart >= 0) return this.reject(res, 400, 'Query strings are not permitted on cooked objects');
@@ -582,6 +642,7 @@ export class EditorCookedContentServer {
       });
       res.end(entry.descriptor);
       this.bytesSent += entry.descriptor.length;
+      this.releaseResponses++;
       return;
     }
 
@@ -614,26 +675,48 @@ export class EditorCookedContentServer {
       return this.reject(res, 413, 'Large cooked objects require bounded ranges');
     }
 
+    let descriptor: number | null = null;
     try {
-      const stat = fs.lstatSync(entry.file);
+      // Open once, then fstat the actual descriptor we will stream. Reopening
+      // the pathname after lstat creates a symlink/file-replacement race.
+      // On platforms without O_NOFOLLOW the inode/realpath checks still
+      // reject substituted paths, and the pinned descriptor never follows
+      // a later rename while the transfer is in progress.
+      descriptor = fs.openSync(entry.file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+      const stat = fs.fstatSync(descriptor);
+      const linked = fs.lstatSync(entry.file);
       if (
         !stat.isFile() ||
-        stat.isSymbolicLink() ||
+        !linked.isFile() ||
+        linked.isSymbolicLink() ||
         stat.size !== entry.size ||
         stat.dev !== entry.dev ||
         stat.ino !== entry.ino ||
         stat.mtimeMs !== entry.mtimeMs ||
         stat.ctimeMs !== entry.ctimeMs ||
+        linked.dev !== stat.dev ||
+        linked.ino !== stat.ino ||
         fs.realpathSync(entry.file) !== entry.file
       )
-        return this.reject(res, 503, 'Published object changed after verification');
-      const stream = fs.createReadStream(entry.file, { start, end, highWaterMark: 64 * 1024 });
+        return this.reject(res, 503, 'Published object changed after verification', 'content-changed');
+      const stream = fs.createReadStream(entry.file, {
+        fd: descriptor,
+        autoClose: true,
+        start,
+        end,
+        highWaterMark: 64 * 1024,
+      });
+      // createReadStream now owns and closes the exact verified fd.
+      descriptor = null;
+      this.objectCacheHits++;
+      this.objectResponses++;
       this.activeTransfers++;
       res.once('close', () => {
         this.activeTransfers = Math.max(0, this.activeTransfers - 1);
         stream.destroy();
       });
       stream.once('error', () => {
+        this.noteFailure('unavailable', 503);
         if (!res.headersSent) this.reject(res, 503, 'Cooked object unavailable');
         else res.destroy();
       });
@@ -652,7 +735,10 @@ export class EditorCookedContentServer {
       res.writeHead(range !== undefined ? 206 : 200, headers);
       stream.pipe(res);
     } catch {
-      this.reject(res, 503, 'Cooked object unavailable');
+      if (!res.headersSent) this.reject(res, 503, 'Cooked object unavailable', 'content-changed');
+      else res.destroy();
+    } finally {
+      if (descriptor !== null) fs.closeSync(descriptor);
     }
   }
 }

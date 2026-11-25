@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LivePlayRemoteRelease } from './livePlayRemoteRelease';
 import { EditorCookedContentServer } from './editorCookedContentServer';
 
@@ -528,5 +528,233 @@ describe('C9.4a editor-owned cooked HTTP server', () => {
     expect(unchanged).toMatchObject({ newestSequence: 1, currentGeneration: 1, mode: 'up-to-date' });
     await f.server.stop();
     expect(f.server.snapshot().changeFeeds).toEqual([]);
+  });
+
+  it('reports redacted, per-project transport metrics without leaking session credentials or private cooked paths', async () => {
+    const f = fixture();
+    await f.server.start();
+    const firstToken = f.server.issueClientToken();
+    const published = releaseFixture(f.sessionRoot);
+    await f.server.publish(published.release, published.target);
+    expect((await request(f.server, '/private/source.arcscene', firstToken)).status).toBe(404);
+    expect((await request(f.server, '/objects/sha256/' + published.objects[1].sha256)).status).toBe(401);
+    const newToken = f.server.issueClientToken();
+    expect(
+      (await request(f.server, '/releases/' + projectGuid + '/' + published.target + '/current.json', firstToken))
+        .status,
+    ).toBe(401);
+    const release = await request(
+      f.server,
+      '/releases/' + projectGuid + '/' + published.target + '/current.json',
+      newToken,
+    );
+    expect(release.status).toBe(200);
+    await release.arrayBuffer();
+    const feed = await request(f.server, '/sessions/' + sessionId + '/changes?after=0', newToken);
+    expect(feed.status).toBe(200);
+    await feed.arrayBuffer();
+    const item = published.objects[1];
+    const object = await request(f.server, '/objects/sha256/' + item.sha256, newToken, {
+      headers: { Range: 'bytes=1-4' },
+    });
+    expect(object.status).toBe(206);
+    expect(Buffer.from(await object.arrayBuffer())).toEqual(item.bytes.subarray(1, 5));
+    await vi.waitFor(() => expect(f.server.snapshot().activeTransfers).toBe(0));
+    const snapshot = f.server.snapshot();
+    expect(snapshot).toMatchObject({
+      state: 'listening',
+      bindMode: 'loopback',
+      projectGuid,
+      sessionId,
+      maximumConnections: 16,
+      requestsPerSecondLimit: 100,
+      activeTransfers: 0,
+      objectCacheHits: 1,
+      objectResponses: 1,
+      releaseResponses: 1,
+      feedResponses: 1,
+      snapshotResets: 0,
+      publicationFailures: 0,
+      lastFailure: { code: 'unauthorized', status: 401 },
+    });
+    expect(snapshot.port).toBe(Number(new URL(snapshot.origin!).port));
+    expect(snapshot.bytesSent).toBeGreaterThan(0);
+    const serialized = JSON.stringify(snapshot);
+    for (const secret of [firstToken, newToken, f.projectRoot, f.sessionRoot, published.release.root]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).not.toContain('authorizationHash');
+    await f.server.stop();
+    expect(f.server.snapshot()).toMatchObject({
+      state: 'stopped',
+      port: null,
+      origin: null,
+      activeClients: 0,
+      activeTransfers: 0,
+      changeFeeds: [],
+      profiles: [],
+    });
+  });
+
+  it('refuses a conflicting loopback port, reports only a failure code, then releases the port for reuse', async () => {
+    const existing = fixture();
+    await existing.server.start();
+    const other = fixture();
+    servers.pop();
+    const port = existing.server.snapshot().port;
+    const contender = new EditorCookedContentServer({ ...other.options, port: port! });
+    servers.push(contender);
+    await expect(contender.start()).rejects.toThrow('Unable to bind C9 loopback listener');
+    expect(contender.snapshot()).toMatchObject({
+      state: 'stopped',
+      bindMode: 'loopback',
+      lastFailure: { code: 'bind-failed', status: null },
+    });
+    expect(JSON.stringify(contender.snapshot())).not.toContain(other.sessionRoot);
+    await existing.server.stop();
+    await contender.start();
+    expect(contender.snapshot().port).toBe(port);
+  });
+
+  it('rejects oversized header inventories without exposing their contents in diagnostic state', async () => {
+    const f = fixture();
+    await f.server.start();
+    const token = f.server.issueClientToken();
+    const headers = new Headers();
+    for (let index = 0; index < 66; ++index) headers.set('X-Extra-' + index, 'private-data');
+    const response = await request(f.server, '/objects/sha256/' + 'a'.repeat(64), token, { headers });
+    expect(response.status).toBe(431);
+    expect(f.server.snapshot()).toMatchObject({
+      rejectedRequests: 1,
+      lastFailure: { code: 'invalid-request', status: 431 },
+    });
+    const diagnostics = JSON.stringify(f.server.snapshot());
+    expect(diagnostics).not.toContain(token);
+    expect(diagnostics).not.toContain('private-data');
+    expect(diagnostics).not.toContain('X-Extra-');
+  });
+
+  it('enforces request-rate limits and produces bounded safe failure codes', async () => {
+    const f = fixture();
+    servers.pop();
+    const server = new EditorCookedContentServer({ ...f.options, requestsPerSecondLimit: 2 });
+    servers.push(server);
+    await server.start();
+    const token = server.issueClientToken();
+    const release = releaseFixture(f.sessionRoot);
+    await server.publish(release.release, release.target);
+    const address = '/releases/' + projectGuid + '/' + release.target + '/current.json';
+    expect((await request(server, address, token)).status).toBe(200);
+    expect((await request(server, address, token)).status).toBe(200);
+    expect((await request(server, address, token)).status).toBe(429);
+    expect(server.snapshot()).toMatchObject({
+      requestsPerSecondLimit: 2,
+      requests: 3,
+      releaseResponses: 2,
+      rejectedRequests: 1,
+      lastFailure: { code: 'rate-limited', status: 429 },
+    });
+    expect(() => new EditorCookedContentServer({ ...f.options, requestsPerSecondLimit: 101 })).toThrow(
+      /trusted session/,
+    );
+    expect(() => new EditorCookedContentServer({ ...f.options, requestsPerSecondLimit: 0 })).toThrow(/trusted session/);
+  });
+
+  it('keeps independent project credentials, descriptor inventories and diagnostics isolated on concurrent ports', async () => {
+    const first = fixture();
+    const second = fixture();
+    await first.server.start();
+    await second.server.start();
+    const firstToken = first.server.issueClientToken();
+    const secondToken = second.server.issueClientToken();
+    const firstRelease = releaseFixture(first.sessionRoot, { name: 'first' });
+    const secondRelease = releaseFixture(second.sessionRoot, {
+      name: 'second',
+      profile: 'android-arm64-vulkan',
+      family: 'astc',
+    });
+    await first.server.publish(firstRelease.release, firstRelease.target);
+    await second.server.publish(secondRelease.release, secondRelease.target);
+    const firstAddress = '/releases/' + projectGuid + '/' + firstRelease.target + '/current.json';
+    const secondAddress = '/releases/' + projectGuid + '/' + secondRelease.target + '/current.json';
+    expect((await request(first.server, firstAddress, firstToken)).status).toBe(200);
+    expect((await request(second.server, secondAddress, secondToken)).status).toBe(200);
+    expect((await request(first.server, firstAddress, secondToken)).status).toBe(401);
+    expect((await request(second.server, secondAddress, firstToken)).status).toBe(401);
+    expect((await request(first.server, secondAddress, firstToken)).status).toBe(404);
+    expect((await request(second.server, firstAddress, secondToken)).status).toBe(404);
+    expect(first.server.snapshot().profiles[0].profile).toBe('windows-x64-vulkan');
+    expect(second.server.snapshot().profiles[0].profile).toBe('android-arm64-vulkan');
+    await first.server.stop();
+    expect((await request(second.server, secondAddress, secondToken)).status).toBe(200);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'streams the verified open descriptor even if the path is replaced by an untrusted symlink during transfer',
+    async () => {
+      const f = fixture();
+      await f.server.start();
+      const token = f.server.issueClientToken();
+      const released = releaseFixture(f.sessionRoot);
+      await f.server.publish(released.release, released.target);
+      const entry = released.objects[1];
+      const file = path.join(released.objectRoot, entry.sha256);
+      const relocated = file + '.sealed';
+      const unrelated = path.join(f.projectRoot, 'untrusted.bin');
+      fs.writeFileSync(unrelated, Buffer.alloc(entry.size, 0x7a));
+      const original = fs.createReadStream.bind(fs);
+      let swapped = false;
+      const spy = vi.spyOn(fs, 'createReadStream').mockImplementation((filename, opts) => {
+        if (!swapped && filename === file && opts && typeof opts !== 'string' && opts.fd !== undefined) {
+          swapped = true;
+          fs.renameSync(file, relocated);
+          fs.symlinkSync(unrelated, file);
+        }
+        return original(filename, opts);
+      });
+      try {
+        const response = await request(f.server, '/objects/sha256/' + entry.sha256, token);
+        expect(response.status).toBe(200);
+        expect(Buffer.from(await response.arrayBuffer())).toEqual(entry.bytes);
+        expect(swapped).toBe(true);
+        expect(f.server.snapshot().objectCacheHits).toBe(1);
+      } finally {
+        spy.mockRestore();
+      }
+      // The next request must detect the path substitution and reject it.
+      expect((await request(f.server, '/objects/sha256/' + entry.sha256, token)).status).toBe(503);
+      expect(f.server.snapshot().lastFailure?.code).toBe('content-changed');
+    },
+  );
+
+  it('tracks failed publication and snapshot reset counts without promoting an invalid generation', async () => {
+    const f = fixture();
+    servers.pop();
+    const server = new EditorCookedContentServer({ ...f.options, journalLimit: 1 });
+    servers.push(server);
+    await server.start();
+    const token = server.issueClientToken();
+    const first = releaseFixture(f.sessionRoot);
+    const second = releaseFixture(f.sessionRoot, { name: 'second', generation: 2 });
+    await server.publish(first.release, first.target);
+    await server.publish(second.release, second.target, second.family, {
+      changed: [first.release.sceneAssetGuid],
+      removed: [],
+    });
+    const reset = await request(server, '/sessions/' + sessionId + '/changes?after=0', token);
+    expect(reset.status).toBe(200);
+    expect((await reset.json()) as unknown).toMatchObject({ mode: 'full-snapshot', newestSequence: 2 });
+    const broken = releaseFixture(f.sessionRoot, { name: 'broken', generation: 3 });
+    fs.writeFileSync(path.join(broken.objectRoot, broken.objects[1].sha256), Buffer.from('broken'));
+    await expect(
+      server.publish(broken.release, broken.target, broken.family, { changed: [], removed: [] }),
+    ).rejects.toThrow(/size\/hash/);
+    expect(server.snapshot()).toMatchObject({
+      snapshotResets: 1,
+      publicationFailures: 1,
+      profiles: [{ profile: first.target, generation: 2 }],
+      lastFailure: { code: 'publish-rejected', status: null },
+    });
+    expect(JSON.stringify(server.snapshot())).not.toContain(broken.release.root);
   });
 });
