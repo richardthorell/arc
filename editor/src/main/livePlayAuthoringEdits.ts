@@ -228,17 +228,11 @@ export class LivePlayAuthoringEdits {
       this.baseline.instanceId === instanceId &&
       this.observed.has(key);
     const transition = this.transitions.get(key);
-    const state: TransformAuthorityState = !available
-      ? 'unknown'
-      : transition
-        ? transition.phase === 'begin'
-          ? 'acquiring'
-          : 'releasing'
-        : this.uncertain.has(key)
-          ? 'unknown'
-          : this.held.has(key)
-            ? 'held'
-            : 'runtime';
+    let state: TransformAuthorityState = 'unknown';
+    if (available) {
+      if (transition) state = transition.phase === 'begin' ? 'acquiring' : 'releasing';
+      else if (!this.uncertain.has(key)) state = this.held.has(key) ? 'held' : 'runtime';
+    }
     return { available, state };
   }
 
@@ -246,13 +240,17 @@ export class LivePlayAuthoringEdits {
     const key = guid.toLowerCase();
     const current = this.authoritySnapshot(key, sessionId, instanceId);
     if (!current.available || this.transitions.has(key) || this.revision >= Number.MAX_SAFE_INTEGER) return false;
-    if (action === 'override' && (current.state !== 'runtime' || this.held.size + this.transitions.size >= 64)) return false;
+    const atCapacity = this.held.size + this.transitions.size >= 64;
+    if (action === 'override' && (current.state !== 'runtime' || atCapacity)) return false;
     if (action === 'release' && current.state !== 'held' && current.state !== 'unknown') return false;
     // Never trust transform values from renderer IPC. Use the native authoring snapshot.
     const value = this.observed.get(key)?.position;
     if (!value || value.some((number) => !Number.isFinite(number) || Math.abs(number) > 1e6)) return false;
     // Drain previously queued values before release; never allow a retry to overwrite the transition.
-    if ([...this.pending.values()].some((item) => item.guid === key && item.component === 'arc.transform')) return false;
+    const pendingTransform = [...this.pending.values()].some(
+      (item) => item.guid === key && item.component === 'arc.transform',
+    );
+    if (pendingTransform) return false;
     const transition: AuthorityTransition = {
       guid: key,
       phase: action === 'override' ? 'begin' : 'cancel',
@@ -572,7 +570,8 @@ export class LivePlayAuthoringEdits {
       if (message.payload.status === 'active') this.activate(message.sessionId);
       else this.disconnect();
     } else if (message.type === 'command.ack') {
-      const transition = [...this.transitions.values()].find((item) => item.ids.has(message.payload.requestId));
+      const requestId = message.payload.requestId;
+      const transition = [...this.transitions.values()].find((item) => item.ids.has(requestId));
       if (transition) {
         if (message.payload.status === 'applied') {
           this.runtimeRevision = Math.max(this.runtimeRevision, message.payload.appliedRevision);
@@ -691,7 +690,8 @@ export class LivePlayAuthoringEdits {
     if (!this.active) return;
     const now = Date.now();
     for (const item of this.pending.values()) {
-      if (item.component === 'arc.transform' && (this.transitions.has(item.guid) || this.uncertain.has(item.guid))) continue;
+      const blocked = this.transitions.has(item.guid) || this.uncertain.has(item.guid);
+      if (item.component === 'arc.transform' && blocked) continue;
       if (!force && now - item.changedAt < commitQuietMs) continue;
       const threshold = item.commitInFlight ? commitAckTimeoutMs : commitRetryMs;
       if (!force && now - item.lastCommitAttempt < threshold) continue;
