@@ -192,6 +192,7 @@ export class LivePlayAuthoringEdits {
   constructor(
     private readonly host: HostQuery,
     private readonly send: SendEdit,
+    private readonly invalidateAuthority: () => void = () => {},
   ) {}
 
   snapshot(): {
@@ -301,6 +302,16 @@ export class LivePlayAuthoringEdits {
       else this.held.delete(transition.guid);
     }
     if (this.active && this.pending.size) this.scheduleCommit();
+    if (this.active && !unknown) this.scheduleRefresh();
+  }
+
+  private invalidateHeldAuthority(): void {
+    if (this.held.size || this.transitions.size || this.uncertain.size) {
+      this.clearAuthority();
+      // A structural baseline failure cannot safely release by a potentially
+      // reused authored GUID. Stop the attached process instead.
+      this.invalidateAuthority();
+    }
   }
 
   private clearAuthority(): void {
@@ -405,6 +416,7 @@ export class LivePlayAuthoringEdits {
     ) {
       this.lastError = 'Authoring scene changed during the attached Play session';
       this.active = false;
+      this.invalidateHeldAuthority();
       this.pending.clear();
       this.outstanding.clear();
       return;
@@ -417,6 +429,7 @@ export class LivePlayAuthoringEdits {
     } catch {
       this.lastError = 'Authoring scene property snapshot exceeds safe limits';
       this.active = false;
+      this.invalidateHeldAuthority();
       this.pending.clear();
       return;
     }
@@ -429,9 +442,14 @@ export class LivePlayAuthoringEdits {
         // editing a stale world; require a new cooked baseline instead.
         this.lastError = 'Authored entity removed; reload the Live Play baseline to apply structural edits';
         this.active = false;
+        this.invalidateHeldAuthority();
         this.pending.clear();
         this.outstanding.clear();
         return;
+      }
+      if (this.transitions.has(guid) || this.uncertain.has(guid)) {
+        next.set(guid, before);
+        continue;
       }
       for (const property of properties) {
         if (!differs(before[property], after[property])) continue;
@@ -442,6 +460,7 @@ export class LivePlayAuthoringEdits {
       if (!this.observed.has(guid)) {
         this.lastError = 'New authored entity requires a new Live Play baseline';
         this.active = false;
+        this.invalidateHeldAuthority();
         this.pending.clear();
         this.outstanding.clear();
         return;
@@ -452,6 +471,7 @@ export class LivePlayAuthoringEdits {
       if (!after || after.component !== before.component) {
         this.lastError = 'Authored light component changed; reload the Live Play baseline';
         this.active = false;
+        this.invalidateHeldAuthority();
         this.pending.clear();
         this.outstanding.clear();
         return;
@@ -468,6 +488,7 @@ export class LivePlayAuthoringEdits {
       if (!this.observedLights.has(guid)) {
         this.lastError = 'New authored light component requires a new Live Play baseline';
         this.active = false;
+        this.invalidateHeldAuthority();
         this.pending.clear();
         this.outstanding.clear();
         return;
@@ -491,6 +512,7 @@ export class LivePlayAuthoringEdits {
     if (this.revision >= Number.MAX_SAFE_INTEGER || (!this.pending.has(key) && this.pending.size >= maxPending)) {
       this.lastError = 'Live Play property queue exceeded safe limits';
       this.active = false;
+      this.invalidateHeldAuthority();
       this.pending.clear();
       this.outstanding.clear();
       return false;
@@ -582,13 +604,14 @@ export class LivePlayAuthoringEdits {
         // previous ACK was lost; do not report success without confirmation.
         if (this.pending.get(request.key)?.revision !== request.revision) return;
         this.rejected++;
-        if (message.payload.error.code === 'permission_denied') {
+        if (message.payload.error.code === 'permission_denied' && request.key.includes(':arc.transform:')) {
           // Gameplay ownership is a per-property rejection, not a dead session.
           this.pending.delete(request.key);
           return;
         }
         this.lastError = `Runtime rejected authoring edit: ${message.payload.error.code}`;
         this.active = false;
+        this.invalidateHeldAuthority();
         this.pending.clear();
       }
     }
@@ -674,6 +697,7 @@ export class LivePlayAuthoringEdits {
       if (item.commitAttempts >= maxCommitAttempts) {
         this.lastError = 'Final Live Play edit was not acknowledged; reload the baseline before more edits';
         this.active = false;
+        this.invalidateHeldAuthority();
         this.pending.clear();
         this.outstanding.clear();
         return;
