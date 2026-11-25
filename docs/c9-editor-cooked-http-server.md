@@ -88,8 +88,8 @@ The baseline active guard therefore remains closed here.
 
 Deliver per-session authorization over protected native IPC, connect
 Windows/Android clients (including ADB reverse for USB devices), and handle
-explicit target pairing. C9.4d adds sequence/change-feed replay/reset;
-C9.4e finalizes diagnostics and security/acceptance. Issue #1137 remains open
+explicit target pairing. C9.4d adds the authenticated bounded sequence/change-feed replay and reset
+endpoint described below; C9.4e finalizes diagnostics and security/acceptance. Issue #1137 remains open
 until those are complete.
 
 ## Test coverage
@@ -104,3 +104,55 @@ C9.4b integration coverage: editor/src/main/livePlayContentPublication.test.ts
 runs cook → verify → package → freeze → publish → authenticated catalog/blob GET,
 plus cancellation, stale project, invalid artifact, identity and target-family
 rejection tests using private filesystem fixtures.
+
+## C9.4d — Authenticated generation change-feed
+
+The C9.1c [versioned feed contract](remote-content-protocol.md) is now served
+by the editor-owned HTTP listener. All requests require the existing expiring
+Bearer token, strict IPv4 loopback authority, the selected session identity and
+the same request-rate/size bounds as immutable cooked content.
+
+**Polling route** (no SSE or WebSocket in this slice):
+
+`GET /sessions/<session-id>/changes?after=<last-ACK-sequence>`
+
+When one target is published, it can be omitted. If multiple cook profiles
+share a session, select the intended target explicitly:
+
+`GET /sessions/<session-id>/changes?after=<last-ACK-sequence>&profile=<cook-profile>`
+
+Each target gets an independent, monotonic **event sequence**. Its published
+`generation` is a separate monotonically increasing identifier; a reconnect
+ACK must refer to the last **successfully activated** event, not the last
+event merely received. The server keeps up to 256 complete events (bounded
+`journalLimit` may be lowered in tests). A client at the current cursor
+gets `up-to-date`; a client whose next event has been trimmed or whose replay
+would exceed 256 events / 8 MiB gets `full-snapshot` and a verified current
+immutable descriptor reference. A cursor ahead of server state receives HTTP
+409, not a false success. Before any complete publication, the endpoint
+returns 503; a missing target/profile returns 404, and an ambiguous target
+returns 400. Malformed or extra query parameters are rejected.
+
+Every successfully published SHA-verified release descriptor is itself exposed
+at `/objects/sha256/<descriptor-sha>`, so reconnecting clients can fetch the
+**exact historical** snapshot identified by the event rather than race a
+changed `current.json`. The immutable descriptor is indexed alongside its
+fully verified cook manifests/chunks **before** its event enters the journal.
+Rejected cooks, unchanged/incorrect generations, cancellations and server
+shutdown never advertise a partial generation. Journal and object inventory
+are cleared on session stop. Events carry only validated sorted, disjoint
+asset GUID lists and immutable descriptor hashes, never raw authoring files
+or secret credentials.
+
+The initial baseline event lists its registered scene-asset GUID.
+Subsequent revisions must supply trusted explicit `changed`/`removed`
+asset GUID sets when calling `publish`; C9.5 is responsible for creating
+those after successful save/cook. This server does **not** infer changed
+asset GUIDs from manifests or claim native scene hot reload (C9.6). The
+C9.1c native parser already validates response continuity and target identity;
+runtime feed polling/application is a separate consumer integration.
+
+Coverage: `editor/src/main/editorCookedContentServer.test.ts` checks the
+authenticated initial event, immutable old descriptor fetch, per-profile
+journals, exact replay, up-to-date, truncated-history reset, cursor regression,
+malformed URL/cursor, failed publication retaining last-good, and shutdown.
