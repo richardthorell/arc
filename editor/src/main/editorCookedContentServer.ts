@@ -16,6 +16,8 @@ export type EditorContentServerOptions = Readonly<{
   sessionId: string;
   instanceId: string;
   port?: number;
+  /** Test seam and upper bound for per-target replay history (1..256). */
+  journalLimit?: number;
 }>;
 
 export type EditorContentServerSnapshot = Readonly<{
@@ -24,6 +26,7 @@ export type EditorContentServerSnapshot = Readonly<{
   projectGuid: string;
   sessionId: string;
   profiles: ReadonlyArray<{ profile: string; family: string; generation: number }>;
+  changeFeeds: ReadonlyArray<{ profile: string; oldestSequence: number; newestSequence: number }>;
   activeClients: number;
   activeTransfers: number;
   requests: number;
@@ -42,6 +45,31 @@ type ObjectRecord = Readonly<{
 }>;
 
 type Publication = Readonly<{ descriptor: Buffer; hash: string; generation: number; family: string }>;
+type FeedTarget = Readonly<{
+  platform: string;
+  architecture: string;
+  renderer: string;
+  cookProfile: string;
+  textureFamily: string;
+}>;
+type ImmutableReleaseRef = Readonly<{ path: string; sha256: string; size: number }>;
+type FeedEvent = Readonly<{
+  sequence: number;
+  generation: number;
+  release: ImmutableReleaseRef;
+  changed: readonly string[];
+  removed: readonly string[];
+}>;
+type FeedJournal = Readonly<{
+  engineVersion: string;
+  target: FeedTarget;
+  oldestSequence: number;
+  newestSequence: number;
+  currentGeneration: number;
+  currentRelease: ImmutableReleaseRef;
+  events: readonly FeedEvent[];
+}>;
+export type PublishedGuidChanges = Readonly<{ changed: readonly string[]; removed: readonly string[] }>;
 
 const guidPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u;
 const digestPattern = /^[a-f0-9]{64}$/u;
@@ -50,6 +78,10 @@ const familyPattern = /^[a-z0-9_-]{1,32}$/u;
 const releasePath =
   /^\/releases\/([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})\/current\.json$/u;
 const objectPath = /^\/objects\/sha256\/([a-f0-9]{64})$/u;
+const feedPath = /^\/sessions\/([A-Za-z0-9_-]{1,128})\/changes$/u;
+const feedQuery = /^after=(0|[1-9][0-9]*)(?:&profile=([A-Za-z0-9][A-Za-z0-9._-]{0,127}))?$/u;
+const maxJournalEvents = 256;
+const maxGuidsPerEvent = 4096;
 const maxDescriptor = 8 * 1024 * 1024;
 const maxTransfer = 256 * 1024 * 1024;
 const noStore = 'no-store, no-cache, must-revalidate';
@@ -73,7 +105,11 @@ async function hashFile(file: string): Promise<string> {
   return digest.digest('hex');
 }
 
-function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile: string, family: string) {
+function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile: string, family: string): {
+  objects: Array<{ sha256: string; size: number }>;
+  engineVersion: string;
+  target: FeedTarget;
+} {
   if (!bytes.length || bytes.length > maxDescriptor) throw new Error('Invalid C9 descriptor size');
   const raw: unknown = JSON.parse(bytes.toString('utf8'));
   if (!raw || typeof raw !== 'object') throw new Error('Invalid C9 release descriptor');
@@ -86,7 +122,13 @@ function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile
     data.projectGuid !== release.projectGuid ||
     data.baseBuildId !== release.runtimeBuildId ||
     data.generation !== release.generation ||
+    typeof data.engineVersion !== 'string' ||
+    data.engineVersion.length < 1 || data.engineVersion.length > 128 ||
+    !/^[A-Za-z0-9._+-]+$/u.test(data.engineVersion) ||
     !target ||
+    !['platform', 'architecture', 'renderer'].every(
+      (key) => typeof target[key] === 'string' && profilePattern.test(target[key] as string),
+    ) ||
     target.cookProfile !== cookProfile ||
     target.textureFamily !== family ||
     !Array.isArray(data.chunks) ||
@@ -113,7 +155,36 @@ function parseRelease(bytes: Buffer, release: LivePlayRemoteRelease, cookProfile
     seen.add(ref.sha256);
     objects.push({ sha256: ref.sha256, size: ref.size });
   }
-  return objects;
+  return {
+    objects,
+    engineVersion: data.engineVersion as string,
+    target: {
+      platform: target.platform as string,
+      architecture: target.architecture as string,
+      renderer: target.renderer as string,
+      cookProfile,
+      textureFamily: family,
+    },
+  };
+}
+
+/** Only validated authoring GUID summaries appear in journal metadata. */
+function guidChanges(
+  changes: PublishedGuidChanges | undefined,
+  first: boolean,
+  sceneAssetGuid: string,
+): PublishedGuidChanges {
+  if (!changes && !first) throw new Error('New cooked generations require explicit changed/removed GUIDs');
+  const changed = changes?.changed ?? [sceneAssetGuid];
+  const removed = changes?.removed ?? [];
+  if (changed.length > maxGuidsPerEvent || removed.length > maxGuidsPerEvent)
+    throw new Error('C9 feed change list exceeds bounded GUID inventory');
+  const seen = new Set<string>();
+  for (const guid of [...changed, ...removed]) {
+    if (!guidPattern.test(guid) || !seen.add(guid))
+      throw new Error('C9 feed contains an invalid, duplicate or overlapping asset GUID');
+  }
+  return { changed: [...changed].sort(), removed: [...removed].sort() };
 }
 
 /** Endpoint credentials are only available to trusted editor-main callers.
@@ -124,6 +195,7 @@ export class EditorCookedContentServer {
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
   private readonly publications = new Map<string, Publication>();
+  private readonly feedJournals = new Map<string, FeedJournal>();
   private readonly objects = new Map<string, ObjectRecord>();
   private readonly projectRoot: string;
   private readonly sessionRoot: string;
@@ -144,7 +216,10 @@ export class EditorCookedContentServer {
       !options.runtimeBuildId ||
       !options.sessionId ||
       !options.instanceId ||
-      (options.port !== undefined && (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535))
+      (options.port !== undefined && (!Number.isInteger(options.port) || options.port < 0 || options.port > 65535)) ||
+      (options.journalLimit !== undefined &&
+        (!Number.isInteger(options.journalLimit) || options.journalLimit < 1 || options.journalLimit > maxJournalEvents)) ||
+      !/^[A-Za-z0-9_-]{1,128}$/u.test(options.sessionId)
     )
       throw new Error('C9 editor content server requires a trusted session identity');
     this.projectRoot = fs.realpathSync(options.projectRoot);
@@ -169,6 +244,11 @@ export class EditorCookedContentServer {
         profile,
         family: p.family,
         generation: p.generation,
+      })),
+      changeFeeds: [...this.feedJournals].map(([profile, journal]) => ({
+        profile,
+        oldestSequence: journal.oldestSequence,
+        newestSequence: journal.newestSequence,
       })),
       activeClients: this.sockets.size,
       activeTransfers: this.activeTransfers,
@@ -203,6 +283,7 @@ export class EditorCookedContentServer {
       this.port = address.port;
       server.on('error', () => {
         this.publications.clear();
+        this.feedJournals.clear();
         this.objects.clear();
         for (const socket of this.sockets) socket.destroy();
       });
@@ -229,7 +310,12 @@ export class EditorCookedContentServer {
   /** Verify a complete release before atomically advertising its descriptor
    * and object inventory. Failed candidates leave the old generation visible.
    */
-  async publish(release: LivePlayRemoteRelease, cookProfile: string, family?: string): Promise<void> {
+  async publish(
+    release: LivePlayRemoteRelease,
+    cookProfile: string,
+    family?: string,
+    changes?: PublishedGuidChanges,
+  ): Promise<void> {
     const originalServer = this.server;
     if (!originalServer) throw new Error('C9 listener is not active');
     if (this.publishing) throw new Error('C9 publication is already being verified');
@@ -306,6 +392,7 @@ export class EditorCookedContentServer {
     this.server = null;
     this.port = null;
     this.publications.clear();
+    this.feedJournals.clear();
     this.objects.clear();
     this.authorizationHash?.fill(0);
     this.authorizationHash = null;
