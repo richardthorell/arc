@@ -2720,7 +2720,7 @@ host_response arc_host::open_project(const host_open_project_command& command, c
     }
     ++state_->scene_revision;
     ++state_->world_epoch;
-    state_->history.clear(state_->scene, false);
+    state_->history.clear(state_->scene, !command.default_scene.empty());
     reset_editor_camera(state_->scene, state_->camera_controller);
     state_->renderer->set_profile_document(std::move(renderer_profiles));
     state_->project_open = true;
@@ -2896,9 +2896,11 @@ host_response arc_host::execute(const host_command_envelope& command)
                     resolved.content_roots = context.value().asset_roots;
                     resolved.cache_root = context.value().asset_cache_root;
                     resolved.renderer_settings = descriptor.value().settings.renderer;
-                    resolved.default_scene = descriptor.value().default_scene
-                                                 ? std::filesystem::path{descriptor.value().default_scene->path_hint}
-                                                 : std::filesystem::path{};
+                    const auto* authoring_scene = descriptor.value().default_scene
+                                                      ? &*descriptor.value().default_scene
+                                                      : project::resolve_startup_scene(descriptor.value(), false);
+                    resolved.default_scene = authoring_scene ? std::filesystem::path{authoring_scene->path_hint}
+                                                             : std::filesystem::path{};
                     resolved.project_guid = descriptor.value().guid;
                     resolved.engine_version = descriptor.value().engine_version;
                 }

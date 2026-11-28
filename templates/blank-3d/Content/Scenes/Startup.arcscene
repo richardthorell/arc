@@ -19,7 +19,7 @@
         "Tag": {"typeId": "a7c00000000000010000000000000003", "version": 1, "value": "Environment"},
         "Active": {"typeId": "a7c00000000000010000000000000004", "version": 2, "active": true},
         "Transform": {"typeId": "a7c00000000000010000000000000002", "version": 1, "position": [0.0, 5.0, 0.0], "rotation": [-0.258819, 0.0, 0.0, 0.965926], "scale": [1.0, 1.0, 1.0]},
-        "DirectionalLight": {"typeId": "a7c0000000000001000000000000000e", "version": 5, "color": [1.0, 0.95, 0.88], "intensity": 85000.0, "castsShadows": true, "enabled": true, "useColorTemperature": true, "temperatureKelvin": 5500.0, "intensityUnit": 1},
+        "DirectionalLight": {"typeId": "a7c0000000000001000000000000000e", "version": 5, "color": [1.0, 0.95, 0.88], "intensity": 85000.0, "castsShadows": true, "enabled": true, "useColorTemperature": true, "temperatureKelvin": 5500.0, "intensityUnit": 1, "sourceAngle": 0.0},
         "WorldEnvironment": {"typeId": "a7c00000000000010000000000000013", "version": 1, "enabled": true, "skyVisible": true, "affectLighting": true, "skySource": "physicalAtmosphere", "solidColor": [0.08, 0.13, 0.22], "radianceIntensity": 1.0}
       }
     },
@@ -31,7 +31,7 @@
         "Tag": {"typeId": "a7c00000000000010000000000000003", "version": 1, "value": "Environment"},
         "Active": {"typeId": "a7c00000000000010000000000000004", "version": 2, "active": true},
         "Transform": {"typeId": "a7c00000000000010000000000000002", "version": 1, "position": [0.0, -0.02, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
-        "MeshRenderer": {"typeId": "a7c00000000000010000000000000008", "version": 5, "visible": true, "casts_shadows": false, "receives_shadows": true, "shadow_lod_bias": 0.0, "maximum_shadow_distance": 0.0}
+        "MeshRenderer": {"typeId": "a7c00000000000010000000000000008", "version": 5, "visible": true, "castsShadows": false, "receivesShadows": true, "shadowLodBias": 0.0, "maximumShadowDistance": 0.0}
       }
     }
   ],

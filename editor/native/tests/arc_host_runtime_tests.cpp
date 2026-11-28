@@ -504,6 +504,9 @@ TEST_CASE("blank 3D project template opens its native authoring scene")
     INFO(response.error);
     REQUIRE(response.succeeded);
     auto snapshot = host->scene_snapshot();
+    REQUIRE(snapshot.scene_name == "Startup");
+    REQUIRE(std::filesystem::path(snapshot.active_scene_path) == root / "Content" / "Scenes" / "Startup.arcscene");
+    REQUIRE_FALSE(snapshot.dirty);
     REQUIRE(snapshot.entities.size() == 3u);
     const auto camera = std::find_if(snapshot.entities.begin(), snapshot.entities.end(),
                                      [](const auto& entity) { return entity.name == "Main Camera"; });

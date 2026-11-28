@@ -261,7 +261,7 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                                                             "WorldRegion"};
     if (!known.contains(name)) return true;
     const auto component_version = value["version"].get<std::uint32_t>();
-    const bool supports_v2 = name == "Terrain" || name == "Water" || name == "Camera" ||
+    const bool supports_v2 = name == "Active" || name == "Terrain" || name == "Water" || name == "Camera" ||
                              name == "IrradianceProbeVolume" || name == "MeshRenderer" ||
                              name == "VirtualMeshRenderer" || name == "Vegetation" || name == "DirectionalLight" ||
                              name == "PointLight" || name == "SpotLight" || name == "AreaLight" ||
@@ -289,7 +289,10 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
     if (name == "Name" || name == "Tag")
         return value.contains("value") && value["value"].is_string() ? true : fail("has an invalid string value");
     if (name == "Active")
-        return value.contains("value") && value["value"].is_boolean() ? true : fail("has an invalid active value");
+    {
+        const auto field = component_version >= 2u ? "active" : "value";
+        return value.contains(field) && value[field].is_boolean() ? true : fail("has an invalid active value");
+    }
     if (name == "Flow")
     {
         if (!value.contains("graph") || !value.contains("enabled") || !value["enabled"].is_boolean())
@@ -458,10 +461,10 @@ bool validate_component_json(std::string_view name, const json& value, std::stri
                    : fail("has invalid baked lighting values");
     if (name == "WorldEnvironment")
     {
-        host_world_environment_snapshot snapshot;
+        scene::world_environment_settings defaults;
+        auto snapshot = to_host_world_environment_snapshot({}, defaults, {});
         std::string parse_error;
         if (!from_json(value.dump(), snapshot, parse_error)) return fail("is malformed");
-        scene::world_environment_settings defaults;
         const auto validation =
             scene::validate_world_environment(apply_host_world_environment_snapshot(snapshot, defaults));
         return validation.valid ? true : fail("is outside supported ranges");
@@ -2005,12 +2008,12 @@ static scene_document_result load_scene_document_payload(editor_scene_state& sta
             }
             if (components.contains("WorldEnvironment"))
             {
-                host_world_environment_snapshot snapshot;
+                const auto current = scene::read_world_environment_settings(loaded.scene, entity);
+                if (!current) throw std::runtime_error("incomplete world environment components");
+                auto snapshot = to_host_world_environment_snapshot({}, *current, {});
                 std::string parse_error;
                 if (!from_json(components["WorldEnvironment"].dump(), snapshot, parse_error))
                     throw std::runtime_error(parse_error);
-                const auto current = scene::read_world_environment_settings(loaded.scene, entity);
-                if (!current) throw std::runtime_error("incomplete world environment components");
                 scene::set_world_environment_settings(loaded.scene, entity,
                                                       apply_host_world_environment_snapshot(snapshot, *current));
                 loaded.world_environment_entity = entity;

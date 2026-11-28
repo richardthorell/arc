@@ -100,7 +100,11 @@ public:
         descriptor_.input_types.push_back(type);
         if (document_kind_)
         {
-            descriptor_.version = 2;
+            // Persistence canonicalization and migrations affect the cooked
+            // document bytes even when the authored source is unchanged.
+            // Bump the processor generation so older cached scenes/prefabs
+            // cannot bypass the current registered component schema.
+            descriptor_.version = 3;
             descriptor_.schema_version = 2;
         }
     }
@@ -111,7 +115,7 @@ public:
     }
     std::string toolchain_fingerprint() const override
     {
-        return "arc.document-cooker/2";
+        return "arc.document-cooker/3";
     }
 
     asset_cook_result cook(const asset_cook_context& context) override
